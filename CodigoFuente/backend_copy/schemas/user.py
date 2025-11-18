@@ -296,3 +296,106 @@ class UserListResponse(BaseModel):
             date: lambda v: v.strftime("%Y-%m-%d") if v else None,
             datetime: lambda v: v.isoformat() if v else None
         }
+
+# ========================================
+# SCHEMAS PARA CARGA MASIVA DESDE EXCEL
+# ========================================
+class UserBulkCreate(BaseModel):
+    """Schema para crear usuario desde Excel - validación mínima"""
+    nombres: str
+    apellidos: str
+    sexo: str
+    fecha_nac: date
+    cedula: str
+    email: EmailStr
+    telefono: Optional[str] = None
+    direccion: Optional[str] = "Sanjapamba"
+    
+    @validator('nombres', 'apellidos')
+    def validate_nombres(cls, v):
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError('Debe tener al menos 2 caracteres')
+        return v.title()
+    
+    @validator('sexo')
+    def validate_sexo(cls, v):
+        v = v.strip().upper()
+        if v not in ['M', 'F', 'O']:
+            raise ValueError('Debe ser M, F u O')
+        return v
+    
+    @validator('cedula')
+    def validate_cedula(cls, v):
+        v = v.strip()
+        if len(v) != 10:
+            raise ValueError('Debe tener 10 dígitos')
+        if not v.isdigit():
+            raise ValueError('Solo números permitidos')
+        return v
+    
+    @validator('telefono')
+    def validate_telefono(cls, v):
+        if v:
+            v = v.strip()
+            if not v.isdigit():
+                raise ValueError('Solo números permitidos')
+            if len(v) != 10:
+                raise ValueError('Debe tener 10 dígitos')
+            return v
+        return None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "nombres": "María",
+                "apellidos": "González",
+                "sexo": "F",
+                "fecha_nac": "1995-03-20",
+                "cedula": "0987654321",
+                "email": "maria.gonzalez@example.com",
+                "telefono": "0999888777",
+                "direccion": "Av. Principal"
+            }
+        }
+
+
+class UserBulkCreateRequest(BaseModel):
+    """Request para crear múltiples usuarios"""
+    users: list[UserBulkCreate]
+    
+    @validator('users')
+    def validate_users_list(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError('La lista de usuarios no puede estar vacía')
+        if len(v) > 100:
+            raise ValueError('Máximo 100 usuarios por carga')
+        return v
+
+
+class UserBulkResult(BaseModel):
+    """Resultado de un usuario creado en masa"""
+    fila: int
+    usuario: str
+    contraseña: str
+    nombre: str
+    email: str
+    cedula: str
+
+
+class UserBulkError(BaseModel):
+    """Error al crear un usuario en masa"""
+    fila: int
+    nombre: str
+    email: Optional[str] = None
+    cedula: Optional[str] = None
+    error: str
+
+
+class UserBulkResponse(BaseModel):
+    """Respuesta de creación masiva"""
+    exitosos: list[UserBulkResult]
+    fallidos: list[UserBulkError]
+    total_procesados: int
+    total_exitosos: int
+    total_fallidos: int

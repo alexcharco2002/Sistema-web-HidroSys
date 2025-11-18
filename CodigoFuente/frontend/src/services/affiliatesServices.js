@@ -1,6 +1,6 @@
 /**
  * src/services/affiliatesServices.js
- * Servicio de Gestión de Afiliados
+ * Servicio de Gestión de Afiliados - Con soporte completo para array de medidores
  */
 
 import authService from './authServices';
@@ -44,7 +44,6 @@ class AffiliatesService {
       },
     };
 
-    // ✅ Manejo correcto de FormData y JSON
     if (finalOptions.body instanceof FormData) {
       delete finalOptions.headers['Content-Type'];
     } else if (finalOptions.body && typeof finalOptions.body === 'object') {
@@ -101,6 +100,31 @@ class AffiliatesService {
   }
 
   /**
+   * Procesa los datos del afiliado para normalizar la información de medidores
+   * El backend envía un array "medidor" con los medidores asignados
+   */
+  processAffiliateData(affiliate) {
+    if (!affiliate) return affiliate;
+
+    // Normalizar el nombre del campo: "medidor" → "medidores"
+    if (affiliate.medidor && !affiliate.medidores) {
+      affiliate.medidores = affiliate.medidor;
+    }
+
+    // Asegurar que sea un array válido
+    if (!Array.isArray(affiliate.medidores)) {
+      affiliate.medidores = [];
+    }
+
+    // Log para debugging
+    if (affiliate.medidores.length > 0) {
+      console.log(`📊 Afiliado ${affiliate.cod_usuario_afi} tiene ${affiliate.medidores.length} medidor(es)`);
+    }
+
+    return affiliate;
+  }
+
+  /**
    * Obtener lista de afiliados con filtros opcionales
    */
   async getAffiliates(filters = {}) {
@@ -120,9 +144,14 @@ class AffiliatesService {
 
       const data = await this.makeRequest(endpoint);
 
+      // Procesar cada afiliado para normalizar datos de medidores
+      const processedData = Array.isArray(data) 
+        ? data.map(affiliate => this.processAffiliateData(affiliate))
+        : data;
+
       return {
         success: true,
-        data: data
+        data: processedData
       };
 
     } catch (error) {
@@ -144,7 +173,7 @@ class AffiliatesService {
 
       return {
         success: true,
-        data: data
+        data: this.processAffiliateData(data)
       };
 
     } catch (error) {
@@ -204,7 +233,7 @@ class AffiliatesService {
 
       return {
         success: true,
-        data: data,
+        data: this.processAffiliateData(data),
         message: 'Afiliado creado exitosamente'
       };
 
@@ -238,7 +267,7 @@ class AffiliatesService {
 
       return {
         success: true,
-        data: data,
+        data: this.processAffiliateData(data),
         message: 'Afiliado actualizado exitosamente'
       };
 
@@ -260,7 +289,6 @@ class AffiliatesService {
         method: 'DELETE'
       });
 
-      // Analiza la respuesta del backend
       if (data?.accion === 'eliminado') {
         return {
           success: true,
@@ -317,7 +345,7 @@ class AffiliatesService {
 
       return {
         success: true,
-        data: data,
+        data: this.processAffiliateData(data),
         message: 'Estado del afiliado actualizado'
       };
 
@@ -352,6 +380,69 @@ class AffiliatesService {
   }
 
   /**
+   * Verificar si un afiliado tiene medidor asignado
+   */
+  hasMeter(affiliate) {
+    if (!affiliate) return false;
+    
+    // Normalizar nombre del campo
+    const medidores = affiliate.medidores || affiliate.medidor;
+    
+    return Array.isArray(medidores) && 
+           medidores.length > 0 &&
+           medidores.some(m => m.activo);
+  }
+
+  /**
+   * Obtener el número de medidor de un afiliado
+   */
+  getMeterNumber(affiliate) {
+    if (!affiliate) return null;
+    
+    // Normalizar nombre del campo
+    const medidores = affiliate.medidores || affiliate.medidor;
+    
+    if (!Array.isArray(medidores)) return null;
+    
+    const activeMeters = medidores.filter(m => m.activo);
+    
+    if (activeMeters.length === 0) return null;
+    if (activeMeters.length === 1) return activeMeters[0].num_medidor;
+    
+    return `${activeMeters.length} medidores`;
+  }
+
+  /**
+   * Obtener información completa de medidores de un afiliado
+   */
+  getMeterInfo(affiliate) {
+    if (!affiliate) return null;
+    
+    // Normalizar nombre del campo
+    const medidores = affiliate.medidores || affiliate.medidor;
+    
+    if (!Array.isArray(medidores)) return null;
+    
+    const activeMeters = medidores.filter(m => m.activo);
+    
+    if (activeMeters.length === 0) return null;
+    
+    if (activeMeters.length === 1) {
+      return {
+        count: 1,
+        primary: activeMeters[0],
+        all: activeMeters
+      };
+    }
+    
+    return {
+      count: activeMeters.length,
+      primary: activeMeters[0],
+      all: activeMeters
+    };
+  }
+
+  /**
    * Validar datos de afiliado
    */
   validateAffiliateData(affiliateData) {
@@ -370,6 +461,178 @@ class AffiliatesService {
   clearStatsCache() {
     this.cachedStats = null;
   }
+
+
+/**
+ * ✅ Descargar plantilla - MÉTODO ALTERNATIVO (más seguro)
+ */
+async downloadTemplate() {
+  try {
+    const token = authService.getToken('token');
+    
+    console.log('📥 Iniciando descarga de plantilla...');
+    
+    const response = await fetch(`${API_CONFIG.baseURL}/affiliates/template/download`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Error al descargar plantilla');
+    }
+
+    // Obtener el blob
+    const blob = await response.blob();
+    
+    console.log(`📦 Blob recibido: ${blob.size} bytes`);
+    
+    if (blob.size === 0) {
+      throw new Error('El archivo descargado está vacío');
+    }
+
+    // ✅ MÉTODO ALTERNATIVO: Usar el API de File System (más moderno)
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: `plantilla_afiliados_${new Date().getTime()}.xlsx`,
+          types: [{
+            description: 'Excel Files',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+          }]
+        });
+        
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        
+        console.log('✅ Archivo guardado con File System API');
+      } catch (fsError) {
+        // Si el usuario cancela o hay error, usar método fallback
+        console.log('Usuario canceló o error en File System API, usando método fallback');
+        throw fsError;
+      }
+    } else {
+      // ✅ FALLBACK para navegadores que no soportan showSaveFilePicker
+      this.downloadBlobFallback(blob, `plantilla_afiliados_${new Date().getTime()}.xlsx`);
+    }
+
+    return {
+      success: true,
+      message: 'Plantilla descargada correctamente'
+    };
+
+  } catch (error) {
+    // Si falla el método moderno, usar fallback
+    if (error.name === 'AbortError') {
+      return {
+        success: false,
+        message: 'Descarga cancelada por el usuario'
+      };
+    }
+    
+    console.error('❌ Error descargando plantilla:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al descargar plantilla'
+    };
+  }
+}
+
+/**
+ * ✅ Método fallback para descargar blob (sin conflictos con React)
+ */
+downloadBlobFallback(blob, filename) {
+  // Crear URL temporal
+  const url = URL.createObjectURL(blob);
+  
+  // Crear un iframe invisible para la descarga
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  iframe.src = url;
+  
+  document.body.appendChild(iframe);
+  
+  // Limpiar después de 2 segundos
+  setTimeout(() => {
+    try {
+      document.body.removeChild(iframe);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.warn('Error limpiando iframe:', e);
+    }
+  }, 2000);
+  
+  // Método tradicional como backup
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+}
+
+
+/**
+ * ✅ Crear múltiples afiliados con medidores desde Excel
+ */
+async createManyAffiliates(affiliatesArray) {
+  try {
+    if (!Array.isArray(affiliatesArray) || affiliatesArray.length === 0) {
+      return {
+        success: false,
+        message: 'Debe proporcionar un array de afiliados válido'
+      };
+    }
+
+    if (affiliatesArray.length > 100) {
+      return {
+        success: false,
+        message: 'Máximo 100 afiliados por carga. Actualmente: ' + affiliatesArray.length
+      };
+    }
+
+    // Validar estructura básica
+    const afiliadosValidados = affiliatesArray.map((aff, index) => {
+      if (!aff.id_usuario_sistema || !aff.id_sector || !aff.num_medidor) {
+        throw new Error(`Fila ${index + 1}: Faltan campos obligatorios`);
+      }
+
+      return {
+        id_usuario_sistema: parseInt(aff.id_usuario_sistema),
+        id_sector: parseInt(aff.id_sector),
+        num_medidor: String(aff.num_medidor).trim(),
+        latitud: aff.latitud ? parseFloat(aff.latitud) : null,
+        longitud: aff.longitud ? parseFloat(aff.longitud) : null,
+        altitud: aff.altitud ? parseFloat(aff.altitud) : null
+      };
+    });
+
+    console.log('📤 Enviando afiliados al backend:', afiliadosValidados.length);
+
+    const data = await this.makeRequest(`${API_CONFIG.endpoints.affiliates}/bulk`, {
+      method: 'POST',
+      body: {
+        affiliates: afiliadosValidados
+      }
+    });
+
+    console.log('📥 Respuesta del backend:', data);
+
+    return {
+      success: true,
+      data: data,
+      message: `Proceso completado: ${data.total_exitosos} exitosos, ${data.total_fallidos} fallidos`
+    };
+
+  } catch (error) {
+    console.error('❌ Error en carga masiva:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al crear afiliados masivamente'
+    };
+  }
+}
 }
 
 const affiliatesService = new AffiliatesService();

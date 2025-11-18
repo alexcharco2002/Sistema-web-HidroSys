@@ -1,27 +1,151 @@
 // src/components/users/UsersSection.js
-// MODULO DE USUARIOS - Con control de permisos granular
+// MODULO DE USUARIOS de sistema - Con control de permisos 
 import React, { useState, useEffect, useCallback } from 'react';
 import './styleModeUser.css';
 import usersService from '../services/userServices';
 import authService from '../services/authServices'; // 🔑 Importar authService
+import * as   XLSX from "xlsx";
 
 import { 
   Users, Plus, Search, Edit, Trash2, Eye, UserCheck, UserX,
   Mail, Phone, MapPin, Calendar, X, Save, RefreshCw, Key,
-  Image as ImageIcon, AlertCircle
+  Image as ImageIcon, AlertCircle, ArrowUpDown, IdCard, CheckCircle, XCircle,
+  UserCog, Wallet, BookOpen, User, FileSpreadsheet
 } from 'lucide-react';
 
 const UsersSection = () => {
+  // ==================== ESTADOS ====================
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
   const [filterRole, setFilterRole] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('create');
   const [selectedUser, setSelectedUser] = useState(null);
   const [error, setError] = useState(null);
+  // ===== Variables para carga desde Excel =====
+  const [ selectedExcel,setSelectedExcel] = useState(null);   // archivo subido
+  const [excelPreview, setExcelPreview] = useState([]);        // filas leídas
+  const [, setLoadingExcel] = useState(false);     // loading
+  // ==== Estados para carga de EXCEL ====
+  const handleExcelPreview = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      setLoadingExcel(true);
+      setError(null);
+
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+
+      setExcelPreview(rows);
+      setSelectedExcel(file);
+      setLoadingExcel(false);
+
+    } catch (error) {
+      console.error(error);
+      setError("Error al leer el archivo Excel");
+      setLoadingExcel(false);
+    }
+  };
+  
+  const handleExcelUpload = async () => {
+    if (excelPreview.length === 0) {
+      setError("No hay datos para enviar");
+      return;
+    }
+
+    if (excelPreview.length > 100) {
+      setError("Máximo 100 usuarios por carga");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const result = await usersService.createManyUsers(excelPreview);
+
+      if (result.success) {
+        const { exitosos, fallidos, total_procesados } = result.data;
+        
+        // Construir mensaje detallado
+        let mensaje = `📊 RESULTADO DE LA CARGA MASIVA\n`;
+        mensaje += `${'='.repeat(50)}\n\n`;
+        mensaje += `✅ Usuarios creados: ${exitosos.length}/${total_procesados}\n`;
+        mensaje += `❌ Errores: ${fallidos.length}/${total_procesados}\n\n`;
+        
+        // Mostrar usuarios exitosos
+        if (exitosos.length > 0) {
+          mensaje += `${'='.repeat(50)}\n`;
+          mensaje += `📋 CREDENCIALES GENERADAS:\n`;
+          mensaje += `${'='.repeat(50)}\n\n`;
+          
+          exitosos.forEach((u, idx) => {
+            mensaje += `${idx + 1}. ${u.nombre}\n`;
+            mensaje += `   👤 Usuario: ${u.usuario}\n`;
+            mensaje += `   🔑 Contraseña: ${u.contraseña}\n`;
+            mensaje += `   📧 Email: ${u.email}\n`;
+            mensaje += `   🆔 Cédula: ${u.cedula}\n\n`;
+          });
+        }
+        
+        // Mostrar errores
+        if (fallidos.length > 0) {
+          mensaje += `${'='.repeat(50)}\n`;
+          mensaje += `❌ ERRORES ENCONTRADOS:\n`;
+          mensaje += `${'='.repeat(50)}\n\n`;
+          
+          fallidos.forEach((f, idx) => {
+            mensaje += `${idx + 1}. Fila ${f.fila}: ${f.nombre}\n`;
+            mensaje += `   Error: ${f.error}\n`;
+            if (f.email) mensaje += `   Email: ${f.email}\n`;
+            if (f.cedula) mensaje += `   Cédula: ${f.cedula}\n`;
+            mensaje += `\n`;
+          });
+        }
+        
+        // Mostrar alerta con scroll
+        const alertDiv = document.createElement('div');
+        alertDiv.innerHTML = `
+          <div style="max-height: 500px; overflow-y: auto; text-align: left; font-family: monospace; white-space: pre-wrap; font-size: 12px; line-height: 1.5;">
+            ${mensaje}
+          </div>
+        `;
+        
+        // Usar SweetAlert2 si lo tienes, o alert simple
+        alert(mensaje);
+        
+        // Recargar usuarios y cerrar modal
+        await fetchUsers();
+        closeModal();
+        setExcelPreview([]);
+        setSelectedExcel(null);
+        
+      } else {
+        setError(result.message || "Error al procesar usuarios");
+      }
+
+    } catch (error) {
+      console.error('Error en carga masiva:', error);
+      setError(error.message || "Error al enviar usuarios");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  // 🔽 Estados de ordenamiento mejorados
+  const [sortOption, setSortOption] = useState('rol');
+  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' o 'desc'
+  
+  // 🔽 Estado de filtro de estado (activo/inactivo)
+  const [statusFilter, setStatusFilter] = useState('all');
+  
   const [formData, setFormData] = useState({
     nombres: '',
     apellidos: '',
@@ -52,12 +176,19 @@ const UsersSection = () => {
     canToggleStatus: false
   });
 
-  // 🔑 Cargar permisos al montar el componente
+  // ==================== EFECTOS ====================
+  
+  // 🔑 Cargar permisos y roles al montar el componente
   useEffect(() => {
     loadUserPermissions();
     loadRoles();
   }, []);
 
+  // ==================== FUNCIONES DE PERMISOS ====================
+  
+  /**
+   * 🔑 Carga los permisos del usuario actual para el módulo de usuarios
+   */
   const loadUserPermissions = () => {
     // Verificar permisos sobre el módulo 'usuarios'
     const canCreate = authService.hasPermission('usuarios', 'crear') || 
@@ -97,6 +228,11 @@ const UsersSection = () => {
     });
   };
 
+  // ==================== FUNCIONES DE CARGA DE DATOS ====================
+  
+  /**
+   * 📋 Carga la lista de roles disponibles desde el servidor
+   */
   const loadRoles = async () => {
     try {
       const result = await usersService.getRoles();
@@ -111,6 +247,9 @@ const UsersSection = () => {
     }
   };
 
+  /**
+   * 👥 Obtiene la lista de usuarios del servidor con filtros aplicados
+   */
   const fetchUsers = useCallback(async () => {
     // 🔑 Verificar si tiene permiso de lectura
     if (!permissions.canRead) {
@@ -124,7 +263,7 @@ const UsersSection = () => {
     
     try {
       const result = await usersService.getUsers({
-        search: debouncedSearchTerm,
+        
         id_rol: filterRole === 'all' ? undefined : filterRole
       });
 
@@ -141,39 +280,87 @@ const UsersSection = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterRole, debouncedSearchTerm, permissions.canRead]);
-
-  useEffect(() => {
-    if (permissions.canRead) {
-      console.log('🔄 Componente montado, cargando usuarios...');
-      fetchUsers();
-    }
-  }, [fetchUsers, permissions.canRead]);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 700);
-    return () => clearTimeout(handler);
-  }, [searchTerm]);
-
+  }, [filterRole, permissions.canRead]);
+  // 🔄 Cargar usuarios cuando cambian los filtros
   useEffect(() => {
     if (permissions.canRead) {
       fetchUsers();
     }
-  }, [debouncedSearchTerm, filterRole, fetchUsers, permissions.canRead]);
-
+  }, [ filterRole, permissions.canRead, fetchUsers]);
+  // ==================== FUNCIONES DE FILTRADO Y ORDENAMIENTO ====================
+  
+  /**
+   * 🔍 Filtra usuarios según los criterios de búsqueda, rol y estado
+   */
   const filteredUsers = users.filter(user => {
-    const matchesSearch = 
+    // Filtro por búsqueda de texto
+    const matchesSearch =
       user.nombres.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.apellidos.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesRole = filterRole === 'all' || user.id_rol === parseInt(filterRole);
-    
-    return matchesSearch && matchesRole;
+
+    // Filtro por rol
+    const matchesRole =
+      filterRole === 'all' || user.id_rol === parseInt(filterRole);
+
+    // Filtro por estado (activo/inactivo)
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'active' && user.activo) ||
+      (statusFilter === 'inactive' && !user.activo);
+
+    return matchesSearch && matchesRole && matchesStatus;
   });
 
+  /**
+   * 🔀 Ordena los usuarios filtrados según el criterio y orden seleccionados
+   */
+  const sortedUsers = [...filteredUsers].sort((a, b) => {
+    let comparison = 0;
+    
+    if (sortOption === 'nombre') {
+      // Ordenar por nombre completo
+      const nombreA = `${a.nombres} ${a.apellidos}`.toLowerCase();
+      const nombreB = `${b.nombres} ${b.apellidos}`.toLowerCase();
+      comparison = nombreA.localeCompare(nombreB);
+    } 
+    else if (sortOption === 'fecha') {
+      // Ordenar por fecha de registro
+      const fechaA = new Date(a.fecha_registro || a.fecha_creacion);
+      const fechaB = new Date(b.fecha_registro || b.fecha_creacion);
+      comparison = fechaA - fechaB;
+    } 
+    else if (sortOption === 'rol') {
+      // Ordenar por id_rol (1=Admin, 2=Cajero, etc.)
+      comparison = a.id_rol - b.id_rol;
+    }
+    
+    // Aplicar orden ascendente o descendente
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  /**
+   * 🔄 Cambia el orden de clasificación (ascendente/descendente)
+   */
+  const toggleSortOrder = () => {
+    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
+  };
+
+  /**
+   * 🎯 Cambia el filtro de estado y aplica el filtro
+   * @param {string} status - 'all', 'active' o 'inactive'
+   */
+  const handleStatusFilterClick = (status) => {
+    setStatusFilter(status);
+  };
+
+  // ==================== FUNCIONES DE MODAL ====================
+  
+  /**
+   * 📝 Abre el modal según el tipo de operación
+   * @param {string} type - 'create', 'edit', 'view', 'password', 'photo'
+   * @param {object} user - Usuario seleccionado (opcional)
+   */
   const openModal = (type, user = null) => {
     // 🔑 Verificar permisos antes de abrir modal
     if (type === 'create' && !permissions.canCreate) {
@@ -198,6 +385,7 @@ const UsersSection = () => {
     setError(null);
     
     if (type === 'create') {
+      // Resetear formulario para crear nuevo usuario
       setFormData({
         nombres: '',
         apellidos: '',
@@ -211,6 +399,7 @@ const UsersSection = () => {
         activo: true
       });
     } else if (type === 'edit' && user) {
+      // Cargar datos del usuario a editar
       setFormData({
         nombres: user.nombres,
         apellidos: user.apellidos,
@@ -224,25 +413,38 @@ const UsersSection = () => {
         activo: user.activo
       });
     } else if (type === 'password' && user) {
+      // Resetear formulario de cambio de contraseña
       setPasswordData({
         currentPassword: '',
         newPassword: '',
         confirmPassword: ''
       });
     } else if (type === 'photo' && user) {
+      // Resetear selección de archivo
       setSelectedFile(null);
     }
     
     setShowModal(true);
   };
 
+  /**
+   * ❌ Cierra el modal y limpia los estados
+   */
   const closeModal = () => {
     setShowModal(false);
     setSelectedUser(null);
     setError(null);
     setSelectedFile(null);
+    // 🔥 Limpiar estados del Excel
+    setSelectedExcel(null);
+    setExcelPreview([]);
   };
 
+  // ==================== FUNCIONES DE CRUD ====================
+  
+  /**
+   * 💾 Maneja el envío del formulario de crear/editar usuario
+   */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -251,6 +453,7 @@ const UsersSection = () => {
       let result;
 
       if (modalType === "create") {
+        // 🔑 Verificar permiso para crear
         if (!permissions.canCreate) {
           setError('No tienes permiso para crear usuarios');
           return;
@@ -275,6 +478,7 @@ const UsersSection = () => {
         }
 
       } else if (modalType === "edit") {
+        // 🔑 Verificar permiso para editar
         if (!permissions.canUpdate) {
           setError('No tienes permiso para editar usuarios');
           return;
@@ -297,20 +501,26 @@ const UsersSection = () => {
     }
   };
 
+  /**
+   * 🔐 Maneja el cambio de contraseña de un usuario
+   */
   const handleChangePassword = async (e) => {
     e.preventDefault();
     setError(null);
 
+    // 🔑 Verificar permiso
     if (!permissions.canChangePassword) {
       setError('No tienes permiso para cambiar contraseñas');
       return;
     }
 
+    // Validar que las contraseñas coincidan
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       setError('Las contraseñas no coinciden');
       return;
     }
 
+    // Validar longitud mínima
     if (passwordData.newPassword.length < 8) {
       setError('La contraseña debe tener al menos 8 caracteres');
       return;
@@ -333,10 +543,14 @@ const UsersSection = () => {
     }
   };
 
+  /**
+   * 📸 Maneja la subida de foto de perfil
+   */
   const handleUploadPhoto = async (e) => {
     e.preventDefault();
     setError(null);
 
+    // 🔑 Verificar permiso
     if (!permissions.canChangePhoto) {
       setError('No tienes permiso para cambiar fotos de perfil');
       return;
@@ -362,6 +576,9 @@ const UsersSection = () => {
     }
   };
 
+  /**
+   * 🗑️ Elimina un usuario del sistema
+   */
   const handleDelete = async (userId) => {
     // 🔑 Verificar permiso antes de eliminar
     if (!permissions.canDelete) {
@@ -385,6 +602,9 @@ const UsersSection = () => {
     }
   };
 
+  /**
+   * 🔄 Activa o desactiva un usuario
+   */
   const toggleUserStatus = async (userId) => {
     // 🔑 Verificar permiso antes de cambiar estado
     if (!permissions.canToggleStatus) {
@@ -405,6 +625,11 @@ const UsersSection = () => {
     }
   };
 
+  // ==================== FUNCIONES AUXILIARES ====================
+  
+  /**
+   * 🏷️ Obtiene el nombre del rol de un usuario
+   */
   const getRoleName = (user) => {
     if (user.rol && user.rol.nombre_rol) {
       return user.rol.nombre_rol;
@@ -412,23 +637,45 @@ const UsersSection = () => {
     return 'Sin rol';
   };
 
+  /**
+   * 🎨 Genera el badge visual del rol con colores específicos
+   */
+  const roleIcons = {
+    administrador: <UserCog className="w-4 h-4" />,
+    cajero: <Wallet className="w-4 h-4" />,
+    lector: <BookOpen className="w-4 h-4" />,
+    cliente: <User className="w-4 h-4" />,
+  };
+
   const getRoleBadge = (user) => {
     const roleName = getRoleName(user).toLowerCase();
-    
-    const roleClasses = {
-      administrador: 'bg-red-100 text-red-800',
-      cliente: 'bg-blue-100 text-blue-800',
-      lector: 'bg-green-100 text-green-800',
-      cajero: 'bg-purple-100 text-purple-800'
+
+    const colors = {
+      administrador: 'blue',
+      cajero: 'orange',
+      lector: 'purple',
+      cliente: 'gray',
     };
-    
+
+    const colorClass = colors[roleName]
+      ? `role-${colors[roleName]}`
+      : 'role-default';
+
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${roleClasses[roleName] || 'bg-gray-100 text-gray-800'}`}>
+      <span className={`role-badge ${colorClass}`}>
+        <span className="mr-1 flex items-center">
+          {roleIcons[roleName] || <User className="w-4 h-4" />}
+        </span>
         {roleName.charAt(0).toUpperCase() + roleName.slice(1)}
       </span>
     );
   };
 
+
+
+
+  // ==================== RENDERIZADO ====================
+  
   // 🔑 Mostrar mensaje si no tiene permiso de lectura
   if (!permissions.canRead) {
     return (
@@ -440,6 +687,7 @@ const UsersSection = () => {
     );
   }
 
+  // ⏳ Mostrar indicador de carga
   if (loading) {
     return (
       <div className="section-placeholder">
@@ -450,6 +698,7 @@ const UsersSection = () => {
     );
   }
 
+  // ❌ Mostrar error si no se pudieron cargar usuarios
   if (error && users.length === 0) {
     return (
       <div className="section-placeholder">
@@ -466,24 +715,38 @@ const UsersSection = () => {
 
   return (
     <div className="users-section">
+      {/* ==================== ENCABEZADO ==================== */}
       <div className="section-header">
         <div className="section-title">
           <Users className="w-7 h-7 text-blue-600" />
           <h2>Gestión de Usuarios</h2>
         </div>
-        {/* 🔑 Botón "Nuevo Usuario" solo si tiene permiso de crear */}
-        {permissions.canCreate && (
-          <button 
-            className="btn-primary"
-            onClick={() => openModal('create')}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Nuevo Usuario
-          </button>
-        )}
-      </div>
 
+        <div className="actions">
+          {permissions.canCreate && (
+            <button 
+              className="btn-primary"
+              onClick={() => openModal('create')}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Nuevo Usuario
+            </button>
+          )}
+
+          {permissions.canCreate && (
+            <button 
+              className="btn-primary"
+              onClick={() => openModal('excel')}
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+              Crear desde Excel
+            </button>
+          )}
+        </div>
+      </div>
+      {/* ==================== BARRA DE BÚSQUEDA Y FILTROS ==================== */}
       <div className="filters-section">
+        {/* 🔍 Barra de búsqueda */}
         <div className="search-container">
           <Search className="search-icon" />
           <input
@@ -495,6 +758,7 @@ const UsersSection = () => {
           />
         </div>
         
+        {/* 🏷️ Filtro por rol */}
         <select 
           className="filter-select"
           value={filterRole}
@@ -507,7 +771,31 @@ const UsersSection = () => {
             </option>
           ))}
         </select>
-
+        
+        {/* 🔀 Selector de ordenamiento */}
+        <select
+          className="filter-select"
+          value={sortOption}
+          onChange={(e) => setSortOption(e.target.value)}
+        >
+          <option value="rol">Ordenar por Rol</option>
+          <option value="nombre">Ordenar por Nombre</option>
+          <option value="fecha">Ordenar por Fecha</option>
+        </select>
+        
+        {/* ⬆️⬇️ Botón de orden ascendente/descendente */}
+        <button 
+          className="btn-secondary"
+          onClick={toggleSortOrder}
+          title={sortOrder === 'asc' ? 'Orden Ascendente' : 'Orden Descendente'}
+        >
+          <ArrowUpDown className="w-4 h-4" />
+          <span className="ml-1 text-xs">
+            {sortOrder === 'asc' ? '↑' : '↓'}
+          </span>
+        </button>
+        
+        {/* 🔄 Botón de recarga */}
         <button 
           className="btn-secondary"
           onClick={fetchUsers}
@@ -517,22 +805,37 @@ const UsersSection = () => {
         </button>
       </div>
 
+      {/* ==================== ESTADÍSTICAS ==================== */}
       <div className="users-stats">
-        <div className="stat-item">
+        {/* 📊 Total de usuarios */}
+        <div
+          className={`stat-item ${statusFilter === 'all' ? 'active' : ''}`}
+          onClick={() => handleStatusFilterClick('all')}
+        >
           <Users className="stat-icon text-blue-600" />
           <div>
             <p className="stat-label">Total Usuarios</p>
             <p className="stat-value">{users.length}</p>
           </div>
         </div>
-        <div className="stat-item">
+
+        {/* ✅ Usuarios activos */}
+        <div
+           className={`stat-item ${statusFilter === 'active' ? 'active green' : ''}`}
+        onClick={() => handleStatusFilterClick('active')}
+        >
           <UserCheck className="stat-icon text-green-600" />
           <div>
             <p className="stat-label">Usuarios Activos</p>
             <p className="stat-value">{users.filter(u => u.activo).length}</p>
           </div>
         </div>
-        <div className="stat-item">
+
+        {/* ❌ Usuarios inactivos */}
+        <div
+          className={`stat-item ${statusFilter === 'inactive' ? 'active red' : ''}`}
+          onClick={() => handleStatusFilterClick('inactive')}
+        >
           <UserX className="stat-icon text-red-600" />
           <div>
             <p className="stat-label">Usuarios Inactivos</p>
@@ -541,11 +844,14 @@ const UsersSection = () => {
         </div>
       </div>
 
+      {/* ==================== GRID DE USUARIOS ==================== */}
       <div className="users-grid">
-        {filteredUsers.map(user => (
+        {sortedUsers.map(user => (
           <div key={user.id} className={`user-card ${!user.activo ? 'inactive' : ''}`}>
+            {/* Encabezado de la tarjeta */}
             <div className="user-card-header">
               <div className="user-info">
+                {/* Avatar del usuario */}
                 {user.foto ? (
                   <div className="user-avatar">
                     <img
@@ -561,17 +867,30 @@ const UsersSection = () => {
                     </span>
                   </div>
                 )}
+                
+                {/* Información básica del usuario */}
                 <div>
                   <h3 className="user-name">{user.nombres} {user.apellidos}</h3>
                   <div className="user-meta">
                     {getRoleBadge(user)}
                     <span className={`status-badge ${user.activo ? 'active' : 'inactive'}`}>
-                      {user.activo ? 'Activo' : 'Inactivo'}
+                      {user.activo ? (
+                        <>
+                          <CheckCircle className="w-3 h-3" />
+                          Activo
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="w-3 h-3" />
+                          Inactivo
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>
               </div>
               
+              {/* Botones de acción */}
               <div className="user-actions">
                 {/* 🔑 Botón "Ver detalles" - siempre visible si tiene permiso de lectura */}
                 <button 
@@ -639,8 +958,17 @@ const UsersSection = () => {
               </div>
             </div>
             
+            {/* Cuerpo de la tarjeta con información de contacto */}
             <div className="user-card-body">
               <div className="user-contact">
+                <div className="contact-item">
+                  <user  className="w-4 h-4 text-gray-400" />
+                  <span>{user?.usuario || 'N/A'}</span>
+                </div>
+                <div className="contact-item">
+                  <IdCard  className="w-4 h-4 text-gray-400" />
+                  <span>{user?.cedula || 'N/A'}</span>
+                </div>
                 <div className="contact-item">
                   <Mail className="w-4 h-4 text-gray-400" />
                   <span>{user.email}</span>
@@ -659,6 +987,7 @@ const UsersSection = () => {
                 )}
               </div>
               
+              {/* Fechas de registro y último acceso */}
               <div className="user-dates">
                 {user.fecha_registro && (
                   <div className="date-item">
@@ -677,7 +1006,8 @@ const UsersSection = () => {
         ))}
       </div>
 
-      {filteredUsers.length === 0 && (
+      {/* ==================== ESTADO VACÍO ==================== */}
+      {sortedUsers.length === 0 && (
         <div className="empty-state">
           <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3>No se encontraron usuarios</h3>
@@ -685,7 +1015,7 @@ const UsersSection = () => {
         </div>
       )}
 
-      {/* MODALES */}
+      {/* ==================== MODALES ==================== */}
       {showModal && (
         <div className="modal-overlay">
           <div className="modal">
@@ -696,6 +1026,7 @@ const UsersSection = () => {
                 {modalType === 'view' && 'Detalles del Usuario'}
                 {modalType === 'password' && 'Cambiar Contraseña'}
                 {modalType === 'photo' && 'Cambiar Foto de Perfil'}
+                {modalType === 'excel' && 'Crear usuarios desde excel'}
               </h3>
               <button className="modal-close" onClick={closeModal}>
                 <X className="w-5 h-5" />
@@ -703,16 +1034,205 @@ const UsersSection = () => {
             </div>
             
             <div className="modal-body">
+              {/* Mensaje de error */}
               {error && (
                 <div className="alert alert-error mb-4">
                   <AlertCircle className="w-5 h-5 mr-2" />
                   {error}
                 </div>
               )}
+              {/* ==================== MODAL DE CARGA DESDE EXCEL ==================== */}
+              {modalType === 'excel' && (
+                <div className="user-form">
+                  <div className="form-grid">
+                    {/* Selector de archivo */}
+                    <div className="form-group form-group-full">
+                      <label>Seleccionar archivo Excel *</label>
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={handleExcelPreview}
+                        className="file-input"
+                      />
+                      <small className="text-gray-500 mt-1">
+                        📋 <strong>Formato requerido:</strong> Excel (.xlsx, .xls)
+                        <br />
+                        📝 <strong>Columnas obligatorias:</strong>
+                        <br />
+                        &nbsp;&nbsp;&nbsp;• nombres, apellidos, sexo (M/F/O), fecha_nac (YYYY-MM-DD)
+                        <br />
+                        &nbsp;&nbsp;&nbsp;• cedula (10 dígitos), email, telefono (10 dígitos), direccion
+                        <br />
+                        <br />
+                        ℹ️ <strong>Notas importantes:</strong>
+                        <br />
+                        &nbsp;&nbsp;&nbsp;• Todos los usuarios se crearán con <strong>rol Cliente</strong>
+                        <br />
+                        &nbsp;&nbsp;&nbsp;• Estado: <strong>Activo</strong>
+                        <br />
+                        &nbsp;&nbsp;&nbsp;• Contraseña: <strong>Su número de cédula</strong>
+                        <br />
+                        &nbsp;&nbsp;&nbsp;• Usuario: <strong>Se genera automáticamente</strong>
+                        <br />
+                        &nbsp;&nbsp;&nbsp;• Máximo: <strong>100 usuarios por carga</strong>
+                      </small>
+                    </div>
 
-              {/* MODAL DE VISTA */}
+                    {/* Archivo seleccionado */}
+                    {selectedExcel && (
+                      <div className="form-group form-group-full">
+                        <div className="alert alert-info">
+                          <AlertCircle className="w-5 h-5 mr-2" />
+                          <div>
+                            <strong>Archivo seleccionado:</strong> {selectedExcel.name}
+                            <br />
+                            <small>Tamaño: {(selectedExcel.size / 1024).toFixed(2)} KB</small>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Vista previa */}
+                    {excelPreview.length > 0 && (
+                      <div className="form-group form-group-full">
+                        <label>
+                          📊 Vista previa ({excelPreview.length} usuario{excelPreview.length !== 1 ? 's' : ''})
+                          {excelPreview.length > 100 && (
+                            <span className="text-red-600 ml-2">
+                              ⚠️ Excede el límite de 100 usuarios
+                            </span>
+                          )}
+                        </label>
+                        
+                        <div style={{ 
+                          maxHeight: '400px', 
+                          overflowY: 'auto', 
+                          border: '1px solid #e5e7eb', 
+                          borderRadius: '8px',
+                          backgroundColor: '#fff'
+                        }}>
+                          <table style={{ 
+                            width: '100%', 
+                            fontSize: '13px', 
+                            borderCollapse: 'collapse' 
+                          }}>
+                            <thead style={{ 
+                              position: 'sticky', 
+                              top: 0, 
+                              backgroundColor: '#f9fafb', 
+                              borderBottom: '2px solid #e5e7eb',
+                              zIndex: 1
+                            }}>
+                              <tr>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>#</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Nombres</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Apellidos</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Sexo</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>F. Nac.</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Cédula</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Email</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Teléfono</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Estado</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {excelPreview.map((u, idx) => {
+                                // Validar fila
+                                const esValida = u.nombres && u.apellidos && u.cedula && u.email;
+                                const tieneErrores = !esValida;
+                                
+                                return (
+                                  <tr 
+                                    key={idx} 
+                                    style={{ 
+                                      borderBottom: '1px solid #f3f4f6',
+                                      backgroundColor: tieneErrores ? '#fef2f2' : 'transparent'
+                                    }}
+                                  >
+                                    <td style={{ padding: '8px', color: '#6b7280' }}>{idx + 1}</td>
+                                    <td style={{ padding: '8px' }}>
+                                      {u.nombres || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                                    </td>
+                                    <td style={{ padding: '8px' }}>
+                                      {u.apellidos || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                                    </td>
+                                    <td style={{ padding: '8px' }}>
+                                      {u.sexo || <span style={{ color: '#f59e0b' }}>⚠️ O</span>}
+                                    </td>
+                                    <td style={{ padding: '8px', fontSize: '12px' }}>
+                                      {u.fecha_nac || <span style={{ color: '#f59e0b' }}>⚠️ Sin fecha</span>}
+                                    </td>
+                                    <td style={{ padding: '8px' }}>
+                                      {u.cedula || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                                    </td>
+                                    <td style={{ padding: '8px', fontSize: '12px' }}>
+                                      {u.email || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                                    </td>
+                                    <td style={{ padding: '8px' }}>
+                                      {u.telefono || <span style={{ color: '#9ca3af' }}>-</span>}
+                                    </td>
+                                    <td style={{ padding: '8px' }}>
+                                      {esValida ? (
+                                        <span style={{ color: '#10b981', fontSize: '12px' }}>✓ OK</span>
+                                      ) : (
+                                        <span style={{ color: '#ef4444', fontSize: '12px' }}>✗ Error</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        
+                        {/* Resumen */}
+                        <div style={{ 
+                          marginTop: '12px', 
+                          padding: '12px', 
+                          backgroundColor: '#f9fafb', 
+                          borderRadius: '6px',
+                          fontSize: '13px'
+                        }}>
+                          <strong>ℹ️ Información:</strong>
+                          <ul style={{ marginTop: '8px', marginLeft: '20px' }}>
+                            <li>Usuario y contraseña se generarán automáticamente</li>
+                            <li>Rol asignado: <strong>Cliente</strong></li>
+                            <li>Estado: <strong>Activo</strong></li>
+                            <li>Contraseña inicial: <strong>Número de cédula</strong></li>
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Botones */}
+                  <div className="form-actions">
+                    <button 
+                      type="button" 
+                      className="btn-secondary" 
+                      onClick={closeModal}
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      Cancelar
+                    </button>
+
+                    <button 
+                      type="button" 
+                      className="btn-primary"
+                      onClick={handleExcelUpload}
+                      disabled={excelPreview.length === 0 || excelPreview.length > 100}
+                    >
+                      <Save className="w-4 h-4 mr-2" />
+                      Crear {excelPreview.length} Usuario{excelPreview.length !== 1 ? 's' : ''}
+                    </button>
+                  </div>
+                </div>
+              )}
+    
+              {/* ==================== MODAL DE VISTA ==================== */}
               {modalType === 'view' && selectedUser && (
-                <div className="user-details ">
+                <div className="user-details">
+                  {/* Foto de perfil */}
                   <div className="user-photo-container mb-5">
                     {selectedUser.foto ? (
                       <img 
@@ -726,6 +1246,8 @@ const UsersSection = () => {
                       </div>
                     )}
                   </div>
+                  
+                  {/* Información detallada del usuario */}
                   <div className="detail-group">
                     <label>Usuario:</label>
                     <p>{selectedUser.usuario}</p>
@@ -772,16 +1294,27 @@ const UsersSection = () => {
                   <div className="detail-group">
                     <label>Estado:</label>
                     <span className={`status-badge ${selectedUser.activo ? 'active' : 'inactive'}`}>
-                      {selectedUser.activo ? 'Activo' : 'Inactivo'}
+                      {selectedUser.activo ? (
+                        <>
+                          <CheckCircle className="w-3 h-3" />
+                          Activo
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="w-3 h-3" />
+                          Inactivo
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>
               )}
 
-              {/* MODAL DE CREACIÓN/EDICIÓN */}
+              {/* ==================== MODAL DE CREACIÓN/EDICIÓN ==================== */}
               {(modalType === 'create' || modalType === 'edit') && (
                 <form onSubmit={handleSubmit} className="user-form">
                   <div className="form-grid">
+                    {/* Nombres */}
                     <div className="form-group">
                       <label>Nombres *</label>
                       <input
@@ -793,6 +1326,7 @@ const UsersSection = () => {
                       />
                     </div>
 
+                    {/* Apellidos */}
                     <div className="form-group">
                       <label>Apellidos *</label>
                       <input
@@ -804,6 +1338,7 @@ const UsersSection = () => {
                       />
                     </div>
 
+                    {/* Sexo */}
                     <div className="form-group">
                       <label>Sexo *</label>
                       <select
@@ -818,6 +1353,7 @@ const UsersSection = () => {
                       </select>
                     </div>
 
+                    {/* Fecha de Nacimiento */}
                     <div className="form-group">
                       <label>Fecha de Nacimiento *</label>
                       <input
@@ -828,6 +1364,7 @@ const UsersSection = () => {
                       />
                     </div>
 
+                    {/* Cédula */}
                     <div className="form-group">
                       <label>Cédula *</label>
                       <input
@@ -839,6 +1376,7 @@ const UsersSection = () => {
                       />
                     </div>
 
+                    {/* Email */}
                     <div className="form-group">
                       <label>Correo Electrónico *</label>
                       <input
@@ -850,6 +1388,7 @@ const UsersSection = () => {
                       />
                     </div>
 
+                    {/* Teléfono */}
                     <div className="form-group">
                       <label>Teléfono</label>
                       <input
@@ -860,6 +1399,7 @@ const UsersSection = () => {
                       />
                     </div>
 
+                    {/* Dirección */}
                     <div className="form-group form-group-full">
                       <label>Dirección</label>
                       <textarea
@@ -870,6 +1410,7 @@ const UsersSection = () => {
                       />
                     </div>
 
+                    {/* Rol */}
                     <div className="form-group">
                       <label>Rol *</label>
                       <select
@@ -886,6 +1427,7 @@ const UsersSection = () => {
                       </select>
                     </div>
 
+                    {/* Estado */}
                     <div className="form-group">
                       <label>Estado</label>
                       <select
@@ -898,6 +1440,7 @@ const UsersSection = () => {
                     </div>
                   </div>
 
+                  {/* Botones de acción del formulario */}
                   <div className="form-actions">
                     <button type="button" className="btn-secondary" onClick={closeModal}>
                       Cancelar
@@ -910,10 +1453,11 @@ const UsersSection = () => {
                 </form>
               )}
 
-              {/* MODAL DE CAMBIO DE CONTRASEÑA */}
+              {/* ==================== MODAL DE CAMBIO DE CONTRASEÑA ==================== */}
               {modalType === 'password' && (
                 <form onSubmit={handleChangePassword} className="user-form">
                   <div className="form-grid">
+                    {/* Contraseña actual */}
                     <div className="form-group form-group-full">
                       <label>Contraseña Actual *</label>
                       <input
@@ -925,6 +1469,7 @@ const UsersSection = () => {
                       />
                     </div>
                     
+                    {/* Nueva contraseña */}
                     <div className="form-group form-group-full">
                       <label>Nueva Contraseña *</label>
                       <input
@@ -937,6 +1482,7 @@ const UsersSection = () => {
                       />
                     </div>
                     
+                    {/* Confirmar contraseña */}
                     <div className="form-group form-group-full">
                       <label>Confirmar Nueva Contraseña *</label>
                       <input
@@ -950,6 +1496,7 @@ const UsersSection = () => {
                     </div>
                   </div>
                   
+                  {/* Botones de acción */}
                   <div className="form-actions">
                     <button type="button" className="btn-secondary" onClick={closeModal}>
                       Cancelar
@@ -962,10 +1509,11 @@ const UsersSection = () => {
                 </form>
               )}
 
-              {/* MODAL DE CAMBIO DE FOTO */}
+              {/* ==================== MODAL DE CAMBIO DE FOTO ==================== */}
               {modalType === 'photo' && (
                 <form onSubmit={handleUploadPhoto} className="user-form">
                   <div className="form-grid">
+                    {/* Selector de archivo */}
                     <div className="form-group form-group-full">
                       <label>Seleccionar Imagen *</label>
                       <input
@@ -979,6 +1527,7 @@ const UsersSection = () => {
                       </small>
                     </div>
                     
+                    {/* Vista previa del archivo seleccionado */}
                     {selectedFile && (
                       <div className="form-group form-group-full">
                         <p className="text-sm text-gray-600">
@@ -988,6 +1537,7 @@ const UsersSection = () => {
                     )}
                   </div>
                   
+                  {/* Botones de acción */}
                   <div className="form-actions">
                     <button type="button" className="btn-secondary" onClick={closeModal}>
                       Cancelar

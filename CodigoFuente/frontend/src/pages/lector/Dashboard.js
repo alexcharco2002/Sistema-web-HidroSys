@@ -18,6 +18,7 @@ import NotificationsSection from '../../components/NotificationsSection';
 import UsersSection from '../../components/UsersSection';
 import RolesSection from '../../components/RolesSection';
 import SectorsSection from '../../components/SectorsSection';
+import AffiliatesSection from '../../components/AffiliatesSection';
 
 
 // Importar iconos
@@ -44,7 +45,8 @@ const componentMap = {
   ProfileSection,
   NotificationsSection,
   RolesSection,
-  SectorsSection
+  SectorsSection,
+  AffiliatesSection
 };
 
 const LectorDashboard = () => {

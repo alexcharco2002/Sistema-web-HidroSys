@@ -200,7 +200,7 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
             return {"success": False, "message": "El usuario ingresado no existe."}
 
         if hasattr(db_user, 'activo') and not db_user.activo:
-            return {"success": False, "message": "Usuario inactivo. Contacte al administrador."}
+            return {"success": False, "message": "Su usuario está inactivo. Contactese con al administrador."}
 
         estado_bloqueo = verificar_activo_bloqueo(db_user)
         if estado_bloqueo["bloqueado"]:

@@ -229,6 +229,73 @@ class UsersService {
   }
 
   /**
+ * ✅ Crear múltiples usuarios desde Excel
+ */
+  async createManyUsers(usersArray) {
+    try {
+      // Validar que sea un array
+      if (!Array.isArray(usersArray) || usersArray.length === 0) {
+        return {
+          success: false,
+          message: 'Debe proporcionar un array de usuarios válido'
+        };
+      }
+
+      // Validar máximo 100 usuarios
+      if (usersArray.length > 100) {
+        return {
+          success: false,
+          message: 'Máximo 100 usuarios por carga. Actualmente: ' + usersArray.length
+        };
+      }
+
+      // Validar estructura básica de cada usuario
+      const usuariosValidados = usersArray.map((user, index) => {
+        // Validaciones mínimas
+        if (!user.nombres || !user.apellidos || !user.cedula || !user.email) {
+          throw new Error(`Fila ${index + 1}: Faltan campos obligatorios (nombres, apellidos, cedula, email)`);
+        }
+
+        return {
+          nombres: String(user.nombres).trim(),
+          apellidos: String(user.apellidos).trim(),
+          sexo: user.sexo ? String(user.sexo).trim().toUpperCase() : 'O',
+          fecha_nac: user.fecha_nac || null,
+          cedula: String(user.cedula).trim(),
+          email: String(user.email).trim().toLowerCase(),
+          telefono: user.telefono ? String(user.telefono).trim() : null,
+          direccion: user.direccion ? String(user.direccion).trim() : 'Sanjapamba'
+        };
+      });
+
+      console.log('📤 Enviando usuarios al backend:', usuariosValidados.length);
+
+      // Enviar al endpoint bulk
+      const data = await this.makeRequest(`${API_CONFIG.endpoints.users}/bulk`, {
+        method: 'POST',
+        body: {
+          users: usuariosValidados
+        }
+      });
+
+      console.log('📥 Respuesta del backend:', data);
+
+      return {
+        success: true,
+        data: data,
+        message: `Proceso completado: ${data.total_exitosos} exitosos, ${data.total_fallidos} fallidos`
+      };
+
+    } catch (error) {
+      console.error('❌ Error en carga masiva:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al crear usuarios masivamente'
+      };
+    }
+  }
+
+  /**
    * ✅ Actualizar un usuario existente - CORREGIDO
    */
   async updateUser(userId, userData) {

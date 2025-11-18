@@ -63,22 +63,7 @@
   text-transform: uppercase;
 }
 
-/* User Info */
-.user-info {
-  flex: 1;
-  min-width: 0;
-}
 
-.user-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: rgb(124, 5, 5);
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-}
 
 .user-role {
   font-size: 12px;

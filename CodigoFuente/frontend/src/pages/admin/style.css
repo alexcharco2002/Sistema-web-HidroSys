@@ -352,13 +352,14 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-  max-width: 120px;
+  margin: 0 0 0.25rem 0;
+  
+  white-space: nowrap;        /* NO saltar de línea */
+  overflow: hidden;           /* Ocultar texto sobrante */
+  text-overflow: ellipsis;    /* Mostrar ... */
+  max-width: 150px;           /* Ajusta el ancho que quieras */
 }
+
 
 .user-role {
   font-size: 12px;
@@ -1000,6 +1001,8 @@
 
 .profile-avatar-section {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
   margin-bottom: 32px;
 }

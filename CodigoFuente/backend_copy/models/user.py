@@ -21,7 +21,8 @@ class UsuarioSistema(Base):
     
     # RELACIÓN CON ROL (FK)
     id_rol = Column(Integer, ForeignKey("seguridad.t_roles.id_rol"), nullable=False)
-    
+    afiliaciones = relationship("UsuarioAfiliado", back_populates="usuario_sistema")
+
     activo = Column(Boolean, default=True)
     sexo = Column(String(1), nullable=True)
     fecha_nac = Column(Date, nullable=True)

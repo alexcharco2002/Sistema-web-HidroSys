@@ -1,13 +1,13 @@
 // src/components/SectorsSection.js
-// MÓDULO DE SECTORES - Con control de permisos granular
+// MÓDULO DE SECTORES - Con control de permisos granular y ordenamiento mejorado
 import React, { useState, useEffect, useCallback } from 'react';
 import './styleSectors.css';
 import sectorsService from '../services/sectorServices';
-import authService from '../services/authServices'; // 🔑 Importar authService
+import authService from '../services/authServices';
 
 import { 
   MapPin, Plus, Search, Edit, Trash2, Eye, CheckCircle, XCircle,
-  X, Save, RefreshCw, AlertCircle, Map
+  X, Save, RefreshCw, AlertCircle, Map, ArrowUpDown, FileText 
 } from 'lucide-react';
 
 const SectorsSection = () => {
@@ -16,6 +16,7 @@ const SectorsSection = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' o 'desc'
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('create');
   const [selectedSector, setSelectedSector] = useState(null);
@@ -41,22 +42,20 @@ const SectorsSection = () => {
   }, []);
 
   const loadUserPermissions = () => {
-    // Verificar permisos sobre el módulo 'sectores'
     const canCreate = authService.hasPermission('sectores', 'crear') || 
                      authService.hasPermission('sectores', 'operaciones crud');
   
     const canUpdate = authService.hasPermission('sectores', 'actualizar') || 
-                     authService.hasPermission('sectores', 'operaciones crud') ;
+                     authService.hasPermission('sectores', 'operaciones crud');
     
     const canDelete = authService.hasPermission('sectores', 'eliminar') || 
                      authService.hasPermission('sectores', 'operaciones crud');
-    // ✅ Si puede crear, actualizar o eliminar, también debe poder leer
+
     const canRead = authService.hasPermission('sectores', 'lectura') ||
                canCreate || canUpdate || canDelete ||
                authService.hasPermission('sectores', 'operaciones crud');
 
-    // Permisos adicionales
-    const canToggleStatus = canUpdate; // Cambiar estado requiere actualizar
+    const canToggleStatus = canUpdate;
 
     setPermissions({
       canCreate,
@@ -76,7 +75,6 @@ const SectorsSection = () => {
 
   // Fetch sectors
   const fetchSectors = useCallback(async () => {
-    // 🔑 Verificar si tiene permiso de lectura
     if (!permissions.canRead) {
       setError('No tienes permiso para ver sectores');
       setLoading(false);
@@ -127,22 +125,39 @@ const SectorsSection = () => {
     }
   }, [debouncedSearchTerm, fetchSectors, permissions.canRead]);
 
-  // Filter sectors
-  const filteredSectors = sectors.filter(sector => {
-    const matchesSearch = 
-      sector.nombre_sector.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (sector.descripcion && sector.descripcion.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesStatus = 
-      filterStatus === 'all' || 
-      (filterStatus === 'active' && sector.activo) ||
-      (filterStatus === 'inactive' && !sector.activo);
-    
-    return matchesSearch && matchesStatus;
-  });
+  // 🔄 Cambiar el orden de clasificación (ascendente/descendente)
+  const toggleSortOrder = () => {
+    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
+  };
+
+  // 🎯 Filtrar y ordenar sectores
+  const filteredSectors = sectors
+    .filter(sector => {
+      const matchesSearch = 
+        sector.nombre_sector.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (sector.descripcion && sector.descripcion.toLowerCase().includes(searchTerm.toLowerCase()));
+      
+      const matchesStatus = 
+        filterStatus === 'all' || 
+        (filterStatus === 'active' && sector.activo) ||
+        (filterStatus === 'inactive' && !sector.activo);
+      
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      // Ordenar alfabéticamente por nombre del sector
+      const nameA = a.nombre_sector.toLowerCase();
+      const nameB = b.nombre_sector.toLowerCase();
+      
+      // Aplicar orden ascendente o descendente
+      if (sortOrder === 'asc') {
+        return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+      } else {
+        return nameB.localeCompare(nameA, 'es', { sensitivity: 'base' });
+      }
+    });
 
   const openModal = (type, sector = null) => {
-    // 🔑 Verificar permisos antes de abrir modal
     if (type === 'create' && !permissions.canCreate) {
       alert('❌ No tienes permiso para crear sectores');
       return;
@@ -226,7 +241,6 @@ const SectorsSection = () => {
   };
 
   const handleDelete = async (sectorId) => {
-    // 🔑 Verificar permiso antes de eliminar
     if (!permissions.canDelete) {
       alert('❌ No tienes permiso para eliminar sectores');
       return;
@@ -249,7 +263,6 @@ const SectorsSection = () => {
   };
 
   const toggleSectorStatus = async (sectorId) => {
-    // 🔑 Verificar permiso antes de cambiar estado
     if (!permissions.canToggleStatus) {
       alert('❌ No tienes permiso para cambiar el estado de sectores');
       return;
@@ -268,7 +281,6 @@ const SectorsSection = () => {
     }
   };
 
-  // 🔑 Mostrar mensaje si no tiene permiso de lectura
   if (!permissions.canRead) {
     return (
       <div className="section-placeholder">
@@ -304,13 +316,12 @@ const SectorsSection = () => {
   }
 
   return (
-    <div className="sectors-section">
+    <div className="users-section">
       <div className="section-header">
         <div className="section-title">
           <Map className="w-6 h-6 text-blue-600" />
           <h2>Gestión de Sectores</h2>
         </div>
-        {/* 🔑 Botón "Nuevo Sector" solo si tiene permiso de crear */}
         {permissions.canCreate && (
           <button 
             className="btn-primary"
@@ -344,6 +355,18 @@ const SectorsSection = () => {
           <option value="inactive">Inactivos</option>
         </select>
 
+        {/* 🆕 Botón de ordenamiento */}
+        <button 
+          className="btn-secondary"
+          onClick={toggleSortOrder}
+          title={`Ordenar ${sortOrder === 'asc' ? 'descendente' : 'ascendente'}`}
+        >
+          <ArrowUpDown className="w-4 h-4" />
+          <span className="ml-1 text-xs">
+              {sortOrder === 'asc' ? '↑' : '↓'}
+          </span>
+        </button>
+
         <button 
           className="btn-secondary"
           onClick={fetchSectors}
@@ -353,7 +376,8 @@ const SectorsSection = () => {
         </button>
       </div>
 
-      <div className="sectors-stats">
+      {/* Tarjetas de estadísticas */}
+      <div className="users-stats">
         <div className="stat-item">
           <MapPin className="stat-icon text-blue-600" />
           <div>
@@ -388,13 +412,22 @@ const SectorsSection = () => {
                 <div>
                   <h3 className="sector-name">{sector.nombre_sector}</h3>
                   <span className={`status-badge ${sector.activo ? 'active' : 'inactive'}`}>
-                    {sector.activo ? 'Activo' : 'Inactivo'}
+                    {sector.activo ? (
+                      <>
+                        <CheckCircle className="w-3 h-3" />
+                        Activo
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="w-3 h-3" />
+                        Inactivo
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
               
               <div className="sector-actions">
-                {/* 🔑 Botón "Ver detalles" - siempre visible si tiene permiso de lectura */}
                 <button 
                   className="action-btn view"
                   onClick={() => openModal('view', sector)}
@@ -403,7 +436,6 @@ const SectorsSection = () => {
                   <Eye className="w-4 h-4 icon-view" />
                 </button>
 
-                {/* 🔑 Botón "Editar" - solo si tiene permiso de actualizar */}
                 {permissions.canUpdate && (
                   <button 
                     className="action-btn edit"
@@ -414,7 +446,6 @@ const SectorsSection = () => {
                   </button>
                 )}
 
-                {/* 🔑 Botón "Activar/Desactivar" - solo si tiene permiso */}
                 {permissions.canToggleStatus && (
                   <button 
                     className="action-btn toggle"
@@ -425,7 +456,6 @@ const SectorsSection = () => {
                   </button>
                 )}
 
-                {/* 🔑 Botón "Eliminar" - solo si tiene permiso de eliminar */}
                 {permissions.canDelete && (
                   <button 
                     className="action-btn delete"
@@ -437,12 +467,12 @@ const SectorsSection = () => {
                 )}
               </div>
             </div>
-            
-            {sector.descripcion && (
-              <div className="sector-card-body">
-                <p className="sector-description">{sector.descripcion}</p>
-              </div>
-            )}
+            <div className="sector-card-body">
+              <p className="sector-description flex items-center gap-2 text-gray-700">
+                <FileText className="w-4 h-4 text-gray-400" />
+                {sector.descripcion?.trim() ? sector.descripcion : 'Ninguna'}
+              </p>
+            </div>
           </div>
         ))}
       </div>
@@ -478,7 +508,6 @@ const SectorsSection = () => {
                 </div>
               )}
 
-              {/* MODAL DE VISTA */}
               {modalType === 'view' && selectedSector && (
                 <div className="sector-details">
                   <div className="detail-group">
@@ -504,7 +533,6 @@ const SectorsSection = () => {
                 </div>
               )}
 
-              {/* MODAL DE CREACIÓN/EDICIÓN */}
               {(modalType === 'create' || modalType === 'edit') && (
                 <form onSubmit={handleSubmit} className="sector-form">
                   <div className="form-grid">

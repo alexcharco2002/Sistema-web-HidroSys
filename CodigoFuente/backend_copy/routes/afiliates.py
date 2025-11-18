@@ -1,5 +1,7 @@
 # routes/affiliates.py
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Font, Alignment
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from psycopg2.errors import ForeignKeyViolation, UniqueViolation
@@ -9,17 +11,26 @@ from models.affiliate import UsuarioAfiliado
 from models.user import UsuarioSistema
 from models.sector import Sector
 from models.role import RolAccion
+from models.meter import Medidor
 from schemas.affiliate import (
     AffiliateCreate, 
     AffiliateUpdate, 
     AffiliateResponse,
-    AffiliateWithUserInfo
+    AffiliateWithUserInfo,
+    AffiliateBulkCreate,
+    AffiliateBulkCreateRequest,
+    AffiliateBulkResponse,
+    AffiliateBulkResult,
+    AffiliateBulkError
 )
 from schemas.notification import NotificacionCreate
 from utils.notifications import registrar_notificacion
 from utils.audit_logger import registrar_auditoria
 from db.session import SessionLocal
 from security.jwt import verify_token
+import base64
+import io 
+from fastapi.responses import StreamingResponse
 
 router = APIRouter(prefix="/affiliates", tags=["affiliates"])
 
@@ -97,17 +108,34 @@ def require_permission(user: UsuarioSistema, db: Session, module: str, action: s
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"No tienes permisos para {action or 'acceder a'} {module}"
         )
+# ============================================================================
+# HELPER: Procesar foto
+# ============================================================================
+def process_user_photo(foto_bytes):
+    """Procesa la foto del usuario para enviarla al frontend"""
+    if foto_bytes:
+        try:
+            foto_base64 = base64.b64encode(foto_bytes).decode('utf-8')
+            return f"data:image/jpeg;base64,{foto_base64}"
+        except Exception as e:
+            print(f"Error procesando foto: {e}")
+            return None
+    return None
+
 
 # ============================================================================
 # HELPER: Convertir afiliado a respuesta con información completa
 # ============================================================================
 def affiliate_to_response(affiliate: UsuarioAfiliado, db: Session) -> dict:
     """Convierte un afiliado con información del usuario y sector"""
-    
-    # Obtener información del usuario del sistema
+
+    # Obtener información del usuario y sector
     user = affiliate.usuario_sistema
     sector = affiliate.sector
-    
+
+    # Procesar la foto del usuario (si existe)
+    foto_url = process_user_photo(user.foto) if user and user.foto else None
+
     return {
         "id_usuario_afi": affiliate.id_usuario_afi,
         "cod_usuario_afi": affiliate.cod_usuario_afi,
@@ -115,27 +143,41 @@ def affiliate_to_response(affiliate: UsuarioAfiliado, db: Session) -> dict:
         "id_sector": affiliate.id_sector,
         "id_usuario_sistema": affiliate.id_usuario_sistema,
         "activo": affiliate.activo,
-        
+
         # Información del usuario del sistema
         "usuario": {
             "id": user.id_usuario_sistema,
             "usuario": user.usuario,
             "nombres": user.nombres,
             "apellidos": user.apellidos,
+            "foto": foto_url,  # ✅ Aquí usamos la foto procesada
             "cedula": user.cedula,
             "email": user.email,
             "telefono": user.telefono,
             "direccion": user.direccion,
             "activo": user.activo
         } if user else None,
-        
+
         # Información del sector
         "sector": {
             "id_sector": sector.id_sector,
             "nombre_sector": sector.nombre_sector,
             "descripcion": sector.descripcion,
             "activo": sector.activo
-        } if sector else None
+        } if sector else None,
+
+        # informacion de medidor 
+        "medidor": [
+            {
+                "id_medidor": medidor.id_medidor,
+                "num_medidor": medidor.num_medidor,
+                "latitud": float(medidor.latitud) if medidor.latitud is not None else None,
+                "longitud": float(medidor.longitud) if medidor.longitud is not None else None,
+                "altitud": float(medidor.altitud) if medidor.altitud is not None else None,
+                "activo": medidor.activo
+            }
+            for medidor in affiliate.medidores
+        ] if affiliate.medidores else []
     }
 
 # ========================================
@@ -212,6 +254,7 @@ def obtener_afiliado(
             detail="Afiliado no encontrado"
         )
     
+
     return affiliate_to_response(affiliate, db)
 
 # ========================================
@@ -653,3 +696,467 @@ def obtener_estadisticas_afiliados(
         "inactivos": inactivos,
         "por_sector": [{"sector": s[0], "cantidad": s[1]} for s in por_sector]
     }
+# ========================================
+# DESCARGAR PLANTILLA EXCEL 
+# ========================================
+@router.get("/template/download")
+def download_template(
+    payload: dict = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Descarga una plantilla de Excel con:
+    - Usuarios disponibles (no afiliados)
+    - Sectores disponibles
+    - Formato correcto para carga masiva
+    """
+    current_user = get_current_user(payload, db)
+    
+    try:
+        # Obtener usuarios NO afiliados
+        usuarios_disponibles = db.query(UsuarioSistema).outerjoin(
+            UsuarioAfiliado,
+            UsuarioSistema.id_usuario_sistema == UsuarioAfiliado.id_usuario_sistema
+        ).filter(
+            UsuarioAfiliado.id_usuario_afi == None,
+            UsuarioSistema.activo == True
+        ).all()
+        
+        # Obtener sectores
+        sectores = db.query(Sector).filter(Sector.activo == True).all()
+        
+        print(f"📊 Generando plantilla con {len(usuarios_disponibles)} usuarios y {len(sectores)} sectores")
+        
+        # Crear libro de Excel
+        wb = Workbook()
+        
+        # ===============================
+        # HOJA 1: PLANTILLA PARA LLENAR
+        # ===============================
+        ws_plantilla = wb.active
+        ws_plantilla.title = "Plantilla Afiliados"
+        
+        # Encabezados
+        headers = [
+            "id_usuario_sistema",
+            "id_sector",
+            "num_medidor",
+            "latitud",
+            "longitud",
+            "altitud"
+        ]
+        
+        # Estilo de encabezados
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+        
+        for col_num, header in enumerate(headers, 1):
+            cell = ws_plantilla.cell(row=1, column=col_num)
+            cell.value = header
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Ajustar anchos de columna
+        ws_plantilla.column_dimensions['A'].width = 20
+        ws_plantilla.column_dimensions['B'].width = 15
+        ws_plantilla.column_dimensions['C'].width = 20
+        ws_plantilla.column_dimensions['D'].width = 15
+        ws_plantilla.column_dimensions['E'].width = 15
+        ws_plantilla.column_dimensions['F'].width = 15
+        
+        # Agregar filas de ejemplo (SOLO si hay usuarios y sectores)
+        if usuarios_disponibles and sectores:
+            ejemplos = [
+                [
+                    usuarios_disponibles[0].id_usuario_sistema if len(usuarios_disponibles) > 0 else 1,
+                    sectores[0].id_sector if len(sectores) > 0 else 1,
+                    "MED-001",
+                    -1.234567,
+                    -78.123456,
+                    2850.00
+                ],
+            ]
+            
+            for row_num, ejemplo in enumerate(ejemplos, 2):
+                for col_num, valor in enumerate(ejemplo, 1):
+                    ws_plantilla.cell(row=row_num, column=col_num, value=valor)
+        
+        # ===============================
+        # HOJA 2: USUARIOS DISPONIBLES
+        # ===============================
+        ws_usuarios = wb.create_sheet("Usuarios Disponibles")
+        
+        # Encabezados
+        headers_usuarios = ["id_usuario_sistema", "nombres", "apellidos", "cedula", "email"]
+        
+        for col_num, header in enumerate(headers_usuarios, 1):
+            cell = ws_usuarios.cell(row=1, column=col_num)
+            cell.value = header
+            cell.fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
+            cell.font = Font(color="FFFFFF", bold=True)
+            cell.alignment = Alignment(horizontal="center")
+        
+        # Datos de usuarios
+        if usuarios_disponibles:
+            for row_num, usuario in enumerate(usuarios_disponibles, 2):
+                ws_usuarios.cell(row=row_num, column=1, value=usuario.id_usuario_sistema)
+                ws_usuarios.cell(row=row_num, column=2, value=usuario.nombres)
+                ws_usuarios.cell(row=row_num, column=3, value=usuario.apellidos)
+                ws_usuarios.cell(row=row_num, column=4, value=usuario.cedula)
+                ws_usuarios.cell(row=row_num, column=5, value=usuario.email)
+        else:
+            # Mensaje si no hay usuarios
+            ws_usuarios.cell(row=2, column=1, value="No hay usuarios disponibles")
+            ws_usuarios.merge_cells('A2:E2')
+        
+        # Ajustar anchos
+        ws_usuarios.column_dimensions['A'].width = 20
+        ws_usuarios.column_dimensions['B'].width = 25
+        ws_usuarios.column_dimensions['C'].width = 25
+        ws_usuarios.column_dimensions['D'].width = 15
+        ws_usuarios.column_dimensions['E'].width = 30
+        
+        # ===============================
+        # HOJA 3: SECTORES DISPONIBLES
+        # ===============================
+        ws_sectores = wb.create_sheet("Sectores Disponibles")
+        
+        # Encabezados
+        headers_sectores = ["id_sector", "nombre_sector"]
+        
+        for col_num, header in enumerate(headers_sectores, 1):
+            cell = ws_sectores.cell(row=1, column=col_num)
+            cell.value = header
+            cell.fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+            cell.font = Font(color="FFFFFF", bold=True)
+            cell.alignment = Alignment(horizontal="center")
+        
+        # Datos de sectores
+        if sectores:
+            for row_num, sector in enumerate(sectores, 2):
+                ws_sectores.cell(row=row_num, column=1, value=sector.id_sector)
+                ws_sectores.cell(row=row_num, column=2, value=sector.nombre_sector)
+        else:
+            ws_sectores.cell(row=2, column=1, value="No hay sectores disponibles")
+            ws_sectores.merge_cells('A2:B2')
+        
+        # Ajustar anchos
+        ws_sectores.column_dimensions['A'].width = 15
+        ws_sectores.column_dimensions['B'].width = 30
+        
+        # ===============================
+        # HOJA 4: INSTRUCCIONES
+        # ===============================
+        ws_instrucciones = wb.create_sheet("Instrucciones")
+        
+        instrucciones = [
+            ["📋 INSTRUCCIONES PARA CARGA MASIVA DE AFILIADOS Y MEDIDORES"],
+            [""],
+            ["1️⃣ USO DE LA PLANTILLA:"],
+            ["   • Complete SOLO la hoja 'Plantilla Afiliados'"],
+            ["   • NO modifique las hojas 'Usuarios Disponibles' ni 'Sectores Disponibles'"],
+            ["   • Borre las filas de ejemplo antes de agregar sus datos"],
+            [""],
+            ["2️⃣ COLUMNAS REQUERIDAS:"],
+            ["   • id_usuario_sistema: ID del usuario (consultar hoja 'Usuarios Disponibles')"],
+            ["   • id_sector: ID del sector (consultar hoja 'Sectores Disponibles')"],
+            ["   • num_medidor: Número único del medidor (ej: MED-001)"],
+            ["   • latitud: Coordenada (opcional, formato: -1.234567)"],
+            ["   • longitud: Coordenada (opcional, formato: -78.123456)"],
+            ["   • altitud: Altura en metros (opcional, formato: 2850.00)"],
+            [""],
+            ["3️⃣ VALIDACIONES:"],
+            ["   • El usuario NO debe estar ya afiliado"],
+            ["   • El número de medidor debe ser único"],
+            ["   • Máximo 100 afiliados por carga"],
+            [""],
+            ["4️⃣ PROCESO AUTOMÁTICO:"],
+            ["   • Se generará un código de afiliado único automáticamente"],
+            ["   • Se creará el afiliado con fecha actual"],
+            ["   • Se creará el medidor asociado al afiliado"],
+            ["   • Estado por defecto: Activo"],
+            [""],
+            ["5️⃣ DESPUÉS DE COMPLETAR:"],
+            ["   • Guarde el archivo Excel"],
+            ["   • Súbalo en el sistema usando el botón 'Crear desde Excel'"],
+            ["   • El sistema validará y creará los registros"],
+            ["   • Recibirá un reporte de exitosos y fallidos"],
+            [""],
+            [f"📅 Plantilla generada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"],
+            [f"👤 Usuario: {current_user.nombres} {current_user.apellidos}"],
+        ]
+        
+        for row_num, fila in enumerate(instrucciones, 1):
+            cell = ws_instrucciones.cell(row=row_num, column=1, value=fila[0])
+            if row_num == 1:
+                cell.font = Font(size=14, bold=True, color="4472C4")
+            elif any(emoji in str(fila[0]) for emoji in ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]):
+                cell.font = Font(size=12, bold=True)
+        
+        ws_instrucciones.column_dimensions['A'].width = 80
+        
+        # ===============================
+        # GUARDAR Y RETORNAR - CORREGIDO
+        # ===============================
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)  # ✅ Importante: volver al inicio del buffer
+        
+        # Obtener el contenido como bytes
+        excel_data = output.getvalue()
+        output.close()
+        
+        print(f"✅ Excel generado correctamente: {len(excel_data)} bytes")
+        
+        # Registrar auditoría
+        registrar_auditoria(
+            db=db,
+            accion="DOWNLOAD_TEMPLATE",
+            descripcion=f"Plantilla de afiliados descargada por '{current_user.usuario}'",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
+        # Nombre del archivo
+        filename = f"plantilla_afiliados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        # ✅ CREAR NUEVO BytesIO CON LOS DATOS
+        final_output = io.BytesIO(excel_data)
+        
+        # ✅ RETORNAR CON StreamingResponse
+        return StreamingResponse(
+            final_output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Length": str(len(excel_data))
+            }
+        )
+        
+    except Exception as e:
+        print(f"❌ Error generando plantilla: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar la plantilla: {str(e)}"
+        )
+    
+# ========================================
+# CREAR AFILIADOS MASIVAMENTE DESDE EXCEL
+# ========================================
+@router.post("/bulk", response_model=AffiliateBulkResponse, status_code=status.HTTP_201_CREATED)
+def create_affiliates_bulk(
+    request: AffiliateBulkCreateRequest,
+    payload: dict = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Crea múltiples afiliados con sus medidores desde Excel.
+    
+    ✅ Por cada fila se crea:
+       1. Un registro en t_usuario_afiliado
+       2. Un registro en t_medidor asociado
+    
+    ✅ Generación automática:
+       - cod_usuario_afi: Se genera secuencialmente
+       - fecha_afiliacion: Fecha actual
+       - activo: True
+    """
+    current_user = get_current_user(payload, db)
+    
+    exitosos = []
+    fallidos = []
+    
+    print(f"\n{'='*60}")
+    print(f"🚀 INICIANDO CARGA MASIVA DE {len(request.affiliates)} AFILIADOS + MEDIDORES")
+    print(f"{'='*60}\n")
+    
+    # Obtener el último código de afiliado
+    ultimo_afiliado = db.query(UsuarioAfiliado).order_by(
+        UsuarioAfiliado.cod_usuario_afi.desc()
+    ).first()
+    
+    siguiente_codigo = (ultimo_afiliado.cod_usuario_afi + 1) if ultimo_afiliado else 1
+    
+    # ===============================
+    # 🔄 Procesar cada afiliado
+    # ===============================
+    for index, affiliate_data in enumerate(request.affiliates, start=1):
+        fila_numero = index
+        
+        try:
+            print(f"📝 Procesando fila {fila_numero}")
+            
+            # ===============================
+            # 1️⃣ Validar que el usuario existe y no está afiliado
+            # ===============================
+            usuario = db.query(UsuarioSistema).filter(
+                UsuarioSistema.id_usuario_sistema == affiliate_data.id_usuario_sistema
+            ).first()
+            
+            if not usuario:
+                raise ValueError("Usuario no encontrado")
+            
+            afiliado_existente = db.query(UsuarioAfiliado).filter(
+                UsuarioAfiliado.id_usuario_sistema == affiliate_data.id_usuario_sistema
+            ).first()
+            
+            if afiliado_existente:
+                raise ValueError("El usuario ya está afiliado")
+            
+            # ===============================
+            # 2️⃣ Validar que el sector existe
+            # ===============================
+            sector = db.query(Sector).filter(
+                Sector.id_sector == affiliate_data.id_sector
+            ).first()
+            
+            if not sector:
+                raise ValueError("Sector no encontrado")
+            
+            # ===============================
+            # 3️⃣ Validar que el número de medidor no existe
+            # ===============================
+            medidor_existente = db.query(Medidor).filter(
+                Medidor.num_medidor == affiliate_data.num_medidor
+            ).first()
+            
+            if medidor_existente:
+                raise ValueError(f"El medidor '{affiliate_data.num_medidor}' ya existe")
+            
+            # ===============================
+            # 4️⃣ Crear afiliado
+            # ===============================
+            nuevo_afiliado = UsuarioAfiliado(
+                id_usuario_sistema=affiliate_data.id_usuario_sistema,
+                id_sector=affiliate_data.id_sector,
+                cod_usuario_afi=siguiente_codigo,
+                fecha_afiliacion=date.today(),
+                activo=True
+            )
+            
+            db.add(nuevo_afiliado)
+            db.flush()  # Obtener el ID generado
+            
+            print(f"   ✅ Afiliado creado: cod={siguiente_codigo}, id={nuevo_afiliado.id_usuario_afi}")
+            
+            # ===============================
+            # 5️⃣ Crear medidor asociado
+            # ===============================
+            nuevo_medidor = Medidor(
+                num_medidor=affiliate_data.num_medidor,
+                latitud=affiliate_data.latitud,
+                longitud=affiliate_data.longitud,
+                altitud=affiliate_data.altitud,
+                id_usuario_afi=nuevo_afiliado.id_usuario_afi,
+                id_sector=affiliate_data.id_sector,
+                activo=True
+            )
+            
+            db.add(nuevo_medidor)
+            db.flush()
+            
+            print(f"   ✅ Medidor creado: {affiliate_data.num_medidor}, id={nuevo_medidor.id_medidor}")
+            
+            # Agregar a exitosos
+            exitosos.append(AffiliateBulkResult(
+                fila=fila_numero,
+                cod_usuario_afi=siguiente_codigo,
+                nombre_usuario=f"{usuario.nombres} {usuario.apellidos}",
+                cedula=usuario.cedula,
+                sector=sector.nombre_sector,
+                num_medidor=affiliate_data.num_medidor,
+                id_usuario_afi=nuevo_afiliado.id_usuario_afi,
+                id_medidor=nuevo_medidor.id_medidor
+            ))
+            
+            # Incrementar código para el siguiente
+            siguiente_codigo += 1
+            
+        except ValueError as ve:
+            print(f"   ❌ Error de validación: {str(ve)}")
+            fallidos.append(AffiliateBulkError(
+                fila=fila_numero,
+                id_usuario_sistema=affiliate_data.id_usuario_sistema,
+                num_medidor=affiliate_data.num_medidor,
+                error=str(ve)
+            ))
+            
+        except IntegrityError as ie:
+            db.rollback()
+            print(f"   ❌ Error de integridad: {str(ie)}")
+            
+            error_msg = "Error de base de datos"
+            if "usuario_sistema" in str(ie).lower():
+                error_msg = "Usuario ya afiliado"
+            elif "medidor" in str(ie).lower():
+                error_msg = "Medidor duplicado"
+            
+            fallidos.append(AffiliateBulkError(
+                fila=fila_numero,
+                id_usuario_sistema=affiliate_data.id_usuario_sistema,
+                num_medidor=affiliate_data.num_medidor,
+                error=error_msg
+            ))
+            
+        except Exception as e:
+            db.rollback()
+            print(f"   ❌ Error inesperado: {str(e)}")
+            fallidos.append(AffiliateBulkError(
+                fila=fila_numero,
+                id_usuario_sistema=affiliate_data.id_usuario_sistema if hasattr(affiliate_data, 'id_usuario_sistema') else None,
+                num_medidor=affiliate_data.num_medidor if hasattr(affiliate_data, 'num_medidor') else None,
+                error=f"Error: {str(e)}"
+            ))
+    
+    # ===============================
+    # 6️⃣ Guardar todos los cambios
+    # ===============================
+    try:
+        db.commit()
+        print(f"\n✅ Commit exitoso - {len(exitosos)} afiliados y medidores guardados")
+        
+        # Registrar auditoría
+        registrar_auditoria(
+            db=db,
+            accion="BULK_CREATE_AFFILIATES",
+            descripcion=f"Carga masiva: {len(exitosos)} afiliados+medidores creados por '{payload['sub']}'",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
+        # Notificación
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Carga masiva completada",
+            mensaje=f"Se crearon {len(exitosos)} afiliados con medidores. {len(fallidos)} errores.",
+            tipo="exito" if len(fallidos) == 0 else "advertencia"
+        )
+        
+    except Exception as e:
+        db.rollback()
+        print(f"\n❌ Error al hacer commit: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al guardar afiliados: {str(e)}"
+        )
+    
+    # ===============================
+    # 7️⃣ Retornar resumen
+    # ===============================
+    print(f"\n{'='*60}")
+    print(f"📊 RESUMEN DE CARGA MASIVA")
+    print(f"{'='*60}")
+    print(f"✅ Exitosos: {len(exitosos)}")
+    print(f"❌ Fallidos: {len(fallidos)}")
+    print(f"📝 Total procesados: {len(request.affiliates)}")
+    print(f"{'='*60}\n")
+    
+    return AffiliateBulkResponse(
+        exitosos=exitosos,
+        fallidos=fallidos,
+        total_procesados=len(request.affiliates),
+        total_exitosos=len(exitosos),
+        total_fallidos=len(fallidos)
+    )

@@ -1,6 +1,6 @@
 // src/components/ProfileSection.js
-// Sección de perfil del usuario con capacidad de editar y guardar cambios
-import React, { useState, useEffect } from 'react';
+// Sección de perfil del usuario con conexión directa a userServices
+import React, { useState, useEffect, useRef } from 'react';
 import {
   User,
   Edit,
@@ -12,18 +12,55 @@ import {
   MapPin,
   Shield,
   Calendar, 
-  VenusAndMars
+  VenusAndMars,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
+import userServices from '../services/userServices';
+import authService from '../services/authServices';
 
-const ProfileSection = ({ user, onUpdateProfile }) => {
+const ProfileSection = () => {
+  const [user, setUser] = useState(null);
   const [editingProfile, setEditingProfile] = useState(false);
-  const [profileData, setProfileData] = useState(user);
+  const [profileData, setProfileData] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [error, setError] = useState(null);
+  const fileInputRef = useRef(null);
 
-  // Sincronizar profileData cuando cambie user (después de guardar)
+  // Cargar datos del usuario al montar el componente
   useEffect(() => {
-    setProfileData(user);
-  }, [user]);
+    loadUserProfile();
+  }, []);
+
+  // Cargar perfil del usuario
+  const loadUserProfile = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const currentUser = authService.getCurrentUser();
+      
+      if (!currentUser || !currentUser.id_usuario_sistema) {
+        throw new Error('No se pudo obtener la información del usuario');
+      }
+
+      const result = await userServices.getUserById(currentUser.id_usuario_sistema);
+      
+      if (result.success) {
+        setUser(result.data);
+        setProfileData(result.data);
+      } else {
+        setError(result.message || 'Error al cargar el perfil');
+      }
+    } catch (err) {
+      console.error('Error cargando perfil:', err);
+      setError(err.message || 'Error al cargar el perfil');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Función para obtener las iniciales del usuario
   const getUserInitials = (nombres, apellidos) => {
@@ -85,10 +122,10 @@ const ProfileSection = ({ user, onUpdateProfile }) => {
   // Handlers para el perfil
   const handleEditProfile = () => {
     setEditingProfile(true);
+    setError(null);
   };
 
   const handleSaveProfile = async () => {
-    // Validar datos
     const errors = validateProfileData();
     if (errors.length > 0) {
       alert('Por favor corrige los siguientes errores:\n\n' + errors.join('\n'));
@@ -97,38 +134,43 @@ const ProfileSection = ({ user, onUpdateProfile }) => {
 
     try {
       setSaving(true);
+      setError(null);
       
-      // ✅ CORRECCIÓN: El ID se llama 'id_usuario_sistema'
-      const userId = user.id_usuario_sistema || user.id || user.id_usuario || user.usuario_id;
+      const userId = user.id;
       
       if (!userId) {
-        console.error('❌ Usuario completo:', user);
         throw new Error('No se pudo encontrar el ID del usuario');
       }
       
       const dataToSave = {
-        id: userId,
-        nombres: profileData.nombres,
-        apellidos: profileData.apellidos,
-        sexo: profileData.sexo,
-        fecha_nac: profileData.fecha_nac,
-        email: profileData.email,
-        telefono: profileData.telefono,
-        direccion: profileData.direccion
+        nombres: profileData.nombres.trim(),
+        apellidos: profileData.apellidos.trim(),
+        sexo: profileData.sexo || null,
+        fecha_nac: profileData.fecha_nac || null,
+        email: profileData.email?.trim() || null,
+        telefono: profileData.telefono?.trim() || null,
+        direccion: profileData.direccion?.trim() || null
       };
       
-      console.log('📤 Enviando datos del perfil:', dataToSave);
+      console.log('📤 Actualizando perfil:', dataToSave);
       
-      const result = await onUpdateProfile(dataToSave);
+      const result = await userServices.updateUser(userId, dataToSave);
       
       if (result.success) {
+        setUser(result.data);
+        setProfileData(result.data);
         setEditingProfile(false);
-        alert(result.message || 'Perfil actualizado correctamente');
+        
+        // Actualizar información en localStorage
+        authService.updateUserInfo(result.data);
+        
+        alert('✅ Perfil actualizado correctamente');
       } else {
-        alert('Error al actualizar el perfil:\n' + (result.message || 'Error desconocido'));
+        throw new Error(result.message || 'Error al actualizar el perfil');
       }
     } catch (error) {
       console.error('❌ Error al actualizar perfil:', error);
+      setError(error.message);
       alert('Error al actualizar el perfil: ' + error.message);
     } finally {
       setSaving(false);
@@ -138,6 +180,7 @@ const ProfileSection = ({ user, onUpdateProfile }) => {
   const handleCancelEdit = () => {
     setProfileData(user);
     setEditingProfile(false);
+    setError(null);
   };
 
   const handleProfileInputChange = (field, value) => {
@@ -147,9 +190,98 @@ const ProfileSection = ({ user, onUpdateProfile }) => {
     }));
   };
 
+  // Manejador para cambio de foto
   const handleImageUpload = () => {
-    alert('Funcionalidad de cambio de foto en desarrollo');
+    fileInputRef.current?.click();
   };
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    
+    if (!file) return;
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith('image/')) {
+      alert('❌ Por favor selecciona un archivo de imagen válido');
+      return;
+    }
+
+    // Validar tamaño (2MB máximo)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('❌ La imagen no debe superar los 2MB');
+      return;
+    }
+
+    try {
+      setUploadingPhoto(true);
+      setError(null);
+
+      const userId = user.id;
+      
+      console.log('📸 Subiendo foto para usuario:', userId);
+      
+      const result = await userServices.uploadUserPhoto(userId, file);
+      
+      if (result.success) {
+        // Actualizar el estado local con la nueva foto
+        const updatedUser = { ...user, foto: result.data.foto_url };
+        setUser(updatedUser);
+        setProfileData(updatedUser);
+        
+        // Actualizar en localStorage
+        authService.updateUserInfo(updatedUser);
+        
+        alert('✅ Foto actualizada correctamente');
+      } else {
+        throw new Error(result.message || 'Error al subir la foto');
+      }
+    } catch (error) {
+      console.error('❌ Error al subir foto:', error);
+      setError(error.message);
+      alert('Error al subir la foto: ' + error.message);
+    } finally {
+      setUploadingPhoto(false);
+      // Limpiar el input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Estados de carga
+  if (loading) {
+    return (
+      <div className="section-placeholder">
+        <RefreshCw className="w-16 h-16 mx-auto mb-4 text-gray-400 animate-spin" />
+        <h2>Cargando Perfil</h2>
+        <p>Por favor espera mientras cargamos tu información...</p>
+      </div>
+    );
+  }
+
+  if (error && !user) {
+    return (
+      <div className="section-placeholder">
+        <AlertCircle className="w-16 h-16 mx-auto mb-4 text-red-400" />
+        <h2>Error al Cargar Perfil</h2>
+        <p>{error}</p>
+        <button onClick={loadUserProfile} className="btn-primary mt-4">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
+  if (!user || !profileData) {
+    return (
+      <div className="section-placeholder">
+        <AlertCircle className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+        <h2>Usuario no encontrado</h2>
+        <p>No se pudo cargar la información del perfil</p>
+      </div>
+    );
+  }
 
   return (
     <div className="section-placeholder">
@@ -190,10 +322,23 @@ const ProfileSection = ({ user, onUpdateProfile }) => {
           )}
         </div>
 
+        {/* Mensaje de error */}
+        {error && (
+          <div className="alert alert-error mb-4">
+            <AlertCircle className="w-5 h-5 mr-2" />
+            {error}
+          </div>
+        )}
+
         <div className="profile-content">
           {/* Avatar Section */}
           <div className="profile-avatar-section">
             <div className="profile-avatar-container">
+              {uploadingPhoto && (
+                <div className="avatar-loading-overlay">
+                  <RefreshCw className="w-8 h-8 text-white animate-spin" />
+                </div>
+              )}
               {profileData.foto ? (
                 <img
                   src={profileData.foto}
@@ -207,16 +352,26 @@ const ProfileSection = ({ user, onUpdateProfile }) => {
                   </span>
                 </div>
               )}
-              {editingProfile && (
-                <button 
-                  className="avatar-edit-btn"
-                  onClick={handleImageUpload}
-                  title="Cambiar foto de perfil"
-                >
-                  <Camera className="w-4 h-4" />
-                </button>
-              )}
+              <button 
+                className="avatar-edit-btn"
+                onClick={handleImageUpload}
+                title="Cambiar foto de perfil"
+                disabled={uploadingPhoto}
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                style={{ display: 'none' }}
+              />
             </div>
+            <br></br>
+            <p className="text-sm text-gray-500 mt-2 text-center">
+              Click en el ícono de cámara para cambiar tu foto
+            </p>
           </div>
 
           {/* Profile Form */}
@@ -260,7 +415,6 @@ const ProfileSection = ({ user, onUpdateProfile }) => {
                 )}
               </div>
 
-              {/* Campo Sexo */}
               <div className="form-group">
                 <label className="form-label">
                   <VenusAndMars className="w-4 h-4" />
@@ -289,7 +443,6 @@ const ProfileSection = ({ user, onUpdateProfile }) => {
                 )}
               </div>
 
-              {/* Campo Fecha de Nacimiento */}
               <div className="form-group">
                 <label className="form-label">
                   <Calendar className="w-4 h-4" />

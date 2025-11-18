@@ -19,7 +19,11 @@ from schemas.user import (
     UserResponse, 
     UserListResponse,
     ChangePasswordRequest,
-    ChangePasswordFirstLoginRequest
+    ChangePasswordFirstLoginRequest,
+    UserBulkResponse,
+    UserBulkCreateRequest,
+    UserBulkError,
+    UserBulkResult
 )
 from security.jwt import verify_token
 from security.password import hash_password, verify_password
@@ -1071,3 +1075,230 @@ def get_blocked_users(
             "total_with_attempts": len(users_with_attempts)
         }
     }
+# ========================================
+# CREAR USUARIOS MASIVAMENTE DESDE EXCEL
+# ========================================
+@router.post("/bulk", response_model=UserBulkResponse, status_code=status.HTTP_201_CREATED)
+def create_users_bulk(
+    request: UserBulkCreateRequest,
+    payload: dict = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Crea múltiples usuarios desde Excel.
+    Requiere permiso: usuarios.crear o usuarios.crud
+    
+    ✅ Todos los usuarios se crean con:
+       - id_rol: 4 (Cliente)
+       - activo: True
+       - usuario: generado automáticamente (primer_nombre + contador si existe)
+       - contraseña: la cédula completa
+    
+    📊 Retorna:
+       - Lista de usuarios creados exitosamente con sus credenciales
+       - Lista de errores con detalles de cada fallo
+    """
+    # Verificar permisos
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "usuarios", "crear")
+    
+    exitosos = []
+    fallidos = []
+    
+    print(f"\n{'='*60}")
+    print(f"🚀 INICIANDO CARGA MASIVA DE {len(request.users)} USUARIOS")
+    print(f"{'='*60}\n")
+    
+    # ===============================
+    # 🔄 Procesar cada usuario
+    # ===============================
+    for index, user_data in enumerate(request.users, start=1):
+        fila_numero = index
+        
+        try:
+            print(f"📝 Procesando fila {fila_numero}: {user_data.nombres} {user_data.apellidos}")
+            
+            # ===============================
+            # 1️⃣ Normalizar y generar usuario
+            # ===============================
+            primer_nombre = user_data.nombres.strip().split()[0].lower()
+            # Remover acentos
+            primer_nombre = (primer_nombre
+                .replace('á', 'a').replace('é', 'e').replace('í', 'i')
+                .replace('ó', 'o').replace('ú', 'u').replace('ñ', 'n'))
+            
+            base_username = primer_nombre
+            username = base_username
+            
+            # Si existe, agregar año o contador
+            counter = 1
+            while db.query(UsuarioSistema).filter(UsuarioSistema.usuario == username).first():
+                if user_data.fecha_nac:
+                    username = f"{base_username}{user_data.fecha_nac.year}"
+                    if db.query(UsuarioSistema).filter(UsuarioSistema.usuario == username).first():
+                        username = f"{base_username}{user_data.fecha_nac.year}{counter}"
+                        counter += 1
+                else:
+                    username = f"{base_username}{counter}"
+                    counter += 1
+            
+            # ===============================
+            # 2️⃣ Generar contraseña = CÉDULA
+            # ===============================
+            raw_password = user_data.cedula.strip()
+            hashed_password = hash_password(raw_password)
+            
+            # ===============================
+            # 3️⃣ Verificar duplicados
+            # ===============================
+            existing = db.query(UsuarioSistema).filter(
+                or_(
+                    UsuarioSistema.email == user_data.email.lower(),
+                    UsuarioSistema.cedula == user_data.cedula
+                )
+            ).first()
+            
+            if existing:
+                if existing.email == user_data.email.lower():
+                    error_msg = "Email ya registrado"
+                else:
+                    error_msg = "Cédula ya registrada"
+                
+                print(f"   ❌ Error: {error_msg}")
+                fallidos.append(UserBulkError(
+                    fila=fila_numero,
+                    nombre=f"{user_data.nombres} {user_data.apellidos}",
+                    email=user_data.email,
+                    cedula=user_data.cedula,
+                    error=error_msg
+                ))
+                continue
+            
+            # ===============================
+            # 4️⃣ Crear usuario con ROL CLIENTE (4) y ACTIVO
+            # ===============================
+            new_user = UsuarioSistema(
+                usuario=username,
+                clave=hashed_password,
+                nombres=user_data.nombres.strip(),
+                apellidos=user_data.apellidos.strip(),
+                sexo=user_data.sexo.strip().upper(),
+                fecha_nac=user_data.fecha_nac,
+                cedula=user_data.cedula.strip(),
+                email=user_data.email.strip().lower(),
+                telefono=user_data.telefono.strip() if user_data.telefono else None,
+                direccion=user_data.direccion.strip() if user_data.direccion else "Sanjapamba",
+                id_rol=4,  # ✅ SIEMPRE ROL CLIENTE
+                activo=True,  # ✅ SIEMPRE ACTIVO
+                fecha_registro=datetime.now()
+            )
+            
+            db.add(new_user)
+            db.flush()  # Guardar sin hacer commit aún
+            
+            print(f"   ✅ Usuario creado: {username}")
+            
+            # Agregar a exitosos
+            exitosos.append(UserBulkResult(
+                fila=fila_numero,
+                usuario=username,
+                contraseña=raw_password,
+                nombre=f"{user_data.nombres} {user_data.apellidos}",
+                email=user_data.email,
+                cedula=user_data.cedula
+            ))
+            
+        except ValueError as ve:
+            # Error de validación
+            print(f"   ❌ Error de validación: {str(ve)}")
+            fallidos.append(UserBulkError(
+                fila=fila_numero,
+                nombre=f"{user_data.nombres} {user_data.apellidos}",
+                email=user_data.email,
+                cedula=user_data.cedula,
+                error=f"Validación: {str(ve)}"
+            ))
+            
+        except IntegrityError as ie:
+            db.rollback()
+            print(f"   ❌ Error de integridad: {str(ie)}")
+            
+            # Determinar el tipo de error
+            if "email" in str(ie).lower():
+                error_msg = "Email duplicado"
+            elif "cedula" in str(ie).lower():
+                error_msg = "Cédula duplicada"
+            elif "usuario" in str(ie).lower():
+                error_msg = "Usuario duplicado"
+            else:
+                error_msg = "Error de base de datos"
+            
+            fallidos.append(UserBulkError(
+                fila=fila_numero,
+                nombre=f"{user_data.nombres} {user_data.apellidos}",
+                email=user_data.email,
+                cedula=user_data.cedula,
+                error=error_msg
+            ))
+            
+        except Exception as e:
+            db.rollback()
+            print(f"   ❌ Error inesperado: {str(e)}")
+            fallidos.append(UserBulkError(
+                fila=fila_numero,
+                nombre=f"{user_data.nombres} {user_data.apellidos}",
+                email=user_data.email if hasattr(user_data, 'email') else None,
+                cedula=user_data.cedula if hasattr(user_data, 'cedula') else None,
+                error=f"Error: {str(e)}"
+            ))
+    
+    # ===============================
+    # 5️⃣ Guardar todos los cambios
+    # ===============================
+    try:
+        db.commit()
+        print(f"\n✅ Commit exitoso - {len(exitosos)} usuarios guardados")
+        
+        # Registrar auditoría
+        registrar_auditoria(
+            db=db,
+            accion="BULK_CREATE",
+            descripcion=f"Carga masiva: {len(exitosos)} usuarios creados por '{payload['sub']}'",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
+        # Notificación
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Carga masiva completada",
+            mensaje=f"Se crearon {len(exitosos)} usuarios correctamente. {len(fallidos)} errores.",
+            tipo="exito" if len(fallidos) == 0 else "advertencia"
+        )
+        
+    except Exception as e:
+        db.rollback()
+        print(f"\n❌ Error al hacer commit: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al guardar usuarios: {str(e)}"
+        )
+    
+    # ===============================
+    # 6️⃣ Retornar resumen
+    # ===============================
+    print(f"\n{'='*60}")
+    print(f"📊 RESUMEN DE CARGA MASIVA")
+    print(f"{'='*60}")
+    print(f"✅ Exitosos: {len(exitosos)}")
+    print(f"❌ Fallidos: {len(fallidos)}")
+    print(f"📝 Total procesados: {len(request.users)}")
+    print(f"{'='*60}\n")
+    
+    return UserBulkResponse(
+        exitosos=exitosos,
+        fallidos=fallidos,
+        total_procesados=len(request.users),
+        total_exitosos=len(exitosos),
+        total_fallidos=len(fallidos)
+    )

@@ -416,12 +416,12 @@ const RolesSection = () => {
       alert('Error al cambiar estado');
     }
   };
-
+  // Filtrar roles según término de búsqueda
   const filteredRoles = roles.filter(role =>
     role.nombre_rol.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (role.descripcion && role.descripcion.toLowerCase().includes(searchTerm.toLowerCase()))
   );
-
+  // datos para Estadísticas
   const stats = {
     totalRoles: roles.length,
     rolesActivos: roles.filter(r => r.activo).length,

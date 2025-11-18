@@ -1,6 +1,6 @@
 # routes/meters.py
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, or_
 from psycopg2.errors import ForeignKeyViolation, UniqueViolation
@@ -119,7 +119,11 @@ def listar_medidores(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "medidores", "lectura")
     
-    query = db.query(Medidor)
+    # 🔥 CAMBIO CLAVE: Cargar explícitamente las relaciones anidadas
+    query = db.query(Medidor).options(
+        joinedload(Medidor.sector),
+        joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
+    )
     
     # Aplicar filtros
     if search:
@@ -199,7 +203,11 @@ def listar_afiliados_disponibles(
         Medidor.id_usuario_afi.isnot(None)
     ).subquery()
     
-    query = db.query(UsuarioAfiliado).filter(
+    # 🔥 CAMBIO: Cargar explícitamente usuario_sistema
+    query = db.query(UsuarioAfiliado).options(
+        joinedload(UsuarioAfiliado.usuario_sistema),
+        joinedload(UsuarioAfiliado.sector)
+    ).filter(
         UsuarioAfiliado.id_usuario_afi.notin_(subquery)
     )
     
@@ -211,6 +219,7 @@ def listar_afiliados_disponibles(
     # Transformar a schema
     resultado = []
     for afiliado in afiliados:
+        usuario_sistema = afiliado.usuario_sistema
         sector_nombre = None
         if afiliado.sector:
             sector_nombre = getattr(afiliado.sector, 'nombre_sector', None)
@@ -218,7 +227,10 @@ def listar_afiliados_disponibles(
         resultado.append(AfiliadoDisponible(
             id_usuario_afi=afiliado.id_usuario_afi,
             cod_usuario_afi=afiliado.cod_usuario_afi,
-            nombre_afiliado=f"{afiliado.usuario_sistema.nombres} {afiliado.usuario_sistema.apellidos}" if afiliado.usuario_sistema else None,
+            nombre_afiliado=(
+                f"{usuario_sistema.nombres} {usuario_sistema.apellidos}"
+                if usuario_sistema else None
+            ),
             fecha_afiliacion=afiliado.fecha_afiliacion,
             id_sector=afiliado.id_sector,
             nombre_sector=sector_nombre
@@ -240,7 +252,11 @@ def obtener_medidor(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "medidores", "lectura")
     
-    medidor = db.query(Medidor).filter(Medidor.id_medidor == id_medidor).first()
+    # 🔥 CAMBIO: Cargar explícitamente las relaciones anidadas
+    medidor = db.query(Medidor).options(
+        joinedload(Medidor.sector),
+        joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
+    ).filter(Medidor.id_medidor == id_medidor).first()
     
     if not medidor:
         raise HTTPException(
@@ -248,7 +264,7 @@ def obtener_medidor(
             detail="Medidor no encontrado"
         )
     
-    return medidor
+    return MedidorCompleto.from_orm(medidor)
 
 
 @router.post("/", response_model=MedidorCompleto, status_code=status.HTTP_201_CREATED)
@@ -303,6 +319,12 @@ def crear_medidor(
         db.commit()
         db.refresh(nuevo_medidor)
         
+        # 🔥 CAMBIO: Cargar las relaciones después del refresh
+        db.query(Medidor).options(
+            joinedload(Medidor.sector),
+            joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
+        ).filter(Medidor.id_medidor == nuevo_medidor.id_medidor).first()
+        
         # Registrar auditoría
         registrar_auditoria(
             db=db,
@@ -320,7 +342,7 @@ def crear_medidor(
             tipo="exito"
         )
         
-        return nuevo_medidor
+        return MedidorCompleto.from_orm(nuevo_medidor)
     
     except IntegrityError as e:
         db.rollback()
@@ -357,7 +379,11 @@ def actualizar_medidor(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "medidores", "actualizar")
     
-    medidor = db.query(Medidor).filter(Medidor.id_medidor == id_medidor).first()
+    # 🔥 CAMBIO: Cargar con las relaciones desde el inicio
+    medidor = db.query(Medidor).options(
+        joinedload(Medidor.sector),
+        joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
+    ).filter(Medidor.id_medidor == id_medidor).first()
     
     if not medidor:
         raise HTTPException(
@@ -397,6 +423,12 @@ def actualizar_medidor(
         db.commit()
         db.refresh(medidor)
         
+        # 🔥 CAMBIO: Recargar con las relaciones después del commit
+        medidor = db.query(Medidor).options(
+            joinedload(Medidor.sector),
+            joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
+        ).filter(Medidor.id_medidor == id_medidor).first()
+        
         # Registrar auditoría
         registrar_auditoria(
             db=db,
@@ -414,7 +446,7 @@ def actualizar_medidor(
             tipo="info"
         )
         
-        return medidor
+        return MedidorCompleto.from_orm(medidor)
     
     except Exception as e:
         db.rollback()
@@ -546,7 +578,11 @@ def toggle_medidor_status(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "medidores", "actualizar")
     
-    medidor = db.query(Medidor).filter(Medidor.id_medidor == id_medidor).first()
+    # 🔥 CAMBIO: Cargar con las relaciones
+    medidor = db.query(Medidor).options(
+        joinedload(Medidor.sector),
+        joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
+    ).filter(Medidor.id_medidor == id_medidor).first()
     
     if not medidor:
         raise HTTPException(

@@ -11,7 +11,8 @@ import './MetersSection.css';
 import {
   Gauge, Search, Edit, Trash2, Eye, CheckCircle, XCircle,
   MapPin, X, Save, RefreshCw, AlertCircle, Map,
-  Navigation, Mountain, UserCheck
+  Navigation, Mountain, UserCheck, 
+  User
 } from 'lucide-react';
 
 const MetersSection = () => {
@@ -20,7 +21,7 @@ const MetersSection = () => {
   const [sectors, setSectors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+  //const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
   const [filterSector, setFilterSector] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterAssignment, setFilterAssignment] = useState('all');
@@ -58,14 +59,14 @@ const MetersSection = () => {
     const canCreate = authService.hasPermission('medidores', 'crear') || 
                      authService.hasPermission('medidores', 'crud');
     
-    const canRead = authService.hasPermission('medidores', 'lectura') || 
-                   authService.hasPermission('medidores', 'crud');
-    
     const canUpdate = authService.hasPermission('medidores', 'actualizar') || 
                      authService.hasPermission('medidores', 'crud');
     
     const canDelete = authService.hasPermission('medidores', 'eliminar') || 
                      authService.hasPermission('medidores', 'crud');
+
+    const canRead = authService.hasPermission('medidores', 'leer') || canCreate || canUpdate || canDelete ||
+                   authService.hasPermission('medidores', 'crud');
 
     const canToggleStatus = canUpdate;
 
@@ -108,7 +109,6 @@ const MetersSection = () => {
     
     try {
       const result = await metersService.getMeters({
-        search: debouncedSearchTerm,
         id_sector: filterSector === 'all' ? undefined : filterSector,
         activo: filterStatus === 'all' ? undefined : filterStatus === 'active',
         asignado: filterAssignment === 'all' ? undefined : filterAssignment === 'assigned'
@@ -126,7 +126,7 @@ const MetersSection = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterSector, filterStatus, filterAssignment, debouncedSearchTerm, permissions.canRead]);
+  }, [filterSector, filterStatus, filterAssignment, permissions.canRead]);
 
   const fetchAvailableAffiliates = async (search = '') => {
     try {
@@ -145,12 +145,7 @@ const MetersSection = () => {
     }
   }, [fetchMeters, permissions.canRead]);
 
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 700);
-    return () => clearTimeout(handler);
-  }, [searchTerm]);
+ 
 
   const filteredMeters = meters.filter(meter => {
     const matchesSearch = 
@@ -171,45 +166,70 @@ const MetersSection = () => {
   });
 
   const openModal = async (type, meter = null) => {
-    if (type === 'create' && !permissions.canCreate) {
-      alert('❌ No tienes permiso para crear medidores');
-      return;
-    }
-    if (type === 'edit' && !permissions.canUpdate) {
-      alert('❌ No tienes permiso para editar medidores');
-      return;
+  if (type === 'create' && !permissions.canCreate) {
+    alert('❌ No tienes permiso para crear medidores');
+    return;
+  }
+  if (type === 'edit' && !permissions.canUpdate) {
+    alert('❌ No tienes permiso para editar medidores');
+    return;
+  }
+
+  setModalType(type);
+  setSelectedMeter(meter);
+  setError(null);
+
+  // 1️⃣ Cargar afiliados disponibles
+  await fetchAvailableAffiliates();
+
+  if (type === 'create') {
+    // 2️⃣ Preparar form vacío
+    setFormData({
+      num_medidor: '',
+      latitud: '',
+      longitud: '',
+      altitud: '',
+      id_usuario_afi: null,
+      id_sector: sectors.length > 0 ? sectors[0].id_sector : null,
+      activo: true
+    });
+
+  } else if (type === 'edit' && meter) {
+    
+    // 3️⃣ Insertar el afiliado asignado al inicio de la lista (si no está)
+    if (meter.usuario_afiliado) {
+      setAvailableAffiliates(prev => {
+        const exists = prev.some(a => a.id_usuario_afi === meter.usuario_afiliado.id_usuario_afi);
+        
+        if (!exists) {
+          const assigned = {
+            id_usuario_afi: meter.usuario_afiliado.id_usuario_afi,
+            cod_usuario_afi: meter.usuario_afiliado.cod_usuario_afi,
+            nombre_afiliado: meter.usuario_afiliado.nombre_afiliado,
+            sector: meter.usuario_afiliado.sector,
+          };
+          return [assigned, ...prev];
+        }
+        
+        return prev;
+      });
     }
 
-    setModalType(type);
-    setSelectedMeter(meter);
-    setError(null);
-    
-    if (type === 'create') {
-      await fetchAvailableAffiliates();
-      setFormData({
-        num_medidor: '',
-        latitud: '',
-        longitud: '',
-        altitud: '',
-        id_usuario_afi: null,
-        id_sector: sectors.length > 0 ? sectors[0].id_sector : null,
-        activo: true
-      });
-    } else if (type === 'edit' && meter) {
-      await fetchAvailableAffiliates();
-      setFormData({
-        num_medidor: meter.num_medidor,
-        latitud: meter.latitud || '',
-        longitud: meter.longitud || '',
-        altitud: meter.altitud || '',
-        id_usuario_afi: meter.id_usuario_afi || null,
-        id_sector: meter.id_sector,
-        activo: meter.activo
-      });
-    }
-    
-    setShowModal(true);
-  };
+    // 4️⃣ Cargar los datos al formulario
+    setFormData({
+      num_medidor: meter.num_medidor,
+      latitud: meter.latitud || '',
+      longitud: meter.longitud || '',
+      altitud: meter.altitud || '',
+      id_usuario_afi: meter.usuario_afiliado?.id_usuario_afi || null,
+      id_sector: meter.id_sector,
+      activo: meter.activo
+    });
+  }
+
+  setShowModal(true);
+};
+
 
   const closeModal = () => {
     setShowModal(false);
@@ -466,7 +486,7 @@ const MetersSection = () => {
           </div>
         </div>
       </div>
-
+      {/* GRID DE MEDIDORES */}
       <div className="users-grid">
         {filteredMeters.map(meter => (
           <div key={meter.id_medidor} className={`user-card ${!meter.activo ? 'inactive' : ''}`}>
@@ -477,12 +497,9 @@ const MetersSection = () => {
                 </div>
                 <div>
                   <h3 className="user-name">
-                    Medidor: {meter.num_medidor}
+                    Num Medidor: {meter.num_medidor}
                   </h3>
                   <div className="user-meta">
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      ID: {meter.id_medidor}
-                    </span>
                     <span className={`status-badge ${meter.activo ? 'active' : 'inactive'}`}>
                       {meter.activo ? (
                         <>
@@ -496,12 +513,20 @@ const MetersSection = () => {
                         </>
                       )}
                     </span>
-                    {meter.id_usuario_afi && (
-                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        Asignado
-                      </span>
-                    )}
-                  </div>
+
+                    <span
+                      className={`status-badge ${
+                        meter.id_usuario_afi ? 'active' : 'inactive'
+                      }`}
+                    >
+                      {meter.id_usuario_afi ? (
+                        <>Asignado</>
+                      ) : (
+                        <>No asignado</>
+                      )}
+                    </span>
+                </div>
+
                 </div>
               </div>
               
@@ -548,10 +573,14 @@ const MetersSection = () => {
             
             <div className="user-card-body">
               <div className="user-contact">
+                <div className="contact-item">
+                  <User className="w-4 h-4 text-gray-400" />
+                  <span>{meter.usuario_afiliado?.nombre_afiliado || 'No Asignado'} </span>
+                </div>
                 {meter.id_usuario_afi && meter.usuario_afiliado && (
                   <div className="contact-item">
                     <UserCheck className="w-4 h-4 text-gray-400" />
-                    <span>Afiliado: {meter.usuario_afiliado.cod_usuario_afi}</span>
+                    <span> Código: {meter.usuario_afiliado.cod_usuario_afi}</span>
                   </div>
                 )}
                 <div className="contact-item">

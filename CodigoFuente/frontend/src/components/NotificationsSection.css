@@ -55,7 +55,7 @@
 .notifications-section .header-title {
   display: flex;
   align-items: center;
-  gap: 1rem; 
+  gap: 1rem;
 }
 
 .notifications-section .header-title svg {
@@ -79,15 +79,6 @@
 
 
 
-.notifications-section .btn-primary:hover {
-  background: var(--notif-primary-dark);
-  transform: translateY(-2px);
-  box-shadow: var(--notif-shadow-md);
-}
-
-.notifications-section .btn-primary:active {
-  transform: translateY(0);
-}
 
 /* ========================================
    SECCIÓN DE FILTROS

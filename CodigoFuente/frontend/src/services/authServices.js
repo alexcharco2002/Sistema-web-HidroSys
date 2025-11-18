@@ -122,6 +122,13 @@ class AuthService {
         } else {
           errorMessage = `HTTPS ${response.status}: ${response.statusText}`;
         }
+        // Manejo específico para token expirado o inválido
+        if (response.status === 401) {
+          console.warn('⚠️ Token expirado o inválido, redirigiendo al login...');
+          this.clearLocalData();
+          window.location.href = '/login'; // 🔄 Redirección automática
+          return;
+        }
 
         throw new Error(errorMessage);
       }
@@ -471,7 +478,36 @@ hasCRUDAccess(moduleName) {
   getToken() {
     return this.token;
   }
+   /**
+   * ✅ Actualizar información del usuario en localStorage
+   * Este método se usa cuando el usuario actualiza su perfil
+   */
+  updateUserInfo(updatedUserData) {
+    try {
+      const currentUser = this.getCurrentUser();
+      
+      if (!currentUser) {
+        console.warn('⚠️ No hay usuario en sesión para actualizar');
+        return false;
+      }
 
+      // Combinar datos existentes con los nuevos
+      const updatedUser = {
+        ...currentUser,
+        ...updatedUserData
+      };
+
+      // Guardar en localStorage
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      
+      console.log('✅ Información del usuario actualizada en localStorage');
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Error actualizando información del usuario:', error);
+      return false;
+    }
+  }
   /**
    * Validar credenciales
    */

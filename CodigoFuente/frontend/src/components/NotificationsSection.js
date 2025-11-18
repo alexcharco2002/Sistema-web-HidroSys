@@ -141,6 +141,8 @@ const NotificationsSection = () => {
   // ========================================
   const getNotificationIcon = (type) => {
     switch(type?.toLowerCase()) {
+      case 'exito':
+        return CheckCircle;
       case 'alerta':
       case 'warning':
         return AlertTriangle;

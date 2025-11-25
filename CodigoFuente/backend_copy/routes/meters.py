@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, cast, String
 from psycopg2.errors import ForeignKeyViolation, UniqueViolation
 from typing import List, Optional
 
@@ -127,7 +127,14 @@ def listar_medidores(
     
     # Aplicar filtros
     if search:
-        query = query.filter(Medidor.num_medidor.ilike(f"%{search}%"))
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                Medidor.num_medidor.ilike(like),
+                cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(like),
+                UsuarioAfiliado.nombre_afiliado.ilike(like)
+            )
+        )
     
     if id_sector is not None:
         query = query.filter(Medidor.id_sector == id_sector)

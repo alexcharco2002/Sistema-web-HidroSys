@@ -174,15 +174,15 @@ export const MODULE_DEFINITIONS = {
     componentName: "MetersSection",
     description: "Administración de medidores asignados a usuarios."
   },
-  rutas: {
-    id: "routes",
-    label: "Rutas",
+  geolocalizacion: {
+    id: "geolocalizacion",
+    label: "Geolocalización",
     icon: Map,
     color: "rose",
     category: "OPERATIONS",
     order: 3,
-    componentName: "RoutesSection",
-    description: "Definición y gestión de rutas de lectura."
+    componentName: "GeolocationSection",
+    description: "Geolocalización en el mapa."
   },
   sectores: {
     id: "sectors",
@@ -263,7 +263,7 @@ export const MODULE_DEFINITIONS = {
     color: "orange",
     category: "FINANCIAL",
     order: 6,
-    componentName: "RatesSection",
+    componentName: "TarifasSection",
     description: "Configuración de tarifas y precios."
   },
   servicios: {
@@ -327,7 +327,7 @@ export const MODULE_DEFINITIONS = {
     color: "gray",
     category: "SYSTEM",
     order: 1,
-    componentName: "SettingsSection",
+    componentName: "ConfigSection",
     description: "Ajustes del sistema y opciones generales."
   },
   notificaciones: {

@@ -9,6 +9,8 @@ from routes import sectors
 from routes import notifications
 from routes import afiliates
 from routes import meters
+from routes import backups
+from routes import tarifas
 import os
 
 app = FastAPI(
@@ -46,6 +48,8 @@ app.include_router(sectors.router)
 app.include_router(notifications.router)
 app.include_router(afiliates.router)
 app.include_router(meters.router)
+app.include_router(backups.router)
+app.include_router(tarifas.router)
 
 
 # Health check general

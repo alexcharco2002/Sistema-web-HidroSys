@@ -14,7 +14,7 @@ const SectorsSection = () => {
   const [sectors, setSectors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+  const [debouncedSearchTerm] = useState(searchTerm);
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc' o 'desc'
   const [showModal, setShowModal] = useState(false);
@@ -111,13 +111,7 @@ const SectorsSection = () => {
     }
   }, [fetchSectors, permissions.canRead]);
 
-  // Debounce search
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 700);
-    return () => clearTimeout(handler);
-  }, [searchTerm]);
+  
 
   useEffect(() => {
     if (permissions.canRead) {
@@ -403,14 +397,14 @@ const SectorsSection = () => {
 
       <div className="sectors-grid">
         {filteredSectors.map(sector => (
-          <div key={sector.id_sector} className={`sector-card ${!sector.activo ? 'inactive' : ''}`}>
-            <div className="sector-card-header">
-              <div className="sector-info">
+          <div key={sector.id_sector} className={`user-card ${!sector.activo ? 'inactive' : ''}`}>
+            <div className="user-card-header">
+              <div className="user-info">
                 <div className="sector-icon">
                   <MapPin className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
-                  <h3 className="sector-name">{sector.nombre_sector}</h3>
+                  <h3 className="user-name">{sector.nombre_sector}</h3>
                   <span className={`status-badge ${sector.activo ? 'active' : 'inactive'}`}>
                     {sector.activo ? (
                       <>
@@ -427,7 +421,7 @@ const SectorsSection = () => {
                 </div>
               </div>
               
-              <div className="sector-actions">
+              <div className="user-actions">
                 <button 
                   className="action-btn view"
                   onClick={() => openModal('view', sector)}
@@ -467,8 +461,8 @@ const SectorsSection = () => {
                 )}
               </div>
             </div>
-            <div className="sector-card-body">
-              <p className="sector-description flex items-center gap-2 text-gray-700">
+            <div className="user-card-body">
+              <p className="user-description flex items-center gap-2 text-gray-700">
                 <FileText className="w-4 h-4 text-gray-400" />
                 {sector.descripcion?.trim() ? sector.descripcion : 'Ninguna'}
               </p>

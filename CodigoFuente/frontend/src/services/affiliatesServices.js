@@ -281,18 +281,33 @@ class AffiliatesService {
   }
 
   /**
-   * Eliminar un afiliado
-   */
+ * Eliminar un afiliado
+ */
   async deleteAffiliate(affiliateId) {
     try {
-      const data = await this.makeRequest(`${API_CONFIG.endpoints.affiliates}/${affiliateId}`, {
-        method: 'DELETE'
-      });
+      const data = await this.makeRequest(
+        `${API_CONFIG.endpoints.affiliates}/${affiliateId}`,
+        { method: 'DELETE' }
+      );
 
+      console.log("🔎 Respuesta del backend:", data);
+
+      // Normalización de mensajes y campos comunes
+      const backendMessage =
+        data?.message ||
+        data?.msg ||
+        data?.detail ||
+        data?.error ||
+        data?.descripcion ||
+        null;
+
+      const cod = data?.afiliado?.cod_usuario_afi || '';
+
+      // ------ CASOS CONTROLADOS ------
       if (data?.accion === 'eliminado') {
         return {
           success: true,
-          message: `✅ El afiliado con código "${data.afiliado?.cod_usuario_afi || ''}" fue eliminado correctamente.`,
+          message: `✅ El afiliado con código "${cod}" fue eliminado correctamente.`,
           data
         };
       }
@@ -300,39 +315,50 @@ class AffiliatesService {
       if (data?.accion === 'desactivado') {
         return {
           success: true,
-          message: `⚠️ El afiliado con código "${data.afiliado?.cod_usuario_afi || ''}" no se pudo eliminar porque está relacionado con otros módulos, solo fue desactivado.`,
+          message: `⚠️ El afiliado con código "${cod}" no se pudo eliminar porque está relacionado con otros módulos. Fue desactivado.`,
           data
         };
       }
 
-      if (data?.success) {
+      // Caso éxito genérico
+      if (data?.success === true) {
         return {
           success: true,
-          message: data.message || 'Operación completada correctamente.',
+          message: backendMessage || "Operación completada correctamente.",
           data
         };
       }
 
-      if (data?.detail) {
+      // Caso error explícito desde el backend
+      if (backendMessage) {
         return {
           success: false,
-          message: data.detail
+          message: backendMessage,
+          data
         };
       }
 
+      // Respuesta inesperada
       return {
         success: false,
-        message: 'No se pudo completar la operación.'
+        message: "No se pudo completar la operación.",
+        data
       };
 
     } catch (error) {
-      console.error('❌ Error eliminando afiliado:', error);
+      console.error("❌ Error eliminando afiliado:", error);
+
+      // Manejo de errores de red, timeouts, etc.
       return {
         success: false,
-        message: error.message || 'Error al eliminar afiliado'
+        message:
+          error?.response?.data?.detail ||
+          error?.message ||
+          "Error al eliminar afiliado."
       };
     }
   }
+
 
   /**
    * Cambiar estado de un afiliado (activo/inactivo)

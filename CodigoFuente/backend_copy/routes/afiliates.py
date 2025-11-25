@@ -2,9 +2,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment
+
+from sqlalchemy import String, cast
+
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from psycopg2.errors import ForeignKeyViolation, UniqueViolation
+from psycopg2.errors import ForeignKeyViolation, UniqueViolation, NotNullViolation
 from typing import List, Optional
 from datetime import date, datetime
 from models.affiliate import UsuarioAfiliado
@@ -209,7 +212,7 @@ def listar_afiliados(
             (UsuarioSistema.nombres.ilike(search_filter)) |
             (UsuarioSistema.apellidos.ilike(search_filter)) |
             (UsuarioSistema.cedula.ilike(search_filter)) |
-            (UsuarioAfiliado.cod_usuario_afi.cast(db.String).ilike(search_filter))
+            cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_filter)
         )
     
     # Filtro por sector
@@ -503,9 +506,8 @@ def eliminar_afiliado(
     payload: dict = Depends(verify_token)
 ):
     """
-    Elimina el afiliado si no tiene relaciones (medidores, facturas, etc.).
-    Si tiene relaciones, lo desactiva (borrado lógico).
-    Requiere permiso: afiliados.eliminar o afiliados.crud
+    Elimina el afiliado si no tiene relaciones.
+    Si tiene relaciones → NO lo elimina, NO lo desactiva, solo notifica.
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "afiliados", "eliminar")
@@ -537,7 +539,6 @@ def eliminar_afiliado(
             id_usuario=current_user.id_usuario_sistema
         )
         
-        # Notificación
         registrar_notificacion(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
@@ -548,62 +549,37 @@ def eliminar_afiliado(
         
         return {
             "success": True,
-            "message": f"Afiliado '{nombre_completo}' eliminado correctamente.",
-            "accion": "eliminado"
+            "accion": "eliminado",
+            "message": f"Afiliado '{nombre_completo}' eliminado correctamente."
         }
     
     except IntegrityError as e:
         db.rollback()
-        
-        if isinstance(e.orig, ForeignKeyViolation):
-            print(f"⚠️ No se puede eliminar por relaciones, se desactiva el afiliado: {e}")
+
+        # ✔️ Si es por FK o NOT NULL → NO borrar, NO desactivar
+        if isinstance(e.orig, (ForeignKeyViolation, NotNullViolation)):
             
-            if not affiliate.activo:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"El afiliado '{nombre_completo}' ya está inactivo."
-                )
-            
-            affiliate.activo = False
-            db.commit()
-            db.refresh(affiliate)
-            
-            # Auditoría
-            registrar_auditoria(
-                db=db,
-                accion="UPDATE",
-                descripcion=f"Afiliado desactivado (por relaciones): {nombre_completo} (Código: {codigo}) por '{payload['sub']}'",
-                id_usuario=current_user.id_usuario_sistema
-            )
-            
-            # Notificación
             registrar_notificacion(
                 db=db,
                 id_usuario=current_user.id_usuario_sistema,
-                titulo="Afiliado desactivado",
-                mensaje=f"El afiliado '{nombre_completo}' no se pudo eliminar porque tiene relaciones con otros módulos (medidores, facturas, etc.). Fue desactivado automáticamente.",
+                titulo="Afiliado no eliminado",
+                mensaje=f"El afiliado '{nombre_completo}' no se puede eliminar porque tiene relaciones con otros módulos.",
                 tipo="alerta"
             )
-            
+
             return {
-                "success": True,
-                "message": f"⚠️ El afiliado '{nombre_completo}' no se pudo eliminar porque tiene relación con otros módulos, por lo que fue desactivado automáticamente.",
-                "accion": "desactivado",
-                "afiliado": affiliate_to_response(affiliate, db)
+                "success": False,
+                "accion": "no_eliminado",
+                "message": (
+                    f"⚠️ El afiliado '{nombre_completo}' NO se puede eliminar "
+                    "porque está relacionado con otros módulos (medidores, facturas, etc.)."
+                )
             }
-        
-        print(f"Error inesperado al eliminar afiliado: {e}")
+
+        # Otros errores inesperados
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail="Error al intentar eliminar el afiliado"
-        )
-    
-    except Exception as e:
-        db.rollback()
-        print(f"❌ Error al eliminar afiliado: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al eliminar el afiliado"
         )
 
 # ========================================
@@ -714,13 +690,17 @@ def download_template(
     
     try:
         # Obtener usuarios NO afiliados
-        usuarios_disponibles = db.query(UsuarioSistema).outerjoin(
-            UsuarioAfiliado,
-            UsuarioSistema.id_usuario_sistema == UsuarioAfiliado.id_usuario_sistema
-        ).filter(
-            UsuarioAfiliado.id_usuario_afi == None,
-            UsuarioSistema.activo == True
+        afiliados_ids = db.query(UsuarioAfiliado.id_usuario_sistema).filter(
+            UsuarioAfiliado.activo == True
         ).all()
+        afiliados_ids = [id[0] for id in afiliados_ids]
+
+        # Usuarios disponibles = NO afiliados
+        usuarios_disponibles = db.query(UsuarioSistema).filter(
+            UsuarioSistema.activo == True,
+            ~UsuarioSistema.id_usuario_sistema.in_(afiliados_ids) if afiliados_ids else True
+        ).order_by(UsuarioSistema.nombres).all()
+
         
         # Obtener sectores
         sectores = db.query(Sector).filter(Sector.activo == True).all()
@@ -730,58 +710,56 @@ def download_template(
         # Crear libro de Excel
         wb = Workbook()
         
-        # ===============================
+       # ===============================
         # HOJA 1: PLANTILLA PARA LLENAR
         # ===============================
         ws_plantilla = wb.active
         ws_plantilla.title = "Plantilla Afiliados"
-        
+
         # Encabezados
         headers = [
             "id_usuario_sistema",
-            "id_sector",
-            "num_medidor",
-            "latitud",
-            "longitud",
-            "altitud"
+            "nombres",
+            "apellidos",
+            "id_sector",      # usuario llena
+            "num_medidor",    # usuario llena
+            "latitud",        # usuario llena
+            "longitud",       # usuario llena
+            "altitud"         # usuario llena
         ]
-        
-        # Estilo de encabezados
+
+        # Estilo encabezado
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
         header_font = Font(color="FFFFFF", bold=True)
-        
+
         for col_num, header in enumerate(headers, 1):
             cell = ws_plantilla.cell(row=1, column=col_num)
             cell.value = header
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
-        
-        # Ajustar anchos de columna
-        ws_plantilla.column_dimensions['A'].width = 20
-        ws_plantilla.column_dimensions['B'].width = 15
-        ws_plantilla.column_dimensions['C'].width = 20
-        ws_plantilla.column_dimensions['D'].width = 15
-        ws_plantilla.column_dimensions['E'].width = 15
-        ws_plantilla.column_dimensions['F'].width = 15
-        
-        # Agregar filas de ejemplo (SOLO si hay usuarios y sectores)
-        if usuarios_disponibles and sectores:
-            ejemplos = [
-                [
-                    usuarios_disponibles[0].id_usuario_sistema if len(usuarios_disponibles) > 0 else 1,
-                    sectores[0].id_sector if len(sectores) > 0 else 1,
-                    "MED-001",
-                    -1.234567,
-                    -78.123456,
-                    2850.00
-                ],
-            ]
-            
-            for row_num, ejemplo in enumerate(ejemplos, 2):
-                for col_num, valor in enumerate(ejemplo, 1):
-                    ws_plantilla.cell(row=row_num, column=col_num, value=valor)
-        
+
+        # ANCHOS DE COLUMNA
+        column_widths = [20, 25, 25, 15, 18, 15, 15, 15]
+        for col, width in zip("ABCDEFGH", column_widths):
+            ws_plantilla.column_dimensions[col].width = width
+
+
+        # =======================================================
+        # AGREGAR TODAS LAS FILAS AUTOMÁTICAMENTE (USUARIOS)
+        # =======================================================
+        for row_num, usuario in enumerate(usuarios_disponibles, 2):
+            ws_plantilla.cell(row=row_num, column=1, value=usuario.id_usuario_sistema)
+            ws_plantilla.cell(row=row_num, column=2, value=usuario.nombres)
+            ws_plantilla.cell(row=row_num, column=3, value=usuario.apellidos)
+
+            ws_plantilla.cell(row=row_num, column=4, value="")    # id_sector -> usuario llena
+            ws_plantilla.cell(row=row_num, column=5, value="")    # num_medidor
+            ws_plantilla.cell(row=row_num, column=6, value="")    # latitud
+            ws_plantilla.cell(row=row_num, column=7, value="")    # longitud
+            ws_plantilla.cell(row=row_num, column=8, value="")    # altitud
+
+                
         # ===============================
         # HOJA 2: USUARIOS DISPONIBLES
         # ===============================
@@ -1131,7 +1109,7 @@ def create_affiliates_bulk(
             id_usuario=current_user.id_usuario_sistema,
             titulo="Carga masiva completada",
             mensaje=f"Se crearon {len(exitosos)} afiliados con medidores. {len(fallidos)} errores.",
-            tipo="exito" if len(fallidos) == 0 else "advertencia"
+            tipo="exito" if len(fallidos) == 0 else "exito"
         )
         
     except Exception as e:

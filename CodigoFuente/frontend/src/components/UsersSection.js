@@ -297,7 +297,7 @@ const UsersSection = () => {
     const matchesSearch =
       user.nombres.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.apellidos.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase());
+      user.cedula.includes(searchTerm)
 
     // Filtro por rol
     const matchesRole =
@@ -671,9 +671,6 @@ const UsersSection = () => {
     );
   };
 
-
-
-
   // ==================== RENDERIZADO ====================
   
   // 🔑 Mostrar mensaje si no tiene permiso de lectura
@@ -751,7 +748,7 @@ const UsersSection = () => {
           <Search className="search-icon" />
           <input
             type="text"
-            placeholder="Buscar usuarios..."
+            placeholder="Buscar por nombre o cédula..."
             className="search-input"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -962,7 +959,7 @@ const UsersSection = () => {
             <div className="user-card-body">
               <div className="user-contact">
                 <div className="contact-item">
-                  <user  className="w-4 h-4 text-gray-400" />
+                  <User  className="w-4 h-4 text-gray-400" />
                   <span>{user?.usuario || 'N/A'}</span>
                 </div>
                 <div className="contact-item">
@@ -1044,6 +1041,18 @@ const UsersSection = () => {
               {/* ==================== MODAL DE CARGA DESDE EXCEL ==================== */}
               {modalType === 'excel' && (
                 <div className="user-form">
+                  {/* 📥 BOTÓN DE DESCARGA DE PLANTILLA */}
+                  <div className="form-group form-group-full" style={{ marginBottom: "20px" }}>
+                    <button className='btn-primary'
+                      onClick={() => usersService.ExcelTemplate.generateTemplate()}
+                    >
+                      📥 Descargar plantilla Excel
+                    </button>
+
+                    <small className="text-gray-500 mt-1 block">
+                      La plantilla incluye: nombres, apellidos, sexo, fecha_nac, cedula, email, telefono, direccion
+                    </small>
+                  </div>
                   <div className="form-grid">
                     {/* Selector de archivo */}
                     <div className="form-group form-group-full">
@@ -1059,9 +1068,9 @@ const UsersSection = () => {
                         <br />
                         📝 <strong>Columnas obligatorias:</strong>
                         <br />
-                        &nbsp;&nbsp;&nbsp;• nombres, apellidos, sexo (M/F/O), fecha_nac (YYYY-MM-DD)
+                        &nbsp;&nbsp;&nbsp;• nombres, apellidos, sexo , fecha_nac 
                         <br />
-                        &nbsp;&nbsp;&nbsp;• cedula (10 dígitos), email, telefono (10 dígitos), direccion
+                        &nbsp;&nbsp;&nbsp;• cedula , email, telefono, direccion
                         <br />
                         <br />
                         ℹ️ <strong>Notas importantes:</strong>

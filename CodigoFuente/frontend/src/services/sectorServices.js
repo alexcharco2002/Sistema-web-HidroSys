@@ -183,11 +183,28 @@ class SectorsService {
 
     } catch (error) {
       console.error('❌ Error creando sector:', error);
+
+      let cleanMessage = 'Error al crear el sector';
+
+      // Cuando FastAPI devuelve errores de validación
+      const detail = error.response?.data?.detail;
+
+      if (Array.isArray(detail) && detail[0]?.msg) {
+        cleanMessage = detail[0].msg; // Solo el mensaje limpio
+      } 
+      else if (typeof detail === 'string') {
+        cleanMessage = detail;
+      }
+      else if (error.message) {
+        cleanMessage = error.message.replace(/^Value error,\s*/i, ''); // Limpia "Value error,"
+      }
+
       return {
         success: false,
-        message: error.message || 'Error al crear sector'
+        message: cleanMessage
       };
     }
+
   }
 
   /**
@@ -231,31 +248,43 @@ class SectorsService {
   }
 
   /**
-   * Eliminar un sector
-   */
+ * Eliminar un sector
+ */
   async deleteSector(sectorId) {
     try {
-      const data = await this.makeRequest(`${API_CONFIG.endpoints.sectors}/${sectorId}`, {
+      const response = await this.makeRequest(`${API_CONFIG.endpoints.sectors}/${sectorId}`, {
         method: 'DELETE'
       });
 
       // Limpiar caché
       this.cachedSectors = null;
 
+      // Si el backend devolvió success: false → no se puede eliminar
+      if (response && response.success === false) {
+        return {
+          success: false,
+          message: response.message || 'No se pudo eliminar el sector.',
+          accion: response.accion || 'no_eliminado'
+        };
+      }
+
+      // Caso eliminación correcta
       return {
         success: true,
-        data: data,
-        message: 'Sector eliminado exitosamente'
+        message: response.message || 'Sector eliminado correctamente.',
+        accion: response.accion || 'eliminado'
       };
 
     } catch (error) {
       console.error('❌ Error eliminando sector:', error);
+
       return {
         success: false,
         message: error.message || 'Error al eliminar sector'
       };
     }
   }
+
 
   /**
    * Activar/Desactivar sector

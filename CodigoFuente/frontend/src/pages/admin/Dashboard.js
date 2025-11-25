@@ -20,6 +20,9 @@ import ChangePasswordModal from '../../components/ChangePasswordModal';
 import NotificationsSection  from '../../components/NotificationsSection';
 import AffiliatesSection from '../../components/AffiliatesSection';
 import MetersSection from '../../components/MetersSection';
+import ConfigSection from '../../components/ConfigSection';
+import TarifasSection from '../../components/TarifasSection';
+import GeolocationSection from '../../components/GeolocationSection';
 
 // Estilos
 import './style.css';
@@ -39,7 +42,10 @@ const componentMap = {
   SectorsSection,
   NotificationsSection,
   AffiliatesSection,
-  MetersSection
+  MetersSection,
+  ConfigSection,
+  TarifasSection,
+  GeolocationSection
 };
 
 const AdminDashboard = () => {
@@ -128,6 +134,8 @@ const AdminDashboard = () => {
       loadDashboardData();
     }
   }, [user]);
+
+  
 
   const loadDashboardData = async () => {
     try {

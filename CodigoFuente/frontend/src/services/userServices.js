@@ -5,6 +5,8 @@
 
 import authService from './authServices';
 
+import * as XLSX from "xlsx";
+
 const API_CONFIG = {
   baseURL: 'https://localhost:8000',
   endpoints: {
@@ -343,62 +345,65 @@ class UsersService {
   }
 
   /**
-   * Eliminar un usuario
-   */
+ * Eliminar un usuario
+ */
   async deleteUser(userId) {
     try {
       const data = await this.makeRequest(`${API_CONFIG.endpoints.users}/${userId}`, {
         method: 'DELETE'
       });
 
-      // Analiza la respuesta del backend
-    if (data?.accion === 'eliminado') {
-      return {
-        success: true,
-        message: `✅ El usuario "${data.usuario?.usuario || ''}" fue eliminado correctamente.`,
-        data
-      };
-    }
+      // === CASO 1: Eliminado correctamente ===
+      if (data?.accion === 'eliminado') {
+        return {
+          success: true,
+          message: `✅ El usuario fue eliminado correctamente.`,
+          data
+        };
+      }
 
-    if (data?.accion === 'desactivado') {
-      return {
-        success: true,
-        message: `⚠️ El usuario "${data.usuario?.usuario || ''}" no se pudo eliminar porque está relacionado con otros módulos, solo fue desactivado.`,
-        data
-      };
-    }
+      // === CASO 2: No se pudo eliminar porque tiene relaciones ===
+      if (data?.accion === 'no_eliminado') {
+        return {
+          success: false, // OJO → FALSE porque no se eliminó
+          message: `⚠️ ${data.message || 'El usuario no se puede eliminar porque tiene relaciones con otros módulos.'}`,
+          data
+        };
+      }
 
-    // Si viene con success pero sin "accion", usa mensaje genérico
-    if (data?.success) {
-      return {
-        success: true,
-        message: data.message || 'Operación completada correctamente.',
-        data
-      };
-    }
+      // === CASO 3: Respuesta exitosa sin "accion" (muy raro pero posible) ===
+      if (data?.success === true) {
+        return {
+          success: true,
+          message: data.message || 'Operación completada correctamente.',
+          data
+        };
+      }
 
-    // Si viene con error desde el backend
-    if (data?.detail) {
+      // === CASO 4: Error explícito del backend ===
+      if (data?.detail) {
+        return {
+          success: false,
+          message: data.detail
+        };
+      }
+
+      // === CASO 5: Respuesta inesperada ===
       return {
         success: false,
-        message: data.detail
+        message: 'No se pudo completar la operación.'
       };
-    }
-
-    // Caso por defecto
-    return {
-      success: false,
-      message: 'No se pudo completar la operación.'
-    };
 
     } catch (error) {
       console.error('❌ Error eliminando usuario:', error);
+
       return {
         success: false,
         message: error.message || 'Error al eliminar usuario'
       };
     }
   }
+
 
   /**
    * Activar/Desactivar usuario
@@ -678,6 +683,67 @@ class UsersService {
   clearRolesCache() {
     this.cachedRoles = null;
   }
+    /**
+   * ===============================
+   * 📄 CLASE INTERNA: Plantilla Excel
+   * ===============================
+   */
+  ExcelTemplate = class {
+
+    /**
+     * Generar plantilla Excel para carga masiva
+     */
+    static generateTemplate() {
+      try {
+        const headers = [
+          "nombres",
+          "apellidos",
+          "sexo",
+          "fecha_nac",
+          "cedula",
+          "email",
+          "telefono",
+          "direccion"
+        ];
+
+        const exampleRow = [{
+          nombres: "",
+          apellidos: "",
+          sexo: "M / F / O",
+          fecha_nac: "YYYY-MM-DD",
+          cedula: "",
+          email: "",
+          telefono: "",
+          direccion: ""
+        }];
+
+        const worksheet = XLSX.utils.json_to_sheet(exampleRow, {
+          header: headers
+        });
+
+        // Ancho de columnas
+        worksheet["!cols"] = headers.map(() => ({ wch: 20 }));
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Plantilla");
+
+        XLSX.writeFile(workbook, "plantilla_usuarios.xlsx");
+
+        return {
+          success: true,
+          message: "Plantilla generada correctamente"
+        };
+
+      } catch (error) {
+        console.error("❌ Error generando plantilla Excel:", error);
+        return {
+          success: false,
+          message: error.message || "Error al generar plantilla"
+        };
+      }
+    }
+  };
+
 }
 
 const usersService = new UsersService();

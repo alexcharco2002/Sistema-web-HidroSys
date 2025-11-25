@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from psycopg2.errors import ForeignKeyViolation
+from psycopg2.errors import ForeignKeyViolation, NotNullViolation
 from typing import List, Optional
 from models.sector import Sector
 from models.user import UsuarioSistema
@@ -13,6 +13,8 @@ from utils.notifications import registrar_notificacion
 from utils.audit_logger import registrar_auditoria
 from db.session import SessionLocal
 from security.jwt import verify_token
+
+import unicodedata, re
 
 router = APIRouter(prefix="/sectors", tags=["sectors"])
 
@@ -167,6 +169,31 @@ def obtener_sector(
         )
     
     return sector
+# para normalizar textos y validar 
+def normalize_text(text: str) -> str:
+    """
+    Normaliza texto para comparación:
+    - convierte a minúsculas
+    - elimina espacios extras
+    - elimina acentos
+    - reduce múltiple espacios a uno
+    """
+    if not text:
+        return ""
+
+    # Convertir a minúsculas
+    text = text.lower().strip()
+
+    # Quitar acentos
+    text = ''.join(
+        c for c in unicodedata.normalize('NFD', text)
+        if unicodedata.category(c) != 'Mn'
+    )
+
+    # Quitar espacios internos múltiples
+    text = re.sub(r"\s+", " ", text)
+
+    return text
 
 @router.post("/", response_model=SectorResponse, status_code=status.HTTP_201_CREATED)
 def crear_sector(
@@ -181,19 +208,23 @@ def crear_sector(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "sectores", "crear")
     
-    # Verificar que no exista un sector con el mismo nombre
-    existe = db.query(Sector).filter(
-        Sector.nombre_sector == sector.nombre_sector
-    ).first()
-    
-    if existe:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ya existe un sector con el nombre '{sector.nombre_sector}'"
-        )
-    
+     # Normalizar nombre
+    nombre_normalizado = normalize_text(sector.nombre_sector)
+
+    # Buscar duplicados normalizando en SQL también
+    sectores = db.query(Sector).all()
+
+    for s in sectores:
+        if normalize_text(s.nombre_sector) == nombre_normalizado:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ya existe un sector con el nombre '{sector.nombre_sector}'"
+            )
+
     # Crear nuevo sector
-    nuevo_sector = Sector(**sector.model_dump())
+    nuevo_sector = Sector(
+        nombre_sector=sector.nombre_sector.strip()
+    )
     
     try:
         db.add(nuevo_sector)
@@ -306,9 +337,9 @@ def eliminar_sector(
     payload: dict = Depends(verify_token)
 ):
     """
-    Elimina el sector si no tiene relaciones.
-    Si tiene relaciones (medidores, afiliados, etc.), lo desactiva (borrado lógico).
-    Requiere permiso: sectores.eliminar o sectores.crud
+    Elimina físicamente el sector.
+    Si no se puede eliminar por una restricción FK, devuelve un mensaje
+    claro indicando qué lo bloquea.
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "sectores", "eliminar")
@@ -317,24 +348,22 @@ def eliminar_sector(
     
     if not sector:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Sector no encontrado"
         )
     
     try:
-        # ✅ Intentar eliminar físicamente
+        # Intentar eliminar
         db.delete(sector)
         db.commit()
-        
-        # Auditoría
+
         registrar_auditoria(
             db=db,
             accion="DELETE",
             descripcion=f"Sector '{sector.nombre_sector}' eliminado por '{payload['sub']}'",
             id_usuario=current_user.id_usuario_sistema
         )
-        
-        # Notificación
+
         registrar_notificacion(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
@@ -342,68 +371,34 @@ def eliminar_sector(
             mensaje=f"El sector '{sector.nombre_sector}' fue eliminado correctamente.",
             tipo="info"
         )
-        
+
         return {
             "success": True,
-            "message": f"Sector '{sector.nombre_sector}' eliminado correctamente.",
-            "accion": "eliminado"
+            "accion": "eliminado",
+            "message": f"Sector '{sector.nombre_sector}' eliminado correctamente."
         }
-    
+
     except IntegrityError as e:
         db.rollback()
-        
-        # ✅ Si es por relación de clave foránea, desactivar
-        if isinstance(e.orig, ForeignKeyViolation):
-            print(f"⚠️ No se puede eliminar por relaciones, se desactiva el sector: {e}")
-            
-            if not sector.activo:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"El sector '{sector.nombre_sector}' ya está inactivo."
-                )
-            
-            sector.activo = False
-            db.commit()
-            db.refresh(sector)
-            
-            # Auditoría
-            registrar_auditoria(
-                db=db,
-                accion="UPDATE",
-                descripcion=f"Sector '{sector.nombre_sector}' fue desactivado (por relaciones) por '{payload['sub']}'",
-                id_usuario=current_user.id_usuario_sistema
+
+        return {
+            "success": False,
+            "accion": "no_eliminado",
+            "message": (
+                f"⚠️ NO se puede eliminar el sector '{sector.nombre_sector}' porque "
+                "está relacionado con otros modulos del sistema. Elimine esos elementos antes "
+                "de intentar borrar este sector."
             )
-            
-            # Notificación
-            registrar_notificacion(
-                db=db,
-                id_usuario=current_user.id_usuario_sistema,
-                titulo="Sector desactivado",
-                mensaje=f"El sector '{sector.nombre_sector}' no se pudo eliminar porque está relacionado con otros módulos (medidores, afiliados, etc.). Fue desactivado automáticamente.",
-                tipo="alerta"
-            )
-            
-            return {
-                "success": True,
-                "message": f"⚠️ El sector '{sector.nombre_sector}' no se pudo eliminar porque tiene relación con otros módulos, por lo que fue desactivado automáticamente.",
-                "accion": "desactivado",
-                "sector": SectorResponse.model_validate(sector)
-            }
-        
-        # Otros errores no esperados
-        print(f"Error inesperado al eliminar sector: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al intentar eliminar el sector"
-        )
-    
+        }
+
     except Exception as e:
         db.rollback()
-        print(f"❌ Error al eliminar sector: {e}")
+
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al eliminar el sector"
+            status_code=500,
+            detail="Error inesperado al intentar eliminar el sector."
         )
+
 
 @router.patch("/{id_sector}/toggle-status", response_model=SectorResponse)
 def toggle_sector_status(

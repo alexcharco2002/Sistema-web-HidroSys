@@ -80,12 +80,17 @@ const RolesSection = () => {
     { value: 'Afiliados', label: 'Afiliados' },
     { value: 'Medidores', label: 'Medidores' },
     { value: 'Sectores', label: 'Sectores' },
+    { value: 'Tarifas', label: 'Tarifas' },
+    { value: 'Geolocalizacion', label: 'Geolocalización' },
+
     { value: 'Lecturas', label: 'Lecturas' },
     { value: 'Facturas', label: 'Facturas' },
     { value: 'Pagos', label: 'Pagos' },
     { value: 'Multas', label: 'Multas' },
     { value: 'Configuracion', label: 'Configuración' },
     { value: 'Notificaciones', label: 'Notificaciones' },
+    { value: 'Notificaciones', label: 'Notificaciones' },
+
   ];
 
   // 🔑 Cargar permisos al montar el componente

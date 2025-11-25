@@ -150,9 +150,12 @@ const MetersSection = () => {
   const filteredMeters = meters.filter(meter => {
     const matchesSearch = 
       meter.num_medidor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      meter.id_medidor.toString().includes(searchTerm) ||
+      
       (meter.usuario_afiliado?.cod_usuario_afi && 
-       meter.usuario_afiliado.cod_usuario_afi.toString().includes(searchTerm));
+       meter.usuario_afiliado.cod_usuario_afi.toString().includes(searchTerm)) ||
+
+      (meter.usuario_afiliado?.nombre_afiliado &&
+      meter.usuario_afiliado.nombre_afiliado.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesSector = filterSector === 'all' || meter.id_sector === parseInt(filterSector);
     const matchesStatus = filterStatus === 'all' || 
@@ -407,7 +410,7 @@ const MetersSection = () => {
           <Search className="search-icon" />
           <input
             type="text"
-            placeholder="Buscar por número de medidor, ID o código de afiliado..."
+            placeholder="Buscar por número de medidor o código de afiliado..."
             className="search-input"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}

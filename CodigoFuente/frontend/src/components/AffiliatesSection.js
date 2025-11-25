@@ -10,7 +10,7 @@ import * as XLSX from "xlsx";
 
 import {
   UserPlus, Search, Edit, Trash2, Eye, UserCheck, UserX, Phone, MapPin, Calendar, X, Save, RefreshCw, AlertCircle, 
-  CheckCircle, XCircle, Map, ArrowUpDown, Gauge, IdCard, Plus, FileSpreadsheet, Download
+  CheckCircle, XCircle, Map, ArrowUpDown, Gauge, IdCard, Plus, FileSpreadsheet
 } from 'lucide-react';
 
 const AffiliatesSection = () => {
@@ -20,7 +20,7 @@ const AffiliatesSection = () => {
   const [sectors, setSectors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+  const [debouncedSearchTerm] = useState(searchTerm);
   const [filterSector, setFilterSector] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showModal, setShowModal] = useState(false);
@@ -37,7 +37,7 @@ const AffiliatesSection = () => {
   // ===== Variables para carga desde Excel =====
   const [selectedExcel, setSelectedExcel] = useState(null);
   const [excelPreview, setExcelPreview] = useState([]);
-  const [loadingExcel, setLoadingExcel] = useState(false); // ✅ CORREGIDO: remover la coma inicial
+  const [, setLoadingExcel] = useState(false); // ✅ CORREGIDO: remover la coma inicial
 
   // ==== Función para leer Excel ====
   const handleExcelPreview = async (e) => {
@@ -53,7 +53,10 @@ const AffiliatesSection = () => {
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet);
 
-      setExcelPreview(rows);
+      // 🔥 Normalizar todas las filas
+const cleanedRows = rows.map((row) => normalizeKeys(row));
+
+setExcelPreview(cleanedRows);
       setSelectedExcel(file);
 
     } catch (error) {
@@ -65,6 +68,24 @@ const AffiliatesSection = () => {
       setLoadingExcel(false);
     }
   };
+
+  // Limpia claves del Excel (quita espacios, saltos, unicode raro)
+const normalizeKeys = (obj) => {
+  const newObj = {};
+  Object.keys(obj).forEach((key) => {
+    const cleanKey = key
+      .toString()
+      .trim()
+      .replace(/\s+/g, "_")
+      .replace(/[^\w]/g, "") // Solo letras, números y _
+      .toLowerCase();
+
+    newObj[cleanKey] = obj[key];
+  });
+
+  return newObj;
+};
+
 
 
 // ==== Función para subir Excel ====
@@ -177,12 +198,7 @@ const AffiliatesSection = () => {
     loadSectors();
   }, []);
 
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 700);
-    return () => clearTimeout(handler);
-  }, [searchTerm]);
+  
 
   // ==================== FUNCIONES DE PERMISOS ====================
   
@@ -282,11 +298,6 @@ const AffiliatesSection = () => {
       alert('❌ Error al descargar plantilla');
     }
   };
-
- 
-
-
-
 
   // ==================== FUNCIONES AUXILIARES ====================
 
@@ -1004,21 +1015,22 @@ const AffiliatesSection = () => {
               {modalType === 'excel' && (
                 <div className="user-form">
                   <div className="form-grid">
-                    {/* Botón para descargar plantilla */}
-<div className="form-group form-group-full" style={{ marginBottom: "12px" }}>
-  <button 
-    type="button" 
-    className="btn-primary"
-    onClick={handleDownloadTemplate}
-    style={{ display: "flex", alignItems: "center" }}
-  >
-    📥 Descargar plantilla Excel
-  </button>
 
-  <small className="text-gray-500 mt-1">
-    Descarga el archivo Excel con el formato correcto antes de cargar afiliados.
-  </small>
-</div>
+                    {/* Botón para descargar plantilla */}
+                    <div className="form-group form-group-full" style={{ marginBottom: "12px" }}>
+                      <button 
+                        type="button" 
+                        className="btn-primary"
+                        onClick={handleDownloadTemplate}
+                        style={{ display: "flex", alignItems: "center" }}
+                      >
+                        📥 Descargar plantilla Excel
+                      </button>
+
+                      <small className="text-gray-500 mt-1">
+                        Descarga la plantilla para garantizar que el formato de columnas sea el correcto.
+                      </small>
+                    </div>
 
                     {/* Selector de archivo */}
                     <div className="form-group form-group-full">
@@ -1034,6 +1046,8 @@ const AffiliatesSection = () => {
                         <br /><br />
                         📝 <strong>Columnas obligatorias:</strong><br />
                         &nbsp;&nbsp;&nbsp;• id_usuario_sistema<br />
+                        &nbsp;&nbsp;&nbsp;• nombres<br />
+                        &nbsp;&nbsp;&nbsp;• apellidos<br />
                         &nbsp;&nbsp;&nbsp;• id_sector<br />
                         &nbsp;&nbsp;&nbsp;• num_medidor<br />
                         <br />
@@ -1082,53 +1096,120 @@ const AffiliatesSection = () => {
                               zIndex: 1
                             }}>
                               <tr>
-                                <th style={{ padding: '10px 8px', textAlign: 'left' }}>#</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left' }}>ID Usuario Sistema</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left' }}>ID Sector</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left' }}>Medidor</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left' }}>Lat</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left' }}>Lng</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left' }}>Alt</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left' }}>Estado</th>
+                                <th>#</th>
+                                <th>ID Usuario Sistema</th>
+                                <th>Nombres</th>
+                                <th>Apellidos</th>
+                                <th>ID Sector</th>
+                                <th>Medidor</th>
+                                <th>Lat</th>
+                                <th>Lng</th>
+                                <th>Alt</th>
+                                <th>Estado</th>
                               </tr>
                             </thead>
 
                             <tbody>
-                              {excelPreview.map((a, idx) => {
-                                const esValida =
-                                  a.id_usuario_sistema &&
-                                  a.id_sector &&
-                                  a.num_medidor;
+  {excelPreview.map((a, idx) => {
 
-                                return (
-                                  <tr key={idx} style={{
-                                    borderBottom: '1px solid #f3f4f6',
-                                    backgroundColor: esValida ? 'transparent' : '#fef2f2'
-                                  }}>
-                                    <td style={{ padding: '8px', color: '#6b7280' }}>{idx + 1}</td>
-                                    <td style={{ padding: '8px' }}>
-                                      {a.id_usuario_sistema || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
-                                    </td>
-                                    <td style={{ padding: '8px' }}>
-                                      {a.id_sector || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
-                                    </td>
-                                    <td style={{ padding: '8px' }}>
-                                      {a.num_medidor || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
-                                    </td>
-                                    <td style={{ padding: '8px' }}>{a.latitud || '-'}</td>
-                                    <td style={{ padding: '8px' }}>{a.longitud || '-'}</td>
-                                    <td style={{ padding: '8px' }}>{a.altitud || '-'}</td>
-                                    <td style={{ padding: '8px' }}>
-                                      {esValida ? (
-                                        <span style={{ color: '#10b981', fontSize: '12px' }}>✓ OK</span>
-                                      ) : (
-                                        <span style={{ color: '#ef4444', fontSize: '12px' }}>✗ Error</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
+    // 🟦 VALIDACIÓN DE CAMPOS OBLIGATORIOS
+    const camposObligatorios =
+      a.id_usuario_sistema &&
+      a.nombres &&
+      a.apellidos &&
+      a.id_sector;
+
+    // 🟩 Validación longitud mínima
+    const medidorTieneMinLongitud =
+      a.num_medidor &&
+      String(a.num_medidor).trim().length >= 3;
+
+    // 🟨 Validación caracteres permitidos (solo letras y números)
+    const medidorSoloAlfanumerico =
+      /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
+
+    // 🟥 Validación de duplicados dentro del archivo
+    const medidorDuplicado =
+      excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
+
+    // Resultado final
+    const esMedidorValido =
+      a.num_medidor &&
+      medidorTieneMinLongitud &&
+      medidorSoloAlfanumerico &&
+      !medidorDuplicado;
+
+    const esValidaFila =
+      camposObligatorios && esMedidorValido;
+
+    return (
+      <tr
+        key={idx}
+        style={{
+          borderBottom: '1px solid #f3f4f6',
+          backgroundColor: esValidaFila ? 'transparent' : '#fef2f2'
+        }}
+      >
+
+        <td style={{ padding: '8px', color: '#6b7280' }}>{idx + 1}</td>
+
+        {/* id_usuario_sistema */}
+        <td style={{ padding: '8px' }}>
+          {a.id_usuario_sistema || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+        </td>
+
+        {/* nombres */}
+        <td style={{ padding: '8px' }}>
+          {a.nombres || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+        </td>
+
+        {/* apellidos */}
+        <td style={{ padding: '8px' }}>
+          {a.apellidos || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+        </td>
+
+        {/* id_sector */}
+        <td style={{ padding: '8px' }}>
+          {a.id_sector || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+        </td>
+
+        {/* num_medidor – VALIDACIONES COMPLETAS */}
+        <td style={{ padding: '8px' }}>
+          {!a.num_medidor ? (
+            <span style={{ color: '#ef4444' }}>❌ Falta</span>
+          ) : !medidorTieneMinLongitud ? (
+            <span style={{ color: '#ef4444' }}>❌ Min 3 caracteres</span>
+          ) : !medidorSoloAlfanumerico ? (
+            <span style={{ color: '#ef4444' }}>
+              ❌ Solo letras y números
+            </span>
+          ) : medidorDuplicado ? (
+            <span style={{ color: '#ef4444' }}>
+              ❌ Duplicado
+            </span>
+          ) : (
+            a.num_medidor
+          )}
+        </td>
+
+        <td style={{ padding: '8px' }}>{a.latitud || '-'}</td>
+        <td style={{ padding: '8px' }}>{a.longitud || '-'}</td>
+        <td style={{ padding: '8px' }}>{a.altitud || '-'}</td>
+
+        {/* Estado */}
+        <td style={{ padding: '8px' }}>
+          {esValidaFila ? (
+            <span style={{ color: '#10b981', fontSize: '12px' }}>✓ OK</span>
+          ) : (
+            <span style={{ color: '#ef4444', fontSize: '12px' }}>✗ Error</span>
+          )}
+        </td>
+      </tr>
+    );
+  })}
+</tbody>
+
+
                           </table>
                         </div>
 
@@ -1142,8 +1223,8 @@ const AffiliatesSection = () => {
                           <strong>ℹ️ Información:</strong>
                           <ul style={{ marginTop: '8px', marginLeft: '20px' }}>
                             <li>Los afiliados se vincularán al usuario seleccionado.</li>
-                            <li>Se generará automáticamente el registro del medidor.</li>
-                            <li>Máximo permitido: 100 filas por carga.</li>
+                            <li>El medidor será registrado automáticamente.</li>
+                            <li>Límite máximo: 100 filas por carga.</li>
                           </ul>
                         </div>
                       </div>

@@ -1,13 +1,13 @@
 # routes/users.py
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_ , cast, String
 from typing import List, Optional
 from datetime import datetime
 from schemas.notification import NotificacionCreate
 from utils.notifications import registrar_notificacion
 from sqlalchemy.exc import IntegrityError
-from psycopg2.errors import ForeignKeyViolation
+from psycopg2.errors import ForeignKeyViolation, NotNullViolation
 
 import base64
 
@@ -199,13 +199,13 @@ def get_users(
     
     # Filtro de búsqueda
     if search:
+        like = f"%{search}%"
         search_filter = or_(
-            UsuarioSistema.nombres.ilike(f"%{search}%"),
-            UsuarioSistema.apellidos.ilike(f"%{search}%"),
-            UsuarioSistema.email.ilike(f"%{search}%"),
-            UsuarioSistema.usuario.ilike(f"%{search}%")
+            UsuarioSistema.nombres.ilike(like),
+            UsuarioSistema.apellidos.ilike(like),
+            cast(UsuarioSistema.cedula, String).ilike(like)
         )
-        query = query.filter(search_filter)  # consultas 
+        query = query.filter(search_filter)
     
     # Filtro de rol
     if rol and rol != "all":
@@ -517,7 +517,7 @@ def update_user(
         )
 
 # ========================================
-# ELIMINAR / DESACTIVAR USUARIO
+# ELIMINAR USUARIO (SOLO SI NO TIENE RELACIONES)
 # ========================================
 @router.delete("/{user_id}", status_code=status.HTTP_200_OK)
 def delete_user(
@@ -526,9 +526,8 @@ def delete_user(
     db: Session = Depends(get_db)
 ):
     """
-    Elimina el usuario si no tiene relaciones.
-    Si tiene relaciones, lo desactiva (borrado lógico).
-    Requiere permiso: usuarios.eliminar o usuarios.crud
+    Elimina el usuario solo si NO tiene relaciones.
+    Si tiene relaciones, NO lo elimina y manda un mensaje al usuario.
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "usuarios", "eliminar")
@@ -545,7 +544,7 @@ def delete_user(
         )
 
     try:
-        # ✅ Intentar eliminar físicamente
+        # Intentar eliminar físicamente
         db.delete(user)
         db.commit()
 
@@ -568,58 +567,26 @@ def delete_user(
 
         return {
             "success": True,
-            "message": f"Usuario '{user.usuario}' eliminado correctamente.",
-            "accion": "eliminado"
+            "accion": "eliminado",
+            "message": f"Usuario '{user.usuario}' eliminado correctamente."
         }
 
     except IntegrityError as e:
         db.rollback()
 
-        # ✅ Si es por relación, desactivar el usuario
-        if isinstance(e.orig, ForeignKeyViolation):
-            print("⚠️ No se puede eliminar por relaciones, se desactiva el usuario")
-
-            # Si ya está inactivo, no hacer nada
-            if not user.activo:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"El usuario '{user.usuario}' ya está inactivo."
-                )
-
-            # Desactivar usuario
-            user.activo = False
-            db.commit()
-            db.refresh(user)
-
-            # Auditoría
-            registrar_auditoria(
-                db=db,
-                accion="UPDATE",
-                descripcion=f"Usuario '{user.usuario}' fue desactivado (por relaciones) por '{payload['sub']}'",
-                id_usuario=current_user.id_usuario_sistema
-            )
-
-            # Notificación
-            registrar_notificacion(
-                db=db,
-                id_usuario=current_user.id_usuario_sistema,
-                titulo="Usuario desactivado",
-                mensaje=f"El usuario '{user.usuario}' no se pudo eliminar porque está relacionado con otros módulos. Fue desactivado automáticamente.",
-                tipo="alerta"
-            )
-
+        if isinstance(e.orig, (ForeignKeyViolation, NotNullViolation)):
             return {
-                "success": True,
-                "message": f"⚠️ El usuario '{user.usuario}' no se pudo eliminar porque tiene relación con otros módulos, por lo que fue desactivado automáticamente.",
-                "accion": "desactivado",
-                "usuario": user_to_response(user, db)
+                "success": False,
+                "accion": "no_eliminado",
+                "message": (
+                    f"NO se puede elimiar el usuario '{user.usuario}', porque "
+                    f"tiene relaciones con otros módulos del sistema. Elimine esos elementos antes "
+                    "de intentar borrar este usuario."
+                )
             }
-            
 
-        # Otros errores no esperados
-        print(f"Error inesperado al eliminar usuario: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail="Error al intentar eliminar el usuario"
         )
 
@@ -718,12 +685,18 @@ def change_user_password(
             )
     
     # Validar nueva contraseña
-    if len(password_data.new_password) < 6:
+    if len(password_data.new_password) < 8:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La nueva contraseña debe tener al menos 6 caracteres"
+            detail="La nueva contraseña debe tener al menos 8 caracteres"
         )
-    
+    # Validar que la nueva contraseña no sea igual a la actual
+    if verify_password(password_data.new_password, user.clave):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La nueva contraseña no puede ser igual a la actual"
+        )
+
     # Actualizar contraseña
     user.clave = hash_password(password_data.new_password)
     

@@ -1,21 +1,37 @@
 # schemas/user.py
+# se utiliza para definir los esquemas Pydantic relacionados con usuarios
 from pydantic import BaseModel, EmailStr, validator
 from typing import Optional
 from datetime import datetime, date
 
+# ========================================
+# SCHEMA PARA INFORMACIÓN DE ROL
+# ========================================
+class RolInfo(BaseModel):
+    """Información básica del rol"""
+    id_rol: int
+    nombre_rol: str
+    descripcion: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
+
+class PermisoInfo(BaseModel):
+    """Información de permiso"""
+    nombre_accion: str
+    tipo_accion: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+# ========================================
+# SCHEMAS DE LOGIN Y AUTH
+# ========================================
 class UserLogin(BaseModel):
     username: str
     password: str
-
-
-class UserOut(BaseModel):
-    id: int
-    usuario: str
-    nombres: str
-    apellidos: str
-    rol: str
-    email: str
 
 
 class ChangePasswordRequest(BaseModel):
@@ -28,9 +44,16 @@ class ChangePasswordRequest(BaseModel):
             raise ValueError('La contraseña debe tener al menos 6 caracteres')
         return v
 
+class ChangePasswordFirstLoginRequest(BaseModel):
+    new_password: str
 
+    @validator('new_password')
+    def validate_password_length(cls, v):
+        if len(v) < 6:
+            raise ValueError('La contraseña debe tener al menos 6 caracteres')
+        return v
 # ========================================
-# SCHEMAS DE CREACIÓN (SIN usuario ni clave)
+# SCHEMAS DE CREACIÓN
 # ========================================
 class UserCreate(BaseModel):
     """
@@ -46,7 +69,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     telefono: Optional[str] = None
     direccion: Optional[str] = "Sanjapamba"
-    rol: str = "cliente"
+    id_rol: int 
     activo: bool = True
     
     @validator('nombres', 'apellidos')
@@ -87,33 +110,30 @@ class UserCreate(BaseModel):
     
     @validator('cedula')
     def validate_cedula(cls, v):
-        v = v.strip()
-        if not v:
-            raise ValueError('La cédula es requerida')
-        if len(v) < 8 or len(v) > 15:
-            raise ValueError('La cédula debe tener entre 8 y 15 caracteres')
-        # Aceptar solo números y guiones
-        if not v.replace('-', '').isdigit():
-            raise ValueError('La cédula solo puede contener números y guiones')
-        return v
-    
-    @validator('rol')
-    def validate_rol(cls, v):
-        roles_validos = ['cliente', 'lector', 'cajero', 'administrador']
-        if v not in roles_validos:
-            raise ValueError(f'El rol debe ser uno de: {", ".join(roles_validos)}')
+        if v:
+            v = v.strip()
+            if len(v) != 10: # validar longitud exacta 10 
+                raise ValueError('La cédula debe tener exactamente 10 dígitos')
+            if not v.replace('-', '').isdigit():
+                raise ValueError('La cédula solo puede contener números y guiones')
+        else:
+            raise ValueError('La cédula es obligatoria.')
         return v
     
     @validator('telefono')
     def validate_telefono(cls, v):
         if v:
             v = v.strip()
-            clean_phone = v.replace(' ', '').replace('-', '').replace('+', '')
-            if not clean_phone.isdigit():
-                raise ValueError('El teléfono solo puede contener números, espacios, guiones y el símbolo +')
-            if len(clean_phone) < 7 or len(clean_phone) > 15:
-                raise ValueError('El teléfono debe tener entre 7 y 15 dígitos')
+            # Verificar que solo contenga números
+            if not v.isdigit():
+                raise ValueError('El teléfono solo puede contener números.')
+            # Verificar que tenga exactamente 10 dígitos
+            if len(v) != 10:
+                raise ValueError('El teléfono debe tener exactamente 10 dígitos.')
+        else:
+            raise ValueError('El teléfono es obligatorio.')
         return v
+
     
     class Config:
         json_schema_extra = {
@@ -126,7 +146,7 @@ class UserCreate(BaseModel):
                 "email": "juan.perez@example.com",
                 "telefono": "0987654321",
                 "direccion": "Sanjapamba",
-                "rol": "cliente",
+                "id_rol": 4,
                 "activo": True
             }
         }
@@ -146,7 +166,7 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     telefono: Optional[str] = None
     direccion: Optional[str] = None
-    rol: Optional[str] = None
+    id_rol: Optional[int] = None 
     activo: Optional[bool] = None
     
     @validator('usuario')
@@ -165,8 +185,8 @@ class UserUpdate(BaseModel):
     @validator('clave')
     def validate_clave(cls, v):
         if v:
-            if len(v) < 6:
-                raise ValueError('La contraseña debe tener al menos 6 caracteres')
+            if len(v) < 8:
+                raise ValueError('La contraseña debe tener al menos 8 caracteres')
             if len(v) > 100:
                 raise ValueError('La contraseña es demasiado larga')
         return v
@@ -197,49 +217,34 @@ class UserUpdate(BaseModel):
     def validate_cedula(cls, v):
         if v:
             v = v.strip()
-            if len(v) < 8 or len(v) > 15:
-                raise ValueError('La cédula debe tener entre 8 y 15 caracteres')
+            if len(v) != 10: # validar longitud exacta 10 
+                raise ValueError('La cédula debe tener exactamente 10 dígitos')
             if not v.replace('-', '').isdigit():
                 raise ValueError('La cédula solo puede contener números y guiones')
-        return v
-    
-    @validator('rol')
-    def validate_rol(cls, v):
-        if v:
-            roles_validos = ['cliente', 'lector', 'cajero', 'administrador']
-            if v not in roles_validos:
-                raise ValueError(f'El rol debe ser uno de: {", ".join(roles_validos)}')
+        else:
+            raise ValueError('La cédula es obligatoria.')
         return v
     
     @validator('telefono')
     def validate_telefono(cls, v):
         if v:
             v = v.strip()
-            clean_phone = v.replace(' ', '').replace('-', '').replace('+', '')
-            if not clean_phone.isdigit():
-                raise ValueError('El teléfono solo puede contener números, espacios, guiones y el símbolo +')
-            if len(clean_phone) < 7 or len(clean_phone) > 15:
-                raise ValueError('El teléfono debe tener entre 7 y 15 dígitos')
+            # Verificar que solo contenga números
+            if not v.isdigit():
+                raise ValueError('El teléfono solo puede contener números.')
+            # Verificar que tenga exactamente 10 dígitos
+            if len(v) != 10:
+                raise ValueError('El teléfono debe tener exactamente 10 dígitos.')
+        else:
+            raise ValueError('El teléfono es obligatorio.')
         return v
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "nombres": "Juan Carlos",
-                "apellidos": "Pérez González",
-                "sexo": "M",
-                "email": "jperez_nuevo@example.com",
-                "telefono": "0987654322",
-                "direccion": "Av. Nueva 456",
-                "activo": True
-            }
-        }
 
 
 # ========================================
 # SCHEMAS DE RESPUESTA
 # ========================================
 class UserResponse(BaseModel):
+    """Schema completo para respuestas individuales de usuario"""
     id: int
     usuario: str
     nombres: str
@@ -250,7 +255,9 @@ class UserResponse(BaseModel):
     email: str
     telefono: Optional[str] = None
     direccion: Optional[str] = None
-    rol: str
+    id_rol: int
+    rol: Optional[RolInfo] = None  # ✅ Objeto completo del rol
+    permisos: Optional[list[PermisoInfo]] = []  # ✅ Lista de permisos
     activo: bool
     fecha_registro: Optional[str] = None
     ultimo_acceso: Optional[datetime] = None
@@ -262,28 +269,10 @@ class UserResponse(BaseModel):
             date: lambda v: v.strftime("%Y-%m-%d") if v else None,
             datetime: lambda v: v.isoformat() if v else None
         }
-        json_schema_extra = {
-            "example": {
-                "id": 1,
-                "usuario": "juancarlos",
-                "nombres": "Juan Carlos",
-                "apellidos": "Pérez González",
-                "sexo": "M",
-                "fecha_nac": "1990-05-15",
-                "cedula": "1234567890",
-                "email": "juan.perez@example.com",
-                "telefono": "0987654321",
-                "direccion": "Sanjapamba",
-                "rol": "cliente",
-                "activo": True,
-                "fecha_registro": "2024-01-15T10:30:00",
-                "ultimo_acceso": "2024-01-20T15:45:00",
-                "foto": "data:image/jpeg;base64,..."
-            }
-        }
 
 
 class UserListResponse(BaseModel):
+    """Schema simplificado para listados de usuarios"""
     id: int
     usuario: str
     nombres: str
@@ -294,7 +283,9 @@ class UserListResponse(BaseModel):
     cedula: str
     telefono: Optional[str] = None
     direccion: Optional[str] = None
-    rol: str
+    id_rol: int
+    rol: Optional[RolInfo] = None  # ✅ Cambiar de str a RolInfo
+    permisos: Optional[list[PermisoInfo]] = []  # ✅ Agregar permisos
     activo: bool
     fecha_registro: Optional[datetime] = None
     foto: Optional[str] = None
@@ -305,3 +296,106 @@ class UserListResponse(BaseModel):
             date: lambda v: v.strftime("%Y-%m-%d") if v else None,
             datetime: lambda v: v.isoformat() if v else None
         }
+
+# ========================================
+# SCHEMAS PARA CARGA MASIVA DESDE EXCEL
+# ========================================
+class UserBulkCreate(BaseModel):
+    """Schema para crear usuario desde Excel - validación mínima"""
+    nombres: str
+    apellidos: str
+    sexo: str
+    fecha_nac: date
+    cedula: str
+    email: EmailStr
+    telefono: Optional[str] = None
+    direccion: Optional[str] = "Sanjapamba"
+    
+    @validator('nombres', 'apellidos')
+    def validate_nombres(cls, v):
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError('Debe tener al menos 2 caracteres')
+        return v.title()
+    
+    @validator('sexo')
+    def validate_sexo(cls, v):
+        v = v.strip().upper()
+        if v not in ['M', 'F', 'O']:
+            raise ValueError('Debe ser M, F u O')
+        return v
+    
+    @validator('cedula')
+    def validate_cedula(cls, v):
+        v = v.strip()
+        if len(v) != 10:
+            raise ValueError('Debe tener 10 dígitos')
+        if not v.isdigit():
+            raise ValueError('Solo números permitidos')
+        return v
+    
+    @validator('telefono')
+    def validate_telefono(cls, v):
+        if v:
+            v = v.strip()
+            if not v.isdigit():
+                raise ValueError('Solo números permitidos')
+            if len(v) != 10:
+                raise ValueError('Debe tener 10 dígitos')
+            return v
+        return None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "nombres": "María",
+                "apellidos": "González",
+                "sexo": "F",
+                "fecha_nac": "1995-03-20",
+                "cedula": "0987654321",
+                "email": "maria.gonzalez@example.com",
+                "telefono": "0999888777",
+                "direccion": "Av. Principal"
+            }
+        }
+
+
+class UserBulkCreateRequest(BaseModel):
+    """Request para crear múltiples usuarios"""
+    users: list[UserBulkCreate]
+    
+    @validator('users')
+    def validate_users_list(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError('La lista de usuarios no puede estar vacía')
+        if len(v) > 100:
+            raise ValueError('Máximo 100 usuarios por carga')
+        return v
+
+
+class UserBulkResult(BaseModel):
+    """Resultado de un usuario creado en masa"""
+    fila: int
+    usuario: str
+    contraseña: str
+    nombre: str
+    email: str
+    cedula: str
+
+
+class UserBulkError(BaseModel):
+    """Error al crear un usuario en masa"""
+    fila: int
+    nombre: str
+    email: Optional[str] = None
+    cedula: Optional[str] = None
+    error: str
+
+
+class UserBulkResponse(BaseModel):
+    """Respuesta de creación masiva"""
+    exitosos: list[UserBulkResult]
+    fallidos: list[UserBulkError]
+    total_procesados: int
+    total_exitosos: int
+    total_fallidos: int

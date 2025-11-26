@@ -1,6 +1,24 @@
 /**
  * Servicio de Autenticación con Sistema de Roles y Permisos
  */
+// authServices.js
+import axios from "axios";
+
+const api = axios.create({
+  baseURL: process.env.REACT_APP_API_URL,
+});
+
+// Interceptor general
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response && error.response.status === 401) {
+      // Emitimos evento global
+      window.dispatchEvent(new Event("sessionExpired"));
+    }
+    return Promise.reject(error);
+  }
+);
 
 const API_CONFIG = {
   baseURL: process.env.REACT_APP_API_URL || 'https://localhost:8000',
@@ -112,26 +130,37 @@ class AuthService {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        let errorMessage = '';
+          const errorData = await response.json().catch(() => ({}));
+          let errorMessage = '';
 
-        if (typeof errorData.detail === 'string') {
-          errorMessage = errorData.detail;
-        } else if (typeof errorData.detail === 'object') {
-          errorMessage = JSON.stringify(errorData.detail);
-        } else {
-          errorMessage = `HTTPS ${response.status}: ${response.statusText}`;
-        }
-        // Manejo específico para token expirado o inválido
-        if (response.status === 401) {
-          console.warn('⚠️ Token expirado o inválido, redirigiendo al login...');
-          this.clearLocalData();
-          window.location.href = '/login'; // 🔄 Redirección automática
-          return;
-        }
+          // -------------------------
+          // 🔥 Control automático de token expirado
+          // -------------------------
+          if (response.status === 401) {
+              console.warn("⚠️ Token expirado o inválido, cerrando sesión…");
 
-        throw new Error(errorMessage);
+              // Limpiar datos
+              this.clearLocalData();
+
+              // Emitir evento global para cualquier listener
+              window.dispatchEvent(new Event("sessionExpired"));
+
+              // Detener aquí
+              return Promise.reject(new Error("Sesión expirada"));
+          }
+          // -------------------------
+
+          if (typeof errorData.detail === 'string') {
+              errorMessage = errorData.detail;
+          } else if (typeof errorData.detail === 'object') {
+              errorMessage = JSON.stringify(errorData.detail);
+          } else {
+              errorMessage = `HTTPS ${response.status}: ${response.statusText}`;
+          }
+
+          throw new Error(errorMessage);
       }
+
 
       const data = await response.json();
       return data;

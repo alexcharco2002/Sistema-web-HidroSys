@@ -1,5 +1,5 @@
 // src/components/ProfileSection.js
-// Sección de perfil del usuario con conexión directa a userServices
+// componente para ver y editar el perfil del usuario
 import React, { useState, useEffect, useRef } from 'react';
 import {
   User,
@@ -14,7 +14,8 @@ import {
   Calendar, 
   VenusAndMars,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from 'lucide-react';
 import userServices from '../services/userServices';
 import authService from '../services/authServices';
@@ -28,6 +29,21 @@ const ProfileSection = () => {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Estados para cambio de contraseña
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState(null);
 
   // Cargar datos del usuario al montar el componente
   useEffect(() => {
@@ -248,6 +264,101 @@ const ProfileSection = () => {
     }
   };
 
+  // ========================================
+  // HANDLERS PARA CAMBIO DE CONTRASEÑA
+  // ========================================
+  
+  const handleOpenPasswordModal = () => {
+    setShowPasswordModal(true);
+    setPasswordData({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    });
+    setPasswordError(null);
+  };
+
+  const handleClosePasswordModal = () => {
+    setShowPasswordModal(false);
+    setPasswordData({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    });
+    setPasswordError(null);
+    setShowPasswords({
+      current: false,
+      new: false,
+      confirm: false
+    });
+  };
+
+  const handlePasswordInputChange = (field, value) => {
+    setPasswordData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    setPasswordError(null);
+  };
+
+  const validatePasswordData = () => {
+    if (!passwordData.currentPassword.trim()) {
+      return 'La contraseña actual es requerida';
+    }
+    
+    if (!passwordData.newPassword.trim()) {
+      return 'La nueva contraseña es requerida';
+    }
+    
+    if (passwordData.newPassword.length < 8) {
+      return 'La nueva contraseña debe tener al menos 8 caracteres';
+    }
+    
+    if (passwordData.newPassword === passwordData.currentPassword) {
+      return 'La nueva contraseña no puede ser igual a la actual';
+    }
+    
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      return 'Las contraseñas no coinciden';
+    }
+    
+    return null;
+  };
+
+  const handleChangePassword = async () => {
+    const validationError = validatePasswordData();
+    if (validationError) {
+      setPasswordError(validationError);
+      return;
+    }
+
+    try {
+      setChangingPassword(true);
+      setPasswordError(null);
+      
+      const userId = user.id;
+      
+      console.log('🔒 Cambiando contraseña para usuario:', userId);
+      
+      const result = await userServices.changeUserPassword(userId, {
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword
+      });
+      
+      if (result.success) {
+        alert('✅ Contraseña actualizada correctamente');
+        handleClosePasswordModal();
+      } else {
+        setPasswordError(result.message || 'Error al cambiar la contraseña');
+      }
+    } catch (error) {
+      console.error('❌ Error al cambiar contraseña:', error);
+      setPasswordError(error.message || 'Error al cambiar la contraseña');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   // Estados de carga
   if (loading) {
     return (
@@ -292,34 +403,45 @@ const ProfileSection = () => {
             <h2>Mi Perfil</h2>
           </div>
           
-          {!editingProfile ? (
-            <button 
-              className="btn-primary"
-              onClick={handleEditProfile}
-            >
-              <Edit className="w-4 h-4 mr-2" />
-              Editar Perfil
-            </button>
-          ) : (
-            <div className="profile-actions">
-              <button 
-                className="btn-success"
-                onClick={handleSaveProfile}
-                disabled={saving}
-              >
-                <Save className="w-4 h-4 mr-2" />
-                {saving ? 'Guardando...' : 'Guardar'}
-              </button>
-              <button 
-                className="btn-secondary"
-                onClick={handleCancelEdit}
-                disabled={saving}
-              >
-                <X className="w-4 h-4 mr-2" />
-                Cancelar
-              </button>
-            </div>
-          )}
+          <div className="flex gap-2">
+            {!editingProfile ? (
+              <>
+                <button 
+                  className="btn-primary"
+                  onClick={handleEditProfile}
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Editar Perfil
+                </button>
+                <button 
+                  className="btn-secondary"
+                  onClick={handleOpenPasswordModal}
+                >
+                  <Lock className="w-4 h-4 mr-2" />
+                  Cambiar Contraseña
+                </button>
+              </>
+            ) : (
+              <div className="profile-actions">
+                <button 
+                  className="btn-success"
+                  onClick={handleSaveProfile}
+                  disabled={saving}
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </button>
+                <button 
+                  className="btn-secondary"
+                  onClick={handleCancelEdit}
+                  disabled={saving}
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Cancelar
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Mensaje de error */}
@@ -368,7 +490,7 @@ const ProfileSection = () => {
                 style={{ display: 'none' }}
               />
             </div>
-            <br></br>
+            <br />
             <p className="text-sm text-gray-500 mt-2 text-center">
               Click en el ícono de cámara para cambiar tu foto
             </p>
@@ -543,6 +665,119 @@ const ProfileSection = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal de Cambio de Contraseña */}
+      {showPasswordModal && (
+        <div className="modal-overlay" onClick={handleClosePasswordModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="flex items-center gap-2">
+                <Lock className="w-6 h-6 text-blue-600" />
+                <h3 className="text-xl font-bold">Cambiar Contraseña</h3>
+              </div>
+              <button 
+                className="modal-close-btn"
+                onClick={handleClosePasswordModal}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {passwordError && (
+                <div className="alert alert-error mb-4">
+                  <AlertCircle className="w-5 h-5 mr-2" />
+                  {passwordError}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* Contraseña Actual */}
+                <div className="form-group">
+                  <label className="form-label">
+                    <Lock className="w-4 h-4" />
+                    Contraseña Actual *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPasswords.current ? "text" : "password"}
+                      className="form-input pr-10"
+                      value={passwordData.currentPassword}
+                      onChange={(e) => handlePasswordInputChange('currentPassword', e.target.value)}
+                      placeholder="Ingresa tu contraseña actual"
+                      disabled={changingPassword}
+                    />
+                    
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    
+                  </p>
+                </div>
+
+                {/* Nueva Contraseña */}
+                <div className="form-group">
+                  <label className="form-label">
+                    <Lock className="w-4 h-4" />
+                    Nueva Contraseña *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPasswords.new ? "text" : "password"}
+                      className="form-input pr-10"
+                      value={passwordData.newPassword}
+                      onChange={(e) => handlePasswordInputChange('newPassword', e.target.value)}
+                      placeholder="Mínimo 8 caracteres"
+                      disabled={changingPassword}
+                    />
+                    
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    
+                  </p>
+                </div>
+
+                {/* Confirmar Nueva Contraseña */}
+                <div className="form-group">
+                  <label className="form-label">
+                    <Lock className="w-4 h-4" />
+                    Confirmar Nueva Contraseña *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPasswords.confirm ? "text" : "password"}
+                      className="form-input pr-10"
+                      value={passwordData.confirmPassword}
+                      onChange={(e) => handlePasswordInputChange('confirmPassword', e.target.value)}
+                      placeholder="Repite la nueva contraseña"
+                      disabled={changingPassword}
+                    />
+                    
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                className="btn-secondary"
+                onClick={handleClosePasswordModal}
+                disabled={changingPassword}
+              >
+                <X className="w-4 h-4 mr-2" />
+                Cancelar
+              </button>
+              <button 
+                className="btn-success"
+                onClick={handleChangePassword}
+                disabled={changingPassword}
+              >
+                <Save className="w-4 h-4 mr-2" />
+                {changingPassword ? 'Cambiando...' : 'Cambiar Contraseña'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

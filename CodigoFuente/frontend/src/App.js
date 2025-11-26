@@ -1,19 +1,35 @@
 // App.js
-// Archivo principal de la aplicación que configura las rutas utilizando React Router
+// Archivo principal con rutas anidadas para navegación por URL
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/login.js'; // Página de inicio de sesión
-import Forgotpassword from './pages/forgotPassword.js'; // Página de recuperación de contraseña
+import Login from './pages/login.js';
+import Forgotpassword from './pages/forgotPassword.js';
 import ResetPassword from './pages/ResetPassword.js';
+import { useEffect } from 'react';
 
+// Importar los paneles de cada rol con rutas anidadas
+import AdminDashboard from './pages/admin/Dashboard';
+import LectorDashboard from './pages/lector/Dashboard';
+import ClienteDashboard from './pages/cliente/Dashboard';
+import CajeroDashboard from './pages/cajero/Dashboard.js';
 
-// Importar los paneles de cada rol
-import AdminDashboard from './pages/admin/Dashboard'; // Panel de administración
-import LectorDashboard from './pages/lector/Dashboard'; // Panel del lector
-import ClienteDashboard from './pages/cliente/Dashboard'; // Panel del cliente
-import CajeroDashboard from './pages/cajero/Dashboard.js'; // Panel del cajero
-
+//IMPOTAR SERVICIOS
+import authService from './services/authServices.js';
 
 const App = () => {
+    
+  useEffect(() => {
+    const handleExpired = () => {
+      authService.clearLocalData();
+      window.location.href = "/login";
+    };
+
+    window.addEventListener("sessionExpired", handleExpired);
+
+    return () => {
+      window.removeEventListener("sessionExpired", handleExpired);
+    };
+  }, []);
+
   return (
     <Router>
       <Routes>
@@ -23,25 +39,22 @@ const App = () => {
         {/* Página de inicio de sesión */}
         <Route path="/login" element={<Login />} />
 
-        { /*-- Ruta para la recuperación de contraseña */}
+        {/* Ruta para la recuperación de contraseña */}
         <Route path="/forgot-password" element={<Forgotpassword />} />
         
         {/* Ruta para restablecer la contraseña con token */}
         <Route path="/reset-password/:token" element={<ResetPassword />} />
 
-        {/* Ruta para el perfil del administrador */}
-        <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        {/* 
+          🔥 RUTAS ANIDADAS PARA ADMIN 
+          Ahora el Dashboard funciona como Layout y las subsecciones son rutas hijas
+        */}
+        <Route path="/admin/dashboard/*" element={<AdminDashboard />} />
 
-         {/* Ruta para el panel del lector */}
-        <Route path="/lector/dashboard" element={<LectorDashboard />} />
-        
-        {/* Ruta para el panel del cajero */}
-        <Route path="/cajero/dashboard" element={<CajeroDashboard />} />
-
-        {/* Ruta para el panel del cliente */}
-        <Route path="/cliente/dashboard" element={<ClienteDashboard/>} />
-        
-       
+        {/* Rutas anidadas para otros roles */}
+        <Route path="/lector/dashboard/*" element={<LectorDashboard />} />
+        <Route path="/cajero/dashboard/*" element={<CajeroDashboard />} />
+        <Route path="/cliente/dashboard/*" element={<ClienteDashboard />} />
       </Routes>
     </Router>
   );

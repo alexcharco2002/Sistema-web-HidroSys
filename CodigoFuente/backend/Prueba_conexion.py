@@ -4,7 +4,7 @@ conn = psycopg2.connect(
     host="localhost",
     database="jaap_sanjapamba",
     user="postgres",
-    password="Informatico593"
+    password="TecniCobro2024"
 )
 cur = conn.cursor()
 cur.execute("SELECT COUNT(*) FROM usuarios.t_usuario_sistema;")

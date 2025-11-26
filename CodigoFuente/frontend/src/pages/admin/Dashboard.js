@@ -1,8 +1,7 @@
 // src/pages/admin/Dashboard.js
-// Dashboard con Modal de Cambio de Contraseña para Primer Login
-
+// Dashboard con Rutas Anidadas y Modal de Cambio de Contraseña para Primer Login
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import authService from '../../services/authServices';
 import userService from '../../services/userServices';
 
@@ -17,7 +16,7 @@ import ProfileSection from '../../components/ProfileSection';
 import RolesSection from '../../components/RolesSection'; 
 import SectorsSection from '../../components/SectorsSection';
 import ChangePasswordModal from '../../components/ChangePasswordModal';
-import NotificationsSection  from '../../components/NotificationsSection';
+import NotificationsSection from '../../components/NotificationsSection';
 import AffiliatesSection from '../../components/AffiliatesSection';
 import MetersSection from '../../components/MetersSection';
 import ConfigSection from '../../components/ConfigSection';
@@ -34,23 +33,155 @@ import {
   Users, DollarSign, Activity, Shield
 } from 'lucide-react';
 
-// 📦 Mapeo de componentes dinámicos para módulos del lector
-const componentMap = {
-  UsersSection,
-  RolesSection,
-  ProfileSection,
-  SectorsSection,
-  NotificationsSection,
-  AffiliatesSection,
-  MetersSection,
-  ConfigSection,
-  TarifasSection,
-  GeolocationSection
+
+// ============================================================================
+// COMPONENTE: Overview Section (Dashboard Principal)
+// ============================================================================
+const OverviewSection = ({ user, stats, dataLoading, dataError, canViewUserStats, statCards, handleRefresh, organizedModules, setActiveSection }) => {
+  const navigate = useNavigate();
+
+  return (
+    <div>
+      {/* Error Message */}
+      {dataError && (
+        <div className="error-banner">
+          <AlertCircle className="w-5 h-5" />
+          <span>{dataError}</span>
+          <button onClick={handleRefresh} className="btn-link">
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {/* Stats Grid - Solo si tiene permisos */}
+      {canViewUserStats && statCards.length > 0 && (
+        <div className="stats-grid">
+          {statCards.map((stat, index) => (
+            <StatCard key={index} stat={stat} />
+          ))}
+        </div>
+      )}
+
+      {/* Mensaje si no tiene permisos para ver estadísticas */}
+      {!canViewUserStats && (
+        <div className="info-banner">
+          <AlertCircle className="w-5 h-5" />
+          <span>Bienvenido al sistema. Usa el menú lateral para acceder a tus módulos disponibles.</span>
+        </div>
+      )}
+
+      {/* Content Grid */}
+      <div className="content-grid">
+        {/* Distribución de Usuarios - Solo si tiene permisos */}
+        {canViewUserStats && (
+          <div className="card">
+            <div className="card-header">
+              <h3 className="card-title">Usuarios por Rol</h3>
+              {authService.hasPermission('usuarios', 'leer') && (
+                <button className="btn-link" onClick={() => navigate('/admin/dashboard/users')}>
+                  Ver todos
+                </button>
+              )}
+            </div>
+            <div className="role-distribution">
+              {dataLoading ? (
+                <div className="loading-state">
+                  <RefreshCw className="w-6 h-6 animate-spin" />
+                  <p>Cargando datos...</p>
+                </div>
+              ) : (
+                <div className="role-stats-list">
+                  <div className="role-stat-item">
+                    <div className="role-stat-label">
+                      <Shield className="w-4 h-4 text-red-500" />
+                      <span>Administradores</span>
+                    </div>
+                    <span className="role-stat-value">{stats.usersByRole.administrador || 0}</span>
+                  </div>
+                  <div className="role-stat-item">
+                    <div className="role-stat-label">
+                      <Users className="w-4 h-4 text-blue-500" />
+                      <span>Clientes</span>
+                    </div>
+                    <span className="role-stat-value">{stats.usersByRole.cliente || 0}</span>
+                  </div>
+                  <div className="role-stat-item">
+                    <div className="role-stat-label">
+                      <Activity className="w-4 h-4 text-green-500" />
+                      <span>Lectores</span>
+                    </div>
+                    <span className="role-stat-value">{stats.usersByRole.lector || 0}</span>
+                  </div>
+                  <div className="role-stat-item">
+                    <div className="role-stat-label">
+                      <DollarSign className="w-4 h-4 text-yellow-500" />
+                      <span>Cajeros</span>
+                    </div>
+                    <span className="role-stat-value">{stats.usersByRole.cajero || 0}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Resumen de Módulos Disponibles */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">Módulos Disponibles</h3>
+          </div>
+          <div className="modules-summary">
+            {organizedModules.map(category => (
+              <div key={category.id} className="module-category-summary">
+                <div className="category-summary-header">
+                  <category.icon className="w-4 h-4" />
+                  <span>{category.label}</span>
+                  <span className="module-count">{category.modules.length}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
+// ============================================================================
+// COMPONENTE: StatCard
+// ============================================================================
+const StatCard = ({ stat }) => {
+  const IconComponent = stat.icon;
+  const TrendIcon = TrendingUp;
+  
+  return (
+    <div className="stat-card">
+      <div className="stat-card-content">
+        <div className="stat-info">
+          <p className="stat-title">{stat.title}</p>
+          <p className="stat-value">{stat.value}</p>
+          <div className="stat-change">
+            <TrendIcon className={`stat-trend-icon ${stat.trend === 'up' ? 'trend-up' : 'trend-down'}`} />
+            <span className={`stat-change-text ${stat.trend === 'up' ? 'change-positive' : 'change-negative'}`}>
+              {stat.change} vs mes anterior
+            </span>
+          </div>
+        </div>
+        <div className={`stat-icon-wrapper bg-${stat.color}`}>
+          <IconComponent className={`stat-icon text-${stat.color}`} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// COMPONENTE PRINCIPAL: AdminDashboard
+// ============================================================================
 const AdminDashboard = () => {
   const navigate = useNavigate();
-  const [activeSection, setActiveSection] = useState('overview');
+  const location = useLocation();
+  
   const [notifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
@@ -60,7 +191,7 @@ const AdminDashboard = () => {
   
   // Estados para el modal de cambio de contraseña
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
-
+  
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
@@ -74,6 +205,16 @@ const AdminDashboard = () => {
   });
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState(null);
+
+  // ============================================================================
+  // 🔥 Obtener la sección actual desde la URL
+  // ============================================================================
+  const getCurrentSection = () => {
+    const paths = location.pathname.split('/');
+    return paths[paths.length - 1] || 'home';
+  };
+
+  const currentSection = getCurrentSection();
 
   // ============================================================================
   // EFECTOS Y CARGA DE DATOS
@@ -134,8 +275,28 @@ const AdminDashboard = () => {
       loadDashboardData();
     }
   }, [user]);
-
   
+  useEffect(() => {
+  if (!organizedModules.length) return;
+
+  // Detectar qué módulo está activo según URL
+  const paths = location.pathname.split('/');
+  const current = paths[paths.length - 1];
+
+  // Buscar en qué categoría se encuentra este módulo
+  const categoryFound = organizedModules.find(cat =>
+    cat.modules.some(mod => mod.id === current)
+  );
+
+  // Abrir automáticamente la categoría
+  if (categoryFound) {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [categoryFound.id]: true
+    }));
+  }
+}, [location.pathname, organizedModules]);
+
 
   const loadDashboardData = async () => {
     try {
@@ -144,7 +305,7 @@ const AdminDashboard = () => {
 
       if (authService.hasPermission('usuarios', 'lectura')) {
         const result = await userService.getUsers({ limit: 1000 });
-
+        
         if (result.success) {
           const usersData = Array.isArray(result.data) 
             ? result.data 
@@ -173,7 +334,6 @@ const AdminDashboard = () => {
           });
         }
       }
-
     } catch (error) {
       console.error('Error cargando datos del dashboard:', error);
       setDataError('Error al cargar datos del dashboard');
@@ -209,15 +369,15 @@ const AdminDashboard = () => {
   };
 
   const handleViewAllNotifications = () => {
-    setActiveSection('notifications');
+    navigate('/admin/dashboard/notifications');
     setExpandedCategories(prev => ({
       ...prev,
-      SYSTEM: true // 👈 esta es la categoría de "Notificaciones"
+      SYSTEM: true
     }));
   };
 
   const handleSettingsClick = () => {
-    setActiveSection('settings');
+    navigate('/admin/dashboard/settings');
   };
 
   const handleUpdateProfile = async (profileData) => {
@@ -266,7 +426,6 @@ const AdminDashboard = () => {
 
   // 🔥 HANDLER PARA CERRAR EL MODAL DE CAMBIO DE CONTRASEÑA
   const handleClosePasswordModal = () => {
-    // Solo permitir cerrar si NO es primer login
     if (!user?.primer_login) {
       setShowChangePasswordModal(false);
     }
@@ -276,23 +435,18 @@ const AdminDashboard = () => {
   const handlePasswordChangeSuccess = async () => {
     console.log('✅ Contraseña cambiada exitosamente');
     
-    // Actualizar el estado del usuario para quitar primer_login
     setUser(prevUser => ({
       ...prevUser,
       primer_login: false
     }));
 
-    // Actualizar en el localStorage también
     const currentUser = authService.getCurrentUser();
     if (currentUser) {
       currentUser.primer_login = false;
       localStorage.setItem('currentUser', JSON.stringify(currentUser));
     }
 
-    // Cerrar el modal
     setShowChangePasswordModal(false);
-
-    // Recargar datos del dashboard
     await loadDashboardData();
   };
 
@@ -303,39 +457,27 @@ const AdminDashboard = () => {
     }));
   };
 
+  // 🔥 NAVEGAR A UNA SECCIÓN POR URL
+  const navigateToSection = (moduleId) => {
+    navigate(`/admin/dashboard/${moduleId}`);
+
+    // Abrir la categoría a la que pertenece
+  const categoryFound = organizedModules.find(cat =>
+    cat.modules.some(m => m.id === moduleId)
+  );
+
+  if (categoryFound) {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [categoryFound.id]: true
+    }));
+  }
+  };
+
   const calculatePercentageChange = (current, previous = 0) => {
     if (previous === 0) return '+100%';
     const change = ((current - previous) / previous) * 100;
     return change >= 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
-  };
-
-  // ============================================================================
-  // COMPONENTES
-  // ============================================================================
-
-  const StatCard = ({ stat }) => {
-    const IconComponent = stat.icon;
-    const TrendIcon = TrendingUp;
-    
-    return (
-      <div className="stat-card">
-        <div className="stat-card-content">
-          <div className="stat-info">
-            <p className="stat-title">{stat.title}</p>
-            <p className="stat-value">{stat.value}</p>
-            <div className="stat-change">
-              <TrendIcon className={`stat-trend-icon ${stat.trend === 'up' ? 'trend-up' : 'trend-down'}`} />
-              <span className={`stat-change-text ${stat.trend === 'up' ? 'change-positive' : 'change-negative'}`}>
-                {stat.change} vs mes anterior
-              </span>
-            </div>
-          </div>
-          <div className={`stat-icon-wrapper bg-${stat.color}`}>
-            <IconComponent className={`stat-icon text-${stat.color}`} />
-          </div>
-        </div>
-      </div>
-    );
   };
 
   // ============================================================================
@@ -443,11 +585,13 @@ const AdminDashboard = () => {
                 <div className="category-modules">
                   {category.modules.map((module) => {
                     const IconComponent = module.icon;
+                    const isActive = currentSection === module.id;
+                    
                     return (
                       <button
                         key={module.id}
-                        onClick={() => setActiveSection(module.id)}
-                        className={`nav-item ${activeSection === module.id ? 'active' : ''}`}
+                        onClick={() => navigateToSection(module.id)}
+                        className={`nav-item ${isActive ? 'active' : ''}`}
                         title={module.description || module.label}
                       >
                         <IconComponent className="w-5 h-5" />
@@ -508,7 +652,7 @@ const AdminDashboard = () => {
                 notifications={notifications}
                 onMarkAsRead={handleMarkAsRead}
                 onViewAll={handleViewAllNotifications}
-                setActiveSection={setActiveSection}
+                setActiveSection={() => {}} // No usado con rutas
                 organizedModules={organizedModules}
                 setExpandedCategories={setExpandedCategories}
               />
@@ -517,167 +661,64 @@ const AdminDashboard = () => {
               <UserProfile
                 user={user}
                 onLogout={handleLogout}
-                onViewProfile={() => setActiveSection('profile')}
+                onViewProfile={() => navigate('/admin/dashboard/profile')}
                 onSettingsClick={handleSettingsClick}
               />
             </div>
           </div>
         </header>
 
-        {/* Content */}
+        {/* Content con Rutas Anidadas */}
         <main className="content">
-          {activeSection === 'overview' && (
-            <div>
-              {/* Error Message */}
-              {dataError && (
-                <div className="error-banner">
-                  <AlertCircle className="w-5 h-5" />
-                  <span>{dataError}</span>
-                  <button onClick={handleRefresh} className="btn-link">
-                    Reintentar
-                  </button>
-                </div>
-              )}
-
-              {/* Stats Grid - Solo si tiene permisos */}
-              {canViewUserStats && statCards.length > 0 && (
-                <div className="stats-grid">
-                  {statCards.map((stat, index) => (
-                    <StatCard key={index} stat={stat} />
-                  ))}
-                </div>
-              )}
-
-              {/* Mensaje si no tiene permisos para ver estadísticas */}
-              {!canViewUserStats && (
-                <div className="info-banner">
-                  <AlertCircle className="w-5 h-5" />
-                  <span>Bienvenido al sistema. Usa el menú lateral para acceder a tus módulos disponibles.</span>
-                </div>
-              )}
-
-              {/* Content Grid */}
-              <div className="content-grid">
-                {/* Distribución de Usuarios - Solo si tiene permisos */}
-                {canViewUserStats && (
-                  <div className="card">
-                    <div className="card-header">
-                      <h3 className="card-title">Usuarios por Rol</h3>
-                      {authService.hasPermission('usuarios', 'leer') && (
-                        <button className="btn-link" onClick={() => setActiveSection('users')}>
-                          Ver todos
-                        </button>
-                      )}
-                    </div>
-                    <div className="role-distribution">
-                      {dataLoading ? (
-                        <div className="loading-state">
-                          <RefreshCw className="w-6 h-6 animate-spin" />
-                          <p>Cargando datos...</p>
-                        </div>
-                      ) : (
-                        <div className="role-stats-list">
-                          <div className="role-stat-item">
-                            <div className="role-stat-label">
-                              <Shield className="w-4 h-4 text-red-500" />
-                              <span>Administradores</span>
-                            </div>
-                            <span className="role-stat-value">{stats.usersByRole.administrador || 0}</span>
-                          </div>
-                          <div className="role-stat-item">
-                            <div className="role-stat-label">
-                              <Users className="w-4 h-4 text-blue-500" />
-                              <span>Clientes</span>
-                            </div>
-                            <span className="role-stat-value">{stats.usersByRole.cliente || 0}</span>
-                          </div>
-                          <div className="role-stat-item">
-                            <div className="role-stat-label">
-                              <Activity className="w-4 h-4 text-green-500" />
-                              <span>Lectores</span>
-                            </div>
-                            <span className="role-stat-value">{stats.usersByRole.lector || 0}</span>
-                          </div>
-                          <div className="role-stat-item">
-                            <div className="role-stat-label">
-                              <DollarSign className="w-4 h-4 text-yellow-500" />
-                              <span>Cajeros</span>
-                            </div>
-                            <span className="role-stat-value">{stats.usersByRole.cajero || 0}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Resumen de Módulos Disponibles */}
-                <div className="card">
-                  <div className="card-header">
-                    <h3 className="card-title">Módulos Disponibles</h3>
-                  </div>
-                  <div className="modules-summary">
-                    {organizedModules.map(category => (
-                      <div key={category.id} className="module-category-summary">
-                        <div className="category-summary-header">
-                          <category.icon className="w-4 h-4" />
-                          <span>{category.label}</span>
-                          <span className="module-count">{category.modules.length}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Secciones dinámicas del sistema */}
-          {activeSection !== 'overview' && (() => {
-            // Buscar el módulo activo según el ID
-            const activeModule = organizedModules
-              .flatMap(cat => cat.modules)
-              .find(mod => mod.id === activeSection);
-
-            if (!activeModule) {
-              // Si no existe, revisar si es una sección fija (perfil o notificaciones)
-              if (activeSection === 'profile') {
-                return <ProfileSection user={user} onUpdateProfile={handleUpdateProfile} />;
-              }
-              if (activeSection === 'notifications') {
-                return (
-                  <NotificationsSection 
-                    notifications={notifications}
-                    onMarkAsRead={handleMarkAsRead}
-                  />
-                );
-              }
-
-              // Si no está definida, mostrar mensaje genérico
-              return (
-                <div className="section-placeholder">
-                  <Activity className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                  <h2>Módulo en Desarrollo</h2>
-                  <p>Esta sección estará disponible próximamente.</p>
-                </div>
-              );
-            }
-
-            // Si el módulo existe y tiene un componente definido
-            const Component = componentMap[activeModule.componentName];
-            if (Component) {
-              return <Component user={user} />;
-            }
-
-            // Si no hay componente vinculado
-            return (
+          <Routes>
+            {/* Ruta por defecto - redirige a home */}
+            <Route index element={<Navigate to="home" replace />} />
+            
+            {/* Ruta Overview */}
+            <Route 
+              path="home" 
+              element={
+                <OverviewSection 
+                  user={user}
+                  stats={stats}
+                  dataLoading={dataLoading}
+                  dataError={dataError}
+                  canViewUserStats={canViewUserStats}
+                  statCards={statCards}
+                  handleRefresh={handleRefresh}
+                  organizedModules={organizedModules}
+                  setActiveSection={navigateToSection}
+                />
+              } 
+            />
+            
+            {/* Rutas de Módulos Dinámicos */}
+            <Route path="profile" element={<ProfileSection user={user} onUpdateProfile={handleUpdateProfile} />} />
+            <Route path="users" element={<UsersSection user={user} />} />
+            <Route path="notifications" element={<NotificationsSection notifications={notifications} onMarkAsRead={handleMarkAsRead} />} />
+            <Route path="roles" element={<RolesSection user={user} />} />
+            <Route path="sectors" element={<SectorsSection user={user} />} />
+            <Route path="affiliates" element={<AffiliatesSection user={user} />} />
+            <Route path="meters" element={<MetersSection user={user} />} />
+            <Route path="settings" element={<ConfigSection user={user} />} />
+            <Route path="rates" element={<TarifasSection user={user} />} />
+            <Route path="geolocation" element={<GeolocationSection user={user} />} />
+            
+            {/* Ruta 404 para módulos no encontrados */}
+            <Route path="*" element={
               <div className="section-placeholder">
                 <Activity className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                <h2>{activeModule.label}</h2>
-                <p>Componente no vinculado o en desarrollo.</p>
+                <h2>Módulo no encontrado</h2>
+                <p>Esta sección no está disponible o no existe.</p>
+                <button 
+                  onClick={() => navigate('/admin/dashboard/home')}
+                  className="btn-link mt-4"
+                >
+                  Volver al inicio
+                </button>
               </div>
-            );
-          })()}
+            } />
+          </Routes>
         </main>
       </div>
 

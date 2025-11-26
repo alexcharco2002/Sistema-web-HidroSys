@@ -341,7 +341,7 @@ const GeolocationSection = () => {
       try {
         const group = L.featureGroup(markersRef.current);
         mapRef.current.fitBounds(group.getBounds().pad(0.1), {
-          maxZoom: 18 // No hacer zoom excesivo
+          maxZoom: 22 // No hacer zoom excesivo
         });
       } catch (e) {
         console.warn('Error ajustando bounds:', e);
@@ -367,7 +367,7 @@ const GeolocationSection = () => {
     if (mapRef.current && medidor.latitud && medidor.longitud) {
       mapRef.current.setView(
         [parseFloat(medidor.latitud), parseFloat(medidor.longitud)], 
-        19, // Zoom alto para ver detalles
+        22, // Zoom alto para ver detalles
         { animate: true, duration: 0.5 }
       );
       setSelectedMedidor(medidor);
@@ -607,7 +607,7 @@ const GeolocationSection = () => {
                   
                   {medidor.latitud && medidor.longitud && (
                     <div className="text-xs text-gray-400 mt-1">
-                      📍 {parseFloat(medidor.latitud).toFixed(5)}, {parseFloat(medidor.longitud).toFixed(5)}
+                      📍 {parseFloat(medidor.latitud).toFixed(10)}, {parseFloat(medidor.longitud).toFixed(10)}
                     </div>
                   )}
                 </div>

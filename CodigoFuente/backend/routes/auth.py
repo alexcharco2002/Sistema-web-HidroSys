@@ -4,25 +4,24 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from schemas.user import UserLogin
 from models.user import UsuarioSistema
+from models.role import Rol, RolAccion
 from db.session import SessionLocal
 from security.jwt import create_access_token, verify_token
-from security.password import verify_password
+from security.password import verify_password, hash_password
 import base64
 from secrets import token_urlsafe
-from security.password import hash_password
 import secrets
 import string
 from utils.email import email_service
-from security.password import hash_password
 
 router = APIRouter(tags=["auth"])
 
 # ========================================
 # CONFIGURACIÓN DE BLOQUEO
 # ========================================
-MAX_INTENTOS_TEMPORALES = 5      # Intentos antes de bloqueo temporal
-TIEMPO_BLOQUEO_TEMPORAL = 15     # Minutos de bloqueo temporal
-MAX_INTENTOS_PERMANENTES = 8    # Intentos totales antes de bloqueo permanente
+MAX_INTENTOS_TEMPORALES = 5
+TIEMPO_BLOQUEO_TEMPORAL = 15
+MAX_INTENTOS_PERMANENTES = 8
 
 def get_db():
     db = SessionLocal()
@@ -43,16 +42,66 @@ def process_user_photo(foto_bytes):
     return None
 
 # ========================================
+# FUNCIONES DE ROLES Y PERMISOS
+# ========================================
+def get_user_role_and_permissions(db: Session, user: UsuarioSistema) -> dict:
+    """
+    Obtiene el rol y permisos del usuario
+    El usuario tiene UN solo rol (id_rol) que tiene múltiples acciones
+    """
+    if not user.id_rol:
+        return {
+            "rol": None,
+            "permisos": []
+        }
+    
+    # Obtener información del rol
+    rol = db.query(Rol).filter(
+        Rol.id_rol == user.id_rol,
+        Rol.activo == True
+    ).first()
+    
+    if not rol:
+        return {
+            "rol": None,
+            "permisos": []
+        }
+    
+    # Obtener acciones/permisos del rol
+    acciones = db.query(RolAccion).filter(
+        RolAccion.id_rol == user.id_rol,
+        RolAccion.activo == True
+    ).all()
+    
+    # Formatear rol
+    rol_data = {
+        "id_rol": rol.id_rol,
+        "nombre_rol": rol.nombre_rol,
+        "descripcion": rol.descripcion
+    }
+    
+    # Formatear permisos
+    permisos_data = [
+        {
+            "id_rol_accion": accion.id_rol_accion,
+            "nombre_accion": accion.nombre_accion,
+            "tipo_accion": accion.tipo_accion
+        }
+        for accion in acciones
+    ]
+    
+    return {
+        "rol": rol_data,
+        "permisos": permisos_data
+    }
+
+# ========================================
 # FUNCIONES DE CONTROL DE BLOQUEO
 # ========================================
-def verificar_estado_bloqueo(user: UsuarioSistema) -> dict:
-    """
-    Verifica el estado de bloqueo del usuario
-    Retorna: dict con 'bloqueado': bool y 'mensaje': str
-    """
+def verificar_activo_bloqueo(user: UsuarioSistema) -> dict:
+    """Verifica el activo de bloqueo del usuario"""
     ahora = datetime.now()
     
-    # Verificar bloqueo permanente
     if hasattr(user, 'bloqueado_permanente') and user.bloqueado_permanente:
         return {
             "bloqueado": True,
@@ -60,7 +109,6 @@ def verificar_estado_bloqueo(user: UsuarioSistema) -> dict:
             "mensaje": "Tu cuenta ha sido bloqueada permanentemente por exceso de intentos fallidos. Por favor, contacta al administrador."
         }
     
-    # Verificar bloqueo temporal activo
     if hasattr(user, 'bloqueado_hasta') and user.bloqueado_hasta and user.bloqueado_hasta > ahora:
         tiempo_restante = user.bloqueado_hasta - ahora
         minutos_restantes = int(tiempo_restante.total_seconds() / 60)
@@ -71,25 +119,19 @@ def verificar_estado_bloqueo(user: UsuarioSistema) -> dict:
             "bloqueado_hasta": user.bloqueado_hasta.isoformat()
         }
     
-    # Si había bloqueo temporal pero ya expiró, resetear
     if hasattr(user, 'bloqueado_hasta') and user.bloqueado_hasta and user.bloqueado_hasta <= ahora:
         user.bloqueado_hasta = None
     
     return {"bloqueado": False, "tipo": None, "mensaje": None}
 
 def registrar_intento_fallido(db: Session, user: UsuarioSistema) -> dict:
-    """
-    Registra un intento fallido y aplica bloqueos según corresponda
-    Retorna: dict con información del bloqueo aplicado
-    """
-    # Inicializar campo si no existe
+    """Registra un intento fallido y aplica bloqueos según corresponda"""
     if not hasattr(user, 'intentos_fallidos') or user.intentos_fallidos is None:
         user.intentos_fallidos = 0
     
     user.intentos_fallidos += 1
     intentos_actuales = user.intentos_fallidos
     
-    # Bloqueo permanente
     if intentos_actuales >= MAX_INTENTOS_PERMANENTES:
         if hasattr(user, 'bloqueado_permanente'):
             user.bloqueado_permanente = True
@@ -103,7 +145,6 @@ def registrar_intento_fallido(db: Session, user: UsuarioSistema) -> dict:
             "mensaje": "Tu cuenta ha sido bloqueada permanentemente. Contacta al administrador."
         }
     
-    # Bloqueo temporal cada 5 intentos
     if intentos_actuales % MAX_INTENTOS_TEMPORALES == 0:
         if hasattr(user, 'bloqueado_hasta'):
             user.bloqueado_hasta = datetime.now() + timedelta(minutes=TIEMPO_BLOQUEO_TEMPORAL)
@@ -125,7 +166,7 @@ def registrar_intento_fallido(db: Session, user: UsuarioSistema) -> dict:
         "bloqueado": False,
         "tipo": "advertencia",
         "intentos": intentos_actuales,
-        "mensaje": f"Crontraseña Incorrecta. Te quedan {intentos_restantes_temporal} intentos antes de que tu cuenta sea bloqueada temporalmente.",
+        "mensaje": f"Contraseña Incorrecta. Te quedan {intentos_restantes_temporal} intentos antes de que tu cuenta sea bloqueada temporalmente.",
         "intentos_restantes_temporal": intentos_restantes_temporal,
         "intentos_restantes_permanente": intentos_restantes_permanente
     }
@@ -140,37 +181,28 @@ def resetear_intentos_fallidos(db: Session, user: UsuarioSistema):
         user.ultimo_acceso = datetime.now()
     db.commit()
 
+
 # ========================================
-# LOGIN - CON CONTROL DE BLOQUEOS
+# LOGIN - CON SISTEMA DE ROLES Y PERMISOS
 # ========================================
 @router.post("/login", response_model=dict)
 def login(user: UserLogin, db: Session = Depends(get_db)):
     """
-    Inicia sesión con usuario y contraseña
-    Incluye control de intentos fallidos y bloqueos
+    Inicia sesión con usuario y contraseña.
+    Incluye control de intentos fallidos, bloqueos y sistema de roles/permisos.
     """
     try:
-        # Buscar usuario por nombre de usuario
         db_user = db.query(UsuarioSistema).filter(
             UsuarioSistema.usuario == user.username.strip().lower()
         ).first()
 
-        # Verificar si el usuario existe
         if not db_user:
-            return {
-                "success": False,
-                "message": "El usuario ingresado no existe. Verifique el nombre de usuario."
-            }
+            return {"success": False, "message": "El usuario ingresado no existe."}
 
-        # Verificar si el usuario está activo
         if hasattr(db_user, 'activo') and not db_user.activo:
-            return {
-                "success": False,
-                "message": "Usuario inactivo. Contacte al administrador"
-            }
-        
-        # Verificar estado de bloqueo
-        estado_bloqueo = verificar_estado_bloqueo(db_user)
+            return {"success": False, "message": "Su usuario está inactivo. Contactese con al administrador."}
+
+        estado_bloqueo = verificar_activo_bloqueo(db_user)
         if estado_bloqueo["bloqueado"]:
             return {
                 "success": False,
@@ -179,36 +211,41 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
                 "message": estado_bloqueo["mensaje"],
                 "bloqueado_hasta": estado_bloqueo.get("bloqueado_hasta")
             }
+
         
-        # Verificar contraseña usando bcrypt
+        # Verificar contraseña
         if not verify_password(user.password.strip(), db_user.clave):
-            # Registrar intento fallido
             resultado = registrar_intento_fallido(db, db_user)
-            
             return {
                 "success": False,
                 "bloqueado": resultado.get("bloqueado", False),
-                "tipo_bloqueo": resultado.get("tipo"),
-                "message": resultado["mensaje"],
-                "intentos_fallidos": resultado["intentos"],
-                "intentos_restantes_temporal": resultado.get("intentos_restantes_temporal"),
-                "intentos_restantes_permanente": resultado.get("intentos_restantes_permanente"),
-                "bloqueado_hasta": resultado.get("bloqueado_hasta")
+                "message": resultado["mensaje"]
             }
-        
-        # Login exitoso - resetear intentos fallidos
+
+        # ⚙️ Detectar si es primer login
+        primer_login = getattr(db_user, "primer_login", False) or db_user.ultimo_acceso is None
+
+        # Actualizar último acceso y marcar primer login como completado
+        db_user.ultimo_acceso = datetime.now()
+        if hasattr(db_user, "primer_login"):
+            db_user.primer_login = False
+        db.commit()
+        db.refresh(db_user)
+
+        # Resetear intentos fallidos
         resetear_intentos_fallidos(db, db_user)
 
-        # Procesar la foto del usuario
+        # Obtener rol y permisos
+        rol_permisos = get_user_role_and_permissions(db, db_user)
         foto_url = process_user_photo(db_user.foto) if hasattr(db_user, 'foto') and db_user.foto else None
 
-        # Crear el token de acceso
+        # Crear token
         token_data = {
             "sub": db_user.usuario,
-            "rol": db_user.rol,
+            "id_rol": db_user.id_rol,
+            "nombre_rol": rol_permisos["rol"]["nombre_rol"] if rol_permisos["rol"] else None,
             "nombres": db_user.nombres
         }
-
         access_token = create_access_token(data=token_data)
 
         return {
@@ -225,28 +262,32 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
                     "cedula": db_user.cedula,
                     "telefono": getattr(db_user, 'telefono', None),
                     "direccion": getattr(db_user, 'direccion', None),
-                    "fecha_nac" : db_user.fecha_nac.isoformat() if db_user.fecha_nac else None,
+                    "fecha_nac": db_user.fecha_nac.isoformat() if db_user.fecha_nac else None,
                     "nombre_completo": f"{db_user.nombres} {db_user.apellidos}",
-                    "rol": db_user.rol,
+                    "id_rol": db_user.id_rol,
+                    "rol": rol_permisos["rol"],
+                    "permisos": rol_permisos["permisos"],
                     "email": db_user.email,
-                    "foto": foto_url
+                    "foto": foto_url,
+                    "ultimo_acceso": db_user.ultimo_acceso.isoformat(),
+                    "primer_login": primer_login
                 }
             }
         }
-    
+
     except Exception as e:
         print(f"❌ Error en login: {e}")
-        return {
-            "success": False,
-            "message": "Error interno del servidor"
-        }
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "message": "Error interno del servidor"}
+
 
 # ========================================
 # VERIFICAR SESIÓN
 # ========================================
 @router.get("/verify-session")
 def verify_session(payload: dict = Depends(verify_token), db: Session = Depends(get_db)):
-    """Verifica que el token sea válido y devuelve datos del usuario"""
+    """Verifica que el token sea válido y devuelve datos del usuario con rol y permisos"""
     db_user = db.query(UsuarioSistema).filter(
         UsuarioSistema.usuario == payload["sub"]
     ).first()
@@ -257,23 +298,36 @@ def verify_session(payload: dict = Depends(verify_token), db: Session = Depends(
             detail="Usuario no encontrado"
         )
     
-    # Verificar si está activo
     if hasattr(db_user, 'activo') and not db_user.activo:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Usuario inactivo"
         )
     
-    # Verificar bloqueo
-    estado_bloqueo = verificar_estado_bloqueo(db_user)
-    if estado_bloqueo["bloqueado"]:
+    activo_bloqueo = verificar_activo_bloqueo(db_user)
+    if activo_bloqueo["bloqueado"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=estado_bloqueo["mensaje"]
+            detail=activo_bloqueo["mensaje"]
         )
-    
+
+    # ====================================================
+    # ⚙️ Detectar si es el primer login y actualizar fecha
+    # ====================================================
+    primer_login = getattr(db_user, "primer_login", False)
+
+    # Solo actualiza ultimo_acceso, no cambies primer_login aquí
+    primer_login = db_user.ultimo_acceso is None
+    if primer_login:
+        db_user.ultimo_acceso = datetime.now()
+        db.commit()
+
+
+
+    # Obtener rol y permisos actualizados
+    rol_permisos = get_user_role_and_permissions(db, db_user)
     foto_url = process_user_photo(db_user.foto) if hasattr(db_user, 'foto') and db_user.foto else None
-    
+
     return {
         "id_usuario_sistema": db_user.id_usuario_sistema,
         "usuario": db_user.usuario,
@@ -286,9 +340,63 @@ def verify_session(payload: dict = Depends(verify_token), db: Session = Depends(
         "direccion": getattr(db_user, 'direccion', None),
         "nombre_completo": f"{db_user.nombres} {db_user.apellidos}",
         "email": db_user.email,
-        "rol": db_user.rol,
+        "id_rol": db_user.id_rol,
+        "rol": rol_permisos["rol"],
+        "permisos": rol_permisos["permisos"],
         "fecha_registro": db_user.fecha_registro.isoformat() if db_user.fecha_registro else None,
-        "foto": foto_url
+        "foto": foto_url,
+        "ultimo_acceso": db_user.ultimo_acceso.isoformat() if db_user.ultimo_acceso else None,
+        "primer_login": primer_login
+    }
+
+# ========================================
+# VERIFICAR PERMISO ESPECÍFICO
+# ========================================
+@router.post("/check-permission")
+def check_permission(
+    request: dict,
+    payload: dict = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Verifica si el usuario tiene un permiso específico
+    Request body: {"nombre_accion": "usuarios.crear", "tipo_accion": "crear"}
+    """
+    db_user = db.query(UsuarioSistema).filter(
+        UsuarioSistema.usuario == payload["sub"]
+    ).first()
+    
+    if not db_user:
+        return {"success": False, "has_permission": False}
+    
+    nombre_accion = request.get("nombre_accion")
+    tipo_accion = request.get("tipo_accion")
+    
+    if not nombre_accion:
+        return {"success": False, "message": "nombre_accion es requerido"}
+    
+    if not db_user.id_rol:
+        return {"success": True, "has_permission": False}
+    
+    # Buscar la acción en el rol del usuario
+    query = db.query(RolAccion).filter(
+        RolAccion.id_rol == db_user.id_rol,
+        RolAccion.nombre_accion == nombre_accion,
+        RolAccion.activo == True
+    )
+    
+    if tipo_accion:
+        query = query.filter(RolAccion.tipo_accion == tipo_accion)
+    
+    accion = query.first()
+    
+    return {
+        "success": True,
+        "has_permission": accion is not None,
+        "accion": {
+            "nombre_accion": accion.nombre_accion,
+            "tipo_accion": accion.tipo_accion
+        } if accion else None
     }
 
 # ========================================
@@ -296,7 +404,7 @@ def verify_session(payload: dict = Depends(verify_token), db: Session = Depends(
 # ========================================
 @router.get("/profile")
 def get_profile(payload: dict = Depends(verify_token), db: Session = Depends(get_db)):
-    """Obtiene el perfil completo del usuario autenticado"""
+    """Obtiene el perfil completo del usuario autenticado con rol y permisos"""
     db_user = db.query(UsuarioSistema).filter(
         UsuarioSistema.usuario == payload["sub"]
     ).first()
@@ -307,6 +415,7 @@ def get_profile(payload: dict = Depends(verify_token), db: Session = Depends(get
             detail="Usuario no encontrado"
         )
     
+    rol_permisos = get_user_role_and_permissions(db, db_user)
     foto_url = process_user_photo(db_user.foto) if hasattr(db_user, 'foto') and db_user.foto else None
     
     return {
@@ -321,7 +430,9 @@ def get_profile(payload: dict = Depends(verify_token), db: Session = Depends(get
         "email": db_user.email,
         "telefono": getattr(db_user, 'telefono', None),
         "direccion": getattr(db_user, 'direccion', None),
-        "rol": db_user.rol,
+        "id_rol": db_user.id_rol,
+        "rol": rol_permisos["rol"],
+        "permisos": rol_permisos["permisos"],
         "activo": getattr(db_user, 'activo', True),
         "fecha_registro": db_user.fecha_registro.isoformat() if db_user.fecha_registro else None,
         "foto": foto_url
@@ -332,10 +443,7 @@ def get_profile(payload: dict = Depends(verify_token), db: Session = Depends(get
 # ========================================
 @router.post("/logout")
 def logout():
-    """
-    Cierra sesión del usuario
-    Con JWT no hay sesión en el servidor, el frontend debe eliminar el token
-    """
+    """Cierra sesión del usuario"""
     return {
         "success": True,
         "message": "Sesión cerrada exitosamente"
@@ -351,12 +459,22 @@ def unlock_user(
     db: Session = Depends(get_db)
 ):
     """Permite al administrador desbloquear un usuario"""
-    # Solo administradores
-    if payload.get("rol") != "administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para desbloquear usuarios"
-        )
+    # Verificar si es administrador
+    db_admin = db.query(UsuarioSistema).filter(
+        UsuarioSistema.usuario == payload["sub"]
+    ).first()
+    
+    if not db_admin or not db_admin.id_rol:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    # Verificar rol de administrador
+    rol_admin = db.query(Rol).filter(
+        Rol.id_rol == db_admin.id_rol,
+        Rol.nombre_rol == "administrador"
+    ).first()
+    
+    if not rol_admin:
+        raise HTTPException(status_code=403, detail="No tienes permisos para desbloquear usuarios")
     
     user = db.query(UsuarioSistema).filter(
         UsuarioSistema.id_usuario_sistema == user_id
@@ -368,12 +486,10 @@ def unlock_user(
             detail="Usuario no encontrado"
         )
     
-    # Guardar estado anterior
     was_permanently_blocked = getattr(user, 'bloqueado_permanente', False)
     was_temporarily_blocked = getattr(user, 'bloqueado_hasta', None) is not None
     previous_attempts = getattr(user, 'intentos_fallidos', 0)
     
-    # Resetear bloqueos
     if hasattr(user, 'intentos_fallidos'):
         user.intentos_fallidos = 0
     if hasattr(user, 'bloqueado_hasta'):
@@ -383,7 +499,6 @@ def unlock_user(
     
     db.commit()
     
-    # Mensaje personalizado
     if was_permanently_blocked:
         message = f"Usuario '{user.usuario}' desbloqueado exitosamente (bloqueo permanente removido)"
     elif was_temporarily_blocked:
@@ -411,25 +526,30 @@ def get_blocked_users(
     db: Session = Depends(get_db)
 ):
     """Lista todos los usuarios bloqueados - Solo admin"""
-    if payload.get("rol") != "administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para ver usuarios bloqueados"
-        )
+    db_admin = db.query(UsuarioSistema).filter(
+        UsuarioSistema.usuario == payload["sub"]
+    ).first()
+    
+    if not db_admin or not db_admin.id_rol:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    rol_admin = db.query(Rol).filter(
+        Rol.id_rol == db_admin.id_rol,
+        Rol.nombre_rol == "administrador"
+    ).first()
+    
+    if not rol_admin:
+        raise HTTPException(status_code=403, detail="No tienes permisos")
     
     ahora = datetime.now()
-    
-    # Construir query base
     query = db.query(UsuarioSistema)
     
-    # Usuarios con bloqueo permanente
     permanently_blocked = []
     if hasattr(UsuarioSistema, 'bloqueado_permanente'):
         permanently_blocked = query.filter(
             UsuarioSistema.bloqueado_permanente == True
         ).all()
     
-    # Usuarios con bloqueo temporal activo
     temporarily_blocked = []
     if hasattr(UsuarioSistema, 'bloqueado_hasta'):
         temporarily_blocked = query.filter(
@@ -438,14 +558,12 @@ def get_blocked_users(
         if hasattr(UsuarioSistema, 'bloqueado_permanente'):
             temporarily_blocked = [u for u in temporarily_blocked if not u.bloqueado_permanente]
     
-    # Usuarios con intentos fallidos pero no bloqueados
     users_with_attempts = []
     if hasattr(UsuarioSistema, 'intentos_fallidos'):
         users_with_attempts = query.filter(
             UsuarioSistema.intentos_fallidos > 0
         ).all()
         
-        # Filtrar los que ya están bloqueados
         users_with_attempts = [
             u for u in users_with_attempts
             if not getattr(u, 'bloqueado_permanente', False)
@@ -492,11 +610,10 @@ def health_check():
         "message": "Servidor API funcionando correctamente"
     }
 
-# Diccionario temporal para almacenar códigos de verificación
-# En producción, considera usar Redis o similar
+# ========================================
+# RECUPERACIÓN DE CONTRASEÑA
+# ========================================
 verification_codes = {}
-
-# Configuración
 VERIFICATION_CODE_LENGTH = 6
 VERIFICATION_CODE_EXPIRE_MINUTES = 15
 
@@ -514,26 +631,20 @@ def store_verification_code(email: str, code: str):
     }
 
 def verify_code(email: str, code: str) -> dict:
-    """
-    Verifica si el código es válido
-    Retorna: {"valid": bool, "message": str}
-    """
+    """Verifica si el código es válido"""
     if email not in verification_codes:
         return {"valid": False, "message": "No se encontró un código para este correo"}
     
     stored_data = verification_codes[email]
     
-    # Verificar expiración
     if datetime.now() > stored_data["expires_at"]:
         del verification_codes[email]
         return {"valid": False, "message": "El código ha expirado. Solicita uno nuevo"}
     
-    # Verificar intentos
     if stored_data["attempts"] >= 3:
         del verification_codes[email]
         return {"valid": False, "message": "Demasiados intentos fallidos. Solicita un nuevo código"}
     
-    # Verificar código
     if stored_data["code"] != code:
         stored_data["attempts"] += 1
         intentos_restantes = 3 - stored_data["attempts"]
@@ -544,15 +655,9 @@ def verify_code(email: str, code: str) -> dict:
     
     return {"valid": True, "message": "Código verificado correctamente"}
 
-# ========================================
-# SOLICITAR CÓDIGO DE RECUPERACIÓN
-# ========================================
 @router.post("/forgot-password")
 def forgot_password(request: dict, db: Session = Depends(get_db)):
-    """
-    Envía un código de verificación al correo del usuario
-    Request body: {"email": "usuario@ejemplo.com"}
-    """
+    """Envía un código de verificación al correo del usuario"""
     try:
         email = request.get("email", "").strip().lower()
         
@@ -562,7 +667,6 @@ def forgot_password(request: dict, db: Session = Depends(get_db)):
                 "message": "El correo electrónico es requerido"
             }
         
-        # Buscar usuario por email
         user = db.query(UsuarioSistema).filter(
             UsuarioSistema.email == email
         ).first()
@@ -574,20 +678,15 @@ def forgot_password(request: dict, db: Session = Depends(get_db)):
                 "email_sent": False
             }
         
-        # Verificar que el usuario esté activo
         if hasattr(user, 'activo') and not user.activo:
             return {
                 "success": False,
                 "message": "Esta cuenta está inactiva. Contacta al administrador"
             }
         
-        # Generar código de verificación
         verification_code = generate_verification_code()
-        
-        # Almacenar código
         store_verification_code(email, verification_code)
         
-        # Enviar email
         email_sent = email_service.send_verification_code(
             to_email=email,
             code=verification_code,
@@ -614,15 +713,9 @@ def forgot_password(request: dict, db: Session = Depends(get_db)):
             "message": "Error interno del servidor"
         }
 
-# ========================================
-# VERIFICAR CÓDIGO
-# ========================================
 @router.post("/verify-code")
 def verify_recovery_code(request: dict):
-    """
-    Verifica el código de recuperación
-    Request body: {"email": "usuario@ejemplo.com", "code": "123456"}
-    """
+    """Verifica el código de recuperación"""
     try:
         email = request.get("email", "").strip().lower()
         code = request.get("code", "").strip()
@@ -633,7 +726,6 @@ def verify_recovery_code(request: dict):
                 "message": "Email y código son requeridos"
             }
         
-        # Verificar código
         result = verify_code(email, code)
         
         if not result["valid"]:
@@ -642,11 +734,8 @@ def verify_recovery_code(request: dict):
                 "message": result["message"]
             }
         
-        # Generar token temporal para cambiar contraseña
-        # Este token solo sirve para el endpoint de reset-password
         reset_token = secrets.token_urlsafe(32)
         
-        # Almacenar token temporal (expira en 10 minutos)
         verification_codes[f"reset_{email}"] = {
             "token": reset_token,
             "expires_at": datetime.now() + timedelta(minutes=10)
@@ -665,19 +754,9 @@ def verify_recovery_code(request: dict):
             "message": "Error interno del servidor"
         }
 
-# ========================================
-# RESTABLECER CONTRASEÑA
-# ========================================
 @router.post("/reset-password")
 def reset_password(request: dict, db: Session = Depends(get_db)):
-    """
-    Restablece la contraseña del usuario
-    Request body: {
-        "email": "usuario@ejemplo.com",
-        "reset_token": "token_temporal",
-        "new_password": "nueva_contraseña"
-    }
-    """
+    """Restablece la contraseña del usuario"""
     try:
         email = request.get("email", "").strip().lower()
         reset_token = request.get("reset_token", "").strip()
@@ -689,14 +768,12 @@ def reset_password(request: dict, db: Session = Depends(get_db)):
                 "message": "Todos los campos son requeridos"
             }
         
-        # Validar longitud de contraseña
         if len(new_password) < 8:
             return {
                 "success": False,
                 "message": "La contraseña debe tener al menos 8 caracteres"
             }
         
-        # Verificar token de reset
         reset_key = f"reset_{email}"
         if reset_key not in verification_codes:
             return {
@@ -706,7 +783,6 @@ def reset_password(request: dict, db: Session = Depends(get_db)):
         
         stored_data = verification_codes[reset_key]
         
-        # Verificar expiración
         if datetime.now() > stored_data["expires_at"]:
             del verification_codes[reset_key]
             return {
@@ -714,14 +790,12 @@ def reset_password(request: dict, db: Session = Depends(get_db)):
                 "message": "El token ha expirado. Solicita un nuevo código"
             }
         
-        # Verificar token
         if stored_data["token"] != reset_token:
             return {
                 "success": False,
                 "message": "Token de recuperación inválido"
             }
         
-        # Buscar usuario
         user = db.query(UsuarioSistema).filter(
             UsuarioSistema.email == email
         ).first()
@@ -732,13 +806,9 @@ def reset_password(request: dict, db: Session = Depends(get_db)):
                 "message": "Usuario no encontrado"
             }
         
-        # Hash de la nueva contraseña
         hashed_password = hash_password(new_password)
-        
-        # Actualizar contraseña
         user.clave = hashed_password
         
-        # Resetear intentos fallidos si existen
         if hasattr(user, 'intentos_fallidos'):
             user.intentos_fallidos = 0
         if hasattr(user, 'bloqueado_hasta'):
@@ -748,7 +818,6 @@ def reset_password(request: dict, db: Session = Depends(get_db)):
         
         db.commit()
         
-        # Limpiar códigos de verificación
         if email in verification_codes:
             del verification_codes[email]
         if reset_key in verification_codes:
@@ -767,15 +836,9 @@ def reset_password(request: dict, db: Session = Depends(get_db)):
             "message": "Error interno del servidor"
         }
 
-# ========================================
-# REENVIAR CÓDIGO
-# ========================================
 @router.post("/resend-code")
 def resend_verification_code(request: dict, db: Session = Depends(get_db)):
-    """
-    Reenvía un nuevo código de verificación
-    Request body: {"email": "usuario@ejemplo.com"}
-    """
+    """Reenvía un nuevo código de verificación"""
     try:
         email = request.get("email", "").strip().lower()
         
@@ -785,11 +848,9 @@ def resend_verification_code(request: dict, db: Session = Depends(get_db)):
                 "message": "El correo electrónico es requerido"
             }
         
-        # Eliminar código anterior si existe
         if email in verification_codes:
             del verification_codes[email]
         
-        # Reutilizar la lógica de forgot_password
         return forgot_password(request, db)
     
     except Exception as e:

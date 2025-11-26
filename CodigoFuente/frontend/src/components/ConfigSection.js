@@ -1,14 +1,13 @@
 // src/components/ConfigSection.js
-// MÓDULO DE CONFIGURACIÓN - Con control de permisos granular similar a SectorsSection
-import React, { useState, useEffect,  useMemo, useCallback} from 'react';
-import './styleRoles.css'; // Reutilizamos los estilos de roles
+// MÓDULO DE CONFIGURACIÓN - Con control de permisos granular y estilo mejorado
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import './styleRoles.css';
 import configService from '../services/configServices';
 import authService from '../services/authServices';
 
 import {
   Settings, Lock, Key, Database, Download, Upload, Trash2,
-  AlertCircle, CheckCircle, RefreshCw, Save, Eye, EyeOff,
-  HardDrive, Calendar, FileText, Shield
+  AlertCircle, CheckCircle, RefreshCw, Save, Eye, EyeOff, Calendar, FileText, Shield, Clock
 } from 'lucide-react';
 
 const ConfigSection = () => {
@@ -50,7 +49,6 @@ const ConfigSection = () => {
   }, []);
 
   const loadUserPermissions = () => {
-    // Verificar permisos CRUD del módulo de configuración
     const canCreate = authService.hasPermission('configuracion', 'crear') || 
                      authService.hasPermission('configuracion', 'operaciones crud');
   
@@ -64,10 +62,7 @@ const ConfigSection = () => {
                    canCreate || canUpdate || canDelete ||
                    authService.hasPermission('configuracion', 'operaciones crud');
 
-    // Todos los usuarios pueden cambiar su propia contraseña
     const canChangePassword = true;
-    
-    // Para gestionar backups se requiere permiso de crear/actualizar/eliminar en configuración
     const canManageBackups = canCreate || canUpdate || canDelete;
 
     setPermissions({
@@ -91,33 +86,29 @@ const ConfigSection = () => {
 
   // Definición de secciones disponibles
   const configSections = useMemo(() => [
-  {
-    id: 'security',
-    nombre: 'Seguridad',
-    descripcion: 'Cambiar contraseña y configuraciones de seguridad',
-    icon: Shield,
-    visible: permissions.canChangePassword
-  },
-  {
-    id: 'backups',
-    nombre: 'Respaldos',
-    descripcion: 'Gestión de backups de la base de datos',
-    icon: Database,
-    visible: permissions.canManageBackups
-  }
-], [permissions]);
-
-
-  
+    {
+      id: 'security',
+      nombre: 'Seguridad',
+      descripcion: 'Cambiar contraseña y configuraciones de seguridad',
+      icon: Shield,
+      visible: permissions.canChangePassword
+    },
+    {
+      id: 'backups',
+      nombre: 'Respaldos',
+      descripcion: 'Gestión de backups de la base de datos',
+      icon: Database,
+      visible: permissions.canManageBackups
+    }
+  ], [permissions]);
 
   // Seleccionar la primera sección visible por defecto
   useEffect(() => {
     if (permissions.canChangePassword || permissions.canManageBackups) {
       const firstVisible = configSections.find(s => s.visible);
-if (firstVisible && !selectedSection) {
-    setSelectedSection(firstVisible.id);
-}
-
+      if (firstVisible && !selectedSection) {
+        setSelectedSection(firstVisible.id);
+      }
     }
   }, [permissions, configSections, selectedSection]);
 
@@ -217,13 +208,11 @@ if (firstVisible && !selectedSection) {
     }
   }, [permissions.canManageBackups]);
 
-
-  // Cargar backups al seleccionar la sección de backups
   useEffect(() => {
-    if (selectedSection?.id === 'backups' && permissions.canManageBackups) {
+    if (selectedSection === 'backups' && permissions.canManageBackups) {
       loadBackups();
     }
-  }, [selectedSection, permissions.canManageBackups,loadBackups ]);
+  }, [selectedSection, permissions.canManageBackups, loadBackups]);
 
   const handleCreateBackup = async () => {
     if (!permissions.canCreate) {
@@ -353,7 +342,6 @@ if (firstVisible && !selectedSection) {
   // RENDER
   // ========================================
 
-  // Verificar acceso al módulo
   if (!permissions.canRead && !permissions.canChangePassword) {
     return (
       <div className="section-placeholder">
@@ -381,9 +369,8 @@ if (firstVisible && !selectedSection) {
   };
 
   const currentSection = configSections.find(
-  (section) => section.id === selectedSection
-);
-
+    (section) => section.id === selectedSection
+  );
 
   return (
     <div className="roles-section">
@@ -414,12 +401,12 @@ if (firstVisible && !selectedSection) {
         </div>
 
         <div className="stat-item">
-          <HardDrive className="stat-icon text-purple-600" />
+          <Clock className="stat-icon text-purple-600" />
           <div>
             <p className="stat-label">Último Backup</p>
-            <p className="stat-value text-xs truncate" style={{maxWidth: '150px'}}>
-              {stats.ultimoBackup}
-            </p>
+              <p className="text-[30px] font-bold truncate max-w-[150px]">
+                {stats.ultimoBackup}
+              </p>
           </div>
         </div>
       </div>
@@ -439,7 +426,7 @@ if (firstVisible && !selectedSection) {
         </div>
       )}
 
-      {/* Layout de dos columnas similar a RolesSection */}
+      {/* Layout de dos columnas */}
       <div className="roles-layout">
         {/* Panel de Secciones (Izquierda) */}
         <div className="roles-list-panel">
@@ -458,7 +445,6 @@ if (firstVisible && !selectedSection) {
                     key={section.id}
                     className={`role-item ${selectedSection === section.id ? 'selected' : ''}`}
                     onClick={() => setSelectedSection(section.id)}
-
                   >
                     <div className="role-item-header">
                       <div className="role-item-title">
@@ -478,7 +464,7 @@ if (firstVisible && !selectedSection) {
 
         {/* Panel de Contenido (Derecha) */}
         <div className="actions-panel">
-        {currentSection ? (
+          {currentSection ? (
             <>
               {/* SECCIÓN: SEGURIDAD */}
               {selectedSection === 'security' && permissions.canChangePassword && (
@@ -536,7 +522,8 @@ if (firstVisible && !selectedSection) {
                                 background: 'none',
                                 border: 'none',
                                 cursor: 'pointer',
-                                color: '#9ca3af'
+                                color: '#9ca3af',
+                                padding: '0.25rem'
                               }}
                             >
                               {showPasswords.current ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -573,7 +560,8 @@ if (firstVisible && !selectedSection) {
                                 background: 'none',
                                 border: 'none',
                                 cursor: 'pointer',
-                                color: '#9ca3af'
+                                color: '#9ca3af',
+                                padding: '0.25rem'
                               }}
                             >
                               {showPasswords.new ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -613,7 +601,8 @@ if (firstVisible && !selectedSection) {
                                 background: 'none',
                                 border: 'none',
                                 cursor: 'pointer',
-                                color: '#9ca3af'
+                                color: '#9ca3af',
+                                padding: '0.25rem'
                               }}
                             >
                               {showPasswords.confirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}

@@ -11,7 +11,8 @@ const API_CONFIG = {
     meters: '/meters',
     availableAffiliates: '/meters/available/affiliates',
     toggleStatus: (id) => `/meters/${id}/toggle-status`,
-    stats: '/meters/stats/count'
+    stats: '/meters/stats/count',
+    validateLocation: '/meters/validar-ubicacion'
   }
 };
 
@@ -67,18 +68,25 @@ class MetersService {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         let errorMessage = '';
+        
+        // 🔥 GUARDAR EL DETALLE COMPLETO PARA ERRORES GEOGRÁFICOS
+        const err = new Error(errorData?.error || "Error en la solicitud");
+        err.backend = errorData;
+        err.backendDetail = errorData.detail; // ← GUARDAR DETAIL
 
         if (typeof errorData.detail === 'string') {
           errorMessage = errorData.detail;
         } else if (Array.isArray(errorData.detail)) {
           errorMessage = errorData.detail.map(err => err.msg).join(', ');
         } else if (typeof errorData.detail === 'object') {
-          errorMessage = JSON.stringify(errorData.detail);
+          // Para errores geográficos, usar el mensaje del detail
+          errorMessage = errorData.detail.mensaje || JSON.stringify(errorData.detail);
         } else {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         }
 
-        throw new Error(errorMessage);
+        err.message = errorMessage;
+        throw err;
       }
 
       const data = await response.json();
@@ -97,6 +105,75 @@ class MetersService {
       }
 
       throw error;
+    }
+  }
+
+  /**
+   * Formatear mensaje de error geográfico de forma amigable
+   */
+  formatGeoError(backendDetail) {
+    if (!backendDetail || typeof backendDetail !== 'object') {
+      return 'Error de validación de ubicación';
+    }
+
+    const { limite, latitud, longitud, mensaje } = backendDetail;
+
+    // Mensaje principal amigable
+    let friendlyMessage = '📍 Ubicación fuera del área permitida\n\n';
+    
+    if (limite) {
+      friendlyMessage += `El medidor debe estar dentro del área: "${limite}"\n\n`;
+    }
+
+    // Mostrar coordenadas ingresadas
+    if (latitud !== undefined && longitud !== undefined) {
+      friendlyMessage += `📌 Coordenadas ingresadas:\n`;
+      friendlyMessage += `• Latitud: ${latitud}\n`;
+      friendlyMessage += `• Longitud: ${longitud}\n\n`;
+    }
+
+    // Extraer límites del mensaje técnico si existe
+    if (mensaje && mensaje.includes('Área permitida:')) {
+      const limiteTexto = mensaje.split('Área permitida:')[1].trim();
+      friendlyMessage += `✅ Área permitida:\n${limiteTexto}\n\n`;
+    }
+
+    friendlyMessage += '💡 Consejo: Verifica que las coordenadas correspondan a la ubicación correcta del medidor.';
+
+    return friendlyMessage;
+  }
+
+  /**
+   * Validar ubicación antes de crear/actualizar
+   */
+  async validateLocation(latitud, longitud) {
+    try {
+      if (latitud === null || latitud === undefined || 
+          longitud === null || longitud === undefined) {
+        return {
+          success: true,
+          message: 'Coordenadas no proporcionadas'
+        };
+      }
+
+      const data = await this.makeRequest(API_CONFIG.endpoints.validateLocation, {
+        method: 'POST',
+        body: { latitud, longitud }
+      });
+
+      return {
+        success: data.valida,
+        data: data,
+        message: data.mensaje,
+        limite: data.limite_aplicado
+      };
+
+    } catch (error) {
+      console.error('❌ Error validando ubicación:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al validar ubicación'
+      };
     }
   }
 
@@ -209,15 +286,45 @@ class MetersService {
 
       return {
         success: true,
-        data: data,
-        message: 'Medidor creado exitosamente'
+        data,
+        message: '✅ Medidor creado exitosamente'
       };
 
     } catch (error) {
-      console.error('❌ Error creando medidor:', error);
+      console.error("❌ Error creando medidor:", error);
+      console.log("🔍 Backend completo:", error.backend);
+      console.log("🔍 Backend detail:", error.backendDetail);
+
+      // Intentar obtener el detalle del error desde múltiples fuentes
+      const backendDetail = error.backendDetail || error.backend?.detail || error.backend || null;
+
+      // Verificar si es un error geográfico
+      if (backendDetail && typeof backendDetail === 'object') {
+        // Verificar si tiene la estructura de error geográfico
+        if (backendDetail.error === "Coordenadas fuera del límite geográfico permitido" ||
+            backendDetail.limite || 
+            (backendDetail.mensaje && backendDetail.mensaje.includes('límite geográfico'))) {
+          
+          return {
+            success: false,
+            isGeoError: true,
+            backend: backendDetail,
+            message: this.formatGeoError(backendDetail),
+            limite: backendDetail.limite,
+            coordenadas: {
+              latitud: backendDetail.latitud,
+              longitud: backendDetail.longitud
+            }
+          };
+        }
+      }
+
+      // Otros errores
       return {
         success: false,
-        message: error.message || 'Error al crear medidor'
+        isGeoError: false,
+        backend: error.backend,
+        message: error.message || "Error al crear medidor"
       };
     }
   }
@@ -248,15 +355,45 @@ class MetersService {
 
       return {
         success: true,
-        data: data,
-        message: 'Medidor actualizado exitosamente'
+        data,
+        message: '✅ Medidor actualizado exitosamente'
       };
 
     } catch (error) {
-      console.error('❌ Error actualizando medidor:', error);
+      console.error("❌ Error actualizando medidor:", error);
+      console.log("🔍 Backend completo:", error.backend);
+      console.log("🔍 Backend detail:", error.backendDetail);
+
+      // Intentar obtener el detalle del error desde múltiples fuentes
+      const backendDetail = error.backendDetail || error.backend?.detail || error.backend || null;
+
+      // Verificar si es un error geográfico
+      if (backendDetail && typeof backendDetail === 'object') {
+        // Verificar si tiene la estructura de error geográfico
+        if (backendDetail.error === "Coordenadas fuera del límite geográfico permitido" ||
+            backendDetail.limite || 
+            (backendDetail.mensaje && backendDetail.mensaje.includes('límite geográfico'))) {
+          
+          return {
+            success: false,
+            isGeoError: true,
+            backend: backendDetail,
+            message: this.formatGeoError(backendDetail),
+            limite: backendDetail.limite,
+            coordenadas: {
+              latitud: backendDetail.latitud,
+              longitud: backendDetail.longitud
+            }
+          };
+        }
+      }
+
+      // Otros errores
       return {
         success: false,
-        message: error.message || 'Error al actualizar medidor'
+        isGeoError: false,
+        backend: error.backend,
+        message: error.message || "Error al actualizar medidor"
       };
     }
   }

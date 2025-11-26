@@ -4,6 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from routes import auth
 from routes import user
+from routes import roles
+from routes import sectors
+from routes import notifications
+from routes import afiliates
+from routes import meters
+from routes import backups
+from routes import tarifas
 import os
 
 app = FastAPI(
@@ -22,7 +29,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"]
 )
@@ -36,6 +43,14 @@ app.add_middleware(
 # Incluir rutas
 app.include_router(auth.router)
 app.include_router(user.router)
+app.include_router(roles.router)
+app.include_router(sectors.router)
+app.include_router(notifications.router)
+app.include_router(afiliates.router)
+app.include_router(meters.router)
+app.include_router(backups.router)
+app.include_router(tarifas.router)
+
 
 # Health check general
 @app.get("/health")

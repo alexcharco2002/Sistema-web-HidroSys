@@ -1,9 +1,14 @@
 # routes/users.py
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_ , cast, String
 from typing import List, Optional
 from datetime import datetime
+from schemas.notification import NotificacionCreate
+from utils.notifications import registrar_notificacion
+from sqlalchemy.exc import IntegrityError
+from psycopg2.errors import ForeignKeyViolation, NotNullViolation
+
 import base64
 
 from db.session import SessionLocal
@@ -13,7 +18,12 @@ from schemas.user import (
     UserUpdate, 
     UserResponse, 
     UserListResponse,
-    ChangePasswordRequest
+    ChangePasswordRequest,
+    ChangePasswordFirstLoginRequest,
+    UserBulkResponse,
+    UserBulkCreateRequest,
+    UserBulkError,
+    UserBulkResult
 )
 from security.jwt import verify_token
 from security.password import hash_password, verify_password
@@ -28,6 +38,90 @@ def get_db():
     finally:
         db.close()
 
+# ============================================================================
+# HELPER: Obtener usuario actual desde el token
+# ============================================================================
+def get_current_user(payload: dict, db: Session) -> UsuarioSistema:
+    """Obtiene el usuario actual desde el payload del JWT"""
+    user = db.query(UsuarioSistema).filter(
+        UsuarioSistema.usuario == payload["sub"]
+    ).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario no encontrado"
+        )
+    
+    return user
+
+# ============================================================================
+# HELPER: Verificar permisos de usuario
+# ============================================================================
+def check_permission(user: UsuarioSistema, db: Session, module: str, action: str = None) -> bool:
+    """
+    Verifica si el usuario tiene permiso para una acción.
+
+    Si el usuario tiene permiso de crear, actualizar o eliminar, 
+    automáticamente también se le concede permiso de lectura.
+    """
+    from models.role import RolAccion
+
+    # Normalizar
+    module = module.lower().strip()
+    action = action.lower().strip() if action else None
+
+    permisos = db.query(RolAccion).filter(
+        RolAccion.id_rol == user.id_rol,
+        RolAccion.activo == True
+    ).all()
+
+    # Determinar todas las acciones que el usuario tiene sobre el módulo
+    acciones_usuario = set()
+
+    for permiso in permisos:
+        if not permiso.nombre_accion:
+            continue
+
+        perm_module = permiso.nombre_accion.lower().strip()
+        perm_action = (permiso.tipo_accion or '').lower().strip()
+
+        if perm_module != module:
+            continue
+
+        if perm_action in ['crud', 'operaciones crud']:
+            # Acceso completo
+            return True
+
+        acciones_usuario.add(perm_action)
+
+    # ✅ Si no se pide acción específica, basta con que tenga cualquier permiso
+    if action is None:
+        return bool(acciones_usuario)
+
+    # ✅ Si la acción es "lectura", damos acceso si tiene lectura o cualquier otro CRUD
+    if action in ['leer', 'lectura']:
+        if any(a in acciones_usuario for a in ['lectura', 'leer', 'crear', 'actualizar', 'eliminar']):
+            return True
+
+    # ✅ Caso normal: la acción debe coincidir exactamente
+    return action in acciones_usuario
+
+
+
+def require_permission(user: UsuarioSistema, db: Session, module: str, action: str = None):
+    """
+    Verifica permiso y lanza excepción si no lo tiene
+    """
+    if not check_permission(user, db, module, action):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"No tienes permisos para {action or 'acceder a'} {module}"
+        )
+
+# ============================================================================
+# HELPER: Procesar foto
+# ============================================================================
 def process_user_photo(foto_bytes):
     """Procesa la foto del usuario para enviarla al frontend"""
     if foto_bytes:
@@ -39,25 +133,44 @@ def process_user_photo(foto_bytes):
             return None
     return None
 
-def user_to_response(user: UsuarioSistema) -> dict:
+# ============================================================================
+# HELPER: Convertir usuario a respuesta
+# ============================================================================
+def user_to_response(user: UsuarioSistema, db: Session = None) -> dict:
     """Convierte un usuario de BD a diccionario de respuesta"""
     foto_url = process_user_photo(user.foto) if user.foto else None
+    
+    # Obtener información del rol
+    rol_info = None
+    if user.rol:
+        rol_info = {
+            "id_rol": user.rol.id_rol,
+            "nombre_rol": user.rol.nombre_rol,
+            "descripcion": user.rol.descripcion
+        }
+    
+    # Obtener permisos si se proporciona db
+    permisos = []
+    if db:
+        permisos = user.get_permissions(db)
     
     return {
         "id": user.id_usuario_sistema,
         "usuario": user.usuario,
         "nombres": user.nombres,
         "apellidos": user.apellidos,
-        "sexo": user.sexo,  # ✅ Agregado
-        "fecha_nac": user.fecha_nac.isoformat() if user.fecha_nac else None,  # ✅ Agregado
+        "sexo": user.sexo,
+        "fecha_nac": user.fecha_nac.isoformat() if user.fecha_nac else None,
         "cedula": user.cedula,
         "email": user.email,
-        "telefono": getattr(user, 'telefono', None),
-        "direccion": getattr(user, 'direccion', None),
-        "rol": user.rol,
-        "activo": getattr(user, 'activo', True),
+        "telefono": user.telefono,
+        "direccion": user.direccion,
+        "id_rol": user.id_rol,
+        "rol": rol_info,  # ✅ Objeto completo del rol
+        "permisos": permisos,  # ✅ Lista de permisos
+        "activo": user.activo,
         "fecha_registro": user.fecha_registro.isoformat() if user.fecha_registro else None,
-        "ultimo_acceso": getattr(user, 'ultimo_acceso', None),
+        "ultimo_acceso": user.ultimo_acceso.isoformat() if user.ultimo_acceso else None,
         "foto": foto_url
     }
 
@@ -76,44 +189,39 @@ def get_users(
 ):
     """
     Obtiene lista de usuarios con filtros opcionales
-    Requiere autenticación
+    Requiere permiso: usuarios.leer o usuarios.crud
     """
-    # Verificar que el usuario tenga permisos (solo admin)
-    if payload.get("rol") != "administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para ver la lista de usuarios"
-        )
+    # Obtener usuario actual y verificar permisos
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "usuarios", "lectura")
     
-    query = db.query(UsuarioSistema)
+    query = db.query(UsuarioSistema) 
     
     # Filtro de búsqueda
     if search:
+        like = f"%{search}%"
         search_filter = or_(
-            UsuarioSistema.nombres.ilike(f"%{search}%"),
-            UsuarioSistema.apellidos.ilike(f"%{search}%"),
-            UsuarioSistema.email.ilike(f"%{search}%"),
-            UsuarioSistema.usuario.ilike(f"%{search}%")
+            UsuarioSistema.nombres.ilike(like),
+            UsuarioSistema.apellidos.ilike(like),
+            cast(UsuarioSistema.cedula, String).ilike(like)
         )
         query = query.filter(search_filter)
     
     # Filtro de rol
     if rol and rol != "all":
-        query = query.filter(UsuarioSistema.rol == rol)
+        query = query.filter(UsuarioSistema.id_rol == rol)
     
     # Filtro de estado
     if activo is not None:
-        if hasattr(UsuarioSistema, 'activo'):
-            query = query.filter(UsuarioSistema.activo == activo)
+        query = query.filter(UsuarioSistema.activo == activo)
     
     # Ordenar por fecha de registro descendente
     query = query.order_by(UsuarioSistema.fecha_registro.desc())
     
     users = query.offset(skip).limit(limit).all()
     
-    return [user_to_response(user) for user in users]
+    return [user_to_response(user, db) for user in users]
 
-1
 # ========================================
 # OBTENER USUARIO POR ID
 # ========================================
@@ -125,19 +233,19 @@ def get_user(
 ):
     """
     Obtiene un usuario específico por ID
+    Admin o el mismo usuario pueden acceder
     """
-    # Verificar permisos: admin o el mismo usuario
-    if payload.get("rol") != "administrador":
-        # Obtener el id_usuario_sistema del usuario actual
-        current_user = db.query(UsuarioSistema).filter(
-            UsuarioSistema.usuario == payload["sub"]
-        ).first()
-        
-        if not current_user or current_user.id_usuario_sistema != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permisos para ver este usuario"
-            )
+    current_user = get_current_user(payload, db)
+    
+    # Admin puede ver cualquier usuario
+    can_view_all = check_permission(current_user, db, "usuarios", "lectura")
+    
+    # Usuario normal solo puede verse a sí mismo
+    if not can_view_all and current_user.id_usuario_sistema != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para ver este usuario"
+        )
     
     user = db.query(UsuarioSistema).filter(
         UsuarioSistema.id_usuario_sistema == user_id
@@ -149,13 +257,11 @@ def get_user(
             detail="Usuario no encontrado"
         )
     
-    return user_to_response(user)
-
+    return user_to_response(user, db)
 
 # ========================================
 # CREAR USUARIO
 # ========================================
-
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
     user_data: UserCreate,
@@ -164,22 +270,18 @@ def create_user(
 ):
     """
     Crea un nuevo usuario.
-    Solo el administrador puede crear usuarios.
+    Requiere permiso: usuarios.crear o usuarios.crud
     
     ✅ Usuario: se genera automáticamente en minúsculas a partir del nombre
     ✅ Contraseña: es la cédula completa
     """
-    # Verificar que el usuario sea admin
-    if payload.get("rol") != "administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para crear usuarios"
-        )
+    # Verificar permisos
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "usuarios", "crear")
 
     # ===============================
     # 1️⃣ Normalizar y generar usuario automáticamente
     # ===============================
-    # Tomar primer nombre y quitarle espacios/acentos
     primer_nombre = user_data.nombres.strip().split()[0].lower()
     # Remover acentos básicos
     primer_nombre = primer_nombre.replace('á', 'a').replace('é', 'e').replace('í', 'i')
@@ -193,7 +295,6 @@ def create_user(
     while db.query(UsuarioSistema).filter(UsuarioSistema.usuario == username).first():
         if user_data.fecha_nac:
             username = f"{base_username}{user_data.fecha_nac.year}"
-            # Si aún existe, agregar contador
             if db.query(UsuarioSistema).filter(UsuarioSistema.usuario == username).first():
                 username = f"{base_username}{user_data.fecha_nac.year}{counter}"
                 counter += 1
@@ -212,7 +313,7 @@ def create_user(
             detail="Cédula inválida (debe tener al menos 8 caracteres)."
         )
 
-    raw_password = user_data.cedula.strip()  # ✅ Contraseña = cédula completa
+    raw_password = user_data.cedula.strip()
     hashed_password = hash_password(raw_password)
     
     print(f"✅ Contraseña generada: {raw_password}")
@@ -247,52 +348,49 @@ def create_user(
         clave=hashed_password,
         nombres=user_data.nombres.strip(),
         apellidos=user_data.apellidos.strip(),
-        sexo=user_data.sexo.strip().upper(),  # ✅ 'M' o 'F'
-        fecha_nac=user_data.fecha_nac,  # ✅ IMPORTANTE: campo correcto
+        sexo=user_data.sexo.strip().upper(),
+        fecha_nac=user_data.fecha_nac,
         cedula=user_data.cedula.strip(),
         email=user_data.email.strip().lower(),
-        rol=user_data.rol,
+        id_rol=user_data.id_rol,
+        telefono=user_data.telefono.strip() if user_data.telefono else None,
+        direccion=user_data.direccion.strip() if user_data.direccion else "Sanjapamba",
+        activo=user_data.activo,
         fecha_registro=datetime.now()
     )
 
     # ===============================
-    # 5️⃣ Agregar campos opcionales
-    # ===============================
-    if user_data.telefono:
-        new_user.telefono = user_data.telefono.strip()
-
-    if user_data.direccion:
-        new_user.direccion = user_data.direccion.strip()
-
-    new_user.activo = user_data.activo
-
-    # ===============================
-    # 6️⃣ Guardar usuario
+    # 5️⃣ Guardar usuario
     # ===============================
     try:
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-
+        
+        # ✅ Registrar auditoría
         registrar_auditoria(
-        db=db,
-        accion="CREATE",
-        descripcion=f"Usuario '{new_user.usuario}' creado por '{payload['sub']}'",
-        id_usuario=db.query(UsuarioSistema)
-                    .filter(UsuarioSistema.usuario == payload['sub'])
-                    .first().id_usuario_sistema
+            db=db,
+            accion="CREATE",
+            descripcion=f"Usuario '{new_user.usuario}' creado por '{payload['sub']}'",
+            id_usuario=current_user.id_usuario_sistema
         )
         
+        # ✅ Crear notificación al crear un usuario
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Usuario creado",
+            mensaje=f"El usuario '{new_user.usuario}' fue creado correctamente.",
+            tipo="exito"
+        )
         print(f"✅ Usuario creado exitosamente: {username}")
-        # 📌 Registrar auditoría
-        
 
         # ✅ Devolver respuesta con datos generados
-        response_data = user_to_response(new_user)
-        response_data["contraseña_generada"] = raw_password  # Mostrar solo UNA VEZ
+        response_data = user_to_response(new_user, db)
+        response_data["contraseña_generada"] = raw_password
 
         return response_data
-
+    
     except Exception as e:
         db.rollback()
         print(f"❌ Error al crear usuario: {e}")
@@ -300,8 +398,7 @@ def create_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear el usuario: {str(e)}"
         )
-
-
+      
 # ========================================
 # ACTUALIZAR USUARIO
 # ========================================
@@ -314,9 +411,10 @@ def update_user(
 ):
     """
     Actualiza un usuario existente
-    Admin puede actualizar cualquier usuario
-    Usuario normal solo puede actualizar sus propios datos
+    Requiere permiso: usuarios.actualizar o usuarios.crud (o ser el mismo usuario)
     """
+    current_user = get_current_user(payload, db)
+    
     # Obtener usuario a actualizar
     user = db.query(UsuarioSistema).filter(
         UsuarioSistema.id_usuario_sistema == user_id
@@ -329,23 +427,20 @@ def update_user(
         )
     
     # Verificar permisos
-    if payload.get("rol") != "administrador":
-        current_user = db.query(UsuarioSistema).filter(
-            UsuarioSistema.usuario == payload["sub"]
-        ).first()
-        
-        if not current_user or current_user.id_usuario_sistema != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permisos para actualizar este usuario"
-            )
-        
-        # Usuario normal no puede cambiar su propio rol
-        if user_data.rol and user_data.rol != user.rol:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No puedes cambiar tu propio rol"
-            )
+    can_update_all = check_permission(current_user, db, "usuarios", "actualizar")
+    
+    if not can_update_all and current_user.id_usuario_sistema != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para actualizar este usuario"
+        )
+    
+    # Usuario normal no puede cambiar su propio rol
+    if not can_update_all and user_data.id_rol and user_data.id_rol != user.id_rol:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No puedes cambiar tu propio rol"
+        )
     
     # Verificar unicidad de campos si se están actualizando
     if user_data.usuario and user_data.usuario != user.usuario:
@@ -367,7 +462,7 @@ def update_user(
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El email electrónico ya está registrado"
+                detail="El correo electrónico ya está registrado"
             )
     
     if user_data.cedula and user_data.cedula != user.cedula:
@@ -387,7 +482,6 @@ def update_user(
     for field, value in update_data.items():
         if value is not None:
             if field == "clave":
-                # Si se está actualizando la contraseña, cifrarla
                 setattr(user, field, hash_password(value))
             elif field in ["usuario", "nombres", "apellidos", "email", "cedula", "telefono", "direccion"]:
                 setattr(user, field, value.strip() if isinstance(value, str) else value)
@@ -397,17 +491,22 @@ def update_user(
     try:
         db.commit()
         db.refresh(user)
-        
-        # 📌 Registrar auditoría
+        # ✅ Registrar auditoría
         registrar_auditoria(
             db=db,
             accion="UPDATE",
             descripcion=f"Usuario '{user.usuario}' actualizado por '{payload['sub']}'",
-            id_usuario=db.query(UsuarioSistema)
-                        .filter(UsuarioSistema.usuario == payload['sub'])
-                        .first().id_usuario_sistema
+            id_usuario=current_user.id_usuario_sistema
         )
-        return user_to_response(user)
+        # ✅ Crear notificación 
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Usuario modificado",
+            mensaje=f"El usuario '{user.usuario}' fue modificado correctamente.",
+            tipo="info"
+        )
+        return user_to_response(user, db)
     
     except Exception as e:
         db.rollback()
@@ -417,9 +516,8 @@ def update_user(
             detail="Error al actualizar el usuario"
         )
 
-
 # ========================================
-# ELIMINAR USUARIO
+# ELIMINAR USUARIO (SOLO SI NO TIENE RELACIONES)
 # ========================================
 @router.delete("/{user_id}", status_code=status.HTTP_200_OK)
 def delete_user(
@@ -428,64 +526,69 @@ def delete_user(
     db: Session = Depends(get_db)
 ):
     """
-    Elimina un usuario
-    Solo admin puede eliminar usuarios
+    Elimina el usuario solo si NO tiene relaciones.
+    Si tiene relaciones, NO lo elimina y manda un mensaje al usuario.
     """
-    # Verificar que el usuario sea admin
-    if payload.get("rol") != "administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para eliminar usuarios"
-        )
-    
-    # Verificar que no se esté eliminando a sí mismo
-    current_user = db.query(UsuarioSistema).filter(
-        UsuarioSistema.usuario == payload["sub"]
-    ).first()
-    
-    if current_user and current_user.id_usuario_sistema == user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No puedes eliminar tu propio usuario"
-        )
-    
-    # Obtener usuario a eliminar
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "usuarios", "eliminar")
+
+    # Buscar usuario
     user = db.query(UsuarioSistema).filter(
         UsuarioSistema.id_usuario_sistema == user_id
     ).first()
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuario no encontrado"
         )
-    
+
     try:
+        # Intentar eliminar físicamente
         db.delete(user)
         db.commit()
-        
-        # 📌 Registrar auditoría
+
+        # Auditoría
         registrar_auditoria(
             db=db,
             accion="DELETE",
             descripcion=f"Usuario '{user.usuario}' eliminado por '{payload['sub']}'",
-            id_usuario=db.query(UsuarioSistema)
-                        .filter(UsuarioSistema.usuario == payload['sub'])
-                        .first().id_usuario_sistema
-        )
-        return {
-            "success": True,
-            "message": "Usuario eliminado exitosamente"
-        }
-    
-    except Exception as e:
-        db.rollback()
-        print(f"Error al eliminar usuario: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al eliminar el usuario"
+            id_usuario=current_user.id_usuario_sistema
         )
 
+        # Notificación
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Usuario eliminado",
+            mensaje=f"El usuario '{user.usuario}' fue eliminado correctamente.",
+            tipo="info"
+        )
+
+        return {
+            "success": True,
+            "accion": "eliminado",
+            "message": f"Usuario '{user.usuario}' eliminado correctamente."
+        }
+
+    except IntegrityError as e:
+        db.rollback()
+
+        if isinstance(e.orig, (ForeignKeyViolation, NotNullViolation)):
+            return {
+                "success": False,
+                "accion": "no_eliminado",
+                "message": (
+                    f"NO se puede elimiar el usuario '{user.usuario}', porque "
+                    f"tiene relaciones con otros módulos del sistema. Elimine esos elementos antes "
+                    "de intentar borrar este usuario."
+                )
+            }
+
+        raise HTTPException(
+            status_code=500,
+            detail="Error al intentar eliminar el usuario"
+        )
 
 # ========================================
 # CAMBIAR ESTADO (ACTIVAR/DESACTIVAR)
@@ -498,13 +601,10 @@ def toggle_user_status(
 ):
     """
     Activa o desactiva un usuario
-    Solo admin puede cambiar el estado
+    Requiere permiso: usuarios.actualizar o usuarios.crud
     """
-    if payload.get("rol") != "administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para cambiar el estado de usuarios"
-        )
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "usuarios", "actualizar")
     
     user = db.query(UsuarioSistema).filter(
         UsuarioSistema.id_usuario_sistema == user_id
@@ -516,21 +616,21 @@ def toggle_user_status(
             detail="Usuario no encontrado"
         )
     
-    # Verificar que el modelo tenga el campo activo
-    if not hasattr(UsuarioSistema, 'activo'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El modelo de usuario no soporta el campo 'activo'"
-        )
-    
     # Cambiar estado
     user.activo = not user.activo
-    
+    estado_texto = "activado" if user.activo else "desactivado"
     try:
         db.commit()
         db.refresh(user)
         
-        return user_to_response(user)
+        # ✅ Registrar auditoría
+        registrar_auditoria(
+            db=db,
+            accion="UPDATE",
+            descripcion=f"Usuario '{user.usuario}' fue {estado_texto} por '{payload['sub']}'",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        return user_to_response(user, db)
     
     except Exception as e:
         db.rollback()
@@ -539,7 +639,6 @@ def toggle_user_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al cambiar el estado del usuario"
         )
-
 
 # ========================================
 # CAMBIAR CONTRASEÑA
@@ -553,15 +652,14 @@ def change_user_password(
 ):
     """
     Cambia la contraseña de un usuario
-    El usuario solo puede cambiar su propia contraseña
+    El usuario puede cambiar su propia contraseña o admin con usuarios.actualizar
     """
-    # Obtener usuario actual
-    current_user = db.query(UsuarioSistema).filter(
-        UsuarioSistema.usuario == payload["sub"]
-    ).first()
+    current_user = get_current_user(payload, db)
     
-    # Verificar que sea el mismo usuario o admin
-    if payload.get("rol") != "administrador" and (not current_user or current_user.id_usuario_sistema != user_id):
+    # Verificar permisos
+    can_change_all = check_permission(current_user, db, "usuarios", "actualizar")
+    
+    if not can_change_all and current_user.id_usuario_sistema != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permisos para cambiar esta contraseña"
@@ -578,8 +676,8 @@ def change_user_password(
             detail="Usuario no encontrado"
         )
     
-    # Verificar contraseña actual (solo si no es admin)
-    if payload.get("rol") != "administrador":
+    # Verificar contraseña actual (solo si no es admin cambiando a otro usuario)
+    if not can_change_all or current_user.id_usuario_sistema == user_id:
         if not verify_password(password_data.current_password, user.clave):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -587,18 +685,37 @@ def change_user_password(
             )
     
     # Validar nueva contraseña
-    if len(password_data.new_password) < 6:
+    if len(password_data.new_password) < 8:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La nueva contraseña debe tener al menos 6 caracteres"
+            detail="La nueva contraseña debe tener al menos 8 caracteres"
         )
-    
+    # Validar que la nueva contraseña no sea igual a la actual
+    if verify_password(password_data.new_password, user.clave):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La nueva contraseña no puede ser igual a la actual"
+        )
+
     # Actualizar contraseña
     user.clave = hash_password(password_data.new_password)
     
     try:
         db.commit()
-        
+        #✅ Registrar auditoría
+        if current_user.id_usuario_sistema == user.id_usuario_sistema:
+            descripcion = f"El usuario '{user.usuario}' cambió su propia contraseña."
+        else:
+            descripcion = f"La contraseña del usuario '{user.usuario}' fue cambiada por el '{payload['sub']}'."
+
+        registrar_auditoria(
+            db=db,
+            accion="UPDATE",
+            descripcion=descripcion,
+            id_usuario=current_user.id_usuario_sistema
+        )
+
+
         return {
             "success": True,
             "message": "Contraseña actualizada exitosamente"
@@ -607,6 +724,59 @@ def change_user_password(
     except Exception as e:
         db.rollback()
         print(f"Error al cambiar contraseña: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al actualizar la contraseña"
+        )
+
+# ========================================
+# CAMBIAR CONTRASEÑA (PRIMER LOGIN)
+# ========================================
+@router.put("/{user_id}/change-password-first-login")
+def change_password_first_login(
+    user_id: int,
+    password_data: ChangePasswordFirstLoginRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Permite al usuario cambiar su contraseña en su primer inicio de sesión
+    o después de recuperación, sin verificar la contraseña actual.
+    """
+    user = db.query(UsuarioSistema).filter(
+        UsuarioSistema.id_usuario_sistema == user_id
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+
+    # Validar nueva contraseña
+    if len(password_data.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La nueva contraseña debe tener al menos 8 caracteres"
+        )
+
+    # Actualizar contraseña directamente
+    user.clave = hash_password(password_data.new_password)
+
+    try:
+        db.commit()
+        # ==========================================
+        # ✅ Registrar auditoría
+        # ==========================================
+        registrar_auditoria(
+            db=db,
+            accion="UPDATE",
+            descripcion=f"El usuario '{user.usuario}' cambió su contraseña en su primer inicio de sesión.",
+            id_usuario=user.id_usuario_sistema
+        )
+        return {"success": True, "message": "Contraseña actualizada exitosamente"}
+    except Exception as e:
+        db.rollback()
+        print(f"Error al cambiar contraseña (primer login): {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al actualizar la contraseña"
@@ -625,18 +795,18 @@ async def upload_user_photo(
 ):
     """
     Sube o actualiza la foto de perfil de un usuario
+    Admin o el mismo usuario pueden actualizar
     """
+    current_user = get_current_user(payload, db)
+    
     # Verificar permisos
-    if payload.get("rol") != "administrador":
-        current_user = db.query(UsuarioSistema).filter(
-            UsuarioSistema.usuario == payload["sub"]
-        ).first()
-        
-        if not current_user or current_user.id_usuario_sistema != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permisos para actualizar esta foto"
-            )
+    can_update_all = check_permission(current_user, db, "usuarios", "actualizar")
+    
+    if not can_update_all and current_user.id_usuario_sistema != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para actualizar esta foto"
+        )
     
     # Obtener usuario
     user = db.query(UsuarioSistema).filter(
@@ -673,7 +843,7 @@ async def upload_user_photo(
         db.commit()
         db.refresh(user)
         
-        return user_to_response(user)
+        return user_to_response(user, db)
     
     except Exception as e:
         db.rollback()
@@ -682,6 +852,7 @@ async def upload_user_photo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al guardar la foto"
         )
+
 # ========================================
 # DESBLOQUEAR USUARIO (ADMINISTRADOR)
 # ========================================
@@ -693,16 +864,11 @@ def unlock_user_account(
 ):
     """
     Desbloquea un usuario y resetea sus intentos fallidos
-    Solo admin puede desbloquear usuarios
+    Requiere permiso: usuarios.actualizar o usuarios.crud
     """
-    # Verificar que el usuario sea admin
-    if payload.get("rol") != "administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para desbloquear usuarios"
-        )
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "usuarios", "actualizar")
     
-    # Obtener usuario a desbloquear
     user = db.query(UsuarioSistema).filter(
         UsuarioSistema.id_usuario_sistema == user_id
     ).first()
@@ -713,12 +879,11 @@ def unlock_user_account(
             detail="Usuario no encontrado"
         )
     
-    # Guardar estado anterior para el mensaje
     was_permanently_blocked = user.bloqueado_permanente
     was_temporarily_blocked = user.bloqueado_hasta is not None
     previous_attempts = user.intentos_fallidos
     
-    # Resetear todos los bloqueos
+    # Resetear bloqueos
     user.intentos_fallidos = 0
     user.bloqueado_hasta = None
     user.bloqueado_permanente = False
@@ -727,7 +892,6 @@ def unlock_user_account(
         db.commit()
         db.refresh(user)
         
-        # Mensaje personalizado según el estado anterior
         if was_permanently_blocked:
             message = f"Usuario '{user.usuario}' desbloqueado exitosamente (bloqueo permanente removido)"
         elif was_temporarily_blocked:
@@ -753,7 +917,6 @@ def unlock_user_account(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al desbloquear el usuario"
         )
-
 
 # ========================================
 # OBTENER ESTADO DE BLOQUEO
@@ -885,3 +1048,230 @@ def get_blocked_users(
             "total_with_attempts": len(users_with_attempts)
         }
     }
+# ========================================
+# CREAR USUARIOS MASIVAMENTE DESDE EXCEL
+# ========================================
+@router.post("/bulk", response_model=UserBulkResponse, status_code=status.HTTP_201_CREATED)
+def create_users_bulk(
+    request: UserBulkCreateRequest,
+    payload: dict = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Crea múltiples usuarios desde Excel.
+    Requiere permiso: usuarios.crear o usuarios.crud
+    
+    ✅ Todos los usuarios se crean con:
+       - id_rol: 4 (Cliente)
+       - activo: True
+       - usuario: generado automáticamente (primer_nombre + contador si existe)
+       - contraseña: la cédula completa
+    
+    📊 Retorna:
+       - Lista de usuarios creados exitosamente con sus credenciales
+       - Lista de errores con detalles de cada fallo
+    """
+    # Verificar permisos
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "usuarios", "crear")
+    
+    exitosos = []
+    fallidos = []
+    
+    print(f"\n{'='*60}")
+    print(f"🚀 INICIANDO CARGA MASIVA DE {len(request.users)} USUARIOS")
+    print(f"{'='*60}\n")
+    
+    # ===============================
+    # 🔄 Procesar cada usuario
+    # ===============================
+    for index, user_data in enumerate(request.users, start=1):
+        fila_numero = index
+        
+        try:
+            print(f"📝 Procesando fila {fila_numero}: {user_data.nombres} {user_data.apellidos}")
+            
+            # ===============================
+            # 1️⃣ Normalizar y generar usuario
+            # ===============================
+            primer_nombre = user_data.nombres.strip().split()[0].lower()
+            # Remover acentos
+            primer_nombre = (primer_nombre
+                .replace('á', 'a').replace('é', 'e').replace('í', 'i')
+                .replace('ó', 'o').replace('ú', 'u').replace('ñ', 'n'))
+            
+            base_username = primer_nombre
+            username = base_username
+            
+            # Si existe, agregar año o contador
+            counter = 1
+            while db.query(UsuarioSistema).filter(UsuarioSistema.usuario == username).first():
+                if user_data.fecha_nac:
+                    username = f"{base_username}{user_data.fecha_nac.year}"
+                    if db.query(UsuarioSistema).filter(UsuarioSistema.usuario == username).first():
+                        username = f"{base_username}{user_data.fecha_nac.year}{counter}"
+                        counter += 1
+                else:
+                    username = f"{base_username}{counter}"
+                    counter += 1
+            
+            # ===============================
+            # 2️⃣ Generar contraseña = CÉDULA
+            # ===============================
+            raw_password = user_data.cedula.strip()
+            hashed_password = hash_password(raw_password)
+            
+            # ===============================
+            # 3️⃣ Verificar duplicados
+            # ===============================
+            existing = db.query(UsuarioSistema).filter(
+                or_(
+                    UsuarioSistema.email == user_data.email.lower(),
+                    UsuarioSistema.cedula == user_data.cedula
+                )
+            ).first()
+            
+            if existing:
+                if existing.email == user_data.email.lower():
+                    error_msg = "Email ya registrado"
+                else:
+                    error_msg = "Cédula ya registrada"
+                
+                print(f"   ❌ Error: {error_msg}")
+                fallidos.append(UserBulkError(
+                    fila=fila_numero,
+                    nombre=f"{user_data.nombres} {user_data.apellidos}",
+                    email=user_data.email,
+                    cedula=user_data.cedula,
+                    error=error_msg
+                ))
+                continue
+            
+            # ===============================
+            # 4️⃣ Crear usuario con ROL CLIENTE (4) y ACTIVO
+            # ===============================
+            new_user = UsuarioSistema(
+                usuario=username,
+                clave=hashed_password,
+                nombres=user_data.nombres.strip(),
+                apellidos=user_data.apellidos.strip(),
+                sexo=user_data.sexo.strip().upper(),
+                fecha_nac=user_data.fecha_nac,
+                cedula=user_data.cedula.strip(),
+                email=user_data.email.strip().lower(),
+                telefono=user_data.telefono.strip() if user_data.telefono else None,
+                direccion=user_data.direccion.strip() if user_data.direccion else "Sanjapamba",
+                id_rol=4,  # ✅ SIEMPRE ROL CLIENTE
+                activo=True,  # ✅ SIEMPRE ACTIVO
+                fecha_registro=datetime.now()
+            )
+            
+            db.add(new_user)
+            db.flush()  # Guardar sin hacer commit aún
+            
+            print(f"   ✅ Usuario creado: {username}")
+            
+            # Agregar a exitosos
+            exitosos.append(UserBulkResult(
+                fila=fila_numero,
+                usuario=username,
+                contraseña=raw_password,
+                nombre=f"{user_data.nombres} {user_data.apellidos}",
+                email=user_data.email,
+                cedula=user_data.cedula
+            ))
+            
+        except ValueError as ve:
+            # Error de validación
+            print(f"   ❌ Error de validación: {str(ve)}")
+            fallidos.append(UserBulkError(
+                fila=fila_numero,
+                nombre=f"{user_data.nombres} {user_data.apellidos}",
+                email=user_data.email,
+                cedula=user_data.cedula,
+                error=f"Validación: {str(ve)}"
+            ))
+            
+        except IntegrityError as ie:
+            db.rollback()
+            print(f"   ❌ Error de integridad: {str(ie)}")
+            
+            # Determinar el tipo de error
+            if "email" in str(ie).lower():
+                error_msg = "Email duplicado"
+            elif "cedula" in str(ie).lower():
+                error_msg = "Cédula duplicada"
+            elif "usuario" in str(ie).lower():
+                error_msg = "Usuario duplicado"
+            else:
+                error_msg = "Error de base de datos"
+            
+            fallidos.append(UserBulkError(
+                fila=fila_numero,
+                nombre=f"{user_data.nombres} {user_data.apellidos}",
+                email=user_data.email,
+                cedula=user_data.cedula,
+                error=error_msg
+            ))
+            
+        except Exception as e:
+            db.rollback()
+            print(f"   ❌ Error inesperado: {str(e)}")
+            fallidos.append(UserBulkError(
+                fila=fila_numero,
+                nombre=f"{user_data.nombres} {user_data.apellidos}",
+                email=user_data.email if hasattr(user_data, 'email') else None,
+                cedula=user_data.cedula if hasattr(user_data, 'cedula') else None,
+                error=f"Error: {str(e)}"
+            ))
+    
+    # ===============================
+    # 5️⃣ Guardar todos los cambios
+    # ===============================
+    try:
+        db.commit()
+        print(f"\n✅ Commit exitoso - {len(exitosos)} usuarios guardados")
+        
+        # Registrar auditoría
+        registrar_auditoria(
+            db=db,
+            accion="BULK_CREATE",
+            descripcion=f"Carga masiva: {len(exitosos)} usuarios creados por '{payload['sub']}'",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
+        # Notificación
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Carga masiva completada",
+            mensaje=f"Se crearon {len(exitosos)} usuarios correctamente. {len(fallidos)} errores.",
+            tipo="exito" if len(fallidos) == 0 else "advertencia"
+        )
+        
+    except Exception as e:
+        db.rollback()
+        print(f"\n❌ Error al hacer commit: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al guardar usuarios: {str(e)}"
+        )
+    
+    # ===============================
+    # 6️⃣ Retornar resumen
+    # ===============================
+    print(f"\n{'='*60}")
+    print(f"📊 RESUMEN DE CARGA MASIVA")
+    print(f"{'='*60}")
+    print(f"✅ Exitosos: {len(exitosos)}")
+    print(f"❌ Fallidos: {len(fallidos)}")
+    print(f"📝 Total procesados: {len(request.users)}")
+    print(f"{'='*60}\n")
+    
+    return UserBulkResponse(
+        exitosos=exitosos,
+        fallidos=fallidos,
+        total_procesados=len(request.users),
+        total_exitosos=len(exitosos),
+        total_fallidos=len(fallidos)
+    )

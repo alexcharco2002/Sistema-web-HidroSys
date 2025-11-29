@@ -23,6 +23,19 @@ from utils.audit_logger import registrar_auditoria
 from utils.notifications import registrar_notificacion
 from pydantic import BaseModel
 
+from sqlalchemy import text
+
+def cerrar_conexiones(db_name: str, db: Session):
+    db.execute(
+        text(
+            f"SELECT pg_terminate_backend(pid) "
+            f"FROM pg_stat_activity "
+            f"WHERE datname='{db_name}' AND pid <> pg_backend_pid();"
+        )
+    )
+    db.commit()
+
+
 router = APIRouter(prefix="/backups", tags=["Backups"])
 
 # ========================================
@@ -320,7 +333,7 @@ def restaurar_backup(
     require_permission(current_user, db, "configuracion", "actualizar")
     
     backup_path = BACKUP_DIR / restore_data.filename
-    
+
     # Verificar que el archivo existe
     if not backup_path.exists():
         raise HTTPException(
@@ -335,22 +348,26 @@ def restaurar_backup(
             detail="Solo se pueden restaurar archivos .dump"
         )
     
-    # Configurar variable de entorno para la contraseña
+    # Configurar entorno con contraseña
     env = os.environ.copy()
     env["PGPASSWORD"] = DB_PASSWORD
-    
-    # Comando para restaurar backup
+
+    # Comando de restauración
     comando = [
-        PG_RESTORE_PATH,
-        "-h", DB_HOST,
-        "-p", DB_PORT,
-        "-U", DB_USER,
-        "-d", DB_NAME,
-        "-c",  # limpia la base antes de restaurar
-        "--if-exists",  # no falla si los objetos no existen
-        str(backup_path),
-    ]
-    
+    PG_RESTORE_PATH,
+    "-h", DB_HOST,
+    "-p", str(DB_PORT),
+    "-U", DB_USER,
+    "-d", DB_NAME,
+    "-c",  # limpia la base
+    "--if-exists",
+    "--disable-triggers",
+    str(backup_path),
+]
+
+
+
+
     try:
         # Ejecutar pg_restore
         result = subprocess.run(
@@ -358,22 +375,22 @@ def restaurar_backup(
             env=env,
             capture_output=True,
             text=True,
-            timeout=600  # 10 minutos de timeout
+            timeout=600  # 10 minutos
         )
-        
-        # pg_restore puede devolver warnings en stderr pero ser exitoso
+
+        # Revisar si hubo errores reales
         if result.returncode != 0 and "ERROR" in result.stderr.upper():
             raise Exception(result.stderr)
-        
-        # ✅ Registrar auditoría
+
+        # Registrar auditoría
         registrar_auditoria(
             db=db,
             accion="RESTORE_BACKUP",
             descripcion=f"Base de datos restaurada desde: {restore_data.filename}",
             id_usuario=current_user.id_usuario_sistema
         )
-        
-        # ✅ Crear notificación
+
+        # Crear notificación
         registrar_notificacion(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
@@ -381,13 +398,13 @@ def restaurar_backup(
             mensaje=f"La base de datos fue restaurada desde '{restore_data.filename}'.",
             tipo="info"
         )
-        
+
         return {
             "success": True,
             "message": f"Base de datos restaurada exitosamente desde: {restore_data.filename}",
             "filename": restore_data.filename
         }
-        
+
     except subprocess.TimeoutExpired:
         raise HTTPException(
             status_code=status.HTTP_408_REQUEST_TIMEOUT,
@@ -399,6 +416,8 @@ def restaurar_backup(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al restaurar backup: {str(e)}"
         )
+
+
 
 @router.delete("/{filename}", response_model=BackupResponse)
 def eliminar_backup(

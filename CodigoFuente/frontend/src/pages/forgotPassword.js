@@ -1,5 +1,5 @@
 // src/pages/ForgotPassword.js
-// Página para recuperar la contraseña en varios pasos
+// Página para recuperar la contraseña en varios pasos con CODIGO de verificación
 import React, { useState, useEffect } from 'react';
 import { Mail, ArrowLeft, AlertCircle, CheckCircle, Key, Lock, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';

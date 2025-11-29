@@ -352,17 +352,23 @@ const TarifasSection = () => {
       </div>
 
       <div className="filters-section">
-        <div className="search-container">
-          <Search className="search-icon" />
-          <input
-            type="text"
-            placeholder="Buscar tarifas..."
-            className="search-input"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        
+
+      {/* IZQUIERDA — Barra de búsqueda */}
+      <div className="search-container">
+        <Search className="search-icon" />
+        <input
+          type="text"
+          placeholder="Buscar tarifas..."
+          className="search-input"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      {/* DERECHA — Filtros y acciones */}
+      <div className="filters-right">
+
+        {/* 🔧 Estado */}
         <select 
           className="filter-select"
           value={filterStatus}
@@ -373,6 +379,7 @@ const TarifasSection = () => {
           <option value="inactive">Inactivos</option>
         </select>
 
+        {/* 🏷️ Tipo de tarifa */}
         <select 
           className="filter-select"
           value={filterTipo}
@@ -384,6 +391,7 @@ const TarifasSection = () => {
           ))}
         </select>
 
+        {/* ⬆⬇ Ordenamiento */}
         <button 
           className="btn-secondary"
           onClick={toggleSortOrder}
@@ -395,6 +403,7 @@ const TarifasSection = () => {
           </span>
         </button>
 
+        {/* 🔄 Recargar */}
         <button 
           className="btn-secondary"
           onClick={fetchTarifas}
@@ -402,7 +411,9 @@ const TarifasSection = () => {
         >
           <RefreshCw className="w-4 h-4" />
         </button>
+
       </div>
+    </div>
 
       {/* Tarjetas de estadísticas */}
       <div className="users-stats">

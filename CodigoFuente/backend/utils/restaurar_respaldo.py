@@ -5,7 +5,7 @@ from pathlib import Path
 # === CONFIGURACIÓN ===
 DB_NAME = "jaap_sanjapamba"
 DB_USER = "postgres"
-DB_PASSWORD = "Informatico593"
+DB_PASSWORD = "TecniCobro2024"
 DB_HOST = "localhost"
 DB_PORT = "5432"
 
@@ -29,13 +29,15 @@ def restaurar_respaldo(nombre_archivo: str):
     comando = [
         PG_RESTORE_PATH,
         "-h", DB_HOST,
-        "-p", DB_PORT,
+        "-p", str(DB_PORT),
         "-U", DB_USER,
         "-d", DB_NAME,
-        "-c",  # limpia la base antes de restaurar
-        "--if-exists",  # ✅ No falla si los objetos no existen
+        "-c",  # limpia la base
+        "--if-exists",
+        "--disable-triggers",  # evita errores de FK
         str(archivo_respaldo),
     ]
+
 
     try:
         result = subprocess.run(comando, env=env, capture_output=True, text=True)

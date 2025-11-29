@@ -47,10 +47,7 @@
   }
 }
 
-/* Sticky sidebar */
-.sticky {
-  position: sticky;
-}
+
 
 .top-4 {
   top: 1rem;
@@ -517,7 +514,8 @@ button:disabled {
 
   nav button {
     white-space: nowrap;
-    min-width: fit-content;
+    min-width: -webkit-fill-available;
+    
   }
 }
 

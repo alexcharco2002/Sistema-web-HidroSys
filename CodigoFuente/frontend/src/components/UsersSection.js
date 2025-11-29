@@ -24,6 +24,12 @@ const UsersSection = () => {
   const [modalType, setModalType] = useState('create');
   const [selectedUser, setSelectedUser] = useState(null);
   const [error, setError] = useState(null);
+  // usuario logeado
+  const currentUser = authService.getCurrentUser(); 
+  // mover primero al usuario logeado
+  const loggedUserId = currentUser?.id_usuario_sistema;
+
+  
   // ===== Variables para carga desde Excel =====
   const [ selectedExcel,setSelectedExcel] = useState(null);   // archivo subido
   const [excelPreview, setExcelPreview] = useState([]);        // filas leídas
@@ -337,6 +343,12 @@ const UsersSection = () => {
     
     // Aplicar orden ascendente o descendente
     return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  const sortedUsersPrioritized = [...sortedUsers].sort((a, b) => {
+    if (a.id === loggedUserId) return -1; // a va primero
+    if (b.id === loggedUserId) return 1;  // b va después
+    return 0; // si ninguno es el user actual, mantener orden
   });
 
   /**
@@ -741,19 +753,22 @@ const UsersSection = () => {
           )}
         </div>
       </div>
-      {/* ==================== BARRA DE BÚSQUEDA Y FILTROS ==================== */}
-      <div className="filters-section">
-        {/* 🔍 Barra de búsqueda */}
-        <div className="search-container">
-          <Search className="search-icon" />
-          <input
-            type="text"
-            placeholder="Buscar por nombre o cédula..."
-            className="search-input"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
+     <div className="filters-section">
+
+      {/* IZQUIERDA — Barra de búsqueda */}
+      <div className="search-container">
+        <Search className="search-icon" />
+        <input
+          type="text"
+          placeholder="Buscar por nombre o cédula..."
+          className="search-input"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      {/* DERECHA — Agrupamos todos los filtros */}
+      <div className="filters-right">
         
         {/* 🏷️ Filtro por rol */}
         <select 
@@ -768,8 +783,8 @@ const UsersSection = () => {
             </option>
           ))}
         </select>
-        
-        {/* 🔀 Selector de ordenamiento */}
+
+        {/* 🔀 Ordenamiento */}
         <select
           className="filter-select"
           value={sortOption}
@@ -779,8 +794,8 @@ const UsersSection = () => {
           <option value="nombre">Ordenar por Nombre</option>
           <option value="fecha">Ordenar por Fecha</option>
         </select>
-        
-        {/* ⬆️⬇️ Botón de orden ascendente/descendente */}
+
+        {/* ⬆⬇ Botón orden */}
         <button 
           className="btn-secondary"
           onClick={toggleSortOrder}
@@ -791,8 +806,8 @@ const UsersSection = () => {
             {sortOrder === 'asc' ? '↑' : '↓'}
           </span>
         </button>
-        
-        {/* 🔄 Botón de recarga */}
+
+        {/* 🔄 Recargar */}
         <button 
           className="btn-secondary"
           onClick={fetchUsers}
@@ -800,7 +815,9 @@ const UsersSection = () => {
         >
           <RefreshCw className="w-4 h-4" />
         </button>
+
       </div>
+    </div>
 
       {/* ==================== ESTADÍSTICAS ==================== */}
       <div className="users-stats">
@@ -843,7 +860,7 @@ const UsersSection = () => {
 
       {/* ==================== GRID DE USUARIOS ==================== */}
       <div className="users-grid">
-        {sortedUsers.map(user => (
+        {sortedUsersPrioritized.map(user => (
           <div key={user.id} className={`user-card ${!user.activo ? 'inactive' : ''}`}>
             {/* Encabezado de la tarjeta */}
             <div className="user-card-header">

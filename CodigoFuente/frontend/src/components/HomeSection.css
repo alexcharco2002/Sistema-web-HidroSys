@@ -1,0 +1,345 @@
+/* ========================================
+   ESTILOS PARA HOME SECTION
+   Adaptado al estilo de Users Section
+   ======================================== */
+
+/* ========================================
+   ACCIONES PRINCIPALES - GRID
+   ======================================== */
+.home-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+/* Tarjeta de acción en modo grid */
+.action-card-home {
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.action-card-home::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.03), rgba(30, 58, 138, 0.03));
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  border-radius: 0.75rem;
+}
+
+.action-card-home:hover::before {
+  opacity: 1;
+}
+
+.action-card-home .user-card-header {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.action-card-home .action-icon-wrapper {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s;
+}
+
+.action-card-home:hover .action-icon-wrapper {
+  transform: scale(1.1) rotate(5deg);
+}
+
+.action-card-home .user-name {
+  font-size: 1.125rem;
+  margin-bottom: 0.25rem;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: initial;
+}
+
+.action-card-home .action-description {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-top: 0.25rem;
+}
+
+/* ========================================
+   ACCIONES PRINCIPALES - LISTA
+   ======================================== */
+.home-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.action-list-item-home {
+  background: var(--bg-white);
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.action-list-item-home:hover {
+  border-color: var(--primary-color);
+  background: var(--bg-gray-50);
+  transform: translateX(4px);
+  box-shadow: var(--shadow-md);
+}
+
+.action-list-item-home .action-list-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.action-list-item-home .action-list-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.action-list-item-home .action-list-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.action-list-item-home .action-list-description {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* ========================================
+   PANEL DE ENLACES RÁPIDOS
+   ======================================== */
+.quick-links-section {
+  background: var(--bg-white);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md);
+  margin-bottom: 2rem;
+}
+
+.quick-links-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--bg-gray-100);
+}
+
+.quick-links-header h3 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.quick-links-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.quick-link-item {
+  padding: 0.875rem 1rem;
+  background: var(--bg-gray-50);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  transition: all 0.2s;
+}
+
+.quick-link-item:hover {
+  background: var(--bg-gray-100);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateX(4px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ========================================
+   SUBTITLE EN HEADER
+   ======================================== */
+.subtitle {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0;
+  font-weight: 400;
+}
+
+/* ========================================
+   BOTONES ACTIVOS (LAYOUT)
+   ======================================== */
+.btn-secondary.active {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.btn-secondary.active:hover {
+  background-color: var(--primary-dark);
+  border-color: var(--primary-dark);
+}
+
+/* ========================================
+   COLORES POR TIPO DE ACCIÓN
+   ======================================== */
+/* Azul */
+.bg-blue-50 { background-color: #eff6ff; }
+.text-blue-600 { color: #2563eb; }
+.action-card-home.blue:hover {
+  border-color: #2563eb;
+}
+
+/* Verde */
+.bg-green-50 { background-color: #f0fdf4; }
+.text-green-600 { color: #16a34a; }
+.action-card-home.green:hover {
+  border-color: #16a34a;
+}
+
+/* Púrpura */
+.bg-purple-50 { background-color: #faf5ff; }
+.text-purple-600 { color: #9333ea; }
+.action-card-home.purple:hover {
+  border-color: #9333ea;
+}
+
+/* Naranja */
+.bg-orange-50 { background-color: #fff7ed; }
+.text-orange-600 { color: #ea580c; }
+.action-card-home.orange:hover {
+  border-color: #ea580c;
+}
+
+/* Rojo */
+.bg-red-50 { background-color: #fef2f2; }
+.text-red-600 { color: #dc2626; }
+.action-card-home.red:hover {
+  border-color: #dc2626;
+}
+
+/* Cyan */
+.bg-cyan-50 { background-color: #ecfeff; }
+.text-cyan-600 { color: #0891b2; }
+.action-card-home.cyan:hover {
+  border-color: #0891b2;
+}
+
+/* ========================================
+   ANIMACIONES
+   ======================================== */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.action-card-home,
+.action-list-item-home {
+  animation: fadeInUp 0.4s ease-out;
+}
+
+.action-card-home:nth-child(1),
+.action-list-item-home:nth-child(1) { animation-delay: 0.05s; }
+.action-card-home:nth-child(2),
+.action-list-item-home:nth-child(2) { animation-delay: 0.1s; }
+.action-card-home:nth-child(3),
+.action-list-item-home:nth-child(3) { animation-delay: 0.15s; }
+.action-card-home:nth-child(4),
+.action-list-item-home:nth-child(4) { animation-delay: 0.2s; }
+.action-card-home:nth-child(5),
+.action-list-item-home:nth-child(5) { animation-delay: 0.25s; }
+.action-card-home:nth-child(6),
+.action-list-item-home:nth-child(6) { animation-delay: 0.3s; }
+
+.quick-links-section {
+  animation: fadeInUp 0.5s ease-out 0.3s backwards;
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 768px) {
+  .home-actions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-links-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .action-card-home .user-name {
+    font-size: 1rem;
+  }
+
+  .action-card-home .action-description {
+    font-size: 0.8rem;
+  }
+
+  .section-header .actions {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .action-card-home {
+    padding: 1rem;
+  }
+
+  .action-card-home .action-icon-wrapper {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .action-list-item-home {
+    padding: 0.875rem 1rem;
+  }
+
+  .action-list-item-home .action-list-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .quick-links-section {
+    padding: 1rem;
+  }
+
+  .quick-links-header h3 {
+    font-size: 1rem;
+  }
+}

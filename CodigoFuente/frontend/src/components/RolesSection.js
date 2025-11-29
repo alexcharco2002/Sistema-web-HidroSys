@@ -11,7 +11,7 @@ import rolesService from '../services/rolesServices';
 import authService from '../services/authServices'; // 🔑 Importar authService
 
 import {
-  Shield,
+  ShieldCheck,
   Plus,
   Search,
   Edit,
@@ -26,7 +26,7 @@ import {
   CheckCircle,
   XCircle,
   Settings,
-  Calendar
+  Calendar,
 } from 'lucide-react';
 
 // ============================================
@@ -474,7 +474,7 @@ const RolesSection = () => {
       {/* Header */}
       <div className="section-header">
         <div className="section-title">
-          <Shield className="w-6 h-6 text-blue-600" />
+          <ShieldCheck className="w-6 h-6 text-blue-600" />
           <h2>Gestión de Roles y Permisos</h2>
         </div>
         {/* 🔑 Botón "Nuevo Rol" solo si tiene permiso de crear */}
@@ -514,7 +514,7 @@ const RolesSection = () => {
       {/* Stats */}
       <div className="users-stats">
         <div className="stat-item">
-          <Shield className="stat-icon text-blue-600" />
+          <ShieldCheck className="stat-icon text-blue-600" />
           <div>
             <p className="stat-label">Total Roles</p>
             <p className="stat-value">{stats.totalRoles}</p>
@@ -558,13 +558,13 @@ const RolesSection = () => {
         {/* Panel de Roles (Izquierda) */}
         <div className="roles-list-panel">
           <h3 className="panel-title">
-            <Shield className="w-5 h-5" />
+            <ShieldCheck className="w-5 h-5" />
             Roles del Sistema
           </h3>
           
           {filteredRoles.length === 0 ? (
             <div className="empty-state">
-              <Shield className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+              <ShieldCheck className="w-12 h-12 text-gray-300 mx-auto mb-2" />
               <p>No se encontraron roles</p>
             </div>
           ) : (

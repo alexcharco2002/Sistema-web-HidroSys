@@ -1,60 +1,111 @@
-// App.js
-// Archivo principal con rutas anidadas para navegación por URL
+// src/App.js - VERSIÓN CORREGIDA
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/login.js';
-import Forgotpassword from './pages/forgotPassword.js';
-import ResetPassword from './pages/ResetPassword.js';
 import { useEffect } from 'react';
 
-// Importar los paneles de cada rol con rutas anidadas
-import AdminDashboard from './pages/admin/Dashboard';
-import LectorDashboard from './pages/lector/Dashboard';
-import ClienteDashboard from './pages/cliente/Dashboard';
-import CajeroDashboard from './pages/cajero/Dashboard.js';
+// Páginas públicas
+import Login from './pages/login.js';
+import Forgotpassword from './pages/forgotPassword.js';
 
-//IMPOTAR SERVICIOS
+// Dashboard Universal
+import UniversalDashboard from './pages/UniversalDashboard.js';
+
+// Componente de ruta protegida
+import ProtectedRoute from './components/ProtectedRoute.js';
+
+// Servicios
 import authService from './services/authServices.js';
 
+/**
+ * 🔥 Redirección inteligente
+ */
+const SmartRedirect = () => {
+  if (authService.isAuthenticated()) {
+    const roleRoute = authService.getRoleBasedRoute();
+    console.log(`🔀 SmartRedirect -> ${roleRoute}`);
+    return <Navigate to={roleRoute} replace />;
+  }
+  return <Navigate to="/login" replace />;
+};
+
+/**
+ * 🔥 Dashboard dinámico por rol - VERSIÓN CORREGIDA
+ */
+const DynamicRoleDashboard = () => {
+  const isAuthenticated = authService.isAuthenticated();
+  
+  if (!isAuthenticated) {
+    console.log('❌ No autenticado, redirigiendo a login');
+    return <Navigate to="/login" replace />;
+  }
+
+  const currentPath = window.location.pathname;
+  const userRoleBase = authService.getRoleBasePath(); // /administrador
+  const userRoleHome = authService.getRoleBasedRoute(); // /administrador/home
+  
+  // Extraer el segmento del rol de la URL actual
+  const pathSegments = currentPath.split('/').filter(Boolean);
+  const currentRoleSegment = pathSegments[0] ? `/${pathSegments[0]}` : '/';
+
+  console.log('🔍 Debug DynamicRoleDashboard:', {
+    currentPath,
+    userRoleBase,
+    userRoleHome,
+    currentRoleSegment,
+    pathSegments
+  });
+
+  // ✅ CASO 1: Usuario accede solo a /administrador (sin /home)
+  // Redirigir a /administrador/home
+  if (currentPath === userRoleBase) {
+    console.log('📍 Redirigiendo de base a /home');
+    return <Navigate to={userRoleHome} replace />;
+  }
+
+  // ✅ CASO 2: Usuario intenta acceder a un rol diferente
+  // Ejemplo: su rol es /administrador pero intenta acceder a /lector
+  if (currentRoleSegment !== userRoleBase) {
+    console.log(`⚠️ Rol incorrecto. Esperado: ${userRoleBase}, Actual: ${currentRoleSegment}`);
+    return <Navigate to={userRoleHome} replace />;
+  }
+
+  // ✅ CASO 3: Todo está bien, renderizar el dashboard
+  console.log('✅ Renderizando UniversalDashboard');
+  return (
+    <ProtectedRoute>
+      <UniversalDashboard />
+    </ProtectedRoute>
+  );
+};
+
 const App = () => {
-    
+  // Manejar sesiones expiradas
   useEffect(() => {
     const handleExpired = () => {
+      console.log('⏰ Sesión expirada');
       authService.clearLocalData();
       window.location.href = "/login";
     };
 
     window.addEventListener("sessionExpired", handleExpired);
-
-    return () => {
-      window.removeEventListener("sessionExpired", handleExpired);
-    };
+    return () => window.removeEventListener("sessionExpired", handleExpired);
   }, []);
 
   return (
     <Router>
       <Routes>
-        {/* Redirige la ruta raíz "/" hacia "/login" */}
-        <Route path="/" element={<Navigate to="/login" />} />
-       
-        {/* Página de inicio de sesión */}
+        {/* RUTAS PÚBLICAS */}
+        <Route path="/" element={<SmartRedirect />} />
         <Route path="/login" element={<Login />} />
-
-        {/* Ruta para la recuperación de contraseña */}
         <Route path="/forgot-password" element={<Forgotpassword />} />
-        
-        {/* Ruta para restablecer la contraseña con token */}
-        <Route path="/reset-password/:token" element={<ResetPassword />} />
 
-        {/* 
-          🔥 RUTAS ANIDADAS PARA ADMIN 
-          Ahora el Dashboard funciona como Layout y las subsecciones son rutas hijas
-        */}
-        <Route path="/admin/dashboard/*" element={<AdminDashboard />} />
+        {/* RUTAS DINÁMICAS POR ROL */}
+        <Route path="/:rolePath/*" element={<DynamicRoleDashboard />} />
 
-        {/* Rutas anidadas para otros roles */}
-        <Route path="/lector/dashboard/*" element={<LectorDashboard />} />
-        <Route path="/cajero/dashboard/*" element={<CajeroDashboard />} />
-        <Route path="/cliente/dashboard/*" element={<ClienteDashboard />} />
+        {/* REDIRECCIÓN GENÉRICA */}
+        <Route path="/dashboard/*" element={<SmartRedirect />} />
+
+        {/* RUTA 404 */}
+        <Route path="*" element={<SmartRedirect />} />
       </Routes>
     </Router>
   );

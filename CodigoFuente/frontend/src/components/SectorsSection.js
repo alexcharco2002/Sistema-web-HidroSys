@@ -7,7 +7,7 @@ import authService from '../services/authServices';
 
 import { 
   MapPin, Plus, Search, Edit, Trash2, Eye, CheckCircle, XCircle,
-  X, Save, RefreshCw, AlertCircle, Map, ArrowUpDown, FileText 
+  X, Save, RefreshCw, AlertCircle, ArrowUpDown, FileText, Layers
 } from 'lucide-react';
 
 const SectorsSection = () => {
@@ -313,7 +313,7 @@ const SectorsSection = () => {
     <div className="users-section">
       <div className="section-header">
         <div className="section-title">
-          <Map className="w-6 h-6 text-blue-600" />
+          <Layers className="w-6 h-6 text-blue-600" />
           <h2>Gestión de Sectores</h2>
         </div>
         {permissions.canCreate && (
@@ -328,17 +328,23 @@ const SectorsSection = () => {
       </div>
 
       <div className="filters-section">
-        <div className="search-container">
-          <Search className="search-icon" />
-          <input
-            type="text"
-            placeholder="Buscar sectores..."
-            className="search-input"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        
+
+      {/* IZQUIERDA — Barra de búsqueda */}
+      <div className="search-container">
+        <Search className="search-icon" />
+        <input
+          type="text"
+          placeholder="Buscar sectores..."
+          className="search-input"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      {/* DERECHA — Filtros y acciones */}
+      <div className="filters-right">
+
+        {/* 🔧 Estado */}
         <select 
           className="filter-select"
           value={filterStatus}
@@ -357,10 +363,11 @@ const SectorsSection = () => {
         >
           <ArrowUpDown className="w-4 h-4" />
           <span className="ml-1 text-xs">
-              {sortOrder === 'asc' ? '↑' : '↓'}
+            {sortOrder === 'asc' ? '↑' : '↓'}
           </span>
         </button>
 
+        {/* 🔄 Recargar */}
         <button 
           className="btn-secondary"
           onClick={fetchSectors}
@@ -368,7 +375,10 @@ const SectorsSection = () => {
         >
           <RefreshCw className="w-4 h-4" />
         </button>
+
       </div>
+    </div>
+
 
       {/* Tarjetas de estadísticas */}
       <div className="users-stats">

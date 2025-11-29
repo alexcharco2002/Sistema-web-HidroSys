@@ -29,7 +29,9 @@ const MetersSection = () => {
   const [modalType, setModalType] = useState('create');
   const [selectedMeter, setSelectedMeter] = useState(null);
   const [error, setError] = useState(null);
-  
+  // usuario afiliado local 
+  const currentUser = authService.getCurrentUser();
+
   const [formData, setFormData] = useState({
     num_medidor: '',
     latitud: '',
@@ -166,6 +168,16 @@ const MetersSection = () => {
                              (filterAssignment === 'unassigned' && !meter.id_usuario_afi);
     
     return matchesSearch && matchesSector && matchesStatus && matchesAssignment;
+  });
+
+  //reodernar los medidores para que los del usuario actual aparezcan primero
+  const sortedMeters = [...filteredMeters].sort((a, b) => {
+    const isUserA = a.id_usuario_afi === currentUser?.id_usuario_afi;
+    const isUserB = b.id_usuario_afi === currentUser?.id_usuario_afi;
+
+    if (isUserA && !isUserB) return -1; // A va primero
+    if (!isUserA && isUserB) return 1;  // B va después
+    return 0;
   });
 
   const openModal = async (type, meter = null) => {
@@ -406,17 +418,23 @@ const MetersSection = () => {
       </div>
 
       <div className="filters-section">
-        <div className="search-container">
-          <Search className="search-icon" />
-          <input
-            type="text"
-            placeholder="Buscar por número de medidor o código de afiliado..."
-            className="search-input"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        
+
+      {/*  — Barra de búsqueda */}
+      <div className="search-container">
+        <Search className="search-icon" />
+        <input
+          type="text"
+          placeholder="Buscar por número de medidor o código de afiliado..."
+          className="search-input"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      {/* todos los filtros */}
+      <div className="filters-right">
+
+        {/* 🏷️ Filtro por sector */}
         <select 
           className="filter-select"
           value={filterSector}
@@ -430,6 +448,7 @@ const MetersSection = () => {
           ))}
         </select>
 
+        {/* 🔧 Estado del medidor */}
         <select 
           className="filter-select"
           value={filterStatus}
@@ -440,6 +459,7 @@ const MetersSection = () => {
           <option value="inactive">Inactivos</option>
         </select>
 
+        {/* 📌 Asignación */}
         <select 
           className="filter-select"
           value={filterAssignment}
@@ -450,6 +470,7 @@ const MetersSection = () => {
           <option value="unassigned">Sin asignar</option>
         </select>
 
+        {/* 🔄 Recargar */}
         <button 
           className="btn-secondary"
           onClick={fetchMeters}
@@ -457,7 +478,10 @@ const MetersSection = () => {
         >
           <RefreshCw className="w-4 h-4" />
         </button>
+
       </div>
+    </div>
+
 
       <div className="users-stats">
         <div className="stat-item">
@@ -491,7 +515,7 @@ const MetersSection = () => {
       </div>
       {/* GRID DE MEDIDORES */}
       <div className="users-grid">
-        {filteredMeters.map(meter => (
+        {sortedMeters.map(meter => (
           <div key={meter.id_medidor} className={`user-card ${!meter.activo ? 'inactive' : ''}`}>
             <div className="user-card-header">
               <div className="user-info">

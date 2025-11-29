@@ -1,15 +1,16 @@
-// fronted pagina de INICIO DE SESION
 // src/pages/Login.js 
-// Este componente maneja el inicio de sesión del usuario, validaciones y redirección según el perfil.
+// Login actualizado para funcionar con el dashboard universal
 import React, { useState, useEffect } from 'react'; 
-import { Link } from 'react-router-dom';
-
+import { useNavigate } from 'react-router-dom';
 import { User, Lock, Eye, EyeOff, Droplets, AlertCircle } from 'lucide-react';
-import authService from '../services/authServices'; // Servicio de autenticación
-import { redirectByProfile } from '../utils/auth'; // Función para redirigir según el perfil del usuario
-import './Login.css'; //estilo del login
+import authService from '../services/authServices';
+import './Login.css';
 
-const Login = () => { // Estado del componente, inicializa los datos del formulario y estados de carga y error
+
+const Login = () => {
+  const navigate = useNavigate();
+  //const location = useLocation();
+
   const [formData, setFormData] = useState({
     username: '',
     password: ''
@@ -20,17 +21,20 @@ const Login = () => { // Estado del componente, inicializa los datos del formula
 
   // Verificar si ya está autenticado
   useEffect(() => {
-    if (authService.isAuthenticated()) {  //si el usuario ya está autenticado
-      // Redirigir según el perfil del usuario
+    if (authService.isAuthenticated()) {
       const user = authService.getCurrentUser();
-      if (user && user.rol) {  // si el usuario tiene un rol definido
-        // Redireccionar a la página correspondiente según el rol
-        window.location.href = redirectByProfile(user.rol);
+      
+      if (user) {
+        console.log('✅ Usuario ya autenticado, redirigiendo...');
+        // 🔥 Obtener ruta dinámica según el rol
+        const redirectRoute = authService.getRoleBasedRoute();
+        console.log(`🔀 Redirigiendo a: ${redirectRoute}`);
+        navigate(redirectRoute, { replace: true });
       }
     }
-  }, []);
+  }, [navigate]);
 
-  const handleInputChange = (e) => { // Maneja el cambio de los campos del formulario
+  const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -64,10 +68,9 @@ const Login = () => { // Estado del componente, inicializa los datos del formula
       return;
     }
 
-    setIsLoading(true); // Inicia el estado de carga
-    setError(''); // Limpia el error previo
+    setIsLoading(true);
+    setError('');
 
-    // Llamada al servicio de autenticación
     try {
       const response = await authService.login({
         username: formData.username,
@@ -75,23 +78,31 @@ const Login = () => { // Estado del componente, inicializa los datos del formula
       });
 
       if (response.success) {
-        const user = response.data?.user || authService.getCurrentUser();
-        
-        // Mostrar mensaje de éxito breve
-        setError('');
-        
-        // Redireccionar según el perfil
-        setTimeout(() => {
-          if (user && user.rol) {
-            window.location.href = redirectByProfile(user.rol);
-          } else {
-            // Fallback si no hay perfil definido
-            window.location.href = '/dashboard';
-          }
-        }, 500);
-        
-      } else {
-        console.log('🔎 response.message:', response.message);
+  const user = authService.getCurrentUser();
+  
+  // ✅ Usar getCurrentRole() en lugar de getRoleInfo()
+  const roleInfo = authService.getCurrentRole();
+  
+  console.log('✅ Login exitoso:', {
+    usuario: user?.nombres || user?.nombre_completo,
+    rol: roleInfo?.nombre,
+    ruta: roleInfo?.ruta
+  });
+
+  setFormData({ username: '', password: '' });
+  setError('');
+  
+  //const from = location.state?.from?.pathname;
+  const redirectRoute = authService.getRoleBasedRoute();
+  
+  console.log(`🔀 Redirigiendo usuario a: ${redirectRoute}`);
+  
+  setTimeout(() => {
+    navigate(redirectRoute, { replace: true });
+  }, 300);
+}
+ else {
+        console.log('❌ Login fallido:', response.message);
         
         // Manejo mejorado del mensaje de error
         let errorMessage = 'Error en el login';
@@ -99,7 +110,6 @@ const Login = () => { // Estado del componente, inicializa los datos del formula
         if (typeof response.message === 'string') {
           errorMessage = response.message;
         } else if (response.message && typeof response.message === 'object') {
-          // Intenta mostrar algún campo dentro del objeto
           const values = Object.values(response.message);
           errorMessage = values.length ? values[0] : 'Error en el login';
         }
@@ -107,7 +117,8 @@ const Login = () => { // Estado del componente, inicializa los datos del formula
         setError(errorMessage);
       }
     } catch (err) {
-      console.error('Error de login:', err);
+      console.error('💥 Error de login:', err);
+      
       const errorMessage = typeof err.message === 'string'
         ? err.message
         : 'Error de conexión. Verifica tu conexión a internet.';
@@ -154,57 +165,56 @@ const Login = () => { // Estado del componente, inicializa los datos del formula
             )}
 
             {/* Campo Usuario */}
-<div className="input-group">
-  <label htmlFor="username" className="input-label">
-    <User className="label-icon" /> {/* Icono al lado del label */}
-    Usuario
-  </label>
-  <input
-    id="username"
-    type="text"
-    name="username"
-    value={formData.username}
-    onChange={handleInputChange}
-    onKeyPress={handleKeyPress}
-    className="form-input"
-    placeholder="Ingresa tu usuario"
-    disabled={isLoading}
-    autoComplete="username"
-  />
-</div>
+            <div className="input-group">
+              <label htmlFor="username" className="input-label">
+                <User className="label-icon" />
+                Usuario
+              </label>
+              <input
+                id="username"
+                type="text"
+                name="username"
+                value={formData.username}
+                onChange={handleInputChange}
+                onKeyPress={handleKeyPress}
+                className="form-input"
+                placeholder="Ingresa tu usuario"
+                disabled={isLoading}
+                autoComplete="username"
+              />
+            </div>
 
-{/* Campo Contraseña */}
-<div className="input-group">
-  <label htmlFor="password" className="input-label">
-    <Lock className="label-icon" /> {/* Icono al lado del label */}
-    Contraseña
-  </label>
-  <div className="input-container">
-    <input
-      id="password"
-      type={showPassword ? "text" : "password"}
-      name="password"
-      value={formData.password}
-      onChange={handleInputChange}
-      onKeyPress={handleKeyPress}
-      className="form-input password-input"
-      placeholder="Ingresa tu contraseña"
-      disabled={isLoading}
-      autoComplete="current-password"
-    />
-    <button
-      type="button"
-      onClick={() => setShowPassword(!showPassword)}
-      className="password-toggle"
-      disabled={isLoading}
-      tabIndex="-1"
-      aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-    >
-      {showPassword ? <EyeOff className="toggle-icon" /> : <Eye className="toggle-icon" />}
-    </button>
-  </div>
-</div>
-
+            {/* Campo Contraseña */}
+            <div className="input-group">
+              <label htmlFor="password" className="input-label">
+                <Lock className="label-icon" />
+                Contraseña
+              </label>
+              <div className="input-container">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  onKeyPress={handleKeyPress}
+                  className="form-input password-input"
+                  placeholder="Ingresa tu contraseña"
+                  disabled={isLoading}
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="password-toggle"
+                  disabled={isLoading}
+                  tabIndex="-1"
+                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                >
+                  {showPassword ? <EyeOff className="toggle-icon" /> : <Eye className="toggle-icon" />}
+                </button>
+              </div>
+            </div>
 
             {/* Botón de login */}
             <button
@@ -225,16 +235,16 @@ const Login = () => { // Estado del componente, inicializa los datos del formula
 
             {/* Enlaces adicionales */}
             <div className="form-links">
-              <Link to="/forgot-password" className="forgot-link">
+              <a href="/forgot-password" className="forgot-link">
                 ¿Olvidaste tu contraseña?
-              </Link>
+              </a>
             </div>
           </div>
         </div>
 
         {/* Footer */}
         <div className="system-footer">
-          <p>Sistema de Facturación de Agua v1.0</p>
+          <p>Sistema de Facturación de Agua v2.0</p>
           <p className="footer-tech">Todos los derechos reservados @2025</p>
         </div>
       </div>

@@ -8,9 +8,9 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import { 
-  Map, MapPin, Search, CheckCircle, XCircle,
+  MapPin, Search, CheckCircle, XCircle,
   RefreshCw, AlertCircle, Layers, Navigation, 
-  X, User, Navigation2, ZoomIn, ZoomOut, Maximize2
+  X, User, Navigation2, Maximize2, LogIn
 } from 'lucide-react';
 
 const GeolocationSection = () => {
@@ -18,6 +18,7 @@ const GeolocationSection = () => {
   const mapContainerRef = useRef(null);
   const markersRef = useRef([]);
   const mapInitializedRef = useRef(false);
+  const shouldFitBoundsRef = useRef(true); // 🔥 Control para evitar re-centrado
   
   const [medidores, setMedidores] = useState([]);
   const [sectores, setSectores] = useState([]);
@@ -31,8 +32,8 @@ const GeolocationSection = () => {
   const [error, setError] = useState(null);
   const [estadisticas, setEstadisticas] = useState(null);
   const [mapReady, setMapReady] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   
-  // 📍 Coordenadas de Riobamba, Chimborazo, Ecuador
   const DEFAULT_ZOOM = 13;
 
   // 🔑 PERMISOS
@@ -43,6 +44,7 @@ const GeolocationSection = () => {
 
   useEffect(() => {
     loadUserPermissions();
+    loadCurrentUser();
   }, []);
 
   const loadUserPermissions = () => {
@@ -56,19 +58,22 @@ const GeolocationSection = () => {
     console.log('🔐 Permisos en módulo Geolocalización:', { canRead, canUpdate });
   };
 
+  // 🔥 CARGAR USUARIO ACTUAL
+  const loadCurrentUser = () => {
+    const user = authService.getCurrentUser();
+    setCurrentUser(user);
+    console.log('👤 Usuario actual:', user);
+  };
+
   // 🗺️ INICIALIZAR MAPA (UNA SOLA VEZ)
   useEffect(() => {
     console.log("📌 useEffect MAPA - Entrada");
-    console.log("📌 mapContainerRef.current:", mapContainerRef.current);
-    console.log("📌 mapInitializedRef.current:", mapInitializedRef.current);
-    console.log("📌 loading:", loading);
-
+    
     if (!mapContainerRef.current || mapInitializedRef.current) {
       console.log("❌ Saliendo - No hay contenedor o ya inicializado");
       return;
     }
 
-    // Esperar a que termine de cargar y el contenedor tenga tamaño
     const initTimeout = setTimeout(() => {
       if (!mapContainerRef.current) {
         console.log("❌ No hay contenedor después del timeout");
@@ -86,7 +91,6 @@ const GeolocationSection = () => {
       try {
         console.log("✅ INICIANDO MAPA - Contenedor listo");
         
-        // Crear mapa con centro en Riobamba
         const map = L.map(mapContainerRef.current, {
           center: [-1.6635, -78.6547],
           zoom: DEFAULT_ZOOM,
@@ -95,7 +99,7 @@ const GeolocationSection = () => {
           minZoom: 10
         });
 
-        // 🛰️ MÚLTIPLES CAPAS DE TILES (Usuario puede elegir)
+        // 🛰️ CAPAS DE TILES
         const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '© OpenStreetMap',
           maxZoom: 19
@@ -112,10 +116,8 @@ const GeolocationSection = () => {
           attribution: '© Google'
         });
 
-        // Agregar capa híbrida por defecto (satélite + etiquetas)
         hybridLayer.addTo(map);
 
-        // Control de capas
         const baseMaps = {
           "🛰️ Satélite + Etiquetas": hybridLayer,
           "🛰️ Solo Satélite": satelliteLayer,
@@ -124,12 +126,10 @@ const GeolocationSection = () => {
         
         L.control.layers(baseMaps).addTo(map);
 
-        // Controles de zoom personalizados
         L.control.zoom({
           position: 'topright'
         }).addTo(map);
 
-        // Escala
         L.control.scale({
           position: 'bottomleft',
           metric: true,
@@ -141,10 +141,7 @@ const GeolocationSection = () => {
         setMapReady(true);
 
         console.log("✅ Mapa inicializado correctamente");
-        console.log("✅ mapRef.current asignado:", !!mapRef.current);
-        console.log("✅ mapReady será true en un momento");
 
-        // Invalidar tamaño después de un momento
         setTimeout(() => {
           if (map) {
             map.invalidateSize();
@@ -156,13 +153,13 @@ const GeolocationSection = () => {
         console.error("❌ Error inicializando mapa:", err);
         setError("Error al inicializar el mapa: " + err.message);
       }
-    }, 500); // Aumentado a 500ms para dar tiempo al DOM
+    }, 500);
 
     return () => {
       console.log("🧹 Limpieza del useEffect del mapa");
       clearTimeout(initTimeout);
     };
-  }, [loading ]); // ⚠️ Array vacío - solo se ejecuta UNA VEZ al montar
+  }, [loading]);
 
   // 📡 CARGAR DATOS
   const fetchData = useCallback(async () => {
@@ -183,8 +180,19 @@ const GeolocationSection = () => {
       ]);
 
       if (medidoresResult.success) {
-        setMedidores(medidoresResult.data);
-        console.log('✅ Medidores geo cargados:', medidoresResult.data.length);
+        // 🔥 ORDENAR: Primero el medidor del usuario actual
+        let medidoresOrdenados = [...medidoresResult.data];
+        
+        if (currentUser?.id_usuario) {
+          medidoresOrdenados.sort((a, b) => {
+            if (a.id_usuario_afi === currentUser.id_usuario) return -1;
+            if (b.id_usuario_afi === currentUser.id_usuario) return 1;
+            return 0;
+          });
+        }
+        
+        setMedidores(medidoresOrdenados);
+        console.log('✅ Medidores geo cargados y ordenados:', medidoresOrdenados.length);
       } else {
         setError(medidoresResult.message);
       }
@@ -203,14 +211,14 @@ const GeolocationSection = () => {
     } finally {
       setLoading(false);
     }
-  }, [permissions.canRead]);
+  }, [permissions.canRead, currentUser]);
 
   useEffect(() => {
-    if (permissions.canRead) {
+    if (permissions.canRead && currentUser) {
       console.log('🔄 Cargando datos geo...');
       fetchData();
     }
-  }, [fetchData, permissions.canRead]);
+  }, [fetchData, permissions.canRead, currentUser]);
 
   // 🎯 FILTRAR MEDIDORES
   const filteredMedidores = medidores.filter(medidor => {
@@ -239,7 +247,7 @@ const GeolocationSection = () => {
     setSelectedMedidor(medidor);
   }, []);
 
-  // 🗺️ RENDERIZAR MARCADORES
+  // 🗺️ RENDERIZAR MARCADORES CON TOOLTIP MEJORADO
   const renderMarkers = useCallback(() => {
     if (!mapRef.current || !mapReady) return;
 
@@ -259,33 +267,53 @@ const GeolocationSection = () => {
       if (!medidor.latitud || !medidor.longitud) return;
 
       try {
-        // Determinar color según estado
+        const isCurrentUser = medidor.id_usuario_afi === currentUser?.id_usuario;
+        
         let markerColor = '#3b82f6';
-        if (!medidor.activo) markerColor = '#ef4444'; // Rojo: Inactivo
-        else if (!medidor.id_usuario_afi) markerColor = '#f59e0b'; // Amarillo: Sin asignar
-        else markerColor = '#10b981'; // Verde: Activo y asignado
+        let markerSize = 30;
+        let markerIcon = '📍';
+        
+        if (isCurrentUser) {
+          markerColor = '#8b5cf6';
+          markerSize = 38;
+          markerIcon = '🏠';
+        } else if (!medidor.activo) {
+          markerColor = '#ef4444';
+        } else if (!medidor.id_usuario_afi) {
+          markerColor = '#f59e0b';
+        } else {
+          markerColor = '#10b981';
+        }
 
-        // Icono personalizado más visible
         const icon = L.divIcon({
           html: `
             <div style="
               background-color: ${markerColor};
-              width: 30px;
-              height: 30px;
+              width: ${markerSize}px;
+              height: ${markerSize}px;
               border-radius: 50%;
-              border: 3px solid white;
-              box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+              border: ${isCurrentUser ? '4px' : '3px'} solid white;
+              box-shadow: 0 ${isCurrentUser ? '5px 12px' : '3px 8px'} rgba(0,0,0,0.4);
               display: flex;
               align-items: center;
               justify-content: center;
-              font-size: 14px;
+              font-size: ${isCurrentUser ? '18px' : '14px'};
               font-weight: bold;
               color: white;
-            ">📍</div>
+              ${isCurrentUser ? 'animation: pulse 2s infinite;' : ''}
+            ">${markerIcon}</div>
+            ${isCurrentUser ? `
+              <style>
+                @keyframes pulse {
+                  0%, 100% { transform: scale(1); }
+                  50% { transform: scale(1.1); }
+                }
+              </style>
+            ` : ''}
           `,
           className: 'custom-marker',
-          iconSize: [30, 30],
-          iconAnchor: [15, 15],
+          iconSize: [markerSize, markerSize],
+          iconAnchor: [markerSize/2, markerSize/2],
         });
 
         const marker = L.marker(
@@ -295,15 +323,49 @@ const GeolocationSection = () => {
           .addTo(mapRef.current)
           .on('click', () => handleMarkerClick(medidor));
 
-        // Popup mejorado
+        // 🔥 TOOLTIP MEJORADO CON NOMBRE Y CÓDIGO DE USUARIO
+        const tooltipContent = `
+          <div style="text-align: center; font-family: system-ui; min-width: 150px;">
+            <strong style="color: ${markerColor}; font-size: 13px;">${medidor.num_medidor}</strong>
+            ${medidor.usuario_afiliado ? `
+              <div style="font-size: 11px; color: #374151; margin-top: 4px;">
+                <div style="font-weight: 600;">${medidor.usuario_afiliado.nombre_afiliado}</div>
+                <div style="color: #6b7280;">Cód: ${medidor.usuario_afiliado.cod_usuario_afi || 'N/A'}</div>
+              </div>
+            ` : `
+              <div style="font-size: 11px; color: #9ca3af; margin-top: 4px; font-style: italic;">
+                Sin usuario asignado
+              </div>
+            `}
+            ${isCurrentUser ? '<div style="font-size: 10px; color: #8b5cf6; margin-top: 4px; font-weight: 600;">👤 Tu medidor</div>' : ''}
+          </div>
+        `;
+        
+        marker.bindTooltip(tooltipContent, {
+          permanent: false,
+          direction: 'top',
+          offset: [0, -20],
+          className: 'custom-tooltip'
+        });
+
+        // Popup detallado al hacer clic
         const popupContent = `
           <div style="padding: 12px; min-width: 220px; font-family: system-ui;">
             <h4 style="margin: 0 0 10px 0; font-size: 15px; font-weight: 600; color: #1f2937;">
-              📍 ${medidor.num_medidor}
+              ${markerIcon} ${medidor.num_medidor}
             </h4>
+            ${isCurrentUser ? 
+              `<div style="background: #f3e8ff; color: #8b5cf6; padding: 6px; border-radius: 6px; font-size: 12px; font-weight: 600; margin-bottom: 8px;">
+                👤 Tu medidor
+              </div>` : 
+              ''
+            }
             ${medidor.usuario_afiliado ? 
               `<p style="margin: 6px 0; font-size: 13px; color: #374151;">
                 <strong>👤 Usuario:</strong> ${medidor.usuario_afiliado.nombre_afiliado}
+              </p>
+              <p style="margin: 6px 0; font-size: 12px; color: #6b7280;">
+                <strong>Código:</strong> ${medidor.usuario_afiliado.cod_usuario_afi || 'N/A'}
               </p>` : 
               '<p style="margin: 6px 0; font-size: 13px; color: #9ca3af;"><em>⚠️ Sin asignar</em></p>'
             }
@@ -336,12 +398,28 @@ const GeolocationSection = () => {
       }
     });
 
-    // Ajustar vista a todos los marcadores
-    if (markersRef.current.length > 0) {
+    // 🔥 SOLO AJUSTAR BOUNDS SI shouldFitBoundsRef ES TRUE
+    if (shouldFitBoundsRef.current && markersRef.current.length > 0) {
+      // Si hay medidor del usuario actual, centrarlo
+      if (currentUser?.id_usuario) {
+        const medidorUsuario = filteredMedidores.find(m => m.id_usuario_afi === currentUser.id_usuario);
+        if (medidorUsuario && medidorUsuario.latitud && medidorUsuario.longitud) {
+          setTimeout(() => {
+            mapRef.current?.setView(
+              [parseFloat(medidorUsuario.latitud), parseFloat(medidorUsuario.longitud)],
+              18,
+              { animate: true, duration: 1 }
+            );
+          }, 500);
+          return; // No ejecutar el fitBounds general
+        }
+      }
+      
+      // Si no hay medidor del usuario, ajustar a todos
       try {
         const group = L.featureGroup(markersRef.current);
         mapRef.current.fitBounds(group.getBounds().pad(0.1), {
-          maxZoom: 22 // No hacer zoom excesivo
+          maxZoom: 18
         });
       } catch (e) {
         console.warn('Error ajustando bounds:', e);
@@ -350,48 +428,60 @@ const GeolocationSection = () => {
 
     console.log(`✅ ${markersRef.current.length} marcadores renderizados`);
 
-  }, [filteredMedidores, handleMarkerClick, mapReady]);
+  }, [filteredMedidores, handleMarkerClick, mapReady, currentUser]);
 
-  // Actualizar marcadores cuando cambian filtros
+  // 🔥 ACTUALIZAR MARCADORES SOLO CUANDO CAMBIAN FILTROS
   useEffect(() => {
     if (mapReady && medidores.length > 0) {
+      // Resetear flag cuando cambian los filtros
+      shouldFitBoundsRef.current = true;
+      
       const timeout = setTimeout(() => {
         renderMarkers();
       }, 100);
       return () => clearTimeout(timeout);
     }
-  }, [medidores, renderMarkers, mapReady]);
+  }, [searchTerm, filterSector, filterStatus, filterAsignacion, medidores, renderMarkers, mapReady]);
 
-  // 📍 CENTRAR EN MEDIDOR
+  // 📍 CENTRAR EN MEDIDOR CON ZOOM CERCANO (SIN RE-AJUSTAR)
   const centrarEnMedidor = (medidor) => {
     if (mapRef.current && medidor.latitud && medidor.longitud) {
+      // 🔥 DESACTIVAR AUTO-FIT para que no vuelva a centrar en todos
+      shouldFitBoundsRef.current = false;
+      
+      // Zoom muy cercano
       mapRef.current.setView(
         [parseFloat(medidor.latitud), parseFloat(medidor.longitud)], 
-        22, // Zoom alto para ver detalles
-        { animate: true, duration: 0.5 }
+        20,
+        { animate: true, duration: 0.8 }
       );
       setSelectedMedidor(medidor);
       
-      // Abrir popup del marcador
-      const marker = markersRef.current.find(m => {
-        const pos = m.getLatLng();
-        return pos.lat === parseFloat(medidor.latitud) && pos.lng === parseFloat(medidor.longitud);
-      });
-      if (marker) {
-        marker.openPopup();
-      }
+      // Abrir popup después de un delay
+      setTimeout(() => {
+        const marker = markersRef.current.find(m => {
+          const pos = m.getLatLng();
+          return Math.abs(pos.lat - parseFloat(medidor.latitud)) < 0.00001 && 
+                 Math.abs(pos.lng - parseFloat(medidor.longitud)) < 0.00001;
+        });
+        if (marker) {
+          marker.openPopup();
+        }
+      }, 500);
     }
   };
 
   // 🔄 RECARGAR DATOS
   const handleReload = () => {
     geolocalizacionService.clearCache();
+    shouldFitBoundsRef.current = true; // Resetear flag
     fetchData();
   };
 
   // 🔍 AJUSTAR A TODOS LOS MARCADORES
   const fitAllMarkers = () => {
     if (mapRef.current && markersRef.current.length > 0) {
+      shouldFitBoundsRef.current = true; // Permitir ajuste
       const group = L.featureGroup(markersRef.current);
       mapRef.current.fitBounds(group.getBounds().pad(0.1));
     }
@@ -408,7 +498,6 @@ const GeolocationSection = () => {
   }
 
   if (loading) {
-    console.log("⏳ Componente en estado LOADING");
     return (
       <div className="section-placeholder">
         <RefreshCw className="w-16 h-16 mx-auto mb-4 text-gray-400 animate-spin" />
@@ -418,16 +507,12 @@ const GeolocationSection = () => {
     );
   }
 
-  console.log("🎨 Renderizando componente principal");
-  console.log("🗺️ Estado mapReady:", mapReady);
-  console.log("📊 Medidores cargados:", medidores.length);
-
   return (
     <div className="users-section">
       {/* HEADER */}
       <div className="section-header">
         <div className="section-title">
-          <Map className="w-6 h-6 text-blue-600" />
+          <MapPin className="w-6 h-6 text-blue-600" />
           <h2>Geolocalización de Medidores</h2>
         </div>
 
@@ -470,52 +555,58 @@ const GeolocationSection = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
-        <select 
-          className="filter-select"
-          value={filterSector}
-          onChange={(e) => setFilterSector(e.target.value)}
-        >
-          <option value="all">Todos los sectores</option>
-          {sectores.filter(s => s.activo).map(sector => (
-            <option key={sector.id_sector} value={sector.id_sector}>
-              {sector.nombre_sector}
-            </option>
-          ))}
-        </select>
 
-        <select 
-          className="filter-select"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-        >
-          <option value="all">Todos los estados</option>
-          <option value="active">Activos</option>
-          <option value="inactive">Inactivos</option>
-        </select>
+        <div className="filters-right">
+          <select 
+            className="filter-select"
+            value={filterSector}
+            onChange={(e) => setFilterSector(e.target.value)}
+          >
+            <option value="all">Todos los sectores</option>
+            {sectores
+              .filter(s => s.activo)
+              .map(sector => (
+                <option key={sector.id_sector} value={sector.id_sector}>
+                  {sector.nombre_sector}
+                </option>
+              ))
+            }
+          </select>
 
-        <select 
-          className="filter-select"
-          value={filterAsignacion}
-          onChange={(e) => setFilterAsignacion(e.target.value)}
-        >
-          <option value="all">Todas las asignaciones</option>
-          <option value="assigned">Asignados</option>
-          <option value="unassigned">Sin asignar</option>
-        </select>
+          <select 
+            className="filter-select"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
+            <option value="all">Todos los estados</option>
+            <option value="active">Activos</option>
+            <option value="inactive">Inactivos</option>
+          </select>
 
-        <button 
-          className="btn-secondary"
-          onClick={() => {
-            setSearchTerm('');
-            setFilterSector('all');
-            setFilterStatus('all');
-            setFilterAsignacion('all');
-          }}
-          title="Limpiar filtros"
-        >
-          <X className="w-4 h-4" />
-        </button>
+          <select 
+            className="filter-select"
+            value={filterAsignacion}
+            onChange={(e) => setFilterAsignacion(e.target.value)}
+          >
+            <option value="all">Todas las asignaciones</option>
+            <option value="assigned">Asignados</option>
+            <option value="unassigned">Sin asignar</option>
+          </select>
+
+          <button 
+            className="btn-secondary"
+            onClick={() => {
+              setSearchTerm('');
+              setFilterSector('all');
+              setFilterStatus('all');
+              setFilterAsignacion('all');
+              shouldFitBoundsRef.current = true; // Resetear al limpiar filtros
+            }}
+            title="Limpiar filtros"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* ESTADÍSTICAS */}
@@ -578,40 +669,57 @@ const GeolocationSection = () => {
             </h3>
             
             <div className="sidebar-list">
-              {filteredMedidores.map(medidor => (
-                <div 
-                  key={medidor.id_medidor}
-                  className={`sidebar-item ${selectedMedidor?.id_medidor === medidor.id_medidor ? 'selected' : ''}`}
-                  onClick={() => centrarEnMedidor(medidor)}
-                >
-                  <div className="sidebar-item-header">
-                    <div className="flex items-center gap-2">
-                      <div className={`status-dot ${medidor.activo ? 'active' : 'inactive'}`} />
-                      <span className="font-semibold">{medidor.num_medidor}</span>
+              {filteredMedidores.map(medidor => {
+                const isCurrentUser = medidor.id_usuario_afi === currentUser?.id_usuario;
+                
+                return (
+                  <div 
+                    key={medidor.id_medidor}
+                    className={`sidebar-item ${selectedMedidor?.id_medidor === medidor.id_medidor ? 'selected' : ''} ${isCurrentUser ? 'current-user' : ''}`}
+                    onClick={() => centrarEnMedidor(medidor)}
+                    style={{
+                      backgroundColor: isCurrentUser ? '#f3e8ff' : 'white',
+                      borderLeft: isCurrentUser ? '4px solid #8b5cf6' : 'none'
+                    }}
+                  >
+                    <div className="sidebar-item-header">
+                      <div className="flex items-center gap-2">
+                        <div className={`status-dot ${medidor.activo ? 'active' : 'inactive'}`} />
+                        <span className="font-semibold">
+                          {isCurrentUser && '🏠 '}
+                          {medidor.num_medidor}
+                        </span>
+                      </div>
+                      <Navigation2 className="w-4 h-4 text-gray-400" />
                     </div>
-                    <Navigation2 className="w-4 h-4 text-gray-400" />
+                    
+                    {isCurrentUser && (
+                      <p className="text-xs text-purple-600 font-semibold">
+                        👤 Tu medidor
+                      </p>
+                    )}
+                    
+                    {medidor.usuario_afiliado && (
+                      <p className="text-sm text-gray-600">
+                        <User className="w-3 h-3 inline mr-1" />
+                        {medidor.usuario_afiliado.nombre_afiliado}
+                      </p>
+                    )}
+                    
+                    {medidor.sector && (
+                      <p className="text-xs text-gray-500">
+                        {medidor.sector.nombre_sector}
+                      </p>
+                    )}
+                    
+                    {medidor.latitud && medidor.longitud && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        📍 {parseFloat(medidor.latitud).toFixed(6)}, {parseFloat(medidor.longitud).toFixed(6)}
+                      </div>
+                    )}
                   </div>
-                  
-                  {medidor.usuario_afiliado && (
-                    <p className="text-sm text-gray-600">
-                      <User className="w-3 h-3 inline mr-1" />
-                      {medidor.usuario_afiliado.nombre_afiliado}
-                    </p>
-                  )}
-                  
-                  {medidor.sector && (
-                    <p className="text-xs text-gray-500">
-                      {medidor.sector.nombre_sector}
-                    </p>
-                  )}
-                  
-                  {medidor.latitud && medidor.longitud && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      📍 {parseFloat(medidor.latitud).toFixed(10)}, {parseFloat(medidor.longitud).toFixed(10)}
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -656,6 +764,10 @@ const GeolocationSection = () => {
           }}>
             <div style={{ fontWeight: "600", marginBottom: "8px" }}>Leyenda</div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+              <div style={{ width: "20px", height: "20px", borderRadius: "50%", background: "#8b5cf6" }}>🏠</div>
+              <span>Tu medidor</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
               <div style={{ width: "16px", height: "16px", borderRadius: "50%", background: "#10b981" }}></div>
               <span>Activo y Asignado</span>
             </div>
@@ -684,6 +796,14 @@ const GeolocationSection = () => {
             
             <div className="modal-body">
               <div className="user-details">
+                {selectedMedidor.id_usuario_afi === currentUser?.id_usuario && (
+                  <div className="detail-group" style={{ backgroundColor: '#f3e8ff', padding: '12px', borderRadius: '8px', marginBottom: '12px' }}>
+                    <p className="text-purple-700 font-semibold flex items-center gap-2">
+                      🏠 Este es tu medidor
+                    </p>
+                  </div>
+                )}
+                
                 <div className="detail-group">
                   <label>Número de Medidor:</label>
                   <p className="font-semibold">{selectedMedidor.num_medidor}</p>

@@ -1,7 +1,9 @@
 /**
  * Servicio de Autenticación con Sistema de Roles y Permisos
+ * Maneja login, logout, verificación de sesión,
+ * services/authServices.js
  */
-// authServices.js
+
 import axios from "axios";
 
 const api = axios.create({
@@ -179,7 +181,113 @@ class AuthService {
       throw error;
     }
   }
+/**
+ * 🔥 Obtener la ruta completa del dashboard con /home
+ */
+getRoleBasedRoute() {
+  const basePath = this.getRoleBasePath();
+  return `${basePath}/home`; // ✅ Ahora incluye /home
+}
 
+
+
+  /**
+   * 🔥 Convertir nombre de rol a ruta válida
+   * Ej: "Super Administrador" -> "super-administrador"
+   */
+  normalizeRoleToRoute(roleName) {
+    if (!roleName) return 'dashboard';
+    
+    return roleName
+      .toLowerCase()
+      .trim()
+      .normalize('NFD') // Normalizar caracteres unicode
+      .replace(/[\u0300-\u036f]/g, '') // Quitar acentos
+      .replace(/\s+/g, '-') // Espacios a guiones
+      .replace(/[^a-z0-9-]/g, '') // Solo letras, números y guiones
+      .replace(/-+/g, '-') // Múltiples guiones a uno solo
+      .replace(/^-|-$/g, ''); // Quitar guiones al inicio/fin
+  }
+
+  /**
+   * 🔥 Obtener la ruta del dashboard según el rol del usuario (DINÁMICO)
+   */
+  getRoleBasePath() {
+    if (!this.user || !this.user.rol) {
+      console.warn('⚠️ Usuario sin rol definido');
+      return '/dashboard';
+    }
+
+    const roleName = this.user.rol.nombre_rol;
+    
+    if (!roleName) {
+      return '/dashboard';
+    }
+
+    // Convertir el nombre del rol a una ruta válida
+    const routePath = this.normalizeRoleToRoute(roleName);
+    
+    return `/${routePath}`;
+  }
+  
+
+  /**
+   * 🔥 Obtener información del rol actual
+   */
+  getCurrentRole() {
+    if (!this.user || !this.user.rol) {
+      return null;
+    }
+    
+    return {
+      id: this.user.rol.id_rol,
+      nombre: this.user.rol.nombre_rol,
+      ruta: this.getRoleBasedRoute(),
+      rutaNormalizada: this.normalizeRoleToRoute(this.user.rol.nombre_rol)
+    };
+  }
+
+  /**
+   * 🔥 Verificar si el usuario puede acceder a una ruta específica
+   */
+  canAccessRoute(route) {
+    if (!this.user || !this.user.rol) {
+      return false;
+    }
+
+    // Limpiar la ruta (quitar / inicial si existe)
+    const cleanRoute = route.startsWith('/') ? route.slice(1) : route;
+    const allowedRoute = this.getRoleBasedRoute().slice(1); // Quitar / inicial
+    const currentRole = this.user.rol.nombre_rol?.toLowerCase() || '';
+
+    // Rutas públicas o genéricas siempre accesibles
+    const publicRoutes = ['dashboard', 'perfil', 'configuracion'];
+    if (publicRoutes.includes(cleanRoute)) {
+      return true;
+    }
+
+    // El administrador puede acceder a todas las rutas
+    if (currentRole === 'administrador' || currentRole === 'admin') {
+      return true;
+    }
+
+    // Verificar si la ruta coincide con el rol del usuario
+    return cleanRoute === allowedRoute;
+  }
+
+  /**
+   * 🔥 Verificar si dos roles son equivalentes
+   */
+  rolesMatch(role1, role2) {
+    if (!role1 || !role2) return false;
+    
+    const normalized1 = this.normalizeRoleToRoute(role1);
+    const normalized2 = this.normalizeRoleToRoute(role2);
+    
+    return normalized1 === normalized2;
+  }
+
+  
   /**
    * Iniciar sesión
    */
@@ -207,14 +315,19 @@ class AuthService {
         sessionStorage.setItem('user_permissions', JSON.stringify(this.permissions));
         sessionStorage.setItem('login_time', new Date().toISOString());
 
+        // 🔥 Obtener la ruta dinámica según el rol
+        const redirectRoute = this.getRoleBasedRoute();
+
         console.log('✅ Login exitoso:', {
           user: this.user.nombre_completo,
           rol: this.user.rol?.nombre_rol || 'Sin rol',
-          permisos: this.permissions.length
+          permisos: this.permissions.length,
+          redirectTo: redirectRoute
         });
         
         return {
           success: true,
+          redirectTo: redirectRoute, // 🔥 Ruta dinámica
           data: {
             user: this.user,
             token: this.token,

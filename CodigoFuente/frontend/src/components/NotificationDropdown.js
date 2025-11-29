@@ -1,5 +1,6 @@
 // src/components/NotificationDropdown.js
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Bell, 
   CheckCircle, 
@@ -12,20 +13,14 @@ import {
 import notificationsService from '../services/notificationsService';
 import './NotificationDropdown.css';
 
-const NotificationDropdown = ({onViewAll, setActiveSection,
-  organizedModules,
-  setExpandedCategories}) => {
+const NotificationDropdown = ({ onViewAll }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const notificationRef = useRef(null);
-  const onViewAllRef = useRef(onViewAll);
-  const setActiveSectionref = useRef(setActiveSection);
-  const organizedModulesref = useRef(organizedModules);
-  const setExpandedCategoriesref = useRef(setExpandedCategories);
+  const navigate = useNavigate();
 
-  
   // ========================================
   // CARGAR NOTIFICACIONES
   // ========================================
@@ -50,41 +45,89 @@ const NotificationDropdown = ({onViewAll, setActiveSection,
       setLoading(false);
     }
   };
+
   // ========================================
-// MAPEO DE TIPOS Y PALABRAS CLAVE → SECCIONES
-// ========================================
-const routeMap = {
-  usuario: 'users',
-  sector: 'sectors',
-  medidor: 'meters',
-  lectura: 'readings',
-  factura: 'invoices',
-  pago: 'payments',
-  reporte: 'reports',
-  auditoria: 'audit',
-  sistema: 'settings',
-  notificacion: 'notifications',
+  // MAPEO DE RUTAS (igual que NotificationsSection)
+  // ========================================
+  const notificationRouteMap = {
+    // Backups → Settings (Configuración)
+    backup: "/admin/dashboard/settings",
+    respaldo: "/admin/dashboard/settings",
+    
+    // Tarifas → Rates
+    tarifa: "/admin/dashboard/rates",
+    tarifas: "/admin/dashboard/rates",
+    
+    // Medidores → Meters
+    medidor: "/admin/dashboard/meters",
+    medidores: "/admin/dashboard/meters",
+    
+    // Sectores → Sectors
+    sector: "/admin/dashboard/sectors",
+    sectores: "/admin/dashboard/sectors",
+    
+    // Afiliados → Affiliates
+    afiliado: "/admin/dashboard/affiliates",
+    afiliados: "/admin/dashboard/affiliates",
+    
+    // Usuarios → Users
+    usuario: "/admin/dashboard/users",
+    usuarios: "/admin/dashboard/users",
+    user: "/admin/dashboard/users",
+    
+    // Perfil → Profile
+    perfil: "/admin/dashboard/profile",
+    contraseña: "/admin/dashboard/profile",
+    password: "/admin/dashboard/profile",
+    
+    // Roles y Permisos
+    rol: "/admin/dashboard/roles",
+    roles: "/admin/dashboard/roles",
+    permiso: "/admin/dashboard/roles",
+    permisos: "/admin/dashboard/roles",
+    
+    // Geolocalización
+    geolocalizacion: "/admin/dashboard/geolocation",
+    geolocalización: "/admin/dashboard/geolocation",
+    mapa: "/admin/dashboard/geolocation",
+    ubicacion: "/admin/dashboard/geolocation",
+    ubicación: "/admin/dashboard/geolocation",
+    
+    // Notificaciones
+    notificacion: "/admin/dashboard/notifications",
+    notificaciones: "/admin/dashboard/notifications"
+  };
 
-   // Por texto en el mensaje
-      'usuario creado': 'users',
-      'usuario modificado': 'users',
-      'usuario eliminado': 'users',
-      'sector creado': 'sectors',
-      'sector modificado': 'sectors',
-      'sector eliminado': 'sectors',
-      'medidor instalado': 'meters',
-      'lectura registrada': 'readings',
-      'factura generada': 'invoices',
-      'pago recibido': 'payments',
-      'reporte generado': 'reports',
-};
+  const getRouteForNotification = (notification) => {
+    // Combinar título y mensaje para buscar palabras clave
+    const text = `${notification.title || ''} ${notification.message || ''}`.toLowerCase();
+    
+    console.log('🔍 Dropdown - Analizando notificación:', {
+      title: notification.title,
+      message: notification.message,
+      textoBusqueda: text
+    });
 
+    // Buscar coincidencias en el texto
+    for (const [keyword, route] of Object.entries(notificationRouteMap)) {
+      if (text.includes(keyword)) {
+        console.log(`✅ Dropdown - Coincidencia encontrada: "${keyword}" → ${route}`);
+        return route;
+      }
+    }
+
+    // Si no encuentra nada específico, ir a notificaciones
+    console.log('⚠️ Dropdown - No se encontró coincidencia, yendo a notificaciones');
+    return "/admin/dashboard/notifications";
+  };
 
   // ========================================
   // MARCAR COMO LEÍDA Y NAVEGAR
   // ========================================
   const handleNotificationClick = async (notification) => {
     try {
+      console.log('📌 Dropdown - Click en notificación:', notification);
+
       // Si no está leída, marcarla como leída
       if (!notification.read) {
         const result = await notificationsService.markAsRead(notification.id_notificacion);
@@ -107,49 +150,39 @@ const routeMap = {
       // Cerrar dropdown
       setShowNotifications(false);
 
-      // Navegar a la ruta correspondiente
-      //if (notification.route) {
-      //  navigate(notification.route);
-      //}
-       // ============================
-    // 🔁 Determinar módulo destino
-    // ============================
-    const tipo = notification.type?.toLowerCase() || '';
-    const mensaje = notification.message?.toLowerCase() || '';
+      // Determinar ruta de navegación
+      let targetRoute = null;
 
-    let targetSection = null;
+      // Si viene con ruta desde backend
+      if (notification.route) {
+        const routeLower = notification.route.toLowerCase();
 
-    // Buscar por tipo o palabra clave
-    for (const key of Object.keys(routeMap)) {
-      if (tipo.includes(key) || mensaje.includes(key)) {
-        targetSection = routeMap[key];
-        break;
+        // Si el backend manda /dashboard para backups → redirigir correctamente
+        if (routeLower === "/dashboard" || routeLower === "dashboard") {
+          console.log("🚫 Dropdown - Ruta del backend ignorada (backup mal formateado)");
+          targetRoute = "/admin/dashboard/settings";
+        } else {
+          console.log('🎯 Dropdown - Usando ruta del backend:', notification.route);
+          targetRoute = notification.route;
+        }
+      } else {
+        // Detectar ruta automáticamente según el contenido
+        targetRoute = getRouteForNotification(notification);
+        console.log("🎯 Dropdown - Ruta detectada automáticamente:", targetRoute);
       }
-    }
 
-    // Si no encuentra coincidencia → ir a notificaciones
-    if (!targetSection) targetSection = 'notifications';
+      // Asegurar que siempre sea una ruta absoluta
+      const finalRoute = targetRoute.startsWith("/") 
+        ? targetRoute 
+        : `/admin/dashboard/${targetRoute}`;
 
-    // Cambiar sección activa
-    setActiveSectionref(targetSection);
-
-    // Expandir categoría si aplica
-    const targetCategory = organizedModulesref.find(
-      mod => mod.id === targetSection
-    )?.category;
-
-    if (targetCategory) {
-      setExpandedCategoriesref(prev => ({
-        ...prev,
-        [targetCategory]: true,
-      }));
-    }
+      console.log("✅ Dropdown - Navegando a:", finalRoute);
+      navigate(finalRoute);
 
     } catch (error) {
       console.error('Error al manejar clic en notificación:', error);
     }
   };
-  
 
   // ========================================
   // MARCAR TODAS COMO LEÍDAS
@@ -203,7 +236,12 @@ const routeMap = {
   // ========================================
   const handleViewAll = () => {
     setShowNotifications(false);
-    if (onViewAllRef) onViewAll();
+    if (onViewAll) {
+      onViewAll();
+    } else {
+      // Si no hay callback, navegar directamente
+      navigate('/admin/dashboard/notifications');
+    }
   };
 
   // ========================================
@@ -255,6 +293,7 @@ const routeMap = {
   const getNotificationIcon = (type) => {
     switch(type?.toLowerCase()) {
       case 'exito':
+      case 'success':
         return CheckCircle;
       case 'alerta':
       case 'warning':
@@ -262,8 +301,7 @@ const routeMap = {
       case 'error':
         return XCircle;
       case 'sistema':
-      case 'success':
-        return CheckCircle;
+        return Info;
       case 'info':
       default:
         return Info;

@@ -3,9 +3,9 @@
  * Definiciones de módulos del sistema con soporte para rutas URL
  */
 import {
-  BarChart3, Shield, Users, FileText, DollarSign, Gauge,
-  Calendar, Settings, Activity, Package, Map, Clock, Bell,
-  TrendingUp, Database, Home, Briefcase, PieChart, Cog, AlertCircle
+  BarChart3, Users, FileText, DollarSign, Gauge, UserCircle,
+  Calendar, Settings, Package, Clock, Bell, Tally4,
+  TrendingUp, Database, Home, Briefcase, PieChart, Cog, AlertCircle, MapPin, Layers, ShieldCheck, Handshake, UserCheck
 } from "lucide-react";
 
 // ============================================================================
@@ -85,7 +85,7 @@ export const MODULE_DEFINITIONS = {
     id: "profile",
     path: "profile", // 🔥 Ruta URL
     label: "Mi Perfil",
-    icon: Shield,
+    icon: UserCircle,
     color: "purple",
     category: "HOME",
     order: 1,
@@ -110,7 +110,7 @@ export const MODULE_DEFINITIONS = {
     id: "customers",
     path: "customers", // 🔥 Ruta URL: /admin/dashboard/customers
     label: "Clientes",
-    icon: Users,
+    icon: Handshake,
     color: "teal",
     category: "USER_MANAGEMENT",
     order: 2,
@@ -121,7 +121,7 @@ export const MODULE_DEFINITIONS = {
     id: "affiliates",
     path: "affiliates", // 🔥 Ruta URL: /admin/dashboard/affiliates
     label: "Afiliados",
-    icon: Users,
+    icon: UserCheck,
     color: "cyan",
     category: "USER_MANAGEMENT",
     order: 3,
@@ -132,7 +132,7 @@ export const MODULE_DEFINITIONS = {
     id: "roles",
     path: "roles", // 🔥 Ruta URL: /admin/dashboard/roles
     label: "Roles",
-    icon: Shield,
+    icon: ShieldCheck,
     color: "indigo",
     category: "USER_MANAGEMENT",
     order: 4,
@@ -145,7 +145,7 @@ export const MODULE_DEFINITIONS = {
     id: "readings",
     path: "readings", // 🔥 Ruta URL: /admin/dashboard/readings
     label: "Lecturas",
-    icon: Gauge,
+    icon: Tally4,
     color: "indigo",
     category: "OPERATIONS",
     order: 1,
@@ -156,7 +156,7 @@ export const MODULE_DEFINITIONS = {
     id: "meters",
     path: "meters",
     label: "Medidores",
-    icon: Activity,
+    icon: Gauge,
     color: "cyan",
     category: "OPERATIONS",
     order: 2,
@@ -167,7 +167,7 @@ export const MODULE_DEFINITIONS = {
     id: "geolocation",
     path: "geolocation",
     label: "Geolocalización",
-    icon: Map,
+    icon: MapPin,
     color: "rose",
     category: "OPERATIONS",
     order: 3,
@@ -178,7 +178,7 @@ export const MODULE_DEFINITIONS = {
     id: "sectors",
     path: "sectors",
     label: "Sectores",
-    icon: Map,
+    icon: Layers,
     color: "purple",
     category: "OPERATIONS",
     order: 4,

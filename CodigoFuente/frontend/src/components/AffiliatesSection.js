@@ -707,7 +707,7 @@ const normalizeKeys = (obj) => {
       {/* ==================== ENCABEZADO ==================== */}
       <div className="section-header">
         <div className="section-title">
-          <UserPlus className="w-7 h-7 text-blue-600" />
+          <UserCheck className="w-7 h-7 text-blue-600" />
           <h2>Gestión de Afiliados</h2>
         </div>
 
@@ -736,6 +736,8 @@ const normalizeKeys = (obj) => {
 
       {/* ==================== BARRA DE BÚSQUEDA Y FILTROS ==================== */}
       <div className="filters-section">
+
+        {/* IZQUIERDA — Barra de búsqueda */}
         <div className="search-container">
           <Search className="search-icon" />
           <input
@@ -746,50 +748,60 @@ const normalizeKeys = (obj) => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
-        <select 
-          className="filter-select"
-          value={filterSector}
-          onChange={(e) => setFilterSector(e.target.value)}
-        >
-          <option value="all">Todos los sectores</option>
-          {sectors.map(sector => (
-            <option key={sector.id_sector} value={sector.id_sector}>
-              {sector.nombre_sector}
-            </option>
-          ))}
-        </select>
 
-        <select
-          className="filter-select"
-          value={sortOption}
-          onChange={(e) => setSortOption(e.target.value)}
-        >
-          <option value="codigo">Ordenar por Código</option>
-          <option value="nombre">Ordenar por Nombre</option>
-          <option value="fecha">Ordenar por Fecha</option>
-          <option value="sector">Ordenar por Sector</option>
-        </select>
+        {/* DERECHA — Agrupamos todos los filtros */}
+        <div className="filters-right">
 
-        <button 
-          className="btn-secondary"
-          onClick={toggleSortOrder}
-          title={sortOrder === 'asc' ? 'Orden Ascendente' : 'Orden Descendente'}
-        >
-          <ArrowUpDown className="w-4 h-4" />
-          <span className="ml-1 text-xs">
-            {sortOrder === 'asc' ? '↑' : '↓'}
-          </span>
-        </button>
+          {/* 🏷️ Filtro por sector */}
+          <select 
+            className="filter-select"
+            value={filterSector}
+            onChange={(e) => setFilterSector(e.target.value)}
+          >
+            <option value="all">Todos los sectores</option>
+            {sectors.map(sector => (
+              <option key={sector.id_sector} value={sector.id_sector}>
+                {sector.nombre_sector}
+              </option>
+            ))}
+          </select>
 
-        <button 
-          className="btn-secondary"
-          onClick={fetchAffiliates}
-          title="Recargar lista"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
+          {/* 🔀 Ordenamiento */}
+          <select
+            className="filter-select"
+            value={sortOption}
+            onChange={(e) => setSortOption(e.target.value)}
+          >
+            <option value="codigo">Ordenar por Código</option>
+            <option value="nombre">Ordenar por Nombre</option>
+            <option value="fecha">Ordenar por Fecha</option>
+            <option value="sector">Ordenar por Sector</option>
+          </select>
+
+          {/* ⬆⬇ Botón orden */}
+          <button 
+            className="btn-secondary"
+            onClick={toggleSortOrder}
+            title={sortOrder === 'asc' ? 'Orden Ascendente' : 'Orden Descendente'}
+          >
+            <ArrowUpDown className="w-4 h-4" />
+            <span className="ml-1 text-xs">
+              {sortOrder === 'asc' ? '↑' : '↓'}
+            </span>
+          </button>
+
+          {/* 🔄 Recargar */}
+          <button 
+            className="btn-secondary"
+            onClick={fetchAffiliates}
+            title="Recargar lista"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+
+        </div>
       </div>
+
 
       {/* ==================== ESTADÍSTICAS ==================== */}
       <div className="users-stats">

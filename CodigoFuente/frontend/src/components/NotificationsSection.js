@@ -2,27 +2,169 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Bell, 
-  CheckCircle, 
-  XCircle,
-  Info,
-  AlertTriangle,
-  Trash2,
-  Check,
-  Filter,
-  Search
+  Bell, CheckCircle, XCircle, Info, AlertTriangle,
+  Trash2, Check, Filter, Search
 } from 'lucide-react';
 import notificationsService from '../services/notificationsService';
+import authService from '../services/authServices'; // 🔥 IMPORTAR
+import { MODULE_DEFINITIONS } from '../utils/modulesDefinitions'; // 🔥 IMPORTAR
 import './NotificationsSection.css';
 
 const NotificationsSection = () => {
   const [notifications, setNotifications] = useState([]);
   const [filteredNotifications, setFilteredNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filterType, setFilterType] = useState('todas'); // todas, no_leido, leido
+  const [filterType, setFilterType] = useState('todas');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedType, setSelectedType] = useState('todos'); // todos, info, alerta, error, sistema
+  const [selectedType, setSelectedType] = useState('todos');
   const navigate = useNavigate();
+
+  // ========================================
+  // 🔥 OBTENER RUTA BASE DEL ROL DINÁMICAMENTE
+  // ========================================
+  const getRoleBasePath = () => {
+    return authService.getRoleBasePath(); // Ej: /administrador
+  };
+
+  // ========================================
+  // 🔥 MAPEO DE PALABRAS CLAVE A MÓDULOS (USA modulesDefinitions.js)
+  // ========================================
+  const keywordToModuleMap = {
+    // Backups → Settings
+    backup: 'settings',
+    respaldo: 'settings',
+    configuracion: 'settings',
+    
+    // Tarifas
+    tarifa: 'rates',
+    tarifas: 'rates',
+    
+    // Medidores
+    medidor: 'meters',
+    medidores: 'meters',
+    
+    // Sectores
+    sector: 'sectors',
+    sectores: 'sectors',
+    
+    // Afiliados
+    afiliado: 'affiliates',
+    afiliados: 'affiliates',
+    
+    // Usuarios
+    usuario: 'users',
+    usuarios: 'users',
+    user: 'users',
+    
+    // Perfil
+    perfil: 'profile',
+    contraseña: 'profile',
+    password: 'profile',
+    
+    // Roles
+    rol: 'roles',
+    roles: 'roles',
+    permiso: 'roles',
+    permisos: 'roles',
+    
+    // Lecturas
+    lectura: 'readings',
+    lecturas: 'readings',
+    
+    // Facturación
+    factura: 'invoices',
+    facturas: 'invoices',
+    facturacion: 'invoices',
+    
+    // Pagos
+    pago: 'payments',
+    pagos: 'payments',
+    
+    // Geolocalización
+    geolocalizacion: 'geolocation',
+    geolocalización: 'geolocation',
+    mapa: 'geolocation',
+    ubicacion: 'geolocation',
+    ubicación: 'geolocation',
+    
+    // Notificaciones
+    notificacion: 'notifications',
+    notificaciones: 'notifications',
+    
+    // Inventario
+    inventario: 'inventory',
+    
+    // Reportes
+    reporte: 'reports',
+    reportes: 'reports',
+    
+    // Estadísticas
+    estadistica: 'statistics',
+    estadisticas: 'statistics',
+    
+    // Auditoría
+    auditoria: 'audit',
+    auditoría: 'audit',
+    
+    // Clientes
+    cliente: 'customers',
+    clientes: 'customers',
+    
+    // Multas
+    multa: 'fines',
+    multas: 'fines',
+    
+    // Cobranzas
+    cobranza: 'collections',
+    cobranzas: 'collections',
+    
+    // Cajas
+    caja: 'cashboxes',
+    cajas: 'cashboxes',
+    
+    // Servicios
+    servicio: 'services',
+    servicios: 'services',
+    
+    // Base de datos
+    'base de datos': 'database',
+    database: 'database'
+  };
+
+  // ========================================
+  // 🔥 DETECTAR MÓDULO Y CONSTRUIR RUTA DINÁMICA
+  // ========================================
+  const getRouteForNotification = (notification) => {
+    const text = `${notification.title || ''} ${notification.message || ''}`.toLowerCase();
+    
+    console.log('🔍 Analizando notificación:', {
+      title: notification.title,
+      message: notification.message,
+      textoBusqueda: text
+    });
+
+    // Buscar palabra clave en el texto
+    for (const [keyword, moduleKey] of Object.entries(keywordToModuleMap)) {
+      if (text.includes(keyword)) {
+        const moduleDef = MODULE_DEFINITIONS[moduleKey];
+        
+        if (moduleDef) {
+          const roleBase = getRoleBasePath(); // /administrador
+          const fullRoute = `${roleBase}/${moduleDef.path}`;
+          
+          console.log(`✅ Coincidencia: "${keyword}" → Módulo: ${moduleKey} → Ruta: ${fullRoute}`);
+          return fullRoute;
+        }
+      }
+    }
+
+    // Si no encuentra nada, ir a notificaciones
+    const roleBase = getRoleBasePath();
+    const fallbackRoute = `${roleBase}/notifications`;
+    
+    console.log('⚠️ No se encontró coincidencia, redirigiendo a:', fallbackRoute);
+    return fallbackRoute;
+  };
 
   // ========================================
   // CARGAR NOTIFICACIONES
@@ -50,19 +192,16 @@ const NotificationsSection = () => {
   useEffect(() => {
     let filtered = [...notifications];
 
-    // Filtrar por estado (leído/no leído)
     if (filterType === 'no_leido') {
       filtered = filtered.filter(n => !n.read);
     } else if (filterType === 'leido') {
       filtered = filtered.filter(n => n.read);
     }
 
-    // Filtrar por tipo
     if (selectedType !== 'todos') {
       filtered = filtered.filter(n => n.type?.toLowerCase() === selectedType.toLowerCase());
     }
 
-    // Filtrar por búsqueda
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(n => 
@@ -75,9 +214,12 @@ const NotificationsSection = () => {
   }, [notifications, filterType, selectedType, searchQuery]);
 
   // ========================================
-  // HANDLERS
+  // 🔥 HANDLER DE CLICK EN NOTIFICACIÓN
   // ========================================
   const handleNotificationClick = async (notification) => {
+    console.log('📌 Click en notificación:', notification);
+    
+    // Marcar como leída
     if (!notification.read) {
       const result = await notificationsService.markAsRead(notification.id_notificacion);
       
@@ -92,9 +234,34 @@ const NotificationsSection = () => {
       }
     }
 
+    let targetRoute = null;
+
+    // 🔥 Si el backend manda una ruta, intentar adaptarla
     if (notification.route) {
-      navigate(notification.route);
+      const routeLower = notification.route.toLowerCase();
+      
+      // Detectar si es una ruta antigua tipo /admin/dashboard/xxx
+      if (routeLower.includes('/dashboard/')) {
+        // Extraer el módulo: /admin/dashboard/settings → settings
+        const parts = routeLower.split('/dashboard/');
+        if (parts.length > 1) {
+          const moduleSegment = parts[1].split('/')[0]; // settings
+          const roleBase = getRoleBasePath();
+          targetRoute = `${roleBase}/${moduleSegment}`;
+          console.log(`🔄 Ruta adaptada del backend: ${notification.route} → ${targetRoute}`);
+        }
+      } else {
+        targetRoute = notification.route;
+      }
     }
+    
+    // Si no hay ruta válida, detectarla automáticamente
+    if (!targetRoute) {
+      targetRoute = getRouteForNotification(notification);
+    }
+
+    console.log("✅ Navegando a:", targetRoute);
+    navigate(targetRoute);
   };
 
   const handleMarkAsRead = async (notificationId) => {
@@ -142,6 +309,7 @@ const NotificationsSection = () => {
   const getNotificationIcon = (type) => {
     switch(type?.toLowerCase()) {
       case 'exito':
+      case 'success':
         return CheckCircle;
       case 'alerta':
       case 'warning':
@@ -149,8 +317,7 @@ const NotificationsSection = () => {
       case 'error':
         return XCircle;
       case 'sistema':
-      case 'success':
-        return CheckCircle;
+        return Info;
       case 'info':
       default:
         return Info;
@@ -160,7 +327,7 @@ const NotificationsSection = () => {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   // ========================================
-  // RENDER
+  // RENDER (MANTENER TU UI ACTUAL)
   // ========================================
   return (
     <div className="notifications-section">
@@ -205,40 +372,45 @@ const NotificationsSection = () => {
           />
         </div>
 
-        <div className="filter-buttons">
-          <button
-            className={`filter-btn ${filterType === 'todas' ? 'active' : ''}`}
-            onClick={() => setFilterType('todas')}
-          >
-            Todas ({notifications.length})
-          </button>
-          <button
-            className={`filter-btn ${filterType === 'no_leido' ? 'active' : ''}`}
-            onClick={() => setFilterType('no_leido')}
-          >
-            No leídas ({unreadCount})
-          </button>
-          <button
-            className={`filter-btn ${filterType === 'leido' ? 'active' : ''}`}
-            onClick={() => setFilterType('leido')}
-          >
-            Leídas ({notifications.length - unreadCount})
-          </button>
-        </div>
+        <div className="filters-right">
+          <div className="filter-buttons">
+            <button
+              className={`filter-btn ${filterType === 'todas' ? 'active' : ''}`}
+              onClick={() => setFilterType('todas')}
+            >
+              Todas ({notifications.length})
+            </button>
 
-        <div className="type-filters">
-          <Filter className="w-4 h-4 text-gray-500" />
-          <select 
-            value={selectedType}
-            onChange={(e) => setSelectedType(e.target.value)}
-            className="type-select"
-          >
-            <option value="todos">Todos los tipos</option>
-            <option value="info">Info</option>
-            <option value="alerta">Alerta</option>
-            <option value="error">Error</option>
-            <option value="sistema">Sistema</option>
-          </select>
+            <button
+              className={`filter-btn ${filterType === 'no_leido' ? 'active' : ''}`}
+              onClick={() => setFilterType('no_leido')}
+            >
+              No leídas ({unreadCount})
+            </button>
+
+            <button
+              className={`filter-btn ${filterType === 'leido' ? 'active' : ''}`}
+              onClick={() => setFilterType('leido')}
+            >
+              Leídas ({notifications.length - unreadCount})
+            </button>
+          </div>
+
+          <div className="type-filters">
+            <Filter className="w-4 h-4 text-gray-500" />
+            <select 
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="type-select"
+            >
+              <option value="todos">Todos los tipos</option>
+              <option value="info">Info</option>
+              <option value="exito">Éxito</option>
+              <option value="alerta">Alerta</option>
+              <option value="error">Error</option>
+              <option value="sistema">Sistema</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -272,12 +444,10 @@ const NotificationsSection = () => {
                   key={notification.id}
                   className={`notification-card ${notification.type} ${notification.read ? 'read' : 'unread'}`}
                 >
-                  {/* Indicador de no leída */}
                   {!notification.read && (
                     <div className="unread-indicator"></div>
                   )}
 
-                  {/* Header de la card */}
                   <div className="card-header">
                     <div className="icon-wrapper">
                       <IconComponent className="icon" />
@@ -308,10 +478,10 @@ const NotificationsSection = () => {
                     </div>
                   </div>
 
-                  {/* Contenido */}
                   <div 
                     className="card-content"
                     onClick={() => handleNotificationClick(notification)}
+                    style={{ cursor: 'pointer' }}
                   >
                     {notification.title && (
                       <h3 className="card-title">{notification.title}</h3>

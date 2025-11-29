@@ -15,7 +15,8 @@ import {
   VenusAndMars,
   RefreshCw,
   AlertCircle,
-  Lock
+  Lock,
+  UserCircle
 } from 'lucide-react';
 import userServices from '../services/userServices';
 import authService from '../services/authServices';
@@ -399,7 +400,7 @@ const ProfileSection = () => {
       <div className="profile-section">
         <div className="section-header">
           <div className="section-title">
-            <User className="w-6 h-6 text-blue-600" />
+            <UserCircle className="w-6 h-6 text-blue-600" />
             <h2>Mi Perfil</h2>
           </div>
           
@@ -414,7 +415,7 @@ const ProfileSection = () => {
                   Editar Perfil
                 </button>
                 <button 
-                  className="btn-secondary"
+                  className="btn-primary"
                   onClick={handleOpenPasswordModal}
                 >
                   <Lock className="w-4 h-4 mr-2" />

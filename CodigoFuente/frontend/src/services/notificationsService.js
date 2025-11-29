@@ -326,72 +326,108 @@ class NotificationsService {
   }
 
   /**
-   * Obtener ruta de navegación según el tipo de notificación
+   * 🔧 CORREGIDO: Obtener ruta de navegación según el contenido de la notificación
    */
   getNotificationRoute(notification) {
-    const tipo = notification.tipo?.toLowerCase();
-    const mensaje = notification.mensaje?.toLowerCase() || '';
+    const titulo = (notification.titulo || '').toLowerCase();
+    const mensaje = (notification.mensaje || '').toLowerCase();
+    const texto = `${titulo} ${mensaje}`;
 
-    // Mapeo de tipos y palabras clave a rutas
+    console.log('🔍 Service - Analizando notificación:', {
+      titulo: notification.titulo,
+      mensaje: notification.mensaje,
+      textoCombinado: texto
+    });
+
+    // ========================================
+    // MAPEO COMPLETO DE PALABRAS CLAVE → RUTAS ABSOLUTAS
+    // ========================================
     const routeMap = {
-      // Por tipo
-      'usuario': 'users',
-      'sector': 'sectors',
-      'medidor': 'meters',
-      'lectura': 'readings',
-      'factura': 'invoices',
-      'pago': 'payments',
-      'reporte': 'reports',
-      'auditoria': 'audits',
-      'sistema': 'settings',
-      'notificacion': 'notifications',
-
-      // Por texto en el mensaje
-      'usuario creado': 'users',
-      'usuario modificado': 'users',
-      'usuario eliminado': 'users',
-      'sector creado': 'sectors',
-      'sector modificado': 'sectors',
-      'sector eliminado': 'sectors',
-      'medidor instalado': 'meters',
-      'lectura registrada': 'readings',
-      'factura generada': 'invoices',
-      'pago recibido': 'payments',
-      'reporte generado': 'reports',
+      // Backups → Settings (Configuración)
+      'backup': '/admin/dashboard/settings',
+      'respaldo': '/admin/dashboard/settings',
+      
+      // Tarifas → Rates
+      'tarifa': '/admin/dashboard/rates',
+      
+      // Medidores → Meters
+      'medidor': '/admin/dashboard/meters',
+      
+      // Sectores → Sectors
+      'sector': '/admin/dashboard/sectors',
+      
+      // Afiliados → Affiliates
+      'afiliado': '/admin/dashboard/affiliates',
+      
+      // Usuarios → Users
+      'usuario': '/admin/dashboard/users',
+      
+      // Perfil → Profile
+      'perfil': '/admin/dashboard/profile',
+      'contraseña': '/admin/dashboard/profile',
+      'password': '/admin/dashboard/profile',
+      
+      // Roles y Permisos
+      'rol': '/admin/dashboard/roles',
+      'permiso': '/admin/dashboard/roles',
+      
+      // Geolocalización
+      'geolocalizacion': '/admin/dashboard/geolocation',
+      'geolocalización': '/admin/dashboard/geolocation',
+      'mapa': '/admin/dashboard/geolocation',
+      'ubicacion': '/admin/dashboard/geolocation',
+      'ubicación': '/admin/dashboard/geolocation',
+      
+      // Lecturas (si tienes este módulo)
+      'lectura': '/admin/dashboard/readings',
+      
+      // Facturas (si tienes este módulo)
+      'factura': '/admin/dashboard/invoices',
+      
+      // Pagos (si tienes este módulo)
+      'pago': '/admin/dashboard/payments',
+      
+      // Reportes (si tienes este módulo)
+      'reporte': '/admin/dashboard/reports',
+      
+      // Auditoría (si tienes este módulo)
+      'auditoria': '/admin/dashboard/audits',
+      'auditoría': '/admin/dashboard/audits',
     };
 
-    // Buscar por tipo exacto
-    if (routeMap[tipo]) {
-      return routeMap[tipo];
-    }
-
-    // Buscar por palabra clave en el mensaje
+    // Buscar coincidencias en el texto combinado
     for (const [keyword, route] of Object.entries(routeMap)) {
-      if (mensaje.includes(keyword)) {
+      if (texto.includes(keyword)) {
+        //console.log(`✅ Service - Coincidencia: "${keyword}" → ${route}`);
         return route;
       }
     }
 
-    // Ruta por defecto
-    return '/dashboard';
+    // Si no encuentra nada, devolver ruta por defecto
+    console.log('⚠️ Service - No se encontró coincidencia, usando ruta por defecto');
+    return '/admin/dashboard/notifications';
   }
 
   /**
    * Transformar notificaciones del backend al formato del frontend
    */
   transformNotifications(notifications) {
-    return notifications.map(n => ({
-      id: n.id_notificacion,
-      id_notificacion: n.id_notificacion,
-      type: n.tipo || 'info',
-      message: n.mensaje,
-      title: n.titulo,
-      time: this.formatRelativeTime(n.fecha_creacion),
-      timestamp: n.fecha_creacion,
-      read: n.estado === 'leido',
-      estado: n.estado,
-      route: this.getNotificationRoute(n)
-    }));
+    return notifications.map(n => {
+      const route = this.getNotificationRoute(n);
+      
+      return {
+        id: n.id_notificacion,
+        id_notificacion: n.id_notificacion,
+        type: n.tipo || 'info',
+        message: n.mensaje,
+        title: n.titulo,
+        time: this.formatRelativeTime(n.fecha_creacion),
+        timestamp: n.fecha_creacion,
+        read: n.estado === 'leido',
+        estado: n.estado,
+        route: route // ✅ Ahora devuelve rutas ABSOLUTAS
+      };
+    });
   }
 
   /**

@@ -6,6 +6,7 @@
 
 import authService from './authServices';
 
+
 const API_CONFIG = {
   baseURL: 'https://localhost:8000',
   endpoints: {
@@ -244,7 +245,7 @@ class ConfigService {
       const data = await this.makeRequest(
         API_CONFIG.endpoints.restoreBackup,
         {
-          method: 'POST',
+          method: 'PUT',
           body: { filename: filename },
           timeout: 120000 // 2 minutos para restaurar
         }
@@ -295,39 +296,95 @@ class ConfigService {
     }
   }
 
-  /**
-   * Descargar un backup
+ /**
+   * Descargar un backup protegido por JWT
    */
-  async downloadBackup(filename) {
-    try {
-      if (!filename || filename.trim() === '') {
-        throw new Error('El nombre del archivo es requerido');
-      }
+  /**
+ * ✅ Descargar un backup protegido por JWT
+ */
+async downloadBackup(filename) {
+  try {
+    if (!filename || filename.trim() === '') {
+      throw new Error('El nombre del archivo es requerido');
+    }
 
-      const url = `${API_CONFIG.baseURL}${API_CONFIG.endpoints.downloadBackup(filename)}`;
-      
-      // Crear un enlace temporal para descargar
+    const token = authService.getToken('token');
+    if (!token) throw new Error('Usuario no autenticado');
+
+    console.log(`📥 Iniciando descarga del backup: ${filename}`);
+
+    const response = await fetch(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.downloadBackup(filename)}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Error al descargar el backup');
+    }
+
+    // Obtener el blob
+    const blob = await response.blob();
+    console.log(`📦 Blob recibido: ${blob.size} bytes`);
+
+    if (blob.size === 0) {
+      throw new Error('El archivo descargado está vacío');
+    }
+
+    // ✅ Método moderno: File System API
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{
+            description: 'Backup Files',
+            accept: { 'application/octet-stream': ['.dump'] }
+          }]
+        });
+
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        console.log('✅ Backup guardado con File System API');
+      } catch (fsError) {
+        console.log('Usuario canceló o error en File System API, usando fallback');
+        throw fsError;
+      }
+    } else {
+      // ✅ Fallback para navegadores que no soportan File System API
       const link = document.createElement('a');
-      link.href = url;
+      link.href = window.URL.createObjectURL(blob);
       link.download = filename;
-      link.target = '_blank';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      console.log('✅ Backup descargado con fallback');
+    }
 
-      return {
-        success: true,
-        message: 'Descarga iniciada'
-      };
+    return {
+      success: true,
+      message: 'Backup descargado correctamente'
+    };
 
-    } catch (error) {
-      console.error('❌ Error descargando backup:', error);
+  } catch (error) {
+    if (error.name === 'AbortError') {
       return {
         success: false,
-        message: error.message || 'Error al descargar el backup'
+        message: 'Descarga cancelada por el usuario'
       };
     }
+
+    console.error('❌ Error descargando backup:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al descargar el backup'
+    };
   }
+}
+
+
 
   /**
    * Formatear tamaño de archivo

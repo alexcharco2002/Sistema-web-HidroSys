@@ -46,22 +46,18 @@ const UserProfile = ({ user, onLogout, onViewProfile }) => {
       e.target.nextSibling.style.display = 'none';
     }
   };
-
-  
-
-
+  // Navegación a ver perfil
    const handleViewProfile = () => {
     setShowDropdown(false);
     if (onViewProfile) onViewProfile(); // 🔥 notifica al AdminDashboard
   };
-
-
-
+  
   // Navegación a configuración
   const handleSettings = () => {
     setShowDropdown(false);
-    navigate('/settings');
+    navigate('/admin/dashboard/settings');
   };
+
 
   // Toggle dropdown
   const toggleDropdown = () => {

@@ -26,21 +26,30 @@
 
 .dashboard {
   min-height: 100vh;
+  height: 100vh; /* 🔥 NUEVO: Altura fija */
   background: var(--bg-gray-50);
   display: flex;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden; /* 🔥 NUEVO: Prevenir scroll del dashboard completo */
 }
 
 /* ===== SIDEBAR STYLES "Barra lateral "===== */
 .sidebar {
-  width: 280px;
+   width: 280px;
   background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 50%, var(--accent-color) 100%);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: var(--shadow-xl);
   transition: all 0.3s ease;
-  position: relative;
+  position: fixed; /* 🔥 NUEVO: Posición fija */
+  left: 0; /* 🔥 NUEVO */
+  top: 0; /* 🔥 NUEVO */
+  bottom: 0; /* 🔥 NUEVO */
+  height: 100vh; /* 🔥 NUEVO: Altura completa de la ventana */
+  display: flex; /* 🔥 NUEVO */
+  flex-direction: column; /* 🔥 NUEVO */
+  overflow: hidden; /* 🔥 NUEVO: El sidebar no hace scroll, solo su contenido */
+  z-index: 100; /* 🔥 NUEVO: Asegurar que esté por encima del contenido */
 }
-
 .sidebar::before {
   content: '';
   position: absolute;
@@ -60,6 +69,7 @@
 .sidebar-header {
   padding: 2rem;
   border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0; /* 🔥 NUEVO: No se reduce cuando hay scroll */
 }
 
 .logo-container {
@@ -92,6 +102,9 @@
 }
 
 .sidebar-nav {
+  flex: 1; /* 🔥 NUEVO: Ocupa todo el espacio disponible */
+  overflow-y: auto; /* 🔥 NUEVO: Scroll vertical independiente */
+  overflow-x: hidden;
   padding: 1rem;
 }
 
@@ -504,13 +517,27 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  margin-left: 280px;
+  height:100vh;
+  overflow: hidden;
+  transition: margin-left 0.3s ease;
+}
+.main-content.sidebar-collapsed {
+  margin-left: 80px;
 }
 
+/* 🔥 Overlay para móvil */
+.sidebar-overlay {
+  display: none;
+}
+
+
 .content {
-  flex: 1;
+  flex: 1; /* 🔥 NUEVO: Ocupa todo el espacio disponible */
   padding: 2rem;
   background: var(--bg-white);
-  min-height: calc(100vh - 120px);
+  overflow-y: auto; /* 🔥 NUEVO: Solo el contenido hace scroll */
+  overflow-x: hidden;
 }
 
 .stats-grid {
@@ -1191,6 +1218,72 @@
 
 /* ===== RESPONSIVE DESIGN ===== */
 @media (max-width: 1024px) {
+   /* Mostrar botón hamburguesa */
+  .mobile-menu-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Ocultar botón de colapsar en móvil */
+  .sidebar-collapse-btn {
+    display: none;
+  }
+
+  /* Mostrar botón cerrar en móvil */
+  .sidebar-close-btn-mobile {
+    display: flex;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .sidebar-close-btn-mobile:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  /* Sidebar oculto por defecto en móvil */
+  .sidebar {
+    transform: translateX(-100%);
+    width: 280px;
+    z-index: 999;
+  }
+
+  /* Sidebar abierto en móvil */
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  /* Overlay oscuro cuando está abierto */
+  .sidebar.mobile-open .sidebar-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: -1;
+    animation: fadeIn 0.3s ease;
+  }
+
+  /* Main content sin margen */
+  .main-content,
+  .main-content.sidebar-collapsed {
+    margin-left: 0;
+  }
+
+  /* Header con espacio para hamburguesa */
+  .header {
+    padding-left: 4rem;
+  }
   .content-grid {
     grid-template-columns: 1fr;
   }
@@ -1201,18 +1294,30 @@
 }
 
 @media (max-width: 768px) {
+  .mobile-menu-toggle {
+    top: 1rem;
+    left: 0.75rem;
+    padding: 0.6rem;
+  }
+
+  .header {
+    padding: 1rem 1rem 1rem 3.5rem;
+  }
   .dashboard {
-    flex-direction: column;
+    flex-direction: row; /* 🔥 CAMBIO: Mantener row en lugar de column */
+    height: 100vh;
   }
   
   .sidebar {
     width: 100%;
-    height: auto;
+    max-width: 280px;
   }
   
   .sidebar-nav {
     display: flex;
-    overflow-x: auto;
+    flex-direction: column; /* 🔥 CAMBIO: Mantener vertical */
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: 1rem;
     gap: 0.5rem;
   }
@@ -1222,8 +1327,7 @@
   
   .nav-item {
     white-space: nowrap;
-    margin-bottom: 0;
-    min-width: auto;
+    margin-bottom: 0.5rem; /* 🔥 RESTAURAR */
   }
   
   .stats-grid {
@@ -1308,6 +1412,10 @@
 }
 
 @media (max-width: 480px) {
+  .sidebar {
+    width: 100%;
+    max-width: 280px;
+  }
   .sidebar-header {
     padding: 1rem;
   }
@@ -1538,13 +1646,13 @@
    SIDEBAR FOOTER - Información de permisos
    ============================================================================ */
 .sidebar-footer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  position: relative; /* 🔥 CAMBIO: De absolute a relative */
   padding: 1rem;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(0, 0, 0, 0.2);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  flex-shrink: 0; /* 🔥 NUEVO: No se reduce */
 }
 
 .user-permissions-info {
@@ -1858,6 +1966,35 @@
    RESPONSIVE
    ============================================================================ */
 @media (max-width: 768px) {
+  .dashboard {
+    flex-direction: row; /* 🔥 CAMBIO: Mantener row en lugar de column */
+    height: 100vh; /* 🔥 MANTENER */
+  }
+  .sidebar {
+    width: 100%;
+    max-width: 280px; /* 🔥 NUEVO: Ancho máximo en móvil */
+  }
+  .sidebar-nav {
+    display: flex;
+    flex-direction: column; /* 🔥 CAMBIO: Mantener vertical */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 1rem;
+    gap: 0.5rem;
+  }
+  .nav-item {
+    white-space: nowrap;
+    margin-bottom: 0.5rem; /* 🔥 RESTAURAR */
+  }
+
+  .main-content {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .content {
+    padding: 1rem;
+  }
   .quick-actions-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -2161,15 +2298,17 @@
    ============================================================================ */
 
 @media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%); /* 🔥 NUEVO: Ocultar en móvil por defecto */
+  }
   
-
   .sidebar.open {
-    left: 0;
+    transform: translateX(0); /* 🔥 NUEVO: Mostrar cuando esté abierto */
     box-shadow: 4px 0 12px rgba(0, 0, 0, 0.3);
   }
 
   .main-content {
-    margin-left: 0;
+    margin-left: 0; /* 🔥 NUEVO: Sin margen en móvil */
   }
 
   .category-header {
@@ -2337,4 +2476,368 @@
   justify-content: flex-end;
   padding: 16px 24px;
   border-top: 1px solid #e5e7eb;
+}
+/* ============================================================================
+   SIDEBAR COLAPSABLE Y MÓVIL
+   ============================================================================ */
+
+/* 🔥 Botón hamburguesa móvil */
+.mobile-menu-toggle {
+  display: none;
+  position: fixed;
+  top: 1.5rem;
+  left: 1rem;
+  z-index: 1000;
+  padding: 0.75rem;
+  background: var(--primary-light);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  transition: all 0.2s ease;
+}
+
+.mobile-menu-toggle:hover {
+  background: var(--primary-dark);
+  transform: scale(1.05);
+}
+
+.mobile-menu-toggle:active {
+  transform: scale(0.95);
+}
+
+/* 🔥 Sidebar con estados colapsado y móvil */
+.sidebar {
+  width: 280px;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 50%, var(--accent-color) 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-xl);
+  transition: all 0.3s ease;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 100;
+}
+
+/* 🔥 Sidebar colapsado */
+.sidebar.collapsed {
+  width: 80px;
+}
+
+.sidebar.collapsed .logo-text {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  display: none;
+}
+
+.sidebar.collapsed .category-header {
+  display: none;
+}
+
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 1rem;
+}
+
+.sidebar.collapsed .nav-item span {
+  display: none;
+}
+
+.sidebar.collapsed .nav-item.active {
+  transform: translateX(0);
+}
+
+/* 🔥 Botones de control del sidebar */
+/* Contenedor nuevo dentro del nav */
+.collapse-btn-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  padding: 1px 4px;  /* separa el botón del borde superior */
+  position: relative;
+  z-index: 20;
+}
+
+/* Botón principal */
+.sidebar-collapse-btn {
+  background: white;
+  border: 2px solid var(--primary-light);
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--primary-light);
+  box-shadow: var(--shadow-md);
+  transition: all 0.2s ease;
+  position: relative; /* <-- YA NO ES absolute */
+}
+
+/* Hover */
+.sidebar-collapse-btn:hover {
+  background: var(--primary-light);
+  color: white;
+  transform: scale(1.1);
+}
+
+/* Estados del botón */
+.sidebar:not(.collapsed) .sidebar-collapse-btn {
+  margin-right: 0;
+}
+
+.sidebar.collapsed .sidebar-collapse-btn {
+  margin-right: -14px; /* lo empuja un poco hacia afuera cuando colapsa */
+}
+
+
+.sidebar-close-btn-mobile {
+  display: none;
+}
+
+.collapse-btn-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px; /*⬅️ separación del logo */
+  position: relative;
+}
+
+/* Estilo del colapser como categoría */
+.collapse-category {
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid #2c2c2c;
+}
+
+/* Ícono más centrado en colapsado */
+.sidebar.collapsed .collapse-category .category-header-content {
+  justify-content: center;
+}
+
+/* Botón hamburguesa */
+.mobile-menu-toggle {
+  display: none;
+  position: fixed;
+  top: 1.5rem;
+  left: 1rem;
+  z-index: 1001;
+  padding: 0.75rem;
+  background: var(--primary-light);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  transition: all 0.2s ease;
+}
+
+.mobile-menu-toggle:hover {
+  background: var(--primary-dark);
+  transform: scale(1.05);
+}
+
+@media (max-width: 1024px) {
+  .mobile-menu-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+/* ============================================================================
+   FOOTER STYLES - Compacto y dinámico
+============================================================================ */
+/* ENVUELVE TODO EL DASHBOARD */
+.dashboard-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ZONA CENTRAL (header + content + footer) */
+.main-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;              /* Toma todo el espacio */
+  min-height: 100vh;    /* Garantiza altura completa */
+}
+
+/* El contenido empuja el footer hacia abajo */
+.content {
+  flex: 1;
+}
+
+/* Footer compacto */
+.dashboard-footer {
+  background: #0d6efd;
+  color: white;
+  padding: 0.7rem;
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.dashboard-footer {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 50%, var(--accent-color)200%);
+  color: white;
+  padding: 0.6rem 1rem;  /* 🔥 REDUCIDO */
+  border-top: 2px solid rgba(255, 255, 255, 0.2);
+  margin-top: auto;
+  flex-shrink: 0;
+  position: relative;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-footer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.1);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.dashboard-footer > * {
+  position: relative;
+  z-index: 1;
+}
+
+.footer-content {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 🔥 3 columnas fijas */
+  gap: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding-bottom: 1rem; /* 🔥 REDUCIDO */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.footer-section {
+  transition: transform 0.2s ease;
+}
+
+.footer-section:hover {
+  transform: translateY(-2px);
+}
+
+.footer-section h4 {
+  font-size: 1rem; /* 🔥 REDUCIDO */
+  font-weight: 700;
+  margin: 0 0 0.5rem 0; /* 🔥 REDUCIDO */
+  color: white;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.footer-section p {
+  font-size: 0.8rem; /* 🔥 REDUCIDO */
+  margin: 0.3rem 0; /* 🔥 REDUCIDO */
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.5; /* 🔥 REDUCIDO */
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.footer-section p:hover {
+  color: white;
+  transform: translateX(2px);
+  transition: all 0.2s ease;
+}
+
+.footer-bottom {
+  text-align: center;
+  padding-top: 1rem; /* 🔥 REDUCIDO */
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.footer-bottom p {
+  font-size: 0.8rem; /* 🔥 REDUCIDO */
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.footer-bottom::before {
+  margin-right: 0.5rem;
+  font-size: 0.9rem;
+}
+
+/* Responsive para footer */
+@media (max-width: 1024px) {
+  .dashboard-footer {
+    padding: 1.25rem 1.5rem 0.75rem 1.5rem;
+  }
+  
+  .footer-content {
+    gap: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-footer {
+    padding: 1rem 1rem 0.75rem 1rem;
+  }
+  
+  .footer-content {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    text-align: center;
+  }
+  
+  .footer-section h4 {
+    font-size: 0.9rem;
+    justify-content: center;
+  }
+  
+  .footer-section p {
+    font-size: 0.75rem;
+    justify-content: center;
+    margin: 0.2rem 0;
+  }
+  
+  .footer-bottom {
+    padding-top: 0.75rem;
+  }
+  
+  .footer-bottom p {
+    font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-footer {
+    padding: 0.75rem 0.75rem 0.5rem 0.75rem;
+  }
+  
+  .footer-content {
+    gap: 0.75rem;
+  }
+  
+  .footer-section h4 {
+    font-size: 0.85rem;
+    margin-bottom: 0.35rem;
+  }
+  
+  .footer-section p {
+    font-size: 0.7rem;
+    margin: 0.15rem 0;
+  }
+  
+  .footer-bottom p {
+    font-size: 0.7rem;
+  }
 }

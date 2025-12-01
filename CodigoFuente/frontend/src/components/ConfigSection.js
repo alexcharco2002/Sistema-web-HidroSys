@@ -1,7 +1,7 @@
 // src/components/ConfigSection.js
 // MÓDULO DE CONFIGURACIÓN - Solo Backups
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import './styleRoles.css';
+import './RolesSection.css';
 import configService from '../services/configServices';
 import authService from '../services/authServices';
 

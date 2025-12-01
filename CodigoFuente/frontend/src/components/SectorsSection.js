@@ -1,10 +1,11 @@
 // src/components/SectorsSection.js
 // MÓDULO DE SECTORES - Con control de permisos granular y ordenamiento mejorado
 import React, { useState, useEffect, useCallback } from 'react';
-import './styleSectors.css';
+import './SectorsSection.css';
 import sectorsService from '../services/sectorServices';
 import authService from '../services/authServices';
 
+import MiniMapaBurbuja from './MiniMapaBurbuja';
 import { 
   MapPin, Plus, Search, Edit, Trash2, Eye, CheckCircle, XCircle,
   X, Save, RefreshCw, AlertCircle, ArrowUpDown, FileText, Layers
@@ -589,6 +590,7 @@ const SectorsSection = () => {
           </div>
         </div>
       )}
+       <MiniMapaBurbuja />
     </div>
   );
 };

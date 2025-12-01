@@ -1,7 +1,7 @@
 // src/components/TarifasSection.js
 // MÓDULO DE TARIFAS - Con control de permisos granular y ordenamiento mejorado
 import React, { useState, useEffect, useCallback } from 'react';
-import './styleSectors.css'; // Reutilizamos los estilos de useres
+
 import tarifasService from '../services/tarifasServices';
 import authService from '../services/authServices';
 
@@ -337,7 +337,7 @@ const TarifasSection = () => {
     <div className="users-section">
       <div className="section-header">
         <div className="section-title">
-          <Receipt className="w-6 h-6 text-blue-600" />
+          <DollarSign className="w-6 h-6 text-blue-600" />
           <h2>Gestión de Tarifas</h2>
         </div>
         {permissions.canCreate && (
@@ -418,7 +418,7 @@ const TarifasSection = () => {
       {/* Tarjetas de estadísticas */}
       <div className="users-stats">
         <div className="stat-item">
-          <Receipt className="stat-icon text-blue-600" />
+          <DollarSign className="stat-icon text-blue-600" />
           <div>
             <p className="stat-label">Total Tarifas</p>
             <p className="stat-value">{tarifas.length}</p>

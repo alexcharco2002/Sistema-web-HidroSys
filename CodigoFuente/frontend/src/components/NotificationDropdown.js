@@ -1,16 +1,10 @@
 // src/components/NotificationDropdown.js
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Bell, 
-  CheckCircle, 
-  XCircle,
-  Info,
-  AlertTriangle,
-  Check,
-  Trash2
-} from 'lucide-react';
+import { Bell, CheckCircle, XCircle, Info, AlertTriangle, Check, Trash2 } from 'lucide-react';
 import notificationsService from '../services/notificationsService';
+import authService from '../services/authServices'; // 🔥 AGREGAR
+import { MODULE_DEFINITIONS } from '../utils/modulesDefinitions'; // 🔥 AGREGAR
 import './NotificationDropdown.css';
 
 const NotificationDropdown = ({ onViewAll }) => {
@@ -21,19 +15,24 @@ const NotificationDropdown = ({ onViewAll }) => {
   const notificationRef = useRef(null);
   const navigate = useNavigate();
 
+  // ======================================== 
+  // 🔥 OBTENER RUTA BASE DEL ROL DINÁMICAMENTE
   // ========================================
+  const getRoleBasePath = () => {
+    return authService.getRoleBasePath(); // Ej: /administrador
+  };
+
+  // ======================================== 
   // CARGAR NOTIFICACIONES
   // ========================================
   const loadNotifications = async () => {
     setLoading(true);
     try {
       const result = await notificationsService.getNotifications();
-      
       if (result.success) {
         const transformedNotifications = notificationsService.transformNotifications(result.data);
         setNotifications(transformedNotifications);
         
-        // Actualizar contador de no leídas
         const unread = transformedNotifications.filter(n => !n.read).length;
         setUnreadCount(unread);
       } else {
@@ -46,60 +45,93 @@ const NotificationDropdown = ({ onViewAll }) => {
     }
   };
 
+  // ======================================== 
+  // 🔥 MAPEO DE PALABRAS CLAVE A MÓDULOS
   // ========================================
-  // MAPEO DE RUTAS (igual que NotificationsSection)
-  // ========================================
-  const notificationRouteMap = {
-    // Backups → Settings (Configuración)
-    backup: "/admin/dashboard/settings",
-    respaldo: "/admin/dashboard/settings",
-    
-    // Tarifas → Rates
-    tarifa: "/admin/dashboard/rates",
-    tarifas: "/admin/dashboard/rates",
-    
-    // Medidores → Meters
-    medidor: "/admin/dashboard/meters",
-    medidores: "/admin/dashboard/meters",
-    
-    // Sectores → Sectors
-    sector: "/admin/dashboard/sectors",
-    sectores: "/admin/dashboard/sectors",
-    
-    // Afiliados → Affiliates
-    afiliado: "/admin/dashboard/affiliates",
-    afiliados: "/admin/dashboard/affiliates",
-    
-    // Usuarios → Users
-    usuario: "/admin/dashboard/users",
-    usuarios: "/admin/dashboard/users",
-    user: "/admin/dashboard/users",
-    
-    // Perfil → Profile
-    perfil: "/admin/dashboard/profile",
-    contraseña: "/admin/dashboard/profile",
-    password: "/admin/dashboard/profile",
-    
-    // Roles y Permisos
-    rol: "/admin/dashboard/roles",
-    roles: "/admin/dashboard/roles",
-    permiso: "/admin/dashboard/roles",
-    permisos: "/admin/dashboard/roles",
-    
+  const keywordToModuleMap = {
+    // Backups → Settings
+    backup: 'settings',
+    respaldo: 'settings',
+    configuracion: 'settings',
+    // Tarifas
+    tarifa: 'rates',
+    tarifas: 'rates',
+    // Medidores
+    medidor: 'meters',
+    medidores: 'meters',
+    // Sectores
+    sector: 'sectors',
+    sectores: 'sectors',
+    // Afiliados
+    afiliado: 'affiliates',
+    afiliados: 'affiliates',
+    // Usuarios
+    usuario: 'users',
+    usuarios: 'users',
+    user: 'users',
+    // Perfil
+    perfil: 'profile',
+    contraseña: 'profile',
+    password: 'profile',
+    // Roles
+    rol: 'roles',
+    roles: 'roles',
+    permiso: 'roles',
+    permisos: 'roles',
+    // Lecturas
+    lectura: 'readings',
+    lecturas: 'readings',
+    // Facturación
+    factura: 'invoices',
+    facturas: 'invoices',
+    facturacion: 'invoices',
+    // Pagos
+    pago: 'payments',
+    pagos: 'payments',
     // Geolocalización
-    geolocalizacion: "/admin/dashboard/geolocation",
-    geolocalización: "/admin/dashboard/geolocation",
-    mapa: "/admin/dashboard/geolocation",
-    ubicacion: "/admin/dashboard/geolocation",
-    ubicación: "/admin/dashboard/geolocation",
-    
+    geolocalizacion: 'geolocation',
+    geolocalización: 'geolocation',
+    mapa: 'geolocation',
+    ubicacion: 'geolocation',
+    ubicación: 'geolocation',
     // Notificaciones
-    notificacion: "/admin/dashboard/notifications",
-    notificaciones: "/admin/dashboard/notifications"
+    notificacion: 'notifications',
+    notificaciones: 'notifications',
+    // Inventario
+    inventario: 'inventory',
+    // Reportes
+    reporte: 'reports',
+    reportes: 'reports',
+    // Estadísticas
+    estadistica: 'statistics',
+    estadisticas: 'statistics',
+    // Auditoría
+    auditoria: 'audit',
+    auditoría: 'audit',
+    // Clientes
+    cliente: 'customers',
+    clientes: 'customers',
+    // Multas
+    multa: 'fines',
+    multas: 'fines',
+    // Cobranzas
+    cobranza: 'collections',
+    cobranzas: 'collections',
+    // Cajas
+    caja: 'cashboxes',
+    cajas: 'cashboxes',
+    // Servicios
+    servicio: 'services',
+    servicios: 'services',
+    // Base de datos
+    'base de datos': 'database',
+    database: 'database'
   };
 
+  // ======================================== 
+  // 🔥 DETECTAR MÓDULO Y CONSTRUIR RUTA DINÁMICA
+  // ========================================
   const getRouteForNotification = (notification) => {
-    // Combinar título y mensaje para buscar palabras clave
     const text = `${notification.title || ''} ${notification.message || ''}`.toLowerCase();
     
     console.log('🔍 Dropdown - Analizando notificación:', {
@@ -108,21 +140,31 @@ const NotificationDropdown = ({ onViewAll }) => {
       textoBusqueda: text
     });
 
-    // Buscar coincidencias en el texto
-    for (const [keyword, route] of Object.entries(notificationRouteMap)) {
+    // Buscar palabra clave en el texto
+    for (const [keyword, moduleKey] of Object.entries(keywordToModuleMap)) {
       if (text.includes(keyword)) {
-        console.log(`✅ Dropdown - Coincidencia encontrada: "${keyword}" → ${route}`);
-        return route;
+        const moduleDef = MODULE_DEFINITIONS[moduleKey];
+        
+        if (moduleDef) {
+          const roleBase = getRoleBasePath();
+          const fullRoute = `${roleBase}/${moduleDef.path}`;
+          
+          console.log(`✅ Dropdown - Coincidencia: "${keyword}" → Módulo: ${moduleKey} → Ruta: ${fullRoute}`);
+          return fullRoute;
+        }
       }
     }
 
-    // Si no encuentra nada específico, ir a notificaciones
-    console.log('⚠️ Dropdown - No se encontró coincidencia, yendo a notificaciones');
-    return "/admin/dashboard/notifications";
+    // Si no encuentra nada, ir a notificaciones
+    const roleBase = getRoleBasePath();
+    const fallbackRoute = `${roleBase}/notifications`;
+    
+    console.log('⚠️ Dropdown - No se encontró coincidencia, redirigiendo a:', fallbackRoute);
+    return fallbackRoute;
   };
 
-  // ========================================
-  // MARCAR COMO LEÍDA Y NAVEGAR
+  // ======================================== 
+  // 🔥 MARCAR COMO LEÍDA Y NAVEGAR
   // ========================================
   const handleNotificationClick = async (notification) => {
     try {
@@ -131,18 +173,14 @@ const NotificationDropdown = ({ onViewAll }) => {
       // Si no está leída, marcarla como leída
       if (!notification.read) {
         const result = await notificationsService.markAsRead(notification.id_notificacion);
-        
         if (result.success) {
-          // Actualizar estado local
-          setNotifications(prev => 
-            prev.map(n => 
-              n.id === notification.id 
+          setNotifications(prev =>
+            prev.map(n =>
+              n.id === notification.id
                 ? { ...n, read: true, estado: 'leido' }
                 : n
             )
           );
-          
-          // Decrementar contador
           setUnreadCount(prev => Math.max(0, prev - 1));
         }
       }
@@ -150,54 +188,50 @@ const NotificationDropdown = ({ onViewAll }) => {
       // Cerrar dropdown
       setShowNotifications(false);
 
-      // Determinar ruta de navegación
       let targetRoute = null;
 
-      // Si viene con ruta desde backend
+      // 🔥 Si el backend manda una ruta, intentar adaptarla
       if (notification.route) {
         const routeLower = notification.route.toLowerCase();
-
-        // Si el backend manda /dashboard para backups → redirigir correctamente
-        if (routeLower === "/dashboard" || routeLower === "dashboard") {
-          console.log("🚫 Dropdown - Ruta del backend ignorada (backup mal formateado)");
-          targetRoute = "/admin/dashboard/settings";
+        
+        // Detectar si es una ruta antigua tipo /admin/dashboard/xxx
+        if (routeLower.includes('/dashboard/')) {
+          const parts = routeLower.split('/dashboard/');
+          if (parts.length > 1) {
+            const moduleSegment = parts[1].split('/')[0];
+            const roleBase = getRoleBasePath();
+            targetRoute = `${roleBase}/${moduleSegment}`;
+            
+            console.log(`🔄 Dropdown - Ruta adaptada del backend: ${notification.route} → ${targetRoute}`);
+          }
         } else {
-          console.log('🎯 Dropdown - Usando ruta del backend:', notification.route);
           targetRoute = notification.route;
         }
-      } else {
-        // Detectar ruta automáticamente según el contenido
-        targetRoute = getRouteForNotification(notification);
-        console.log("🎯 Dropdown - Ruta detectada automáticamente:", targetRoute);
       }
 
-      // Asegurar que siempre sea una ruta absoluta
-      const finalRoute = targetRoute.startsWith("/") 
-        ? targetRoute 
-        : `/admin/dashboard/${targetRoute}`;
+      // Si no hay ruta válida, detectarla automáticamente
+      if (!targetRoute) {
+        targetRoute = getRouteForNotification(notification);
+      }
 
-      console.log("✅ Dropdown - Navegando a:", finalRoute);
-      navigate(finalRoute);
-
+      console.log("✅ Dropdown - Navegando a:", targetRoute);
+      navigate(targetRoute);
+      
     } catch (error) {
       console.error('Error al manejar clic en notificación:', error);
     }
   };
 
-  // ========================================
+  // ======================================== 
   // MARCAR TODAS COMO LEÍDAS
   // ========================================
   const handleMarkAllAsRead = async () => {
     try {
       const result = await notificationsService.markAllAsRead();
-      
       if (result.success) {
-        // Actualizar todas las notificaciones localmente
-        setNotifications(prev => 
+        setNotifications(prev =>
           prev.map(n => ({ ...n, read: true, estado: 'leido' }))
         );
-        
-        // Resetear contador
         setUnreadCount(0);
       }
     } catch (error) {
@@ -205,24 +239,19 @@ const NotificationDropdown = ({ onViewAll }) => {
     }
   };
 
-  // ========================================
+  // ======================================== 
   // ELIMINAR NOTIFICACIÓN
   // ========================================
   const handleDeleteNotification = async (e, notificationId) => {
-    e.stopPropagation(); // Evitar que se active el clic de navegación
+    e.stopPropagation();
     
     try {
       const result = await notificationsService.deleteNotification(notificationId);
-      
       if (result.success) {
-        // Remover de la lista local
         setNotifications(prev => {
           const filtered = prev.filter(n => n.id !== notificationId);
-          
-          // Actualizar contador
           const unread = filtered.filter(n => !n.read).length;
           setUnreadCount(unread);
-          
           return filtered;
         });
       }
@@ -231,46 +260,40 @@ const NotificationDropdown = ({ onViewAll }) => {
     }
   };
 
-  // ========================================
-  // VER TODAS LAS NOTIFICACIONES
+  // ======================================== 
+  // 🔥 VER TODAS LAS NOTIFICACIONES
   // ========================================
   const handleViewAll = () => {
     setShowNotifications(false);
     if (onViewAll) {
       onViewAll();
     } else {
-      // Si no hay callback, navegar directamente
-      navigate('/admin/dashboard/notifications');
+      const roleBase = getRoleBasePath();
+      navigate(`${roleBase}/notifications`);
     }
   };
 
-  // ========================================
+  // ======================================== 
   // EFECTOS
   // ========================================
-  
-  // Cargar notificaciones al montar
   useEffect(() => {
     loadNotifications();
     
-    // Iniciar polling cada 30 segundos
     notificationsService.startPolling(30, (count) => {
       setUnreadCount(count);
     });
-
-    // Limpiar al desmontar
+    
     return () => {
       notificationsService.stopPolling();
     };
   }, []);
 
-  // Recargar cuando se abre el dropdown
   useEffect(() => {
     if (showNotifications) {
       loadNotifications();
     }
   }, [showNotifications]);
 
-  // Cerrar dropdown al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target)) {
@@ -287,7 +310,7 @@ const NotificationDropdown = ({ onViewAll }) => {
     };
   }, [showNotifications]);
 
-  // ========================================
+  // ======================================== 
   // OBTENER ICONO SEGÚN TIPO
   // ========================================
   const getNotificationIcon = (type) => {
@@ -308,22 +331,20 @@ const NotificationDropdown = ({ onViewAll }) => {
     }
   };
 
-  // ========================================
-  // FILTRAR NOTIFICACIONES NO LEÍDAS
-  // ========================================
   const unreadNotifications = notifications.filter(n => !n.read);
   const hasUnread = unreadNotifications.length > 0;
 
-  // ========================================
-  // RENDER
+  // ======================================== 
+  // RENDER 
   // ========================================
   return (
     <div className="notification-container" ref={notificationRef}>
+      
       {/* Botón de notificaciones */}
-      <button 
-        className="notification-btn"
+      <button
+        className={`notification-btn ${hasUnread ? 'has-unread' : ''}`}
         onClick={() => setShowNotifications(!showNotifications)}
-        title="Notificaciones"
+        aria-label="Notificaciones"
       >
         <Bell className={`w-5 h-5 ${hasUnread ? 'text-blue-600' : 'text-gray-600'}`} />
         {unreadCount > 0 && (
@@ -332,21 +353,26 @@ const NotificationDropdown = ({ onViewAll }) => {
           </span>
         )}
       </button>
-      
-      {/* Dropdown de notificaciones */}
+
+      {/* PANEL / DROPDOWN */}
       {showNotifications && (
         <div className="notification-dropdown">
+          
           {/* Header */}
           <div className="notification-header">
             <div className="flex items-center justify-between w-full">
+              
               <div className="flex items-center gap-2">
                 <h3>Notificaciones</h3>
-                {unreadCount > 0 && (
-                  <span className="notification-count">{unreadCount}</span>
+
+                {unreadNotifications.length > 0 && (
+                  <span className="notification-count">
+                    {unreadNotifications.length}
+                  </span>
                 )}
               </div>
-              
-              {unreadCount > 0 && (
+
+              {unreadNotifications.length > 0 && (
                 <button
                   className="btn-mark-all-read"
                   onClick={handleMarkAllAsRead}
@@ -357,8 +383,8 @@ const NotificationDropdown = ({ onViewAll }) => {
               )}
             </div>
           </div>
-          
-          {/* Lista de notificaciones */}
+
+          {/* Lista */}
           <div className="notification-list">
             {loading ? (
               <div className="notification-loading">
@@ -368,41 +394,40 @@ const NotificationDropdown = ({ onViewAll }) => {
             ) : notifications.length === 0 ? (
               <div className="notification-empty">
                 <Bell className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p>No hay notificaciones</p>
+                No hay notificaciones
               </div>
             ) : (
-              notifications.map((notification) => {
-                const IconComponent = getNotificationIcon(notification.type);
+              notifications.slice(0, 5).map((notification) => {
+                const Icon = getNotificationIcon(notification.type);
+
                 return (
-                  <div 
-                    key={notification.id} 
-                    className={`notification-item ${notification.type} ${notification.read ? 'read' : 'unread'}`}
+                  <div
+                    key={notification.id}
+                    className={`notification-item ${notification.type} ${
+                      notification.read ? 'read' : 'unread'
+                    }`}
                     onClick={() => handleNotificationClick(notification)}
                   >
                     {/* Icono */}
                     <div className="notification-icon-wrapper">
-                      <IconComponent className="notification-icon" />
+                      <Icon className="notification-icon" />
                     </div>
-                    
+
                     {/* Contenido */}
                     <div className="notification-content">
-                      {notification.title && (
-                        <p className="notification-title">{notification.title}</p>
-                      )}
-                      <p className="notification-message">{notification.message}</p>
-                      <span className="notification-time">{notification.time}</span>
+                      <div className="notification-title">{notification.title}</div>
+                      <div className="notification-message">{notification.message}</div>
+                      <div className="notification-time">{notification.time}</div>
                     </div>
-                    
-                    {/* Indicador de no leída */}
-                    {!notification.read && (
-                      <div className="notification-dot"></div>
-                    )}
-                    
-                    {/* Botón eliminar */}
+
+                    {/* Indicador de no leído */}
+                    {!notification.read && <div className="notification-dot"></div>}
+
+                    {/* Botón borrar */}
                     <button
                       className="notification-delete"
                       onClick={(e) => handleDeleteNotification(e, notification.id)}
-                      title="Eliminar notificación"
+                      title="Eliminar"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -411,14 +436,11 @@ const NotificationDropdown = ({ onViewAll }) => {
               })
             )}
           </div>
-          
+
           {/* Footer */}
           {notifications.length > 0 && (
             <div className="notification-footer">
-              <button 
-                className="btn-view-all"
-                onClick={handleViewAll}
-              >
+              <button className="btn-view-all" onClick={handleViewAll}>
                 Ver todas las notificaciones
               </button>
             </div>
@@ -427,6 +449,7 @@ const NotificationDropdown = ({ onViewAll }) => {
       )}
     </div>
   );
+
 };
 
 export default NotificationDropdown;

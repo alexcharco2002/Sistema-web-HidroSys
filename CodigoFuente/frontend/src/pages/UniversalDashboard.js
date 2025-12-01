@@ -16,7 +16,7 @@ import UserProfile from '../components/UserProfile';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import ProfileSection from '../components/ProfileSection';
 import NotificationsSection from '../components/NotificationsSection';
-import HomeSection from '../components/HomeSection'; // 🔥 COMPONENTE HOME UNIVERSAL
+import HomeSection from '../components/HomeSection'; //  COMPONENTE HOME UNIVERSAL
 
 // Componentes de secciones
 import UsersSection from '../components/UsersSection';
@@ -28,6 +28,8 @@ import GeolocationSection from '../components/GeolocationSection';
 import InvoicesSection from '../components/InvoicesSection';
 import TarifasSection from '../components/TarifasSection';
 import ConfigSection from '../components/ConfigSection';
+import ServiciosSection from '../components/ServiciosSection';
+import ReadingsSection from '../components/ReadingsSection';
 
 // Iconos
 import { 
@@ -36,7 +38,9 @@ import {
   RefreshCw,
   Shield,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Menu, 
+  X, 
 } from 'lucide-react';
 
 // ============================================================================
@@ -54,7 +58,9 @@ const COMPONENT_MAP = {
   InvoicesSection,
   TarifasSection,
   ConfigSection,
-  HomeSection
+  HomeSection,
+  ServiciosSection,
+  ReadingsSection,
 };
 
 // ============================================================================
@@ -74,10 +80,18 @@ const UniversalDashboard = () => {
   const [dashboardStats, setDashboardStats] = useState({});
   const [dataLoading, setDataLoading] = useState(true);
 
-  // 🔥 Obtener ruta base del rol actual
+  const [sidebarCollapsed] = useState(false); // 🔥 NUEVO
+  const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false); // 🔥 NUEVO
+
+
+  //  Obtener ruta base del rol actual
   const roleBasePath = authService.getRoleBasePath();
 
-  // 🔥 Obtener ruta activa (relativa al dashboard)
+  const toggleSidebarMobile = () => {
+    setSidebarMobileOpen(!sidebarMobileOpen);
+  };
+
+  //  Obtener ruta activa (relativa al dashboard)
   const getActivePath = useCallback(() => {
     const pathParts = location.pathname.split('/').filter(Boolean);
 
@@ -167,7 +181,7 @@ const UniversalDashboard = () => {
     try {
       setDataLoading(true);
 
-      // 🔥 Aquí puedes cargar datos reales desde tu API
+      //  Aquí puedes cargar datos reales desde tu API
       // Por ahora uso datos de ejemplo
       const mockStats = {
         administrador: {
@@ -217,7 +231,7 @@ const UniversalDashboard = () => {
       const roleName = user?.rol?.nombre_rol?.toLowerCase() || 'administrador';
       setDashboardStats(mockStats[roleName] || mockStats.administrador);
 
-      // 🔥 Si tienes permisos para ver usuarios, cargar datos reales
+      //  Si tienes permisos para ver usuarios, cargar datos reales
       if (authService.hasPermission('usuarios', 'lectura')) {
         try {
           const result = await userService.getUsers({ limit: 1000 });
@@ -379,7 +393,7 @@ const UniversalDashboard = () => {
     }));
   };
 
-  // 🔥 Navegación entre módulos con ruta base dinámica
+  //  Navegación entre módulos con ruta base dinámica
   const handleNavigateToModule = (modulePath) => {
     navigate(`${roleBasePath}/${modulePath}`);
   };
@@ -392,7 +406,7 @@ const UniversalDashboard = () => {
   // COMPONENTE: RENDERIZADOR DINÁMICO DE MÓDULOS
   // ============================================================================
   const DynamicModuleRenderer = ({ modulePath }) => {
-    // 🔥 CASO ESPECIAL: HOME - USA EL NUEVO COMPONENTE HomeSection
+    //  CASO ESPECIAL: HOME - USA EL NUEVO COMPONENTE HomeSection
     if (modulePath === 'home') {
       return (
         <HomeSection 
@@ -499,159 +513,226 @@ const UniversalDashboard = () => {
   // ============================================================================
   // RENDER PRINCIPAL
   // ============================================================================
-  return (
-    <div className="dashboard">
-      {/* 🎨 SIDEBAR UNIVERSAL */}
-      <div className="sidebar">
-        <div className="sidebar-header">
-          <div className="logo-container">
-            <div className="logo-icon">
-              <Droplets className="w-6 h-6 text-white" />
-            </div>
-            <div className="logo-text">
-              <h2>JAAP Sanjapamba</h2>
-              <p>{user?.rol?.nombre_rol || 'Sistema'}</p>
-            </div>
-          </div>
-        </div>
+ return (
+  <div className="dashboard">
 
-        <nav className="sidebar-nav">
-          {organizedModules.map((category) => (
-            <div key={category.id} className="nav-category">
-              {category.collapsible ? (
-                <button
-                  className="category-header"
-                  onClick={() => toggleCategory(category.id)}
-                >
-                  <div className="category-header-content">
-                    <category.icon className="w-4 h-4" />
-                    <span className="category-label">{category.label}</span>
-                  </div>
-                  {expandedCategories[category.id] ? (
-                    <ChevronDown className="w-4 h-4" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </button>
-              ) : (
-                <div className="category-header-static">
-                  <category.icon className="w-4 h-4" />
-                  <span className="category-label">{category.label}</span>
-                </div>
-              )}
+    {/* 🔥 BOTÓN HAMBURGUESA MÓVIL */}
+    <button
+      className="mobile-menu-toggle"
+      onClick={toggleSidebarMobile}
+      aria-label="Abrir menú"
+    >
+      <Menu size={24} />
+    </button>
 
-              {(!category.collapsible || expandedCategories[category.id]) && (
-                <div className="category-modules">
-                  {category.modules.map((module) => {
-                    const IconComponent = module.icon;
-                    const isActive = currentPath === module.path;
-                    
-                    return (
-                      <button
-                        key={module.id}
-                        onClick={() => handleNavigateToModule(module.path)}
-                        className={`nav-item ${isActive ? 'active' : ''}`}
-                        title={module.description || module.label}
-                      >
-                        <IconComponent className="w-5 h-5" />
-                        <span>{module.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ))}
-        </nav>
+    {/* SIDEBAR */}
+    <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${sidebarMobileOpen ? 'mobile-open' : ''}`}>
 
-        <div className="sidebar-footer">
-          <div className="user-permissions-info">
-            <Shield className="w-4 h-4 text-gray-400" />
-            <span className="text-xs text-gray-500">
-              {userPermissions.length} permisos activos
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* 📱 MAIN CONTENT */}
-      <div className="main-content">
-        <header className="header">
-          <div className="header-content">
-            <div className="header-title">
-              <h1>Panel de {user?.rol?.nombre_rol || 'Usuario'}</h1>
-              <p>Bienvenido 👋, {user.nombres} {user.apellidos}</p>
-            </div>
-
-            <div className="header-actions">
-              <button 
-                className={`refresh-btn ${loading ? 'loading' : ''}`}
-                onClick={handleRefresh}
-                disabled={loading}
-                title="Actualizar datos"
-              >
-                <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-              </button>
-
-              <NotificationDropdown
-                notifications={notifications}
-                onMarkAsRead={handleMarkAsRead}
-                onViewAll={handleViewAllNotifications}
-              />
-
-              <UserProfile
-                user={user}
-                onLogout={handleLogout}
-                onViewProfile={handleProfileClick}
-                onSettingsClick={handleSettingsClick}
-              />
-            </div>
-          </div>
-        </header>
-
-        <main className="content">
-          {/* 🔥 SISTEMA DE RUTAS ANIDADAS DINÁMICAS */}
-          <Routes>
-            {/* Ruta raíz redirige a home */}
-            <Route path="/" element={<Navigate to="home" replace />} />
-            
-            {/* 🏠 RUTA HOME - USA EL COMPONENTE HomeSection UNIVERSAL */}
-            <Route path="home" element={<DynamicModuleRenderer modulePath="home" />} />
-            
-            {/* Rutas especiales siempre disponibles */}
-            <Route path="profile" element={<DynamicModuleRenderer modulePath="profile" />} />
-            <Route path="notifications" element={<DynamicModuleRenderer modulePath="notifications" />} />
-            
-            {/* Rutas dinámicas basadas en módulos disponibles */}
-            {organizedModules.flatMap(category => 
-              category.modules.map(module => (
-                <Route 
-                  key={module.path}
-                  path={module.path}
-                  element={<DynamicModuleRenderer modulePath={module.path} />}
-                />
-              ))
-            )}
-            
-            {/* Ruta catch-all para módulos no encontrados */}
-            <Route path="*" element={<Navigate to="home" replace />} />
-          </Routes>
-        </main>
-      </div>
-
-      {/* 🔐 MODAL DE CAMBIO DE CONTRASEÑA */}
-      {user && (
-        <ChangePasswordModal
-          isOpen={showChangePasswordModal}
-          onClose={handleClosePasswordModal}
-          userId={user.id_usuario_sistema}
-          userEmail={user.email}
-          isPrimerLogin={user.primer_login === true || user.primer_login === 1}
-          onSuccess={handlePasswordChangeSuccess}
+      {/* Overlay para cerrar en móvil */}
+      {sidebarMobileOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={toggleSidebarMobile}
         />
       )}
-    </div>
-  );
+      {/* 🔥 Botón cerrar móvil */}
+      <button 
+        className="sidebar-close-btn-mobile" 
+        onClick={toggleSidebarMobile}
+      >
+        <X className="w-5 h-5" />
+      </button>
+
+      {/* Header del Sidebar */}
+      <div className="sidebar-header">
+        <div className="logo-container">
+          <div className="logo-icon">
+            <Droplets className="text-white" size={32} />
+          </div>
+
+          {!sidebarCollapsed && (
+            <div className="logo-text">
+              <h2>TecniCobro</h2>
+              <p>JAAP Sanjapamba</p>
+            </div>
+          )}
+          
+        </div>
+
+        
+      </div>
+
+      {/* Navegación */}
+      <nav className="sidebar-nav">
+
+        <button
+          className="sidebar-close-btn-mobile"
+          onClick={toggleSidebarMobile}
+          aria-label="Cerrar menú"
+        >
+          <X size={24} />
+        </button>
+        {/* 🔥 CATEGORÍAS REALES DEL SISTEMA */}
+        {organizedModules.map((category) => (
+          <div key={category.id} className="nav-category">
+
+            {/* Header */}
+            {!sidebarCollapsed && (
+              <button
+                className="category-header"
+                onClick={() => toggleCategory(category.id)}
+              >
+                <div className="category-header-content">
+                  <category.icon size={16} />
+                  <span>{category.label}</span>
+                  {expandedCategories[category.id] ? (
+                    <ChevronDown size={16} />
+                  ) : (
+                    <ChevronRight size={16} />
+                  )}
+                </div>
+              </button>
+            )}
+
+            {/* Módulos */}
+            {(expandedCategories[category.id] || sidebarCollapsed) && (
+              <div className="category-modules">
+                {category.modules.map((module) => {
+                  const ModuleIcon = module.icon;
+                  const isActive = currentPath === module.path;
+
+                  return (
+                    <button
+                      key={module.id}
+                      className={`nav-item ${isActive ? 'active' : ''}`}
+                      onClick={() => {
+                        handleNavigateToModule(module.path);
+                        if (window.innerWidth <= 1024) {
+                          setSidebarMobileOpen(false);
+                        }
+                      }}
+                      title={sidebarCollapsed ? module.label : ''}
+                    >
+                      <ModuleIcon size={20} />
+                      {!sidebarCollapsed && <span>{module.label}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+      </nav>
+
+
+      {/* Footer del Sidebar */}
+      {!sidebarCollapsed && (
+        <div className="sidebar-footer">
+          <div className="user-permissions-info">
+            <Shield size={16} />
+            <span>{userPermissions.length} permisos activos</span>
+          </div>
+        </div>
+      )}
+    </aside>
+
+    {/* MAIN CONTENT */}
+    <main className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+
+      {/* HEADER */}
+      <header className="header">
+        <div className="header-content">
+          {/* 🔥 BOTÓN HAMBURGUESA MÓVIL */}
+          <button 
+            className="mobile-menu-toggle" 
+            onClick={toggleSidebarMobile}
+            aria-label="Toggle menu"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
+          <div className="header-title">
+            <h1>Panel de {user?.rol?.nombre_rol || 'Usuario'}</h1>
+            <p>Bienvenido 👋, {user.nombres} {user.apellidos}</p>
+          </div>
+
+          <div className="header-actions">
+            <button
+              className={`refresh-btn ${loading ? 'loading' : ''}`}
+              onClick={handleRefresh}
+              disabled={loading}
+              title="Actualizar datos"
+            >
+              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+
+            <NotificationDropdown
+              notifications={notifications}
+              onMarkAsRead={handleMarkAsRead}
+              onViewAll={handleViewAllNotifications}
+            />
+
+            <UserProfile
+              user={user}
+              onLogout={handleLogout}
+              onViewProfile={handleProfileClick}
+              onSettingsClick={handleSettingsClick}
+            />
+          </div>
+        </div>
+      </header>
+
+      {/* CONTENIDO */}
+      <div className="content">
+        <Routes>
+          <Route path="/" element={<Navigate to="home" replace />} />
+
+          <Route path="home" element={<DynamicModuleRenderer modulePath="home" />} />
+          <Route path="profile" element={<DynamicModuleRenderer modulePath="profile" />} />
+          <Route path="notifications" element={<DynamicModuleRenderer modulePath="notifications" />} />
+
+          {organizedModules.flatMap(category =>
+            category.modules.map(module => (
+              <Route
+                key={module.path}
+                path={module.path}
+                element={<DynamicModuleRenderer modulePath={module.path} />}
+              />
+            ))
+          )}
+
+          <Route path="*" element={<Navigate to="home" replace />} />
+        </Routes>
+      </div>
+            
+
+      {/* 🔥 FOOTER DINÁMICO */}
+{/* 🔥 FOOTER COMPACTO */}
+<footer className="dashboard-footer">
+  <div className="footer-bottom">
+    <p>© 2025 TecniCobro. Todos los derechos reservados.</p>
+  </div>
+</footer>
+
+
+
+
+    </main>
+
+    {/* 🔐 MODAL DE CAMBIO DE CONTRASEÑA */}
+    {user && (
+      <ChangePasswordModal
+        isOpen={showChangePasswordModal}
+        onClose={handleClosePasswordModal}
+        userId={user.id_usuario_sistema}
+        userEmail={user.email}
+        isPrimerLogin={user.primer_login === true || user.primer_login === 1}
+        onSuccess={handlePasswordChangeSuccess}
+      />
+    )}
+
+  </div>
+);
+
 };
 
 export default UniversalDashboard;

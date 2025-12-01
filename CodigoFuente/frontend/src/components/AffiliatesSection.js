@@ -2,7 +2,7 @@
 // MÓDULO DE AFILIADOS - Con creación simultánea de medidor
 
 import React, { useState, useEffect, useCallback  } from 'react';
-import './styleAffiliates.css';
+import './AffiliatesSection.css';
 import affiliatesService from '../services/affiliatesServices';
 import sectorsService from '../services/sectorServices';
 import authService from '../services/authServices';
@@ -1658,6 +1658,7 @@ const normalizeKeys = (obj) => {
           </div>
         </div>
       )}
+      
     </div>
   );
 };

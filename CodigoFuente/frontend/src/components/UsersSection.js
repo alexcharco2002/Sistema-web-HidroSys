@@ -1,7 +1,7 @@
 // src/components/users/UsersSection.js
 // MODULO DE USUARIOS de sistema - Con control de permisos 
 import React, { useState, useEffect, useCallback } from 'react';
-import './styleModeUser.css';
+import './UserSection.css';
 import usersService from '../services/userServices';
 import authService from '../services/authServices'; // 🔑 Importar authService
 import * as   XLSX from "xlsx";

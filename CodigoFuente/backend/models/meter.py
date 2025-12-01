@@ -33,6 +33,12 @@ class Medidor(Base):
         lazy="joined"
     )
 
+    lecturas = relationship(
+        "Lectura",
+        back_populates="medidor",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
     
 
     def __repr__(self):

@@ -5,6 +5,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { LogOut, ChevronDown, User, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+import './UserProfile.css';
+
 const UserProfile = ({ user, onLogout, onViewProfile }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -55,7 +57,7 @@ const UserProfile = ({ user, onLogout, onViewProfile }) => {
   // Navegación a configuración
   const handleSettings = () => {
     setShowDropdown(false);
-    navigate('/admin/dashboard/settings');
+    navigate('/administrador/settings');
   };
 
 
@@ -166,9 +168,13 @@ const UserProfile = ({ user, onLogout, onViewProfile }) => {
             </button>
           </div>
         </div>
+        
       )}
+      
     </div>
+    
   );
+  
 };
 
 export default UserProfile;

@@ -1,13 +1,11 @@
-/* Estilos adicionales para GeolocationSection.js */
-/* Agregar al archivo styleSectors.css o crear styleGeolocation.css */
-
 /* ========================================
    CONTENEDOR PRINCIPAL DEL MAPA
 ======================================== */
 .geo-main {
   display: flex;
   gap: 1rem;
-  height: 600px;
+  height: calc(100vh - 350px);
+  min-height: 600px;
   margin-top: 1rem;
   border-radius: 8px;
   overflow: hidden;
@@ -45,6 +43,25 @@
   padding: 0.5rem;
 }
 
+/* Scrollbar personalizado para la lista */
+.sidebar-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.sidebar-list::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.sidebar-list::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 .sidebar-item {
   padding: 0.75rem;
   margin-bottom: 0.5rem;
@@ -59,12 +76,17 @@
   background: #f3f4f6;
   border-color: #3b82f6;
   box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
+  transform: translateX(2px);
 }
 
 .sidebar-item.selected {
   background: #eff6ff;
   border-color: #3b82f6;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.sidebar-item.current-user {
+  border-left-width: 4px;
 }
 
 .sidebar-item-header {
@@ -79,6 +101,7 @@
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  transition: all 0.2s ease;
 }
 
 .status-dot.active {
@@ -97,7 +120,8 @@
 .geo-map-container {
   flex: 1;
   position: relative;
-  background: #f0f0f0;
+  background: #e5e7eb;
+  min-height: 600px;
 }
 
 .geo-map {
@@ -111,14 +135,15 @@
 ======================================== */
 .map-legend {
   position: absolute;
-  bottom: 20px;
-  right: 20px;
+  bottom: 40px;
+  right: 10px;
   background: white;
-  padding: 1rem;
+  padding: 12px;
   border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   z-index: 1000;
-  min-width: 200px;
+  font-size: 13px;
+  min-width: 180px;
 }
 
 .legend-title {
@@ -153,33 +178,88 @@
 }
 
 /* ========================================
-   POPUP DEL MARCADOR
+   ESTILOS LEAFLET PERSONALIZADOS
 ======================================== */
-.marker-popup {
-  padding: 0.5rem;
-  min-width: 200px;
+.custom-marker {
+  background: transparent !important;
+  border: none !important;
 }
 
-.marker-popup h4 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #1f2937;
-  margin-bottom: 0.5rem;
+.custom-popup .leaflet-popup-content-wrapper {
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.marker-popup p {
-  font-size: 0.875rem;
-  color: #4b5563;
-  margin-bottom: 0.25rem;
+.custom-popup .leaflet-popup-content {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
 }
 
-.marker-popup p:last-child {
-  margin-bottom: 0;
+.custom-popup .leaflet-popup-tip {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.marker-popup em {
-  color: #9ca3af;
+.custom-tooltip {
+  background: white !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+  padding: 8px 12px !important;
+  font-family: system-ui, -apple-system, sans-serif !important;
 }
+
+.custom-tooltip::before {
+  border-top-color: white !important;
+}
+
+/* ========================================
+   MARCADOR DEL USUARIO ACTUAL CON CÍRCULO
+   ======================================== */
+
+.geo-marker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  transition: all 0.3s ease;
+  z-index: 1;
+}
+
+.geo-marker.current-user-marker {
+  z-index: 1000 !important;
+  animation: pulse-marker 2s ease-in-out infinite;
+}
+
+.geo-marker.current-user-marker::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 50px;
+  height: 50px;
+  border: 3px solid #8b5cf6;
+  border-radius: 50%;
+  background: rgba(139, 92, 246, 0.15);
+  box-shadow: 0 0 15px rgba(139, 92, 246, 0.5), 
+              0 0 25px rgba(139, 92, 246, 0.3);
+  z-index: -1;
+  pointer-events: none;
+}
+
+@keyframes pulse-marker {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+
 
 /* ========================================
    ESTADÍSTICAS MEJORADAS
@@ -205,6 +285,7 @@
 .stat-item:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   border-color: #3b82f6;
+  transform: translateY(-2px);
 }
 
 .stat-icon {
@@ -213,6 +294,7 @@
   padding: 0.5rem;
   border-radius: 8px;
   background: #f0f9ff;
+  flex-shrink: 0;
 }
 
 .stat-label {
@@ -229,12 +311,31 @@
 }
 
 /* ========================================
+   ANIMACIONES
+======================================== */
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+/* ========================================
    RESPONSIVE
 ======================================== */
 @media (max-width: 1024px) {
   .geo-main {
     flex-direction: column;
     height: auto;
+    min-height: 700px;
   }
 
   .geo-sidebar {
@@ -245,42 +346,89 @@
   }
 
   .geo-map-container {
-    height: 500px;
+    min-height: 400px;
   }
 
   .users-stats {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
+
+  .map-legend {
+    bottom: 15px;
+    right: 15px;
+    padding: 10px;
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 768px) {
   .geo-main {
-    height: auto;
+    min-height: 600px;
+  }
+
+  .geo-sidebar {
+    max-height: 250px;
   }
 
   .geo-map-container {
-    height: 400px;
+    min-height: 350px;
   }
 
   .map-legend {
     bottom: 10px;
     right: 10px;
-    font-size: 0.75rem;
-    padding: 0.75rem;
+    font-size: 11px;
+    padding: 8px;
     min-width: 150px;
+  }
+
+  .legend-item {
+    font-size: 0.75rem;
+    margin-bottom: 0.375rem;
+  }
+
+  .legend-dot {
+    width: 12px;
+    height: 12px;
   }
 
   .users-stats {
     grid-template-columns: 1fr;
+    gap: 0.75rem;
   }
 
-  .filters-section {
-    flex-direction: column;
+  .stat-item {
+    padding: 0.75rem;
   }
 
-  .search-container,
-  .filter-select {
-    width: 100%;
+  .stat-icon {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .stat-value {
+    font-size: 1.25rem;
+  }
+
+  .sidebar-item {
+    padding: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .geo-main {
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .sidebar-title {
+    padding: 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  .map-legend {
+    font-size: 10px;
+    padding: 6px;
   }
 }
 
@@ -293,6 +441,10 @@
 
 .items-center {
   align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
 }
 
 .gap-2 {
@@ -323,6 +475,14 @@
   color: #4b5563;
 }
 
+.text-purple-600 {
+  color: #9333ea;
+}
+
+.text-purple-700 {
+  color: #7e22ce;
+}
+
 .inline {
   display: inline;
 }
@@ -344,23 +504,68 @@
   margin-bottom: 1rem;
 }
 
-
-
-.geo-main {
-  display: flex;
-  height: calc(100vh - 160px); /* ajusta si es necesario */
+/* ========================================
+   ESTADOS DE CARGA
+======================================== */
+.loading-map {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 1000;
 }
 
-.geo-map-container {
-  flex: 1;
-  position: relative;
+.loading-map .spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem;
 }
 
-.geo-map {
-  height: 100%;
-  width: 100%;
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.geo-map-container, .geo-map {
-  min-height: 550px; /* o la altura que necesites */
+/* ========================================
+   ACCESIBILIDAD
+======================================== */
+.geo-sidebar:focus-within .sidebar-item {
+  outline: 2px solid transparent;
+}
+
+.sidebar-item:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Mejorar contraste para usuarios con discapacidad visual */
+@media (prefers-contrast: high) {
+  .sidebar-item {
+    border-width: 2px;
+  }
+  
+  .status-dot {
+    border: 2px solid currentColor;
+  }
+  
+  .map-legend {
+    border: 2px solid #1f2937;
+  }
+}
+
+/* Reducir movimiento para usuarios sensibles */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-item,
+  .stat-item,
+  .status-dot,
+  .pulse {
+    transition: none;
+    animation: none;
+  }
 }

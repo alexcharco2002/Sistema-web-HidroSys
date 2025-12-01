@@ -5,7 +5,7 @@
  * Con control de permisos granular
 */
 import React, { useState, useEffect, useCallback } from 'react';
-import './styleRoles.css';
+import './RolesSection.css';
 
 import rolesService from '../services/rolesServices';
 import authService from '../services/authServices'; // 🔑 Importar authService
@@ -82,6 +82,7 @@ const RolesSection = () => {
     { value: 'Sectores', label: 'Sectores' },
     { value: 'Tarifas', label: 'Tarifas' },
     { value: 'Geolocalizacion', label: 'Geolocalización' },
+    { value: 'Servicios', label: 'Servicios' },
 
     { value: 'Lecturas', label: 'Lecturas' },
     { value: 'Facturas', label: 'Facturas' },

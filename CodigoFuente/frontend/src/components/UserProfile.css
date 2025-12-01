@@ -1,0 +1,310 @@
+/* ===================================
+   CONTENEDOR PRINCIPAL DEL PERFIL
+   =================================== */
+.user-profile-container {
+  position: relative;
+}
+
+/* ===================================
+   BOTÓN DEL PERFIL DE USUARIO
+   =================================== */
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background-color: var(--bg-gray-50);
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.user-profile:hover {
+  background-color: var(--bg-gray-100);
+  border-color: var(--primary-light);
+  transform: translateY(-1px);
+}
+
+/* ===================================
+   AVATAR DEL USUARIO
+   =================================== */
+.user-avatar-container {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+/* Imagen del avatar */
+.user-avatar-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.user-avatar-image:hover {
+  border-color: var(--primary-light);
+  transform: scale(1.05);
+}
+
+/* Avatar fallback con iniciales */
+.user-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 50%, var(--accent-color) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.user-avatar-fallback:hover {
+  border-color: var(--primary-light);
+  transform: scale(1.05);
+}
+
+.user-initials {
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+/* ===================================
+   INFORMACIÓN DEL USUARIO
+   =================================== */
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 0.25rem 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.user-role {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  line-height: 1.2;
+}
+
+/* ===================================
+   FLECHA DEL DROPDOWN
+   =================================== */
+.dropdown-arrow {
+  transition: transform 0.2s ease;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* ===================================
+   MENÚ DROPDOWN DEL USUARIO
+   =================================== */
+.user-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 280px;
+  background: var(--bg-white);
+  border-radius: 12px;
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+  z-index: 1000;
+  margin-top: 8px;
+  border: 1px solid var(--border-color);
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===================================
+   ENCABEZADO DEL DROPDOWN
+   =================================== */
+.dropdown-header {
+  padding: 20px;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 50%, var(--accent-color) 100%);
+  color: white;
+}
+
+.dropdown-user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Avatar en el dropdown */
+.dropdown-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.dropdown-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dropdown-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 18px;
+  color: white;
+}
+
+/* Detalles del usuario en dropdown */
+.dropdown-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.dropdown-name {
+  font-weight: 600;
+  font-size: 16px;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-email {
+  font-size: 13px;
+  opacity: 0.8;
+  margin: 2px 0 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===================================
+   MENÚ DE OPCIONES DEL DROPDOWN
+   =================================== */
+.dropdown-divider {
+  height: 1px;
+  background: var(--border-color);
+}
+
+.dropdown-menu {
+  padding: 8px 0;
+}
+
+.dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  text-align: left;
+}
+
+.dropdown-item:hover {
+  background: var(--bg-gray-50);
+  color: var(--primary-light);
+}
+
+/* Item de cerrar sesión */
+.dropdown-item.logout-item {
+  color: var(--error-color);
+}
+
+.dropdown-item.logout-item:hover {
+  background: rgba(239, 68, 68, 0.05);
+  color: var(--error-color);
+}
+
+.dropdown-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* ===================================
+   VARIANTES POR ROL DE USUARIO
+   =================================== */
+.user-profile[data-role="admin"] .user-avatar-fallback {
+  background: linear-gradient(135deg, var(--error-color) 0%, #dc2626 100%);
+}
+
+.user-profile[data-role="usuario"] .user-avatar-fallback {
+  background: linear-gradient(135deg, var(--accent-color) 0%, #06b6d4 100%);
+}
+
+.user-profile[data-role="empleado"] .user-avatar-fallback {
+  background: linear-gradient(135deg, var(--success-color) 0%, #16a34a 100%);
+}
+
+/* ===================================
+   RESPONSIVE - MÓVILES
+   =================================== */
+@media (max-width: 768px) {
+  .user-profile {
+    gap: 8px;
+    padding: 6px 8px;
+  }
+
+  .user-avatar-container {
+    width: 32px;
+    height: 32px;
+  }
+
+  .user-initials {
+    font-size: 12px;
+  }
+
+  .user-name {
+    font-size: 13px;
+  }
+
+  .user-role {
+    font-size: 11px;
+  }
+
+  .user-dropdown {
+    width: 260px;
+  }
+}

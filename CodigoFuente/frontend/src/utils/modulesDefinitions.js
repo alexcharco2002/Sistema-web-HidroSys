@@ -272,7 +272,7 @@ export const MODULE_DEFINITIONS = {
     color: "violet",
     category: "FINANCIAL",
     order: 7,
-    componentName: "ServicesSection",
+    componentName: "ServiciosSection",
     description: "Gestión de servicios ofrecidos."
   },
 

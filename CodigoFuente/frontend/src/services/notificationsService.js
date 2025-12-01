@@ -389,6 +389,9 @@ class NotificationsService {
       
       // Reportes (si tienes este módulo)
       'reporte': '/admin/dashboard/reports',
+
+      //servicios
+      'servicio': '/admin/dashboard/services',
       
       // Auditoría (si tienes este módulo)
       'auditoria': '/admin/dashboard/audits',

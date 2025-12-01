@@ -11,6 +11,8 @@ from routes import afiliates
 from routes import meters
 from routes import backups
 from routes import tarifas
+from routes import servicios
+from routes import lecturas
 import os
 
 app = FastAPI(
@@ -50,7 +52,8 @@ app.include_router(afiliates.router)
 app.include_router(meters.router)
 app.include_router(backups.router)
 app.include_router(tarifas.router)
-
+app.include_router(servicios.router)
+app.include_router(lecturas.router)
 
 # Health check general
 @app.get("/health")

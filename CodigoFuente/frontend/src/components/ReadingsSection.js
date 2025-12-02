@@ -1,8 +1,8 @@
 // src/components/ReadingsSection.js
 // MÓDULO DE LECTURAS - Con funcionalidad de Excel
 
-import React, { useState, useEffect, useCallback } from 'react';
-import './AffiliatesSection.css'; // Usa los mismos estilos
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import './ReadingsList.css';
 import readingsServices from '../services/readingsServices';
 import authService from '../services/authServices';
 import * as XLSX from "xlsx";
@@ -25,7 +25,6 @@ import {
   Plus,
   FileSpreadsheet,
   TrendingUp,
-  FileText,
   User,
   Download,
   Upload,
@@ -33,25 +32,39 @@ import {
 } from 'lucide-react';
 
 const ReadingsSection = () => {
-  // ==================== ESTADOS ====================
+  // ============================================================
+  // ESTADOS PRINCIPALES
+  // ============================================================
   const [readings, setReadings] = useState([]);
   const [meters, setMeters] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // ============================================================
+  // ESTADOS DE BÚSQUEDA Y FILTROS
+  // ============================================================
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm] = useState(searchTerm);
   const [filterStatus, setFilterStatus] = useState('all');
-  const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState('create');
-  const [selectedReading, setSelectedReading] = useState(null);
-  const [error, setError] = useState(null);
+  const [filterMonth, setFilterMonth] = useState('all');
+  const [filterYear, setFilterYear] = useState('all');
   const [sortOption, setSortOption] = useState('fecha');
   const [sortOrder, setSortOrder] = useState('desc');
 
-  // ===== Variables para carga desde Excel =====
-  const [selectedExcel, setSelectedExcel] = useState(null);
-  const [excelPreview, setExcelPreview] = useState([]);
-  const [loadingExcel, setLoadingExcel] = useState(false);
+  // ============================================================
+  // ESTADOS DE MODAL
+  // ============================================================
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState('create');
+  const [selectedReading, setSelectedReading] = useState(null);
+  const [selectedMeterInfo, setSelectedMeterInfo] = useState(null);
+  
+  // ✅ NUEVO: Estado para búsqueda de medidores en el modal
+  const [meterSearchTerm, setMeterSearchTerm] = useState('');
 
+  // ============================================================
+  // ESTADOS DE FORMULARIO
+  // ============================================================
   const [formData, setFormData] = useState({
     id_medidor: null,
     lectura_actual: '',
@@ -62,9 +75,16 @@ const ReadingsSection = () => {
     activo: true
   });
 
-  // Información adicional del medidor seleccionado
-  const [selectedMeterInfo, setSelectedMeterInfo] = useState(null);
+  // ============================================================
+  // ESTADOS DE EXCEL
+  // ============================================================
+  const [selectedExcel, setSelectedExcel] = useState(null);
+  const [excelPreview, setExcelPreview] = useState([]);
+  const [loadingExcel, setLoadingExcel] = useState(false);
 
+  // ============================================================
+  // ESTADOS DE PERMISOS
+  // ============================================================
   const [permissions, setPermissions] = useState({
     canCreate: false,
     canRead: false,
@@ -73,13 +93,26 @@ const ReadingsSection = () => {
     canToggleStatus: false
   });
 
-  // ==================== EFECTOS ====================
+  // ============================================================
+  // EFECTOS
+  // ============================================================
   useEffect(() => {
     loadUserPermissions();
     fetchMeters();
   }, []);
 
-  // ==================== FUNCIONES DE PERMISOS ====================
+  
+
+  useEffect(() => {
+    if (formData.lectura_actual && formData.lectura_anterior !== '') {
+      const consumo = parseInt(formData.lectura_actual) - parseInt(formData.lectura_anterior);
+      setFormData(prev => ({ ...prev, consumo_m3: consumo }));
+    }
+  }, [formData.lectura_actual, formData.lectura_anterior]);
+
+  // ============================================================
+  // FUNCIONES DE PERMISOS
+  // ============================================================
   const loadUserPermissions = () => {
     const canCreate = authService.hasPermission('lecturas', 'crear') || authService.hasPermission('lecturas', 'crud');
     const canUpdate = authService.hasPermission('lecturas', 'actualizar') || authService.hasPermission('lecturas', 'crud');
@@ -87,16 +120,12 @@ const ReadingsSection = () => {
     const canRead = authService.hasPermission('lecturas', 'lectura') || canCreate || canUpdate || canDelete || authService.hasPermission('lecturas', 'crud');
     const canToggleStatus = canUpdate;
 
-    setPermissions({
-      canCreate,
-      canRead,
-      canUpdate,
-      canDelete,
-      canToggleStatus
-    });
+    setPermissions({ canCreate, canRead, canUpdate, canDelete, canToggleStatus });
   };
 
-  // ==================== FUNCIONES DE CARGA DE DATOS ====================
+  // ============================================================
+  // FUNCIONES DE CARGA DE DATOS
+  // ============================================================
   const fetchReadings = useCallback(async () => {
     if (!permissions.canRead) {
       setError('No tienes permiso para ver lecturas');
@@ -130,26 +159,316 @@ const ReadingsSection = () => {
       fetchReadings();
     }
   }, [debouncedSearchTerm, filterStatus, permissions.canRead, fetchReadings]);
-
-    // Reemplazar la función fetchMeters:
-    const fetchMeters = async () => {
+  
+  const fetchMeters = async () => {
     try {
-        const result = await readingsServices.getMedidoresParaLecturas();
-        if (result.success) {
+      const result = await readingsServices.getMedidoresParaLecturas();
+      if (result.success) {
         setMeters(result.data || []);
         console.log('✅ Medidores cargados:', result.data.length);
-        } else {
+      } else {
         console.error('Error al cargar medidores:', result.message);
         setError(result.message);
-        }
+      }
     } catch (error) {
-        console.error('Error al cargar medidores:', error);
-        setError('Error al cargar medidores');
+      console.error('Error al cargar medidores:', error);
+      setError('Error al cargar medidores');
     }
-    };
+  };
+
+  // ============================================================
+  // FUNCIONES AUXILIARES
+  // ============================================================
+  const getAvailableYears = () => {
+    const years = new Set();
+    readings.forEach(reading => {
+      if (reading.fecha_lectura) {
+        const year = new Date(reading.fecha_lectura + 'T00:00:00').getFullYear();
+        years.add(year);
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  };
+
+  // ✅ NUEVO: Medidores filtrados para el modal
+  const filteredMeters = useMemo(() => {
+    if (!meterSearchTerm.trim()) return meters;
+    
+    const searchLower = meterSearchTerm.toLowerCase().trim();
+    return meters.filter(medidor => {
+      const numMedidor = medidor.num_medidor?.toLowerCase() || '';
+      const nombreAfiliado = medidor.nombre_afiliado?.toLowerCase() || '';
+       // 🔥 codigo_afiliado es INTEGER → convertir a string primero
+    const codigoAfiliado = String(medidor.codigo_afiliado || '').toLowerCase();
+      
+      return numMedidor.includes(searchLower) ||
+             nombreAfiliado.includes(searchLower) ||
+             codigoAfiliado.includes(searchLower);
+    });
+  }, [meters, meterSearchTerm]);
+
+  // ============================================================
+  // FUNCIONES DE FILTRADO Y ORDENAMIENTO
+  // ============================================================
+  const filteredReadings = readings.filter(reading => {
+    const searchLower = searchTerm.toLowerCase();
+    
+    const matchesSearch =
+      reading.medidor?.num_medidor?.toLowerCase().includes(searchLower) ||
+      reading.observacion?.toLowerCase().includes(searchLower) ||
+      reading.id_lectura.toString().includes(searchTerm) ||
+            (reading.medidor?.codigo_afiliado + '').toLowerCase().includes(searchLower) ||
+        (reading.medidor?.nombre_afiliado || '').toLowerCase().includes(searchLower)
 
 
-  // ==================== FUNCIONES DE EXCEL ====================
+    const matchesStatus =
+      filterStatus === 'all' ||
+      (filterStatus === 'active' && reading.activo) ||
+      (filterStatus === 'inactive' && !reading.activo);
+
+    let matchesMonth = true;
+    if (filterMonth !== 'all' && reading.fecha_lectura) {
+      const readingMonth = new Date(reading.fecha_lectura + 'T00:00:00').getMonth() + 1;
+      matchesMonth = readingMonth === parseInt(filterMonth);
+    }
+
+    let matchesYear = true;
+    if (filterYear !== 'all' && reading.fecha_lectura) {
+      const readingYear = new Date(reading.fecha_lectura + 'T00:00:00').getFullYear();
+      matchesYear = readingYear === parseInt(filterYear);
+    }
+
+    return matchesSearch && matchesStatus && matchesMonth && matchesYear;
+  });
+
+  const sortedReadings = [...filteredReadings].sort((a, b) => {
+    let comparison = 0;
+
+    if (sortOption === 'fecha') {
+      comparison = new Date(a.fecha_lectura) - new Date(b.fecha_lectura);
+    } else if (sortOption === 'medidor') {
+      const medidorA = a.medidor?.num_medidor?.toLowerCase() || '';
+      const medidorB = b.medidor?.num_medidor?.toLowerCase() || '';
+      comparison = medidorA.localeCompare(medidorB);
+    } else if (sortOption === 'consumo') {
+      comparison = a.consumo_m3 - b.consumo_m3;
+    }
+
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  const toggleSortOrder = () => {
+    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
+  };
+
+  const handleStatusFilterClick = (status) => {
+    setFilterStatus(status);
+  };
+
+  // ============================================================
+  // FUNCIONES DE MODAL
+  // ============================================================
+  const openModal = async (type, reading = null) => {
+    if (type === 'create' && !permissions.canCreate) {
+      alert('❌ No tienes permiso para crear lecturas');
+      return;
+    }
+
+    if (type === 'edit' && !permissions.canUpdate) {
+      alert('❌ No tienes permiso para editar lecturas');
+      return;
+    }
+
+    if (type === 'excel' && !permissions.canCreate) {
+      alert('❌ No tienes permiso para crear lecturas');
+      return;
+    }
+
+    setModalType(type);
+    setSelectedReading(reading);
+    setError(null);
+    setMeterSearchTerm(''); // ✅ Limpiar búsqueda de medidores
+
+    if (type === 'create') {
+      setFormData({
+        id_medidor: null,
+        lectura_actual: '',
+        lectura_anterior: '',
+        consumo_m3: '',
+        fecha_lectura: new Date().toISOString().split('T')[0],
+        observacion: '',
+        activo: true
+      });
+      setSelectedMeterInfo(null);
+    } else if (type === 'edit' && reading) {
+      setFormData({
+        id_medidor: reading.id_medidor,
+        lectura_actual: reading.lectura_actual,
+        lectura_anterior: reading.lectura_anterior,
+        consumo_m3: reading.consumo_m3,
+        fecha_lectura: reading.fecha_lectura,
+        observacion: reading.observacion || '',
+        activo: reading.activo
+      });
+
+      const medidor = meters.find(m => m.id_medidor === reading.id_medidor);
+      if (medidor) {
+        setSelectedMeterInfo(medidor);
+      } else {
+        setSelectedMeterInfo({
+          nombre_afiliado: reading.medidor?.nombre_afiliado || null,
+          sector: reading.medidor?.sector || null,
+          num_medidor: reading.medidor?.num_medidor || null
+        });
+      }
+    } else if (type === 'excel') {
+      setExcelPreview([]);
+      setSelectedExcel(null);
+      setLoadingExcel(false);
+    }
+
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setExcelPreview([]);
+    setSelectedExcel(null);
+    setLoadingExcel(false);
+    setShowModal(false);
+    setSelectedReading(null);
+    setError(null);
+    setSelectedMeterInfo(null);
+    setMeterSearchTerm(''); // ✅ Limpiar búsqueda
+  };
+
+  // ============================================================
+  // MANEJO DE MEDIDOR
+  // ============================================================
+  const handleMedidorChange = async (id_medidor) => {
+    if (!id_medidor) {
+      setFormData(prev => ({ ...prev, id_medidor: null, lectura_anterior: '' }));
+      setSelectedMeterInfo(null);
+      return;
+    }
+
+    const medidor = meters.find(m => m.id_medidor === parseInt(id_medidor));
+
+    if (medidor) {
+      setSelectedMeterInfo(medidor);
+
+      try {
+        const result = await readingsServices.getLecturas({ id_medidor: parseInt(id_medidor) });
+
+        if (result.success && result.data?.length > 0) {
+          const ultimaLectura = result.data.sort(
+            (a, b) => new Date(b.fecha_lectura) - new Date(a.fecha_lectura)
+          )[0];
+
+          setFormData(prev => ({
+            ...prev,
+            id_medidor: parseInt(id_medidor),
+            lectura_anterior: ultimaLectura.lectura_actual
+          }));
+        } else {
+          setFormData(prev => ({
+            ...prev,
+            id_medidor: parseInt(id_medidor),
+            lectura_anterior: 0
+          }));
+        }
+      } catch (error) {
+        console.error('Error al obtener última lectura:', error);
+        setFormData(prev => ({
+          ...prev,
+          id_medidor: parseInt(id_medidor),
+          lectura_anterior: 0
+        }));
+      }
+    }
+  };
+
+  // ============================================================
+  // FUNCIONES DE CRUD
+  // ============================================================
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!formData.id_medidor) {
+      setError('Debe seleccionar un medidor');
+      return;
+    }
+
+    if (parseInt(formData.lectura_actual) < parseInt(formData.lectura_anterior)) {
+      setError('La lectura actual no puede ser menor que la lectura anterior');
+      return;
+    }
+
+    try {
+      let result;
+
+      if (modalType === 'create') {
+        if (!permissions.canCreate) {
+          setError('No tienes permiso para crear lecturas');
+          return;
+        }
+
+        result = await readingsServices.createLectura(formData);
+
+        if (result.success) {
+          alert(`✅ Lectura creada exitosamente.\n\nMedidor: ${selectedMeterInfo?.num_medidor}\nConsumo: ${formData.consumo_m3} m³\nID Lectura: ${result.data.id_lectura}`);
+          await fetchReadings();
+          closeModal();
+        } else {
+          setError(result.message || 'Error al crear la lectura');
+        }
+      } else if (modalType === 'edit') {
+        if (!permissions.canUpdate) {
+          setError('No tienes permiso para editar lecturas');
+          return;
+        }
+
+        result = await readingsServices.updateLectura(selectedReading.id_lectura, formData);
+
+        if (result.success) {
+          alert('✅ Cambios guardados correctamente');
+          await fetchReadings();
+          closeModal();
+        } else {
+          setError(result.message || 'Error al actualizar lectura');
+        }
+      }
+    } catch (error) {
+      console.error('Error al guardar lectura:', error);
+      setError(error.message || 'Error al guardar lectura');
+    }
+  };
+
+  const handleDelete = async (readingId) => {
+    if (!permissions.canDelete) {
+      alert('❌ No tienes permiso para eliminar lecturas');
+      return;
+    }
+
+    if (window.confirm('¿Estás seguro de que deseas eliminar esta lectura?')) {
+      try {
+        const result = await readingsServices.deleteLectura(readingId);
+
+        if (result.success) {
+          alert(result.message);
+          await fetchReadings();
+        } else {
+          alert('Error: ' + result.message);
+        }
+      } catch (error) {
+        alert('Error al eliminar lectura: ' + error.message);
+      }
+    }
+  };
+
+  // ============================================================
+  // FUNCIONES DE EXCEL
+  // ============================================================
   const handleDownloadTemplate = async () => {
     try {
       const result = await readingsServices.exportarPlantilla();
@@ -163,7 +482,6 @@ const ReadingsSection = () => {
     }
   };
 
-  // Limpia claves del Excel (quita espacios, saltos, unicode raro)
   const normalizeKeys = (obj) => {
     const newObj = {};
     Object.keys(obj).forEach((key) => {
@@ -191,7 +509,19 @@ const ReadingsSection = () => {
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet);
 
-      const cleanedRows = rows.map((row) => normalizeKeys(row));
+      const cleanedRows = rows.map((row) => {
+        const r = normalizeKeys(row);
+        return {
+          num_medidor: r.num_medidor || "",
+          sector: r.sector || "",
+          codigo_afiliado: r.codigo_usuarioafiliado || "",
+          nombre_afiliado: r.nombre_usuarioafiliado || "",
+          lectura_anterior: r.lectura_anterior || 0,
+          lectura_actual: r.lectura_actual || "",
+          observacion: r.observacion || ""
+        };
+      });
+
       setExcelPreview(cleanedRows);
       setSelectedExcel(file);
     } catch (error) {
@@ -256,7 +586,6 @@ const ReadingsSection = () => {
         }
 
         alert(mensaje);
-
         closeModal();
         setExcelPreview([]);
         setSelectedExcel(null);
@@ -272,270 +601,9 @@ const ReadingsSection = () => {
     }
   };
 
-  // ==================== FUNCIONES DE FILTRADO Y ORDENAMIENTO ====================
-  const filteredReadings = readings.filter(reading => {
-    const matchesSearch =
-      reading.medidor?.num_medidor?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reading.observacion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reading.id_lectura.toString().includes(searchTerm);
-
-    const matchesStatus =
-      filterStatus === 'all' ||
-      (filterStatus === 'active' && reading.activo) ||
-      (filterStatus === 'inactive' && !reading.activo);
-
-    return matchesSearch && matchesStatus;
-  });
-
-  const sortedReadings = [...filteredReadings].sort((a, b) => {
-    let comparison = 0;
-
-    if (sortOption === 'fecha') {
-      comparison = new Date(a.fecha_lectura) - new Date(b.fecha_lectura);
-    } else if (sortOption === 'medidor') {
-      const medidorA = a.medidor?.num_medidor?.toLowerCase() || '';
-      const medidorB = b.medidor?.num_medidor?.toLowerCase() || '';
-      comparison = medidorA.localeCompare(medidorB);
-    } else if (sortOption === 'consumo') {
-      comparison = a.consumo_m3 - b.consumo_m3;
-    }
-
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
-
-  const toggleSortOrder = () => {
-    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
-  };
-
-  const handleStatusFilterClick = (status) => {
-    setFilterStatus(status);
-  };
-
-  // ==================== FUNCIONES DE MODAL ====================
-  const openModal = async (type, reading = null) => {
-    if (type === 'create' && !permissions.canCreate) {
-      alert('❌ No tienes permiso para crear lecturas');
-      return;
-    }
-
-    if (type === 'edit' && !permissions.canUpdate) {
-      alert('❌ No tienes permiso para editar lecturas');
-      return;
-    }
-
-    if (type === 'excel' && !permissions.canCreate) {
-      alert('❌ No tienes permiso para crear lecturas');
-      return;
-    }
-
-    setModalType(type);
-    setSelectedReading(reading);
-    setError(null);
-
-    if (type === 'create') {
-      setFormData({
-        id_medidor: null,
-        lectura_actual: '',
-        lectura_anterior: '',
-        consumo_m3: '',
-        fecha_lectura: new Date().toISOString().split('T')[0],
-        observacion: '',
-        activo: true
-      });
-      setSelectedMeterInfo(null);
-    } else if (type === 'edit' && reading) {
-      setFormData({
-        id_medidor: reading.id_medidor,
-        lectura_actual: reading.lectura_actual,
-        lectura_anterior: reading.lectura_anterior,
-        consumo_m3: reading.consumo_m3,
-        fecha_lectura: reading.fecha_lectura,
-        observacion: reading.observacion || '',
-        activo: reading.activo
-      });
-
-      // Cargar información del medidor
-      const medidor = meters.find(m => m.id_medidor === reading.id_medidor);
-      if (medidor) {
-        setSelectedMeterInfo({
-          medidor: medidor,
-          afiliado: medidor.usuario_afiliado,
-          sector: medidor.sector
-        });
-      }
-    } else if (type === 'excel') {
-      setExcelPreview([]);
-      setSelectedExcel(null);
-      setLoadingExcel(false);
-    }
-
-    setShowModal(true);
-  };
-
-  const closeModal = () => {
-    setExcelPreview([]);
-    setSelectedExcel(null);
-    setLoadingExcel(false);
-    setShowModal(false);
-    setSelectedReading(null);
-    setError(null);
-    setSelectedMeterInfo(null);
-  };
-
-  // ==================== MANEJO DE CAMBIO DE MEDIDOR ====================
-  const handleMedidorChange = async (id_medidor) => {
-  if (!id_medidor) {
-    setFormData(prev => ({ ...prev, id_medidor: null, lectura_anterior: '' }));
-    setSelectedMeterInfo(null);
-    return;
-  }
-
-  const medidor = meters.find(m => m.id_medidor === parseInt(id_medidor));
-
-  if (medidor) {
-
-    // ⬅️ EL CAMBIO IMPORTANTE: Guardar el medidor tal como viene
-    setSelectedMeterInfo(medidor);
-
-    try {
-      const result = await readingsServices.getLecturas({ id_medidor: parseInt(id_medidor) });
-
-      if (result.success && result.data?.length > 0) {
-        const ultimaLectura = result.data.sort(
-          (a, b) => new Date(b.fecha_lectura) - new Date(a.fecha_lectura)
-        )[0];
-
-        setFormData(prev => ({
-          ...prev,
-          id_medidor: parseInt(id_medidor),
-          lectura_anterior: ultimaLectura.lectura_actual
-        }));
-      } else {
-        setFormData(prev => ({
-          ...prev,
-          id_medidor: parseInt(id_medidor),
-          lectura_anterior: 0
-        }));
-      }
-
-    } catch (error) {
-      console.error('Error al obtener última lectura:', error);
-      setFormData(prev => ({
-        ...prev,
-        id_medidor: parseInt(id_medidor),
-        lectura_anterior: 0
-      }));
-    }
-  }
-};
-
-
-  // ==================== CALCULAR CONSUMO AUTOMÁTICAMENTE ====================
-  useEffect(() => {
-    if (formData.lectura_actual && formData.lectura_anterior !== '') {
-      const consumo = parseInt(formData.lectura_actual) - parseInt(formData.lectura_anterior);
-      setFormData(prev => ({ ...prev, consumo_m3: consumo }));
-    }
-  }, [formData.lectura_actual, formData.lectura_anterior]);
-
-  // ==================== FUNCIONES DE CRUD ====================
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-
-    // Validaciones
-    if (!formData.id_medidor) {
-      setError('Debe seleccionar un medidor');
-      return;
-    }
-
-    if (parseInt(formData.lectura_actual) < parseInt(formData.lectura_anterior)) {
-      setError('La lectura actual no puede ser menor que la lectura anterior');
-      return;
-    }
-
-    try {
-      let result;
-
-      if (modalType === 'create') {
-        if (!permissions.canCreate) {
-          setError('No tienes permiso para crear lecturas');
-          return;
-        }
-
-        result = await readingsServices.createLectura(formData);
-
-        if (result.success) {
-          alert(`✅ Lectura creada exitosamente.\n\nMedidor: ${selectedMeterInfo?.medidor?.num_medidor}\nConsumo: ${formData.consumo_m3} m³\nID Lectura: ${result.data.id_lectura}`);
-          await fetchReadings();
-          closeModal();
-        } else {
-          setError(result.message || 'Error al crear la lectura');
-        }
-      } else if (modalType === 'edit') {
-        if (!permissions.canUpdate) {
-          setError('No tienes permiso para editar lecturas');
-          return;
-        }
-
-        result = await readingsServices.updateLectura(selectedReading.id_lectura, formData);
-
-        if (result.success) {
-          alert('✅ Cambios guardados correctamente');
-          await fetchReadings();
-          closeModal();
-        } else {
-          setError(result.message || 'Error al actualizar lectura');
-        }
-      }
-    } catch (error) {
-      console.error('Error al guardar lectura:', error);
-      setError(error.message || 'Error al guardar lectura');
-    }
-  };
-
-  const handleDelete = async (readingId) => {
-    if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para eliminar lecturas');
-      return;
-    }
-
-    if (window.confirm('¿Estás seguro de que deseas eliminar esta lectura?')) {
-      try {
-        const result = await readingsServices.deleteLectura(readingId);
-
-        if (result.success) {
-          alert(result.message);
-          await fetchReadings();
-        } else {
-          alert('Error: ' + result.message);
-        }
-      } catch (error) {
-        alert('Error al eliminar lectura: ' + error.message);
-      }
-    }
-  };
-
-  const toggleReadingStatus = async (readingId) => {
-    if (!permissions.canToggleStatus) {
-      alert('❌ No tienes permiso para cambiar el estado de lecturas');
-      return;
-    }
-
-    try {
-      const result = await readingsServices.toggleLecturaStatus(readingId);
-
-      if (result.success) {
-        await fetchReadings();
-      } else {
-        alert('Error: ' + result.message);
-      }
-    } catch (error) {
-      alert('Error al cambiar estado de la lectura');
-    }
-  };
-
-  // ==================== RENDERIZADO ====================
+  // ============================================================
+  // RENDERIZADO - ESTADOS DE CARGA Y ERROR
+  // ============================================================
   if (!permissions.canRead) {
     return (
       <div className="affiliates-section">
@@ -560,8 +628,12 @@ const ReadingsSection = () => {
     );
   }
 
+  // ============================================================
+  // RENDERIZADO PRINCIPAL
+  // ============================================================
   return (
     <div className="affiliates-section">
+      
       {/* ==================== ENCABEZADO ==================== */}
       <div className="section-header">
         <div className="section-title">
@@ -572,18 +644,12 @@ const ReadingsSection = () => {
         <div className="actions">
           {permissions.canCreate && (
             <>
-              <button
-                className="btn-primary"
-                onClick={() => openModal('create')}
-              >
+              <button className="btn-primary" onClick={() => openModal('create')}>
                 <Plus className="w-4 h-4 mr-2" />
                 Nueva Lectura
               </button>
 
-              <button
-                className="btn-primary"
-                onClick={() => openModal('excel')}
-              >
+              <button className="btn-primary" onClick={() => openModal('excel')}>
                 <FileSpreadsheet className="w-4 h-4 mr-2" />
                 Crear desde Excel
               </button>
@@ -598,7 +664,7 @@ const ReadingsSection = () => {
           <Search className="search-icon" />
           <input
             type="text"
-            placeholder="Buscar por medidor, ID o observación..."
+            placeholder="Buscar por medidor, código, nombre, ID u observación..."
             className="search-input"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -606,6 +672,37 @@ const ReadingsSection = () => {
         </div>
 
         <div className="filters-right">
+          <select
+            className="filter-select"
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
+          >
+            <option value="all">Todos los meses</option>
+            <option value="1">Enero</option>
+            <option value="2">Febrero</option>
+            <option value="3">Marzo</option>
+            <option value="4">Abril</option>
+            <option value="5">Mayo</option>
+            <option value="6">Junio</option>
+            <option value="7">Julio</option>
+            <option value="8">Agosto</option>
+            <option value="9">Septiembre</option>
+            <option value="10">Octubre</option>
+            <option value="11">Noviembre</option>
+            <option value="12">Diciembre</option>
+          </select>
+
+          <select
+            className="filter-select"
+            value={filterYear}
+            onChange={(e) => setFilterYear(e.target.value)}
+          >
+            <option value="all">Todos los años</option>
+            {getAvailableYears().map(year => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+
           <select
             className="filter-select"
             value={sortOption}
@@ -622,16 +719,10 @@ const ReadingsSection = () => {
             title={sortOrder === 'asc' ? 'Orden Ascendente' : 'Orden Descendente'}
           >
             <ArrowUpDown className="w-4 h-4" />
-            <span className="ml-1 text-xs">
-              {sortOrder === 'asc' ? '↑' : '↓'}
-            </span>
+            <span className="ml-1 text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
           </button>
 
-          <button
-            className="btn-secondary"
-            onClick={fetchReadings}
-            title="Recargar lista"
-          >
+          <button className="btn-secondary" onClick={fetchReadings} title="Recargar lista">
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
@@ -691,139 +782,139 @@ const ReadingsSection = () => {
         </div>
       )}
 
-     {/* ==================== GRID DE LECTURAS ==================== */}
-<div className="users-grid">
-  {sortedReadings.map(reading => (
-    <div key={reading.id_lectura} className={`user-card ${!reading.activo ? 'inactive' : ''}`}>
+      {/* ==================== LISTA DE LECTURAS ==================== */}
+      <div className="readings-list-container">
+        <div className="readings-list-header">
+          <span>#</span>
+          <span><Gauge className="w-4 h-4" /> Medidor</span>
+          <span><User className="w-4 h-4" /> Nombre</span>
+          <span>Código</span>
+          <span><MapPin className="w-4 h-4" /> Sector</span>
+          <span>Lect. Ant.</span>
+          <span>Lect. Act.</span>
+          <span>Consumo</span>
+          <span><Calendar className="w-4 h-4" /> Fecha</span>
+          <span>Estado</span>
+          <span>Acciones</span>
+        </div>
 
-      {/* HEADER */}
-      <div className="user-card-header">
-        <div className="user-info">
-          <div className="user-avatar user-avatar-empty">
-            <Gauge className="w-6 h-6" />
-          </div>
+        <div className="readings-list-body">
+          {sortedReadings.length > 0 ? (
+            sortedReadings.map((reading) => {
+              const consumoClass = reading.consumo_m3 > 100 ? 'alto' : reading.consumo_m3 > 50 ? 'medio' : '';
+              
+              return (
+                <div 
+                  key={reading.id_lectura} 
+                  className={`readings-list-item ${!reading.activo ? 'inactive' : ''}`}
+                >
+                  <div className="list-col-id">{reading.id_lectura}</div>
 
-          <div>
-            <h3 className="user-name">
-              {reading.medidor?.num_medidor || 'Medidor desconocido'}
-            </h3>
+                  <div className="list-col-medidor">
+                    <div className="medidor-icon">
+                      <Gauge className="w-4 h-4" />
+                    </div>
+                    <span className="medidor-numero">
+                      {reading.medidor?.num_medidor || 'N/A'}
+                    </span>
+                  </div>
 
-            <div className="user-meta">
-              <span className="status-badge-code">ID: {reading.id_lectura}</span>
+                  <div className={`list-col-nombre ${!reading.medidor?.nombre_afiliado ? 'empty' : ''}`}>
+                    <User className="w-4 h-4" />
+                    {reading.medidor?.nombre_afiliado || 'No registrado'}
+                  </div>
 
-              <span className={`status-badge ${reading.activo ? 'active' : 'inactive'}`}>
-                {reading.activo ? (
-                  <>
-                    <CheckCircle className="w-3 h-3" />
-                    Activa
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="w-3 h-3" />
-                    Inactiva
-                  </>
-                )}
-              </span>
+                  <div className={`list-col-codigo ${!reading.medidor?.codigo_afiliado ? 'empty' : ''}`}>
+                    {reading.medidor?.codigo_afiliado || '---'}
+                  </div>
+
+                  <div className={`list-col-sector ${!reading.medidor?.sector ? 'empty' : ''}`}>
+                    <MapPin className="w-4 h-4" />
+                    {reading.medidor?.sector || 'Sin sector'}
+                  </div>
+
+                  <div className="list-col-lectura">
+                    {reading.lectura_anterior}<span className="unidad">m³</span>
+                  </div>
+
+                  <div className="list-col-lectura">
+                    {reading.lectura_actual}<span className="unidad">m³</span>
+                  </div>
+
+                  <div className={`list-col-consumo ${consumoClass}`}>
+                    {reading.consumo_m3} m³
+                  </div>
+
+                  <div className="list-col-fecha">
+                    <Calendar className="w-3 h-3" />
+                    {new Date(reading.fecha_lectura + 'T00:00:00').toLocaleDateString('es-EC', {
+                      day: '2-digit',
+                      month: 'short'
+                    })}
+                  </div>
+
+                  <div>
+                    <span className={`list-status-badge ${reading.activo ? 'active' : 'inactive'}`}>
+                      {reading.activo ? (
+                        <><CheckCircle className="w-4 h-4" /> Act</>
+                      ) : (
+                        <><XCircle className="w-4 h-4" /> Inact</>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="list-actions">
+                    <button 
+                      className="list-action-btn view" 
+                      onClick={() => openModal('view', reading)} 
+                      title="Ver detalles"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+
+                    {permissions.canUpdate && (
+                      <button 
+                        className="list-action-btn edit" 
+                        onClick={() => openModal('edit', reading)} 
+                        title="Editar"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    )}
+                    
+                    {permissions.canDelete && (
+                      <button 
+                        className="list-action-btn delete" 
+                        onClick={() => handleDelete(reading.id_lectura)} 
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="readings-list-empty">
+              <BookOpen />
+              <h3>No se encontraron lecturas</h3>
+              <p>No hay lecturas que coincidan con los criterios de búsqueda.</p>
             </div>
-          </div>
-        </div>
-
-        {/* ACCIONES */}
-        <div className="user-actions">
-          <button className="action-btn view" onClick={() => openModal('view', reading)} title="Ver detalles">
-            <Eye className="w-4 h-4 icon-view" />
-          </button>
-
-          {permissions.canUpdate && (
-            <button className="action-btn edit" onClick={() => openModal('edit', reading)} title="Editar lectura">
-              <Edit className="w-4 h-4" />
-            </button>
-          )}
-
-          {permissions.canToggleStatus && (
-            <button className="action-btn toggle" onClick={() => toggleReadingStatus(reading.id_lectura)}
-              title={reading.activo ? 'Desactivar' : 'Activar'}>
-              {reading.activo ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
-            </button>
-          )}
-
-          {permissions.canDelete && (
-            <button className="action-btn delete" onClick={() => handleDelete(reading.id_lectura)} title="Eliminar lectura">
-              <Trash2 className="w-4 h-4" />
-            </button>
           )}
         </div>
-      </div>
 
-      {/* BODY */}
-      <div className="user-card-body">
-
-        {/* --- Lecturas --- */}
-        <div className="user-contact">
-          <div className="contact-item">
-            <Gauge className="w-4 h-4 text-gray-400" />
-            <span><strong>Lectura Anterior:</strong> {reading.lectura_anterior} m³</span>
-          </div>
-
-          <div className="contact-item">
-            <Gauge className="w-4 h-4 text-gray-400" />
-            <span><strong>Lectura Actual:</strong> {reading.lectura_actual} m³</span>
-          </div>
-
-          <div className="contact-item">
-            <TrendingUp className="w-4 h-4 text-green-600" />
-            <span className="font-semibold text-green-700">
-              <strong>Consumo:</strong> {reading.consumo_m3} m³
+        {sortedReadings.length > 0 && (
+          <div className="readings-list-footer">
+            <span>
+              Mostrando <strong>{sortedReadings.length}</strong> de <strong>{readings.length}</strong> lecturas
             </span>
-          </div>
-
-          <div className="contact-item">
-            <Calendar className="w-4 h-4 text-gray-400" />
-            <span>{new Date(reading.fecha_lectura + 'T00:00:00').toLocaleDateString('es-EC')}</span>
-          </div>
-        </div>
-
-        {/* --- NUEVA INFO: PROPIETARIO --- */}
-        <div className="contact-item">
-          <User className="w-4 h-4 text-blue-500" />
-          <span>
-            <strong>Propietario:</strong>{" "}
-            {reading.medidor?.usuario_afiliado?.nombre_afiliado || "No registrado"}
-          </span>
-        </div>
-
-        {/* --- NUEVA INFO: SECTOR --- */}
-        <div className="contact-item">
-          <MapPin className="w-4 h-4 text-red-500" />
-          <span>
-            <strong>Sector:</strong>{" "}
-            {reading.medidor?.sector?.nombre_sector || "Sin sector"}
-          </span>
-        </div>
-
-        {/* Observación */}
-        {reading.observacion && (
-          <div className="user-dates">
-            <div className="date-item">
-              <FileText className="w-4 h-4 text-gray-400" />
-              <span>{reading.observacion}</span>
-            </div>
+            <span>
+              Consumo total: <strong>{sortedReadings.reduce((sum, r) => sum + (r.consumo_m3 || 0), 0)} m³</strong>
+            </span>
           </div>
         )}
       </div>
-    </div>
-  ))}
-</div>
-
-
-      {/* ==================== ESTADO VACÍO ==================== */}
-      {sortedReadings.length === 0 && (
-        <div className="empty-state">
-          <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3>No se encontraron lecturas</h3>
-          <p>No hay lecturas que coincidan con los criterios de búsqueda.</p>
-        </div>
-      )}
 
       {/* ==================== MODALES ==================== */}
       {showModal && (
@@ -853,7 +944,6 @@ const ReadingsSection = () => {
               {modalType === 'excel' && (
                 <div className="user-form">
                   <div className="form-grid">
-                    {/* Botón para descargar plantilla */}
                     <div className="form-group form-group-full" style={{ marginBottom: "12px" }}>
                       <button
                         type="button"
@@ -864,13 +954,11 @@ const ReadingsSection = () => {
                         <Download className="w-4 h-4 mr-2" />
                         Descargar plantilla Excel
                       </button>
-
                       <small className="text-gray-500 mt-1">
                         Descarga la plantilla con los medidores y sus últimas lecturas.
                       </small>
                     </div>
 
-                    {/* Selector de archivo */}
                     <div className="form-group form-group-full">
                       <label>Seleccionar archivo Excel *</label>
                       <input
@@ -883,17 +971,12 @@ const ReadingsSection = () => {
                         📋 <strong>Formato requerido:</strong> Excel (.xlsx, .xls)
                         <br /><br />
                         📝 <strong>Columnas obligatorias:</strong><br />
-                        &nbsp;&nbsp;&nbsp;• num_medidor<br />
-                        &nbsp;&nbsp;&nbsp;• sector<br />
-                        &nbsp;&nbsp;&nbsp;• codigo_afiliado<br />
-                        &nbsp;&nbsp;&nbsp;• nombre_afiliado<br />
-                        &nbsp;&nbsp;&nbsp;• lectura_anterior<br />
-                        &nbsp;&nbsp;&nbsp;• lectura_actual<br />
-                        &nbsp;&nbsp;&nbsp;• observacion (opcional)
+                        &nbsp;&nbsp;&nbsp;• num_medidor, sector, codigo_afiliado<br />
+                        &nbsp;&nbsp;&nbsp;• nombre_afiliado, lectura_anterior<br />
+                        &nbsp;&nbsp;&nbsp;• lectura_actual, observacion (opcional)
                       </small>
                     </div>
 
-                    {/* Archivo seleccionado */}
                     {selectedExcel && (
                       <div className="form-group form-group-full">
                         <div className="alert alert-info">
@@ -907,13 +990,12 @@ const ReadingsSection = () => {
                       </div>
                     )}
 
-                    {/* Vista previa */}
                     {excelPreview.length > 0 && (
                       <div className="form-group form-group-full">
                         <label>
                           📊 Vista previa ({excelPreview.length} lecturas)
                           {excelPreview.length > 500 && (
-                            <span className="text-red-600 ml-2">⚠️ Excede el límite de 500 lecturas</span>
+                            <span className="text-red-600 ml-2">⚠️ Excede el límite de 500</span>
                           )}
                         </label>
 
@@ -936,22 +1018,20 @@ const ReadingsSection = () => {
                                 <th style={{ padding: '8px', textAlign: 'left' }}>#</th>
                                 <th style={{ padding: '8px', textAlign: 'left' }}>Medidor</th>
                                 <th style={{ padding: '8px', textAlign: 'left' }}>Sector</th>
-                                <th style={{ padding: '8px', textAlign: 'left' }}>Cód. Afiliado</th>
-                                <th style={{ padding: '8px', textAlign: 'left' }}>Nombre Afiliado</th>
+                                <th style={{ padding: '8px', textAlign: 'left' }}>Código</th>
+                                <th style={{ padding: '8px', textAlign: 'left' }}>Nombre</th>
                                 <th style={{ padding: '8px', textAlign: 'right' }}>Lect. Ant.</th>
                                 <th style={{ padding: '8px', textAlign: 'right' }}>Lect. Act.</th>
                                 <th style={{ padding: '8px', textAlign: 'right' }}>Consumo</th>
                                 <th style={{ padding: '8px', textAlign: 'center' }}>Estado</th>
                               </tr>
                             </thead>
-
                             <tbody>
                               {excelPreview.map((lectura, idx) => {
                                 const esValido =
                                   lectura.num_medidor &&
                                   lectura.lectura_actual &&
                                   parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0);
-
                                 const consumo = parseInt(lectura.lectura_actual || 0) - parseInt(lectura.lectura_anterior || 0);
 
                                 return (
@@ -989,32 +1069,15 @@ const ReadingsSection = () => {
                             </tbody>
                           </table>
                         </div>
-
-                        <div style={{
-                          marginTop: '12px',
-                          padding: '12px',
-                          backgroundColor: '#f9fafb',
-                          borderRadius: '6px',
-                          fontSize: '13px'
-                        }}>
-                          <strong>ℹ️ Información:</strong>
-                          <ul style={{ marginTop: '8px', marginLeft: '20px' }}>
-                            <li>Las lecturas se registrarán con la fecha actual.</li>
-                            <li>El consumo se calculará automáticamente.</li>
-                            <li>Límite máximo: 500 lecturas por carga.</li>
-                          </ul>
-                        </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Botones */}
                   <div className="form-actions">
                     <button type="button" className="btn-secondary" onClick={closeModal}>
                       <X className="w-4 h-4 mr-2" />
                       Cancelar
                     </button>
-
                     <button
                       type="button"
                       className="btn-primary"
@@ -1040,6 +1103,18 @@ const ReadingsSection = () => {
                     <p>{selectedReading.medidor?.num_medidor || 'N/A'}</p>
                   </div>
                   <div className="detail-group">
+                    <label>Nombre Afiliado:</label>
+                    <p>{selectedReading.medidor?.nombre_afiliado || 'Sin afiliado'}</p>
+                  </div>
+                  <div className="detail-group">
+                    <label>Código Afiliado:</label>
+                    <p>{selectedReading.medidor?.codigo_afiliado || '---'}</p>
+                  </div>
+                  <div className="detail-group">
+                    <label>Sector:</label>
+                    <p>{selectedReading.medidor?.sector || 'Sin sector'}</p>
+                  </div>
+                  <div className="detail-group">
                     <label>Lectura Anterior:</label>
                     <p>{selectedReading.lectura_anterior} m³</p>
                   </div>
@@ -1052,12 +1127,16 @@ const ReadingsSection = () => {
                     <p className="text-green-700 font-semibold">{selectedReading.consumo_m3} m³</p>
                   </div>
                   <div className="detail-group">
-                    <label>Fecha:</label>
+                    <label>Fecha de Lectura:</label>
                     <p>{new Date(selectedReading.fecha_lectura + 'T00:00:00').toLocaleDateString('es-EC')}</p>
                   </div>
                   <div className="detail-group">
                     <label>Lector:</label>
-                    <p>{selectedReading.lector ? `${selectedReading.lector.nombres} ${selectedReading.lector.apellidos}` : 'N/A'}</p>
+                    <p>
+                      {selectedReading.lector
+                        ? `${selectedReading.lector.nombres} ${selectedReading.lector.apellidos}`
+                        : 'N/A'}
+                    </p>
                   </div>
                   {selectedReading.observacion && (
                     <div className="detail-group">
@@ -1069,15 +1148,9 @@ const ReadingsSection = () => {
                     <label>Estado:</label>
                     <span className={`status-badge ${selectedReading.activo ? 'active' : 'inactive'}`}>
                       {selectedReading.activo ? (
-                        <>
-                          <CheckCircle className="w-3 h-3" />
-                          Activa
-                        </>
+                        <><CheckCircle className="w-3 h-3" /> Activa</>
                       ) : (
-                        <>
-                          <XCircle className="w-3 h-3" />
-                          Inactiva
-                        </>
+                        <><XCircle className="w-3 h-3" /> Inactiva</>
                       )}
                     </span>
                   </div>
@@ -1088,27 +1161,84 @@ const ReadingsSection = () => {
               {(modalType === 'create' || modalType === 'edit') && (
                 <form onSubmit={handleSubmit} className="user-form">
                   <div className="form-grid">
+                    
+                    {/* ✅ NUEVO: Sección de medidor con buscador */}
                     <div className="form-group form-group-full">
                       <label>Medidor *</label>
+                      
+                      {/* ✅ Buscador de medidores (solo en crear) */}
+                      {modalType === 'create' && (
+                        <div className="meter-search-container" style={{ marginBottom: '10px' }}>
+                          <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px',
+                            padding: '8px 12px',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '8px',
+                            backgroundColor: '#f8fafc'
+                          }}>
+                            <Search className="w-4 h-4 text-gray-400" />
+                            <input
+                              type="text"
+                              placeholder="Buscar por nombre, código o número de medidor..."
+                              value={meterSearchTerm}
+                              onChange={(e) => setMeterSearchTerm(e.target.value)}
+                              style={{
+                                border: 'none',
+                                outline: 'none',
+                                background: 'transparent',
+                                width: '100%',
+                                fontSize: '14px'
+                              }}
+                            />
+                            {meterSearchTerm && (
+                              <button
+                                type="button"
+                                onClick={() => setMeterSearchTerm('')}
+                                style={{
+                                  border: 'none',
+                                  background: 'transparent',
+                                  cursor: 'pointer',
+                                  padding: '2px'
+                                }}
+                              >
+                                <X className="w-4 h-4 text-gray-400" />
+                              </button>
+                            )}
+                          </div>
+                          {meterSearchTerm && (
+                            <small style={{ color: '#6b7280', marginTop: '4px', display: 'block' }}>
+                              {filteredMeters.length} medidor(es) encontrado(s)
+                            </small>
+                          )}
+                        </div>
+                      )}
+
                       <select
                         required
                         value={formData.id_medidor || ''}
                         onChange={(e) => handleMedidorChange(e.target.value)}
                         disabled={modalType === 'edit'}
+                        style={{ 
+                          maxHeight: '200px',
+                          fontSize: '14px'
+                        }}
                       >
                         <option value="">Seleccione un medidor</option>
-                        {meters.map(medidor => {
+                        {filteredMeters.map(medidor => {
                           const nombreAfiliado = medidor.nombre_afiliado || 'Sin afiliado';
+                          const codigoAfiliado = medidor.codigo_afiliado || 'S/C';
                           const sector = medidor.sector || 'Sin sector';
                           return (
                             <option key={medidor.id_medidor} value={medidor.id_medidor}>
-                            {medidor.num_medidor} | {nombreAfiliado} | {sector}
+                              {medidor.num_medidor} | {codigoAfiliado} | {nombreAfiliado} | {sector}
                             </option>
                           );
                         })}
                       </select>
 
-                      {/* Información adicional del medidor seleccionado */}
+                      {/* Información del medidor seleccionado */}
                       {selectedMeterInfo && (
                         <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
                           <h4 className="font-semibold text-blue-900 mb-2 flex items-center">
@@ -1118,19 +1248,18 @@ const ReadingsSection = () => {
                           <div className="space-y-1 text-sm text-blue-800">
                             <p className="flex items-center">
                               <User className="w-4 h-4 mr-2" />
-                              <strong className="mr-2">Propietario: </strong>
-                              <span className="ml-1">
-                                {selectedMeterInfo.nombre_afiliado || "Sin afiliado"}
-
-
-                              </span>
+                              <strong className="mr-2">Afiliado: </strong>
+                              <span>{selectedMeterInfo.nombre_afiliado ?? "Sin afiliado"}</span>
+                            </p>
+                            <p className="flex items-center">
+                              <span className="w-4 h-4 mr-2 text-center font-bold">#</span>
+                              <strong className="mr-2">Código: </strong>
+                              <span>{selectedMeterInfo.codigo_afiliado ?? "---"}</span>
                             </p>
                             <p className="flex items-center">
                               <Map className="w-4 h-4 mr-2" />
                               <strong className="mr-2">Sector: </strong>
-                              <span className="ml-1">
-                                {selectedMeterInfo.sector || 'Sin sector'}
-                              </span>
+                              <span>{selectedMeterInfo.sector || 'Sin sector'}</span>
                             </p>
                           </div>
                         </div>
@@ -1171,9 +1300,7 @@ const ReadingsSection = () => {
                         readOnly
                         className="bg-gray-100 font-semibold text-green-700"
                       />
-                      <small className="text-gray-500 mt-1">
-                        Calculado automáticamente
-                      </small>
+                      <small className="text-gray-500 mt-1">Calculado automáticamente</small>
                     </div>
 
                     <div className="form-group">

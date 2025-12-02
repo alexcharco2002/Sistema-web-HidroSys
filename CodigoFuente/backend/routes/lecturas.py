@@ -150,53 +150,106 @@ def lectura_to_response(lectura: Lectura) -> dict:
 
 @router.get("/", response_model=List[dict])
 def listar_lecturas(
-    search: Optional[str] = Query(None, description="Buscar por ID medidor u observación"),
-    id_medidor: Optional[int] = Query(None, description="Filtrar por medidor"),
-    fecha_desde: Optional[date] = Query(None, description="Filtrar desde fecha"),
-    fecha_hasta: Optional[date] = Query(None, description="Filtrar hasta fecha"),
-    activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
-    skip: int = Query(0, ge=0, description="Número de registros a saltar"),
-    limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros"),
+    search: Optional[str] = Query(None),
+    id_medidor: Optional[int] = Query(None),
+    fecha_desde: Optional[date] = Query(None),
+    fecha_hasta: Optional[date] = Query(None),
+    activo: Optional[bool] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
-    Lista todas las lecturas con filtros opcionales
-    Requiere permiso: lecturas.lectura o lecturas.crud
+    Lista todas las lecturas con información completa del medidor,
+    afiliado y sector.
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "lectura")
-    
+
     query = db.query(Lectura)
-    
-    # Filtro de búsqueda
+
+    # ============ FILTROS ============
     if search:
         query = query.filter(
             (Lectura.observacion.ilike(f"%{search}%")) |
             (Lectura.id_medidor == int(search) if search.isdigit() else False)
         )
-    
-    # Filtro por medidor
+
     if id_medidor:
         query = query.filter(Lectura.id_medidor == id_medidor)
-    
-    # Filtro por fechas
+
     if fecha_desde:
         query = query.filter(Lectura.fecha_lectura >= fecha_desde)
+
     if fecha_hasta:
         query = query.filter(Lectura.fecha_lectura <= fecha_hasta)
-    
-    # Filtro por estado
+
     if activo is not None:
         query = query.filter(Lectura.activo == activo)
-    
-    # Ordenar por fecha descendente
+
     query = query.order_by(Lectura.fecha_lectura.desc())
-    
-    # Paginación
     lecturas = query.offset(skip).limit(limit).all()
-    
-    return [lectura_to_response(lectura) for lectura in lecturas]
+
+    resultado = []
+
+    for lectura in lecturas:
+        medidor = lectura.medidor
+
+        # =========================
+        # 🔵 INFORMACIÓN DEL AFILIADO
+        # =========================
+        afiliado = medidor.usuario_afiliado if medidor else None
+        
+        codigo_afiliado = afiliado.cod_usuario_afi if afiliado else None
+        
+        # Nombre afiliado
+        if afiliado and afiliado.usuario_sistema:
+            usuario_sistema = afiliado.usuario_sistema
+            nombre_afiliado = f"{usuario_sistema.nombres} {usuario_sistema.apellidos}"
+        else:
+            nombre_afiliado = "Sin afiliado"
+
+        # Sector
+        sector_nombre = medidor.sector.nombre_sector if medidor and medidor.sector else "Sin sector"
+
+        # =========================
+        # 🟢 INFORMACIÓN DEL LECTOR
+        # =========================
+        lector = lectura.lector
+        lector_info = {
+            "id_usuario_sistema": lector.id_usuario_sistema if lector else None,
+            "nombres": lector.nombres if lector else None,
+            "apellidos": lector.apellidos if lector else None
+        }
+
+        # =========================
+        # 🟣 ARMAR RESPUESTA FINAL
+        # =========================
+        resultado.append({
+            "id_lectura": lectura.id_lectura,
+            "id_medidor": lectura.id_medidor,
+            "lectura_actual": lectura.lectura_actual,
+            "lectura_anterior": lectura.lectura_anterior,
+            "consumo_m3": lectura.consumo_m3,
+            "fecha_lectura": lectura.fecha_lectura,
+            "observacion": lectura.observacion,
+            "activo": lectura.activo,
+
+            # 🔵 datos del medidor
+            "medidor": {
+                "id_medidor": medidor.id_medidor if medidor else None,
+                "num_medidor": medidor.num_medidor if medidor else None,
+                "codigo_afiliado": codigo_afiliado,
+                "nombre_afiliado": nombre_afiliado,
+                "sector": sector_nombre
+            },
+
+            # 🟢 datos del lector
+            "lector": lector_info
+        })
+
+    return resultado
 
 
 @router.get("/stats/count", response_model=LecturaStats)
@@ -625,7 +678,7 @@ def exportar_plantilla(
         # Agregar medidores con información completa
         for row_num, medidor in enumerate(medidores, 2):
             # Obtener UsuarioAfiliado del medidor
-            UsuarioAfiliado = medidor.usuario_UsuarioAfiliado
+            UsuarioAfiliado = medidor.usuario_afiliado
             usuario_sistema = None
             codigo_UsuarioAfiliado = "N/A"
             nombre_UsuarioAfiliado = "Sin UsuarioAfiliado"

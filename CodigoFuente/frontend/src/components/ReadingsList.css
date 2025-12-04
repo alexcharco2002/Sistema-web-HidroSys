@@ -481,3 +481,573 @@
 .readings-list-footer strong {
   color: #1e293b;
 }
+
+/* ============================================================
+   ESTILOS PARA SELECTOR DE PERIODOS
+   ============================================================ */
+
+.periodo-selector-container {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.periodo-selector-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.periodo-selector-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.periodos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.periodo-card {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background-color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.periodo-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.periodo-card.selected {
+  border: 2px solid #3b82f6;
+  background-color: #eff6ff;
+}
+
+.periodo-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.periodo-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.periodo-card.selected .periodo-card-title {
+  color: #1e40af;
+}
+
+.periodo-badge-sugerido {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: #10b981;
+  color: #fff;
+  font-weight: 600;
+}
+
+.periodo-card-info {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.periodo-progress-bar {
+  width: 100%;
+  height: 4px;
+  background-color: #e2e8f0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.periodo-progress-fill {
+  height: 100%;
+  background-color: #3b82f6;
+  transition: width 0.3s;
+}
+
+.periodo-progress-fill.complete {
+  background-color: #10b981;
+}
+
+.periodo-percentage {
+  font-size: 11px;
+  color: #3b82f6;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.periodo-percentage.complete {
+  color: #10b981;
+}
+
+/* ============================================================
+   ESTILOS PARA ESTADÍSTICAS DEL PERIODO
+   ============================================================ */
+
+.periodo-stats-container {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.periodo-stats-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.periodo-stats-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+/* ============================================================
+   ESTILOS PARA MODAL DE EXCEL - SELECCIÓN DE PERIODO
+   ============================================================ */
+
+.excel-periodo-selector {
+  padding: 16px;
+  background-color: #eff6ff;
+  border-radius: 8px;
+  border: 2px solid #3b82f6;
+  margin-bottom: 20px;
+}
+
+.excel-periodo-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e40af;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.excel-periodo-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.excel-periodo-field label {
+  font-size: 14px;
+  margin-bottom: 4px;
+  display: block;
+  color: #1e293b;
+}
+
+.excel-periodo-field select {
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  font-size: 14px;
+  background-color: #fff;
+}
+
+.excel-periodo-selected {
+  margin-top: 12px;
+  padding: 10px;
+  background-color: #fff;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e40af;
+}
+
+.excel-periodo-warning {
+  display: block;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+/* ============================================================
+   ESTILOS PARA BUSCADOR DE MEDIDORES EN MODAL
+   ============================================================ */
+
+.meter-search-container {
+  margin-bottom: 10px;
+}
+
+.meter-search-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background-color: #f8fafc;
+}
+
+.meter-search-input-wrapper input {
+  border: none;
+  outline: none;
+  background: transparent;
+  width: 100%;
+  font-size: 14px;
+}
+
+.meter-search-clear-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* ============================================================
+   ESTILOS PARA INFORMACIÓN DEL MEDIDOR SELECCIONADO
+   ============================================================ */
+
+.meter-info-card {
+  margin-top: 8px;
+  padding: 12px;
+  background-color: #eff6ff;
+  border-radius: 8px;
+  border: 1px solid #bfdbfe;
+}
+
+.meter-info-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e40af;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.meter-info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meter-info-content p {
+  font-size: 13px;
+  color: #1e40af;
+  margin: 0;
+}
+
+/* ============================================================
+   ESTILOS PARA VISTA PREVIA DE EXCEL
+   ============================================================ */
+
+.excel-preview-container {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background-color: #fff;
+}
+
+.excel-preview-table {
+  width: 100%;
+  font-size: 13px;
+  border-collapse: collapse;
+}
+
+.excel-preview-table thead {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  background-color: #f9fafb;
+  border-bottom: 2px solid #e5e7eb;
+  z-index: 1;
+}
+
+.excel-preview-table th {
+  padding: 8px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+}
+
+.excel-preview-table th.align-right {
+  text-align: right;
+}
+
+.excel-preview-table th.align-center {
+  text-align: center;
+}
+
+.excel-preview-table td {
+  padding: 8px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.excel-preview-table tr.invalid {
+  background-color: #fef2f2;
+}
+
+.excel-preview-table td.align-right {
+  text-align: right;
+}
+
+.excel-preview-table td.align-center {
+  text-align: center;
+}
+
+.excel-preview-table td.text-muted {
+  color: #6b7280;
+}
+
+.excel-preview-table td.text-small {
+  font-size: 12px;
+}
+
+.excel-preview-table td.text-bold {
+  font-weight: bold;
+}
+
+.excel-preview-table td.text-success {
+  color: #10b981;
+}
+
+.excel-preview-table td.text-error {
+  color: #ef4444;
+}
+
+.excel-preview-error {
+  color: #ef4444;
+}
+
+.excel-preview-success {
+  color: #10b981;
+}
+
+/* ============================================================
+   UTILIDADES RESPONSIVAS
+   ============================================================ */
+
+@media (max-width: 768px) {
+  .periodos-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .excel-periodo-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .periodo-selector-container,
+  .periodo-stats-container {
+    padding: 16px;
+  }
+}
+/* ============================================================
+   ESTILOS PARA NAVEGACIÓN POR PASOS
+   ============================================================ */
+
+/* Contenedor de página de selección */
+.periodo-selection-page {
+  animation: fadeIn 0.3s ease-in;
+}
+
+/* Contenedor de página de gestión */
+.periodo-management-page {
+  animation: slideInRight 0.3s ease-out;
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ============================================================
+   BOTÓN VOLVER
+   ============================================================ */
+.btn-back {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  color: #4b5563;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+}
+
+.btn-back:hover {
+  background: #f9fafb;
+  border-color: #3b82f6;
+  color: #3b82f6;
+  transform: translateX(-2px);
+}
+
+.btn-back:active {
+  transform: translateX(-4px);
+}
+
+/* ============================================================
+   ENCABEZADO CON BOTÓN VOLVER
+   ============================================================ */
+.section-title-with-back {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex: 1;
+}
+
+.section-subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 400;
+  margin-top: 0.25rem;
+}
+
+/* ============================================================
+   SELECTOR DE PERIODOS MEJORADO
+   ============================================================ */
+.periodo-selector-subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 400;
+  margin-top: 0.5rem;
+}
+
+.periodo-card.hoverable {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.periodo-card.hoverable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  border-color: #3b82f6;
+}
+
+.periodo-card-action {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e5e7eb;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #3b82f6;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.periodo-card.hoverable:hover .periodo-card-action {
+  opacity: 1;
+}
+
+/* ============================================================
+   FOOTER DE LISTA CON BOTÓN CAMBIAR PERIODO
+   ============================================================ */
+.readings-list-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+  border-radius: 0 0 12px 12px;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.readings-list-footer-stats {
+  display: flex;
+  gap: 2rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.readings-list-footer-stats strong {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+/* ============================================================
+   ESTADO VACÍO CON BOTÓN
+   ============================================================ */
+.readings-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+}
+
+.readings-list-empty svg {
+  width: 4rem;
+  height: 4rem;
+  color: #cbd5e1;
+  margin-bottom: 1rem;
+}
+
+.readings-list-empty h3 {
+  font-size: 1.25rem;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+}
+
+.readings-list-empty p {
+  color: #6b7280;
+  margin-bottom: 1.5rem;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 768px) {
+  .section-title-with-back {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .btn-back {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .readings-list-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .readings-list-footer-stats {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}

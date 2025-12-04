@@ -1,6 +1,6 @@
 /**
  * src/services/serviciosServices.js
- * Servicio de Gestión de Servicios Adicionales
+ * Servicio de Gestión de Servicios Adicionales con Versionamiento
  * Tabla: t_servicios
  */
 
@@ -11,12 +11,18 @@ const API_CONFIG = {
   endpoints: {
     servicios: '/servicios',
     toggleStatus: (id) => `/servicios/${id}/toggle-status`,
+    historial: (nombre) => `/servicios/${nombre}/historial`,
+    editarBase: (id) => `/servicios/${id}/editar`,
+    actualizarPrecio: (id) => `/servicios/${id}/precio`,
+    stats: '/servicios/stats/count',
+    activos: '/servicios/activos/list'
   }
 };
 
 class ServiciosService {
   constructor() {
     this.cachedServicios = null;
+    this.cachedStats = null;
   }
 
   /**
@@ -98,13 +104,15 @@ class ServiciosService {
   }
 
   /**
-   * Obtener lista de servicios
+   * Obtener lista de servicios con filtros de vigencia
    */
   async getServicios(filters = {}) {
     try {
       const params = new URLSearchParams();
+      
       if (filters.search) params.append('search', filters.search);
       if (filters.activo !== undefined) params.append('activo', filters.activo);
+      if (filters.solo_vigentes !== undefined) params.append('solo_vigentes', filters.solo_vigentes);
       if (filters.skip) params.append('skip', filters.skip);
       if (filters.limit) params.append('limit', filters.limit);
 
@@ -115,7 +123,6 @@ class ServiciosService {
 
       const data = await this.makeRequest(endpoint);
 
-      // Actualizar caché
       this.cachedServicios = data;
 
       return {
@@ -128,6 +135,71 @@ class ServiciosService {
       return {
         success: false,
         message: error.message || 'Error al obtener servicios'
+      };
+    }
+  }
+
+  /**
+   * Obtener historial de versiones de un servicio
+   */
+  async getHistorialServicio(nombreServicio) {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.historial(nombreServicio));
+
+      return {
+        success: true,
+        data: data
+      };
+
+    } catch (error) {
+      console.error('❌ Error obteniendo historial:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener historial del servicio'
+      };
+    }
+  }
+
+  /**
+   * Obtener estadísticas de servicios
+   */
+  async getServicioStats() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.stats);
+
+      this.cachedStats = data;
+
+      return {
+        success: true,
+        data: data
+      };
+
+    } catch (error) {
+      console.error('❌ Error obteniendo estadísticas:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener estadísticas'
+      };
+    }
+  }
+
+  /**
+   * Obtener solo servicios activos y vigentes (para dropdowns)
+   */
+  async getServiciosActivos() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.activos);
+
+      return {
+        success: true,
+        data: data
+      };
+
+    } catch (error) {
+      console.error('❌ Error obteniendo servicios activos:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener servicios activos'
       };
     }
   }
@@ -152,7 +224,7 @@ class ServiciosService {
   }
 
   /**
-   * Crear un nuevo servicio
+   * Crear un nuevo servicio (primera versión)
    */
   async createServicio(servicioData) {
     try {
@@ -168,8 +240,7 @@ class ServiciosService {
         }
       });
 
-      // Limpiar caché
-      this.cachedServicios = null;
+      this.clearCache();
 
       return {
         success: true,
@@ -200,29 +271,66 @@ class ServiciosService {
   }
 
   /**
-   * Actualizar un servicio existente
+   * Actualizar precio del servicio (crea nueva versión)
    */
-  async updateServicio(servicioId, servicioData) {
+  async updatePrecioServicio(servicioId, nuevoPrecio) {
     if (!servicioId || isNaN(servicioId)) {
       throw new Error('ID de servicio inválido o no definido');
     }
 
     try {
-      this.validateServicioData(servicioData, false);
+      if (nuevoPrecio === undefined || parseFloat(nuevoPrecio) < 0) {
+        throw new Error('El precio debe ser mayor o igual a 0');
+      }
 
+      const data = await this.makeRequest(API_CONFIG.endpoints.actualizarPrecio(servicioId), {
+        method: 'PUT',
+        body: {
+          precio_base: parseFloat(nuevoPrecio)
+        },
+      });
+
+      this.clearCache();
+
+      return {
+        success: true,
+        data: data,
+        message: 'Nueva versión de servicio creada con nuevo precio'
+      };
+
+    } catch (error) {
+      console.error('❌ Error actualizando precio:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al actualizar precio del servicio'
+      };
+    }
+  }
+
+  /**
+   * Editar información base del servicio (nombre, descripción, estado)
+   * NO crea nueva versión, solo actualiza la versión vigente
+   */
+  async editarServicioBase(servicioId, servicioData) {
+    if (!servicioId || isNaN(servicioId)) {
+      throw new Error('ID de servicio inválido o no definido');
+    }
+
+    try {
       const updateData = {};
+      
       if (servicioData.nombre) updateData.nombre = servicioData.nombre.trim();
-      if (servicioData.descripcion !== undefined) updateData.descripcion = servicioData.descripcion?.trim() || null;
-      if (servicioData.precio_base !== undefined) updateData.precio_base = parseFloat(servicioData.precio_base);
+      if (servicioData.descripcion !== undefined) {
+        updateData.descripcion = servicioData.descripcion?.trim() || null;
+      }
       if (servicioData.activo !== undefined) updateData.activo = servicioData.activo;
 
-      const data = await this.makeRequest(`${API_CONFIG.endpoints.servicios}/${servicioId}`, {
-        method: 'PUT',
+      const data = await this.makeRequest(API_CONFIG.endpoints.editarBase(servicioId), {
+        method: 'PATCH',
         body: updateData,
       });
 
-      // Limpiar caché
-      this.cachedServicios = null;
+      this.clearCache();
 
       return {
         success: true,
@@ -231,45 +339,10 @@ class ServiciosService {
       };
 
     } catch (error) {
-      console.error('❌ Error actualizando servicio:', error);
+      console.error('❌ Error editando servicio:', error);
       return {
         success: false,
-        message: error.message || 'Error al actualizar servicio'
-      };
-    }
-  }
-
-  /**
-   * Eliminar un servicio
-   */
-  async deleteServicio(servicioId) {
-    try {
-      const response = await this.makeRequest(`${API_CONFIG.endpoints.servicios}/${servicioId}`, {
-        method: 'DELETE'
-      });
-
-      // Limpiar caché
-      this.cachedServicios = null;
-
-      if (response && response.success === false) {
-        return {
-          success: false,
-          message: response.message || 'No se pudo eliminar el servicio.',
-          accion: response.accion || 'no_eliminado'
-        };
-      }
-
-      return {
-        success: true,
-        message: response.message || 'Servicio eliminado correctamente.',
-        accion: response.accion || 'eliminado'
-      };
-
-    } catch (error) {
-      console.error('❌ Error eliminando servicio:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al eliminar servicio'
+        message: error.message || 'Error al editar servicio'
       };
     }
   }
@@ -283,8 +356,7 @@ class ServiciosService {
         method: 'PATCH'
       });
 
-      // Limpiar caché
-      this.cachedServicios = null;
+      this.clearCache();
 
       return {
         success: true,
@@ -325,37 +397,6 @@ class ServiciosService {
   }
 
   /**
-   * Obtener estadísticas de servicios
-   */
-  async getServicioStats() {
-    try {
-      const result = await this.getServicios();
-
-      if (!result.success) {
-        return result;
-      }
-
-      const servicios = result.data;
-
-      return {
-        success: true,
-        data: {
-          total: servicios.length,
-          activos: servicios.filter(s => s.activo).length,
-          inactivos: servicios.filter(s => !s.activo).length,
-        }
-      };
-
-    } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener estadísticas'
-      };
-    }
-  }
-
-  /**
    * Obtener servicios desde caché (útil para selects)
    */
   getCachedServicios() {
@@ -367,6 +408,7 @@ class ServiciosService {
    */
   clearCache() {
     this.cachedServicios = null;
+    this.cachedStats = null;
   }
 }
 

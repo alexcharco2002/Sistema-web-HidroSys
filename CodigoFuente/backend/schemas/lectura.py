@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 from datetime import date
 
+from typing import List # Para listas en los schemas
+
 class LecturaBase(BaseModel):
     """Schema base para Lectura"""
     id_medidor: int = Field(..., description="ID del medidor")
@@ -202,3 +204,54 @@ class LecturaBulkResponse(BaseModel):
     total_procesados: int
     total_exitosos: int
     total_fallidos: int
+
+# ========================================
+# SCHEMAS PARA PERIODOS DE LECTURA
+# ========================================
+class PeriodoDisponible(BaseModel):
+    """Schema para periodo de lectura disponible"""
+    mes: int = Field(..., ge=1, le=12, description="Número de mes (1-12)")
+    anio: int = Field(..., ge=2020, description="Año")
+    nombre_mes: str = Field(..., description="Nombre del mes en español")
+    tiene_lecturas: bool = Field(default=False, description="Si ya tiene lecturas registradas")
+    total_lecturas: int = Field(default=0, description="Total de lecturas en ese periodo")
+    total_medidores: int = Field(default=0, description="Total de medidores activos")
+    porcentaje_completado: float = Field(default=0.0, description="Porcentaje de medidores con lectura")
+    sugerido: bool = Field(default=False, description="Si es el periodo sugerido")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "mes": 12,
+                "anio": 2025,
+                "nombre_mes": "Diciembre",
+                "tiene_lecturas": True,
+                "total_lecturas": 45,
+                "total_medidores": 50,
+                "porcentaje_completado": 90.0,
+                "sugerido": False
+            }
+        }
+
+
+class PeriodosResponse(BaseModel):
+    """Respuesta con periodos disponibles"""
+    periodo_actual: PeriodoDisponible
+    periodos_disponibles: List[PeriodoDisponible]
+    total_medidores_activos: int
+
+
+class LecturaBulkCreateWithPeriod(BaseModel):
+    """Request para crear múltiples lecturas con periodo específico"""
+    lecturas: List[LecturaBulkCreate]
+    mes: int = Field(..., ge=1, le=12, description="Mes de las lecturas")
+    anio: int = Field(..., ge=2020, description="Año de las lecturas")
+    
+    @field_validator('lecturas')
+    @classmethod
+    def validate_lecturas_list(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError('La lista de lecturas no puede estar vacía')
+        if len(v) > 500:
+            raise ValueError('Máximo 500 lecturas por carga')
+        return v

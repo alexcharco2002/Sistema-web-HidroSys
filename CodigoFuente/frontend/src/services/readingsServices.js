@@ -1,6 +1,7 @@
 /**
  * src/services/readingsServices.js
  * Servicio de Gestión de Lecturas de Medidores
+ * ✅ Con soporte para sistema de periodos mensuales
  */
 
 import authService from './authServices';
@@ -12,15 +13,18 @@ const API_CONFIG = {
     toggleStatus: (id) => `/lecturas/${id}/toggle-status`,
     exportTemplate: '/lecturas/export/template',
     importExcel: '/lecturas/import/excel',
+    importExcelPeriodo: '/lecturas/import/excel/periodo',  // 🆕 NUEVO
     exportExcel: '/lecturas/export/excel',
-    medidoresCompletos: '/lecturas/medidores/lista/completa',  // ✅ NUEVO
-    stats: '/lecturas/stats/count'  // ✅ NUEVO
+    medidoresCompletos: '/lecturas/medidores/lista/completa',
+    stats: '/lecturas/stats/count',
+    periodosDisponibles: '/lecturas/periodos/disponibles'  // 🆕 NUEVO
   }
 };
 
 class ReadingsServices {
   constructor() {
     this.cachedLecturas = null;
+    this.cachedPeriodos = null;  // 🆕 Caché de periodos
   }
 
   /**
@@ -100,43 +104,221 @@ class ReadingsServices {
       throw error;
     }
   }
-  /**
- * Obtener lista completa de medidores con información de afiliados
- */
-async getMedidoresParaLecturas() {
-  try {
-    const data = await this.makeRequest(API_CONFIG.endpoints.medidoresCompletos);
-    return {
-      success: true,
-      data: data
-    };
-  } catch (error) {
-    console.error('❌ Error obteniendo medidores:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al obtener medidores'
-    };
-  }
-}
 
-/**
- * Obtener estadísticas de lecturas desde el backend
- */
-async getStatsFromBackend() {
-  try {
-    const data = await this.makeRequest(API_CONFIG.endpoints.stats);
-    return {
-      success: true,
-      data: data
-    };
-  } catch (error) {
-    console.error('❌ Error obteniendo estadísticas:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al obtener estadísticas'
-    };
+  // ========================================
+  // 🆕 GESTIÓN DE PERIODOS MENSUALES
+  // ========================================
+
+  /**
+   * 🆕 Obtener periodos disponibles para cargar lecturas
+   * Retorna: periodo actual sugerido + últimos meses + próximos meses
+   */
+  async getPeriodosDisponibles() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.periodosDisponibles);
+      
+      // Actualizar caché
+      this.cachedPeriodos = data;
+
+      return {
+        success: true,
+        data: data
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo periodos:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener periodos disponibles'
+      };
+    }
   }
-}
+
+  /**
+   * 🆕 Obtener periodo sugerido (más reciente o sin completar)
+   */
+  async getPeriodoSugerido() {
+    try {
+      const result = await this.getPeriodosDisponibles();
+      
+      if (!result.success) {
+        throw new Error(result.message);
+      }
+
+      return {
+        success: true,
+        data: result.data.periodo_actual
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo periodo sugerido:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener periodo sugerido'
+      };
+    }
+  }
+
+  /**
+   * 🆕 Importar lecturas con periodo específico (mes/año)
+   * @param {File} file - Archivo Excel
+   * @param {number} mes - Mes (1-12)
+   * @param {number} anio - Año (ej: 2025)
+   */
+  async importarExcelConPeriodo(file, mes, anio) {
+    try {
+      // Validaciones
+      if (!file) {
+        throw new Error('Debe seleccionar un archivo');
+      }
+
+      if (!mes || mes < 1 || mes > 12) {
+        throw new Error('Mes inválido. Debe estar entre 1 y 12');
+      }
+
+      if (!anio || anio < 2020) {
+        throw new Error('Año inválido');
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // Endpoint con parámetros de periodo
+      const endpoint = `${API_CONFIG.endpoints.importExcelPeriodo}?mes=${mes}&anio=${anio}`;
+
+      const data = await this.makeRequest(endpoint, {
+        method: 'POST',
+        body: formData
+      });
+
+      // Limpiar cachés
+      this.cachedLecturas = null;
+      this.cachedPeriodos = null;
+
+      return {
+        success: true,
+        data: data,
+        message: `Lecturas importadas exitosamente para ${this.getNombreMes(mes)}/${anio}`
+      };
+
+    } catch (error) {
+      console.error('❌ Error importando Excel con periodo:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al importar lecturas desde Excel'
+      };
+    }
+  }
+
+  /**
+   * 🆕 Validar si un periodo ya tiene lecturas completas
+   * @param {number} mes - Mes (1-12)
+   * @param {number} anio - Año
+   * @returns {Promise<{completo: boolean, porcentaje: number}>}
+   */
+  async validarPeriodoCompleto(mes, anio) {
+    try {
+      const result = await this.getPeriodosDisponibles();
+      
+      if (!result.success) {
+        throw new Error(result.message);
+      }
+
+      const periodo = result.data.periodos_disponibles.find(
+        p => p.mes === mes && p.anio === anio
+      );
+
+      if (!periodo) {
+        return {
+          success: true,
+          data: {
+            completo: false,
+            porcentaje: 0,
+            mensaje: 'Periodo no encontrado'
+          }
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          completo: periodo.porcentaje_completado >= 100,
+          porcentaje: periodo.porcentaje_completado,
+          total_lecturas: periodo.total_lecturas,
+          total_medidores: periodo.total_medidores,
+          mensaje: periodo.porcentaje_completado >= 100 
+            ? 'Este periodo ya está completo'
+            : `Completado al ${periodo.porcentaje_completado}%`
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Error validando periodo:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al validar periodo'
+      };
+    }
+  }
+
+  /**
+   * 🆕 Obtener nombre del mes en español
+   */
+  getNombreMes(mes) {
+    const meses = {
+      1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
+      5: 'Mayo', 6: 'Junio', 7: 'Julio', 8: 'Agosto',
+      9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    };
+    return meses[mes] || `Mes ${mes}`;
+  }
+
+  /**
+   * 🆕 Formatear periodo para mostrar (ej: "Diciembre 2025")
+   */
+  formatearPeriodo(mes, anio) {
+    return `${this.getNombreMes(mes)} ${anio}`;
+  }
+
+  // ========================================
+  // MÉTODOS EXISTENTES (mantenidos)
+  // ========================================
+
+  /**
+   * Obtener lista completa de medidores con información de afiliados
+   */
+  async getMedidoresParaLecturas() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.medidoresCompletos);
+      return {
+        success: true,
+        data: data
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo medidores:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener medidores'
+      };
+    }
+  }
+
+  /**
+   * Obtener estadísticas de lecturas desde el backend
+   */
+  async getStatsFromBackend() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.stats);
+      return {
+        success: true,
+        data: data
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo estadísticas:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener estadísticas'
+      };
+    }
+  }
 
   /**
    * Obtener lista de lecturas
@@ -213,8 +395,9 @@ async getStatsFromBackend() {
         }
       });
 
-      // Limpiar caché
+      // Limpiar cachés
       this.cachedLecturas = null;
+      this.cachedPeriodos = null;
 
       return {
         success: true,
@@ -254,8 +437,9 @@ async getStatsFromBackend() {
         body: updateData,
       });
 
-      // Limpiar caché
+      // Limpiar cachés
       this.cachedLecturas = null;
+      this.cachedPeriodos = null;
 
       return {
         success: true,
@@ -281,8 +465,9 @@ async getStatsFromBackend() {
         method: 'DELETE'
       });
 
-      // Limpiar caché
+      // Limpiar cachés
       this.cachedLecturas = null;
+      this.cachedPeriodos = null;
 
       if (response && response.success === false) {
         return {
@@ -316,8 +501,9 @@ async getStatsFromBackend() {
         method: 'PATCH'
       });
 
-      // Limpiar caché
+      // Limpiar cachés
       this.cachedLecturas = null;
+      this.cachedPeriodos = null;
 
       return {
         success: true,
@@ -376,7 +562,7 @@ async getStatsFromBackend() {
   }
 
   /**
-   * Importar lecturas desde Excel
+   * Importar lecturas desde Excel (método legacy - usa el nuevo cuando sea posible)
    */
   async importarExcel(file) {
     try {
@@ -388,8 +574,9 @@ async getStatsFromBackend() {
         body: formData
       });
 
-      // Limpiar caché
+      // Limpiar cachés
       this.cachedLecturas = null;
+      this.cachedPeriodos = null;
 
       return {
         success: true,
@@ -496,10 +683,18 @@ async getStatsFromBackend() {
   }
 
   /**
-   * Limpiar caché
+   * Obtener periodos desde caché
+   */
+  getCachedPeriodos() {
+    return this.cachedPeriodos || null;
+  }
+
+  /**
+   * Limpiar todos los cachés
    */
   clearCache() {
     this.cachedLecturas = null;
+    this.cachedPeriodos = null;
   }
 }
 

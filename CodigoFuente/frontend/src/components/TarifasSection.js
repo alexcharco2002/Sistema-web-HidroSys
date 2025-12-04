@@ -1,5 +1,5 @@
 // src/components/TarifasSection.js
-// MÓDULO DE TARIFAS - Con control de permisos granular y ordenamiento mejorado
+// MÓDULO DE TARIFAS - Con control de versiones y vigencia
 import React, { useState, useEffect, useCallback } from 'react';
 
 import tarifasService from '../services/tarifasServices';
@@ -7,7 +7,8 @@ import authService from '../services/authServices';
 
 import { 
   DollarSign, Plus, Search, Edit, Trash2, Eye, CheckCircle, XCircle,
-  X, Save, RefreshCw, AlertCircle, Receipt, ArrowUpDown, FileText, Tag
+  X, Save, RefreshCw, AlertCircle, Receipt, ArrowUpDown, FileText, Tag,
+  Calendar, Clock, History, AlertTriangle, Ban
 } from 'lucide-react';
 
 const TarifasSection = () => {
@@ -16,12 +17,17 @@ const TarifasSection = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm] = useState(searchTerm);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterVigencia, setFilterVigencia] = useState('vigentes'); // Nuevo filtro
   const [filterTipo, setFilterTipo] = useState('all');
   const [sortOrder, setSortOrder] = useState('asc');
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('create');
   const [selectedTarifa, setSelectedTarifa] = useState(null);
   const [error, setError] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [historialVersiones, setHistorialVersiones] = useState([]);
+  const [showHistorialModal, setShowHistorialModal] = useState(false);
+  
   const [formData, setFormData] = useState({
     nombre: '',
     detalle: '',
@@ -29,6 +35,7 @@ const TarifasSection = () => {
     limite_min_m3: '',
     limite_max_m3: '',
     tipo_tarifa: '',
+    vigencia_desde: '',
     activo: true
   });
 
@@ -38,7 +45,8 @@ const TarifasSection = () => {
     canRead: false,
     canUpdate: false,
     canDelete: false,
-    canToggleStatus: false
+    canToggleStatus: false,
+    canViewHistory: false
   });
 
   // 🔑 Cargar permisos al montar el componente
@@ -61,24 +69,27 @@ const TarifasSection = () => {
                authService.hasPermission('tarifas', 'operaciones crud');
 
     const canToggleStatus = canUpdate;
+    const canViewHistory = canRead;
 
     setPermissions({
       canCreate,
       canRead,
       canUpdate,
       canDelete,
-      canToggleStatus
+      canToggleStatus,
+      canViewHistory
     });
 
     console.log('🔐 Permisos del usuario en módulo Tarifas:', {
       canCreate,
       canRead,
       canUpdate,
-      canDelete
+      canDelete,
+      canViewHistory
     });
   };
 
-  // Fetch tarifas
+  // Fetch tarifas con filtro de vigencia
   const fetchTarifas = useCallback(async () => {
     if (!permissions.canRead) {
       setError('No tienes permiso para ver tarifas');
@@ -90,9 +101,19 @@ const TarifasSection = () => {
     setError(null);
     
     try {
-      const result = await tarifasService.getTarifas({
+      const filters = {
         search: debouncedSearchTerm
-      });
+      };
+
+      // Aplicar filtro de vigencia
+      if (filterVigencia === 'vigentes') {
+        filters.es_vigente = true;
+      } else if (filterVigencia === 'vencidas') {
+        filters.es_vigente = false;
+      }
+      // Si es 'all', no se filtra por vigencia
+
+      const result = await tarifasService.getTarifas(filters);
 
       if (result.success) {
         setTarifas(result.data);
@@ -107,20 +128,35 @@ const TarifasSection = () => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, permissions.canRead]);
+  }, [debouncedSearchTerm, filterVigencia, permissions.canRead]);
+
+  // Fetch estadísticas
+  const fetchStats = useCallback(async () => {
+    if (!permissions.canRead) return;
+
+    try {
+      const result = await tarifasService.getTarifaStats();
+      if (result.success) {
+        setStats(result.data);
+      }
+    } catch (err) {
+      console.error('Error al cargar estadísticas:', err);
+    }
+  }, [permissions.canRead]);
 
   useEffect(() => {
     if (permissions.canRead) {
       console.log('🔄 Componente montado, cargando tarifas...');
       fetchTarifas();
+      fetchStats();
     }
-  }, [fetchTarifas, permissions.canRead]);
+  }, [fetchTarifas, fetchStats, permissions.canRead]);
 
   useEffect(() => {
     if (permissions.canRead) {
       fetchTarifas();
     }
-  }, [debouncedSearchTerm, fetchTarifas, permissions.canRead]);
+  }, [debouncedSearchTerm, filterVigencia, fetchTarifas, permissions.canRead]);
 
   // 🔄 Cambiar el orden de clasificación
   const toggleSortOrder = () => {
@@ -160,6 +196,50 @@ const TarifasSection = () => {
   // Obtener tipos únicos para el filtro
   const tiposTarifa = [...new Set(tarifas.map(t => t.tipo_tarifa).filter(Boolean))];
 
+  // 📜 Ver historial de versiones
+  const verHistorial = async (nombreTarifa) => {
+    if (!permissions.canViewHistory) {
+      alert('❌ No tienes permiso para ver el historial');
+      return;
+    }
+
+    try {
+      const result = await tarifasService.getHistorialTarifa(nombreTarifa);
+      if (result.success) {
+        setHistorialVersiones(result.data);
+        setShowHistorialModal(true);
+      } else {
+        alert('Error: ' + result.message);
+      }
+    } catch (error) {
+      alert('Error al cargar historial: ' + error.message);
+    }
+  };
+
+  // ⏹️ Finalizar vigencia manualmente
+  const finalizarVigencia = async (tarifaId, nombreTarifa) => {
+    if (!permissions.canUpdate) {
+      alert('❌ No tienes permiso para finalizar vigencia');
+      return;
+    }
+
+    if (window.confirm(`¿Estás seguro de finalizar la vigencia de "${nombreTarifa}"? Esta acción no se puede deshacer.`)) {
+      try {
+        const result = await tarifasService.finalizarVigenciaTarifa(tarifaId);
+        
+        if (result.success) {
+          alert('✅ Vigencia finalizada correctamente');
+          await fetchTarifas();
+          await fetchStats();
+        } else {
+          alert('Error: ' + result.message);
+        }
+      } catch (error) {
+        alert('Error al finalizar vigencia: ' + error.message);
+      }
+    }
+  };
+
   const openModal = (type, tarifa = null) => {
     if (type === 'create' && !permissions.canCreate) {
       alert('❌ No tienes permiso para crear tarifas');
@@ -182,6 +262,7 @@ const TarifasSection = () => {
         limite_min_m3: '',
         limite_max_m3: '',
         tipo_tarifa: '',
+        vigencia_desde: new Date().toISOString().split('T')[0],
         activo: true
       });
     } else if (type === 'edit' && tarifa) {
@@ -192,6 +273,7 @@ const TarifasSection = () => {
         limite_min_m3: tarifa.limite_min_m3,
         limite_max_m3: tarifa.limite_max_m3 || '',
         tipo_tarifa: tarifa.tipo_tarifa,
+        vigencia_desde: tarifa.vigencia_desde ? new Date(tarifa.vigencia_desde).toISOString().split('T')[0] : '',
         activo: tarifa.activo
       });
     }
@@ -222,6 +304,7 @@ const TarifasSection = () => {
 
         if (result.success) {
           await fetchTarifas();
+          await fetchStats();
           closeModal();
           alert('✅ Tarifa creada exitosamente');
         } else {
@@ -237,8 +320,9 @@ const TarifasSection = () => {
         result = await tarifasService.updateTarifa(selectedTarifa.id_tarifa, formData);
         
         if (result.success) {
-          alert('✅ Cambios guardados correctamente');
+          alert('✅ Nueva versión creada correctamente');
           await fetchTarifas();
+          await fetchStats();
           closeModal();
         } else {
           setError(result.message || 'Error al actualizar tarifa');
@@ -264,8 +348,9 @@ const TarifasSection = () => {
         if (result.success) {
           alert(result.message);
           await fetchTarifas();
+          await fetchStats();
         } else {
-          alert('Error: ' + result.message);
+          alert('⚠️ ' + result.message);
         }
       } catch (error) {
         alert('Error al eliminar tarifa: ' + error.message);
@@ -297,6 +382,15 @@ const TarifasSection = () => {
       style: 'currency',
       currency: 'USD'
     }).format(value);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('es-EC', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
   if (!permissions.canRead) {
@@ -352,97 +446,117 @@ const TarifasSection = () => {
       </div>
 
       <div className="filters-section">
+        {/* IZQUIERDA — Barra de búsqueda */}
+        <div className="search-container">
+          <Search className="search-icon" />
+          <input
+            type="text"
+            placeholder="Buscar tarifas..."
+            className="search-input"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
 
-      {/* IZQUIERDA — Barra de búsqueda */}
-      <div className="search-container">
-        <Search className="search-icon" />
-        <input
-          type="text"
-          placeholder="Buscar tarifas..."
-          className="search-input"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
+        {/* DERECHA — Filtros y acciones */}
+        <div className="filters-right">
+          {/* 🟢 Vigencia */}
+          <select 
+            className="filter-select"
+            value={filterVigencia}
+            onChange={(e) => setFilterVigencia(e.target.value)}
+          >
+            <option value="all">Todas las vigencias</option>
+            <option value="vigentes">Solo vigentes</option>
+            <option value="vencidas">Solo vencidas</option>
+          </select>
+
+          {/* 🔧 Estado */}
+          <select 
+            className="filter-select"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
+            <option value="all">Todos los estados</option>
+            <option value="active">Activos</option>
+            <option value="inactive">Inactivos</option>
+          </select>
+
+          {/* 🏷️ Tipo de tarifa */}
+          <select 
+            className="filter-select"
+            value={filterTipo}
+            onChange={(e) => setFilterTipo(e.target.value)}
+          >
+            <option value="all">Todos los tipos</option>
+            {tiposTarifa.map(tipo => (
+              <option key={tipo} value={tipo}>{tipo}</option>
+            ))}
+          </select>
+
+          {/* ⬆⬇ Ordenamiento */}
+          <button 
+            className="btn-secondary"
+            onClick={toggleSortOrder}
+            title={`Ordenar ${sortOrder === 'asc' ? 'descendente' : 'ascendente'}`}
+          >
+            <ArrowUpDown className="w-4 h-4" />
+            <span className="ml-1 text-xs">
+              {sortOrder === 'asc' ? '↑' : '↓'}
+            </span>
+          </button>
+
+          {/* 🔄 Recargar */}
+          <button 
+            className="btn-secondary"
+            onClick={() => {
+              fetchTarifas();
+              fetchStats();
+            }}
+            title="Recargar lista"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
       </div>
-
-      {/* DERECHA — Filtros y acciones */}
-      <div className="filters-right">
-
-        {/* 🔧 Estado */}
-        <select 
-          className="filter-select"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-        >
-          <option value="all">Todos los estados</option>
-          <option value="active">Activos</option>
-          <option value="inactive">Inactivos</option>
-        </select>
-
-        {/* 🏷️ Tipo de tarifa */}
-        <select 
-          className="filter-select"
-          value={filterTipo}
-          onChange={(e) => setFilterTipo(e.target.value)}
-        >
-          <option value="all">Todos los tipos</option>
-          {tiposTarifa.map(tipo => (
-            <option key={tipo} value={tipo}>{tipo}</option>
-          ))}
-        </select>
-
-        {/* ⬆⬇ Ordenamiento */}
-        <button 
-          className="btn-secondary"
-          onClick={toggleSortOrder}
-          title={`Ordenar ${sortOrder === 'asc' ? 'descendente' : 'ascendente'}`}
-        >
-          <ArrowUpDown className="w-4 h-4" />
-          <span className="ml-1 text-xs">
-            {sortOrder === 'asc' ? '↑' : '↓'}
-          </span>
-        </button>
-
-        {/* 🔄 Recargar */}
-        <button 
-          className="btn-secondary"
-          onClick={fetchTarifas}
-          title="Recargar lista"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
-
-      </div>
-    </div>
 
       {/* Tarjetas de estadísticas */}
-      <div className="users-stats">
-        <div className="stat-item">
-          <DollarSign className="stat-icon text-blue-600" />
-          <div>
-            <p className="stat-label">Total Tarifas</p>
-            <p className="stat-value">{tarifas.length}</p>
+      {stats && (
+        <div className="users-stats">
+          <div className="stat-item">
+            <DollarSign className="stat-icon text-blue-600" />
+            <div>
+              <p className="stat-label">Total Versiones</p>
+              <p className="stat-value">{stats.total_versiones}</p>
+            </div>
+          </div>
+          <div className="stat-item">
+            <CheckCircle className="stat-icon text-green-600" />
+            <div>
+              <p className="stat-label">Tarifas Vigentes</p>
+              <p className="stat-value">{stats.tarifas_vigentes}</p>
+            </div>
+          </div>
+          <div className="stat-item">
+            <Clock className="stat-icon text-orange-600" />
+            <div>
+              <p className="stat-label">Tarifas Vencidas</p>
+              <p className="stat-value">{stats.tarifas_vencidas}</p>
+            </div>
+          </div>
+          <div className="stat-item">
+            <Tag className="stat-icon text-purple-600" />
+            <div>
+              <p className="stat-label">Tipos Únicos</p>
+              <p className="stat-value">{stats.tipos_unicos}</p>
+            </div>
           </div>
         </div>
-        <div className="stat-item">
-          <CheckCircle className="stat-icon text-green-600" />
-          <div>
-            <p className="stat-label">Tarifas Activas</p>
-            <p className="stat-value">{tarifas.filter(t => t.activo).length}</p>
-          </div>
-        </div>
-        <div className="stat-item">
-          <XCircle className="stat-icon text-red-600" />
-          <div>
-            <p className="stat-label">Tarifas Inactivas</p>
-            <p className="stat-value">{tarifas.filter(t => !t.activo).length}</p>
-          </div>
-        </div>
-      </div>
+      )}
 
       <div className="users-grid">
         {filteredTarifas.map(tarifa => (
-          <div key={tarifa.id_tarifa} className={`user-card ${!tarifa.activo ? 'inactive' : ''}`}>
+          <div key={tarifa.id_tarifa} className={`user-card ${!tarifa.activo ? 'inactive' : ''} ${!tarifa.es_vigente ? 'vencida' : ''}`}>
             <div className="user-card-header">
               <div className="user-info">
                 <div className="user-icon">
@@ -450,7 +564,7 @@ const TarifasSection = () => {
                 </div>
                 <div>
                   <h3 className="user-name">{tarifa.nombre}</h3>
-                  <div className="flex gap-2 items-center mt-1">
+                  <div className="flex gap-2 items-center mt-1 flex-wrap">
                     <span className={`status-badge ${tarifa.activo ? 'active' : 'inactive'}`}>
                       {tarifa.activo ? (
                         <>
@@ -461,6 +575,23 @@ const TarifasSection = () => {
                         <>
                           <XCircle className="w-3 h-3" />
                           Inactivo
+                        </>
+                      )}
+                    </span>
+                    <span className={`status-badge ${tarifa.es_vigente ? 'vigente' : 'vencida'}`} 
+                          style={{
+                            backgroundColor: tarifa.es_vigente ? '#f0fdf4' : '#fef2f2',
+                            color: tarifa.es_vigente ? '#16a34a' : '#dc2626'
+                          }}>
+                      {tarifa.es_vigente ? (
+                        <>
+                          <CheckCircle className="w-3 h-3" />
+                          Vigente
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="w-3 h-3" />
+                          Vencida
                         </>
                       )}
                     </span>
@@ -483,13 +614,33 @@ const TarifasSection = () => {
                   <Eye className="w-4 h-4 icon-view" />
                 </button>
 
-                {permissions.canUpdate && (
+                {permissions.canViewHistory && (
+                  <button 
+                    className="action-btn history"
+                    onClick={() => verHistorial(tarifa.nombre)}
+                    title="Ver historial de versiones"
+                  >
+                    <History className="w-4 h-4" />
+                  </button>
+                )}
+
+                {permissions.canUpdate && tarifa.es_vigente && (
                   <button 
                     className="action-btn edit"
                     onClick={() => openModal('edit', tarifa)}
-                    title="Editar tarifa"
+                    title="Editar tarifa (crear nueva versión)"
                   >
                     <Edit className="w-4 h-4" />
+                  </button>
+                )}
+
+                {permissions.canUpdate && tarifa.es_vigente && (
+                  <button 
+                    className="action-btn warning"
+                    onClick={() => finalizarVigencia(tarifa.id_tarifa, tarifa.nombre)}
+                    title="Finalizar vigencia"
+                  >
+                    <Ban className="w-4 h-4" />
                   </button>
                 )}
 
@@ -519,9 +670,9 @@ const TarifasSection = () => {
                 <FileText className="w-4 h-4 text-gray-400" />
                 {tarifa.detalle?.trim() ? tarifa.detalle : 'Sin descripción'}
               </p>
-              <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="grid grid-cols-2 gap-2 text-sm mb-2">
                 <div>
-                  <span className="text-gray-500">Precio/m³ : </span>
+                  <span className="text-gray-500">Precio/m³: </span>
                   <span className="font-semibold ml-1">{formatCurrency(tarifa.precio_por_m3)}</span>
                 </div>
                 <div>
@@ -530,6 +681,13 @@ const TarifasSection = () => {
                     {tarifa.limite_min_m3} - {tarifa.limite_max_m3 || '∞'} m³
                   </span>
                 </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-gray-500 border-t pt-2">
+                <Calendar className="w-3 h-3" />
+                <span>
+                  Desde: {formatDate(tarifa.vigencia_desde)}
+                  {tarifa.vigencia_hasta && ` | Hasta: ${formatDate(tarifa.vigencia_hasta)}`}
+                </span>
               </div>
             </div>
           </div>
@@ -544,14 +702,14 @@ const TarifasSection = () => {
         </div>
       )}
 
-      {/* MODALES */}
+      {/* MODAL DE DETALLES/CREAR/EDITAR */}
       {showModal && (
         <div className="modal-overlay">
           <div className="modal">
             <div className="modal-header">
               <h3>
                 {modalType === 'create' && 'Crear Nueva Tarifa'}
-                {modalType === 'edit' && 'Editar Tarifa'}
+                {modalType === 'edit' && 'Editar Tarifa (Nueva Versión)'}
                 {modalType === 'view' && 'Detalles de la Tarifa'}
               </h3>
               <button className="modal-close" onClick={closeModal}>
@@ -592,28 +750,47 @@ const TarifasSection = () => {
                     <p>{formatCurrency(selectedTarifa.precio_por_m3)}</p>
                   </div>
                   <div className="detail-group">
-                    <label>Límite Mínimo:</label>
-                    <p>{selectedTarifa.limite_min_m3} m³</p>
+                    <label>Rango de consumo:</label>
+                    <p>{selectedTarifa.limite_min_m3} - {selectedTarifa.limite_max_m3 || '∞'} m³</p>
                   </div>
                   <div className="detail-group">
-                    <label>Límite Máximo:</label>
-                    <p>{selectedTarifa.limite_max_m3 || 'Sin límite'} {selectedTarifa.limite_max_m3 && 'm³'}</p>
+                    <label>Vigencia Desde:</label>
+                    <p>{formatDate(selectedTarifa.vigencia_desde)}</p>
+                  </div>
+                  {selectedTarifa.vigencia_hasta && (
+                    <div className="detail-group">
+                      <label>Vigencia Hasta:</label>
+                      <p>{formatDate(selectedTarifa.vigencia_hasta)}</p>
+                    </div>
+                  )}
+                  <div className="detail-group">
+                    <label>Estado de Vigencia:</label>
+                    <span className={`status-badge ${selectedTarifa.es_vigente ? 'active' : 'inactive'}`}>
+                      {selectedTarifa.es_vigente ? 'Vigente' : 'Vencida'}
+                    </span>
                   </div>
                   <div className="detail-group">
-                    <label>Fecha de Creación:</label>
-                    <p>{new Date(selectedTarifa.fecha_creacion).toLocaleDateString('es-EC')}</p>
-                  </div>
-                  <div className="detail-group">
-                    <label>Estado:</label>
+                    <label>Estado Activo:</label>
                     <span className={`status-badge ${selectedTarifa.activo ? 'active' : 'inactive'}`}>
                       {selectedTarifa.activo ? 'Activo' : 'Inactivo'}
                     </span>
+                  </div>
+                  <div className="detail-group">
+                    <label>Fecha de Creación:</label>
+                    <p>{formatDate(selectedTarifa.fecha_creacion)}</p>
                   </div>
                 </div>
               )}
 
               {(modalType === 'create' || modalType === 'edit') && (
                 <form onSubmit={handleSubmit} className="user-form">
+                  {modalType === 'edit' && (
+                    <div className="alert alert-info mb-4">
+                      <AlertTriangle className="w-5 h-5 mr-2" />
+                      Al guardar, se creará una nueva versión de esta tarifa. La versión actual quedará marcada como vencida.
+                    </div>
+                  )}
+                  
                   <div className="form-grid">
                     <div className="form-group">
                       <label>Nombre de la Tarifa *</label>
@@ -668,7 +845,7 @@ const TarifasSection = () => {
                     </div>
 
                     <div className="form-group">
-                      <label>Precio por m³ ($)*</label>
+                      <label>Precio por m³ ($) *</label>
                       <input
                         type="number"
                         required
@@ -697,12 +874,28 @@ const TarifasSection = () => {
                       <label>Límite Máximo (m³)</label>
                       <input
                         type="number"
+                        required
                         step="0.01"
                         min="0"
                         value={formData.limite_max_m3}
                         onChange={(e) => setFormData({ ...formData, limite_max_m3: e.target.value })}
                         placeholder="Dejar vacío si no tiene límite"
                       />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Fecha de Vigencia *</label>
+                      <input
+                        type="date"
+                        required
+                        value={formData.vigencia_desde}
+                        onChange={(e) => setFormData({ ...formData, vigencia_desde: e.target.value })}
+                      />
+                      <small className="text-gray-500 text-xs mt-1">
+                        {modalType === 'create' 
+                          ? 'Fecha desde la cual esta tarifa estará vigente'
+                          : 'Fecha de inicio de la nueva versión'}
+                      </small>
                     </div>
 
                     <div className="form-group">
@@ -723,10 +916,89 @@ const TarifasSection = () => {
                     </button>
                     <button type="submit" className="btn-primary">
                       <Save className="w-4 h-4 mr-2" />
-                      {modalType === 'create' ? 'Crear Tarifa' : 'Guardar Cambios'}
+                      {modalType === 'create' ? 'Crear Tarifa' : 'Crear Nueva Versión'}
                     </button>
                   </div>
                 </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE HISTORIAL DE VERSIONES */}
+      {showHistorialModal && (
+        <div className="modal-overlay">
+          <div className="modal modal-lg">
+            <div className="modal-header">
+              <h3>
+                <History className="w-5 h-5 inline mr-2" />
+                Historial de Versiones
+              </h3>
+              <button className="modal-close" onClick={() => setShowHistorialModal(false)}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="modal-body">
+              {historialVersiones.length > 0 ? (
+                <div className="space-y-4">
+                  {historialVersiones.map((version, index) => (
+                    <div 
+                      key={version.id_tarifa} 
+                      className={`border rounded-lg p-4 ${version.es_vigente ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-gray-50'}`}
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-semibold text-lg">{version.nombre}</h4>
+                          <p className="text-sm text-gray-600">{version.tipo_tarifa}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className={`status-badge ${version.es_vigente ? 'active' : 'inactive'}`}>
+                            {version.es_vigente ? 'Vigente' : 'Vencida'}
+                          </span>
+                          <span className="status-badge" style={{backgroundColor: '#f0f9ff', color: '#0369a1'}}>
+                            Versión {historialVersiones.length - index}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-gray-600">Precio/m³:</span>
+                          <span className="font-semibold ml-2">{formatCurrency(version.precio_por_m3)}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Rango:</span>
+                          <span className="font-semibold ml-2">
+                            {version.limite_min_m3} - {version.limite_max_m3 || '∞'} m³
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Vigencia Desde:</span>
+                          <span className="font-semibold ml-2">{formatDate(version.vigencia_desde)}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Vigencia Hasta:</span>
+                          <span className="font-semibold ml-2">
+                            {version.vigencia_hasta ? formatDate(version.vigencia_hasta) : 'Actual'}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {version.detalle && (
+                        <p className="text-sm text-gray-700 mt-2 pt-2 border-t">
+                          {version.detalle}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <History className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <p>No hay historial disponible</p>
+                </div>
               )}
             </div>
           </div>

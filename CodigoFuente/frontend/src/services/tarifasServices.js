@@ -1,6 +1,6 @@
 /**
  * src/services/tarifasServices.js
- * Servicio de Gestión de Tarifas
+ * Servicio de Gestión de Tarifas con Versionamiento
  * Tabla: t_tarifa
  */
 
@@ -11,12 +11,19 @@ const API_CONFIG = {
   endpoints: {
     tarifas: '/tarifas',
     toggleStatus: (id) => `/tarifas/${id}/toggle-status`,
+    historial: (nombre) => `/tarifas/historial/${nombre}`,
+    finalizarVigencia: (id) => `/tarifas/${id}/finalizar-vigencia`,
+    stats: '/tarifas/stats/count',
+    tipos: '/tarifas/tipos/list',
+    porTipo: (tipo) => `/tarifas/tipo/${tipo}`
   }
 };
 
 class TarifasService {
   constructor() {
     this.cachedTarifas = null;
+    this.cachedStats = null;
+    this.cachedTipos = null;
   }
 
   /**
@@ -43,7 +50,6 @@ class TarifasService {
       },
     };
 
-    // Manejar FormData y JSON
     if (finalOptions.body instanceof FormData) {
       delete finalOptions.headers['Content-Type'];
     } else if (finalOptions.body && typeof finalOptions.body === 'object') {
@@ -100,7 +106,7 @@ class TarifasService {
   }
 
   /**
-   * Obtener lista de tarifas
+   * Obtener lista de tarifas con filtros de vigencia
    */
   async getTarifas(filters = {}) {
     try {
@@ -109,6 +115,7 @@ class TarifasService {
       if (filters.search) params.append('search', filters.search);
       if (filters.tipo_tarifa) params.append('tipo_tarifa', filters.tipo_tarifa);
       if (filters.activo !== undefined) params.append('activo', filters.activo);
+      if (filters.es_vigente !== undefined) params.append('es_vigente', filters.es_vigente);
       if (filters.skip) params.append('skip', filters.skip);
       if (filters.limit) params.append('limit', filters.limit);
 
@@ -119,7 +126,6 @@ class TarifasService {
 
       const data = await this.makeRequest(endpoint);
 
-      // Actualizar caché
       this.cachedTarifas = data;
 
       return {
@@ -132,6 +138,102 @@ class TarifasService {
       return {
         success: false,
         message: error.message || 'Error al obtener tarifas'
+      };
+    }
+  }
+
+  /**
+   * Obtener historial de versiones de una tarifa
+   */
+  async getHistorialTarifa(nombreTarifa) {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.historial(nombreTarifa));
+
+      return {
+        success: true,
+        data: data
+      };
+
+    } catch (error) {
+      console.error('❌ Error obteniendo historial:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener historial de la tarifa'
+      };
+    }
+  }
+
+  /**
+   * Obtener estadísticas de tarifas
+   */
+  async getTarifaStats() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.stats);
+
+      this.cachedStats = data;
+
+      return {
+        success: true,
+        data: data
+      };
+
+    } catch (error) {
+      console.error('❌ Error obteniendo estadísticas:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener estadísticas'
+      };
+    }
+  }
+
+  /**
+   * Obtener tipos de tarifa únicos
+   */
+  async getTiposTarifa() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.tipos);
+
+      this.cachedTipos = data.tipos_tarifa;
+
+      return {
+        success: true,
+        data: data.tipos_tarifa
+      };
+
+    } catch (error) {
+      console.error('❌ Error obteniendo tipos:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener tipos de tarifa'
+      };
+    }
+  }
+
+  /**
+   * Obtener tarifas por tipo
+   */
+  async getTarifasByTipo(tipoTarifa, vigentesOnly = true) {
+    try {
+      const params = new URLSearchParams();
+      if (vigentesOnly !== null) params.append('es_vigente', vigentesOnly);
+      
+      const queryString = params.toString();
+      const endpoint = queryString
+        ? `${API_CONFIG.endpoints.porTipo(tipoTarifa)}?${queryString}`
+        : API_CONFIG.endpoints.porTipo(tipoTarifa);
+
+      const data = await this.makeRequest(endpoint);
+
+      return {
+        success: true,
+        data: data
+      };
+
+    } catch (error) {
+      console.error('❌ Error obteniendo tarifas por tipo:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener tarifas por tipo'
       };
     }
   }
@@ -164,21 +266,27 @@ class TarifasService {
     try {
       this.validateTarifaData(tarifaData, true);
 
+      const body = {
+        nombre: tarifaData.nombre.trim(),
+        detalle: tarifaData.detalle?.trim() || null,
+        precio_por_m3: parseFloat(tarifaData.precio_por_m3),
+        limite_min_m3: parseFloat(tarifaData.limite_min_m3),
+        limite_max_m3: tarifaData.limite_max_m3 ? parseFloat(tarifaData.limite_max_m3) : null,
+        tipo_tarifa: tarifaData.tipo_tarifa.trim(),
+        activo: tarifaData.activo !== undefined ? tarifaData.activo : true
+      };
+
+      // Si se proporciona vigencia_desde, incluirla
+      if (tarifaData.vigencia_desde) {
+        body.vigencia_desde = tarifaData.vigencia_desde;
+      }
+
       const data = await this.makeRequest(API_CONFIG.endpoints.tarifas, {
         method: 'POST',
-        body: {
-          nombre: tarifaData.nombre.trim(),
-          detalle: tarifaData.detalle?.trim() || null,
-          precio_por_m3: parseFloat(tarifaData.precio_por_m3),
-          limite_min_m3: parseFloat(tarifaData.limite_min_m3),
-          limite_max_m3: tarifaData.limite_max_m3 ? parseFloat(tarifaData.limite_max_m3) : null,
-          tipo_tarifa: tarifaData.tipo_tarifa.trim(),
-          activo: tarifaData.activo !== undefined ? tarifaData.activo : true
-        }
+        body: body
       });
 
-      // Limpiar caché
-      this.cachedTarifas = null;
+      this.clearCache();
 
       return {
         success: true,
@@ -211,7 +319,7 @@ class TarifasService {
   }
 
   /**
-   * Actualizar una tarifa existente
+   * Actualizar tarifa (crea nueva versión)
    */
   async updateTarifa(tarifaId, tarifaData) {
     if (!tarifaId || isNaN(tarifaId)) {
@@ -232,19 +340,19 @@ class TarifasService {
       }
       if (tarifaData.tipo_tarifa) updateData.tipo_tarifa = tarifaData.tipo_tarifa.trim();
       if (tarifaData.activo !== undefined) updateData.activo = tarifaData.activo;
+      if (tarifaData.vigencia_desde) updateData.vigencia_desde = tarifaData.vigencia_desde;
 
       const data = await this.makeRequest(`${API_CONFIG.endpoints.tarifas}/${tarifaId}`, {
         method: 'PUT',
         body: updateData,
       });
 
-      // Limpiar caché
-      this.cachedTarifas = null;
+      this.clearCache();
 
       return {
         success: true,
         data: data,
-        message: 'Tarifa actualizada exitosamente'
+        message: 'Nueva versión de tarifa creada exitosamente'
       };
 
     } catch (error) {
@@ -252,6 +360,32 @@ class TarifasService {
       return {
         success: false,
         message: error.message || 'Error al actualizar tarifa'
+      };
+    }
+  }
+
+  /**
+   * Finalizar vigencia de una tarifa manualmente
+   */
+  async finalizarVigenciaTarifa(tarifaId) {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.finalizarVigencia(tarifaId), {
+        method: 'PATCH'
+      });
+
+      this.clearCache();
+
+      return {
+        success: true,
+        data: data,
+        message: 'Vigencia de tarifa finalizada correctamente'
+      };
+
+    } catch (error) {
+      console.error('❌ Error finalizando vigencia:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al finalizar vigencia'
       };
     }
   }
@@ -265,8 +399,7 @@ class TarifasService {
         method: 'DELETE'
       });
 
-      // Limpiar caché
-      this.cachedTarifas = null;
+      this.clearCache();
 
       if (response && response.success === false) {
         return {
@@ -301,8 +434,7 @@ class TarifasService {
         method: 'PATCH'
       });
 
-      // Limpiar caché
-      this.cachedTarifas = null;
+      this.clearCache();
 
       return {
         success: true,
@@ -357,56 +489,6 @@ class TarifasService {
   }
 
   /**
-   * Obtener estadísticas de tarifas
-   */
-  async getTarifaStats() {
-    try {
-      const result = await this.getTarifas();
-      
-      if (!result.success) {
-        return result;
-      }
-
-      const tarifas = result.data;
-      const tiposTarifa = [...new Set(tarifas.map(t => t.tipo_tarifa))];
-
-      return {
-        success: true,
-        data: {
-          total: tarifas.length,
-          activos: tarifas.filter(t => t.activo).length,
-          inactivos: tarifas.filter(t => !t.activo).length,
-          tipos: tiposTarifa.length,
-          tiposTarifa: tiposTarifa
-        }
-      };
-
-    } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener estadísticas'
-      };
-    }
-  }
-
-  /**
-   * Obtener tarifas por tipo
-   */
-  async getTarifasByTipo(tipoTarifa) {
-    try {
-      const result = await this.getTarifas({ tipo_tarifa: tipoTarifa });
-      return result;
-    } catch (error) {
-      console.error('❌ Error obteniendo tarifas por tipo:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener tarifas por tipo'
-      };
-    }
-  }
-
-  /**
    * Obtener tarifas desde caché (útil para selects)
    */
   getCachedTarifas() {
@@ -418,6 +500,8 @@ class TarifasService {
    */
   clearCache() {
     this.cachedTarifas = null;
+    this.cachedStats = null;
+    this.cachedTipos = null;
   }
 }
 

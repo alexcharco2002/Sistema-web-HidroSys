@@ -3,11 +3,14 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
 from typing import List, Optional
 from datetime import date, datetime
 import io
 from fastapi.responses import StreamingResponse
 from fastapi import UploadFile, File
+from calendar import month_name
+import locale
 
 from models.lectura import Lectura
 from models.meter import Medidor
@@ -321,6 +324,25 @@ def crear_lectura(
         Medidor.id_medidor == lectura_data.id_medidor
     ).first()
     
+    # ---------------------------------------------------
+    # 🔍 Validación: evitar doble lectura en el mismo mes
+    # ---------------------------------------------------
+    lectura_mes_existente = db.query(Lectura).filter(
+        Lectura.id_medidor == lectura_data.id_medidor,
+        func.extract('month', Lectura.fecha_lectura) == lectura_data.fecha_lectura.month,
+        func.extract('year', Lectura.fecha_lectura) == lectura_data.fecha_lectura.year,
+        Lectura.activo == True
+    ).first()
+
+    if lectura_mes_existente:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Ya existe una lectura registrada para este medidor "
+                f"en {lectura_data.fecha_lectura.month}/{lectura_data.fecha_lectura.year}."
+            )
+        )
+
     if not medidor:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -395,9 +417,30 @@ def actualizar_lectura(
             detail="Lectura no encontrada"
         )
     
+    
+
     # Actualizar campos
     update_data = lectura_data.model_dump(exclude_unset=True)
     
+    # Validar que no genere duplicado en el mes/año al actualizar
+    if "fecha_lectura" in update_data or "id_medidor" in update_data:
+        nueva_fecha = update_data.get("fecha_lectura", lectura.fecha_lectura)
+        nuevo_medidor = update_data.get("id_medidor", lectura.id_medidor)
+
+        duplicado = db.query(Lectura).filter(
+            Lectura.id_medidor == nuevo_medidor,
+            func.extract('month', Lectura.fecha_lectura) == nueva_fecha.month,
+            func.extract('year', Lectura.fecha_lectura) == nueva_fecha.year,
+            Lectura.id_lectura != id_lectura,   # excluirse a sí mismo
+            Lectura.activo == True
+        ).first()
+
+        if duplicado:
+            raise HTTPException(
+                status_code=400,
+                detail="Ya existe otra lectura para ese medidor en ese mes."
+            )
+        
     for key, value in update_data.items():
         setattr(lectura, key, value)
     
@@ -1058,4 +1101,269 @@ def exportar_lecturas_excel(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al exportar lecturas: {str(e)}"
+        )
+    
+#
+# Intentar configurar locale español
+try:
+    locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_TIME, 'Spanish_Spain.1252')
+    except:
+        pass  # Usar nombres de meses en inglés como fallback
+
+# Diccionario de nombres de meses en español (fallback)
+MESES_ES = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+}
+
+
+# ========================================
+# 🆕 ENDPOINT: OBTENER PERIODOS DISPONIBLES
+# ========================================
+
+@router.get("/periodos/disponibles", response_model=dict)
+def obtener_periodos_disponibles(
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Obtiene los periodos (mes/año) disponibles para cargar lecturas.
+    Muestra:
+    - Periodo actual sugerido
+    - Últimos 6 meses con estadísticas
+    - Próximos 2 meses
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "lecturas", "lectura")
+    
+    try:
+        # Fecha actual
+        hoy = date.today()
+        mes_actual = hoy.month
+        anio_actual = hoy.year
+        
+        # Total de medidores activos
+        total_medidores = db.query(func.count(Medidor.id_medidor)).filter(
+            Medidor.activo == True
+        ).scalar() or 0
+        
+        periodos = []
+        
+        # Generar últimos 6 meses + mes actual + próximos 2 meses
+        for offset in range(-6, 3):
+            # Calcular mes y año
+            fecha_temp = date(anio_actual, mes_actual, 1)
+            
+            # Sumar/restar meses
+            mes_temp = mes_actual + offset
+            anio_temp = anio_actual
+            
+            while mes_temp > 12:
+                mes_temp -= 12
+                anio_temp += 1
+            while mes_temp < 1:
+                mes_temp += 12
+                anio_temp -= 1
+            
+            # Contar lecturas del periodo
+            total_lecturas_periodo = db.query(func.count(Lectura.id_lectura)).filter(
+                func.extract('month', Lectura.fecha_lectura) == mes_temp,
+                func.extract('year', Lectura.fecha_lectura) == anio_temp,
+                Lectura.activo == True
+            ).scalar() or 0
+            
+            # Determinar si es sugerido (mes actual o siguiente si ya tiene muchas lecturas)
+            porcentaje = (total_lecturas_periodo / total_medidores * 100) if total_medidores > 0 else 0
+            sugerido = False
+            
+            if mes_temp == mes_actual and anio_temp == anio_actual:
+                sugerido = True  # Mes actual siempre sugerido
+            elif offset == 1 and porcentaje < 80:  # Mes siguiente si el actual está completo
+                sugerido = True
+            
+            periodos.append({
+                "mes": mes_temp,
+                "anio": anio_temp,
+                "nombre_mes": MESES_ES.get(mes_temp, f"Mes {mes_temp}"),
+                "tiene_lecturas": total_lecturas_periodo > 0,
+                "total_lecturas": total_lecturas_periodo,
+                "total_medidores": total_medidores,
+                "porcentaje_completado": round(porcentaje, 1),
+                "sugerido": sugerido
+            })
+        
+        # Ordenar por año y mes descendente (más reciente primero)
+        periodos.sort(key=lambda x: (x["anio"], x["mes"]), reverse=True)
+        
+        # Identificar periodo actual
+        periodo_actual = next((p for p in periodos if p["sugerido"]), periodos[0])
+        
+        return {
+            "periodo_actual": periodo_actual,
+            "periodos_disponibles": periodos,
+            "total_medidores_activos": total_medidores
+        }
+    
+    except Exception as e:
+        print(f"❌ Error obteniendo periodos: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener periodos disponibles: {str(e)}"
+        )
+
+
+# ========================================
+# 🆕 ACTUALIZAR: IMPORTAR CON PERIODO
+# ========================================
+
+@router.post("/import/excel/periodo", response_model=LecturaBulkResponse, status_code=status.HTTP_201_CREATED)
+async def importar_lecturas_excel_con_periodo(
+    mes: int = Query(..., ge=1, le=12, description="Mes de las lecturas"),
+    anio: int = Query(..., ge=2020, description="Año de las lecturas"),
+    file: UploadFile = File(...),
+    payload: dict = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Importa lecturas desde Excel con periodo específico (mes/año).
+    Valida que no existan lecturas duplicadas para ese periodo.
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "lecturas", "crear")
+    
+    exitosos = []
+    fallidos = []
+    
+    try:
+        # Crear fecha del periodo (primer día del mes)
+        fecha_lectura = date(anio, mes, 1)
+        
+        print(f"\n{'='*60}")
+        print(f"🚀 IMPORTACIÓN PARA PERIODO: {MESES_ES.get(mes, mes)}/{anio}")
+        print(f"{'='*60}\n")
+        
+        # Leer Excel
+        contents = await file.read()
+        wb = load_workbook(io.BytesIO(contents))
+        ws = wb.active
+        
+        # Procesar filas
+        for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            try:
+                num_medidor = row[0]
+                lectura_anterior = row[4]
+                lectura_actual = row[5]
+                observacion = row[6] if len(row) > 6 else None
+                
+                if not num_medidor or not lectura_actual:
+                    continue
+                
+                lectura_actual = int(lectura_actual)
+                lectura_anterior = int(lectura_anterior) if lectura_anterior else 0
+                
+                if lectura_actual < lectura_anterior:
+                    raise ValueError(f"Lectura actual ({lectura_actual}) menor que anterior ({lectura_anterior})")
+                
+                consumo_m3 = lectura_actual - lectura_anterior
+                
+                # Buscar medidor
+                medidor = db.query(Medidor).filter(
+                    Medidor.num_medidor == str(num_medidor).strip()
+                ).first()
+                
+                if not medidor:
+                    raise ValueError(f"Medidor '{num_medidor}' no encontrado")
+                
+                # 🔍 VALIDAR: No permitir duplicado en el mismo mes/año
+                lectura_existente = db.query(Lectura).filter(
+                    Lectura.id_medidor == medidor.id_medidor,
+                    func.extract('month', Lectura.fecha_lectura) == mes,
+                    func.extract('year', Lectura.fecha_lectura) == anio,
+                    Lectura.activo == True
+                ).first()
+                
+                if lectura_existente:
+                    raise ValueError(f"Ya existe lectura para {MESES_ES.get(mes, mes)}/{anio}")
+                
+                # Crear lectura
+                nueva_lectura = Lectura(
+                    id_medidor=medidor.id_medidor,
+                    lectura_actual=lectura_actual,
+                    lectura_anterior=lectura_anterior,
+                    consumo_m3=consumo_m3,
+                    fecha_lectura=fecha_lectura,
+                    id_lector=current_user.id_usuario_sistema,
+                    observacion=observacion.strip() if observacion else None,
+                    activo=True
+                )
+                
+                db.add(nueva_lectura)
+                db.flush()
+                
+                exitosos.append(LecturaBulkResult(
+                    fila=row_num,
+                    id_medidor=medidor.id_medidor,
+                    num_medidor=medidor.num_medidor,
+                    lectura_anterior=lectura_anterior,
+                    lectura_actual=lectura_actual,
+                    consumo_m3=consumo_m3,
+                    id_lectura=nueva_lectura.id_lectura
+                ))
+                
+                print(f"✅ Fila {row_num}: {medidor.num_medidor} - {consumo_m3}m³")
+                
+            except Exception as e:
+                fallidos.append(LecturaBulkError(
+                    fila=row_num,
+                    id_medidor=None,
+                    num_medidor=num_medidor if 'num_medidor' in locals() else None,
+                    error=str(e)
+                ))
+                print(f"❌ Fila {row_num}: {str(e)}")
+        
+        # Commit
+        if exitosos:
+            db.commit()
+            
+            registrar_auditoria(
+                db=db,
+                accion="IMPORT_EXCEL",
+                descripcion=f"Importación {MESES_ES.get(mes, mes)}/{anio}: {len(exitosos)} exitosos, {len(fallidos)} fallidos",
+                id_usuario=current_user.id_usuario_sistema
+            )
+            
+            registrar_notificacion(
+                db=db,
+                id_usuario=current_user.id_usuario_sistema,
+                titulo=f"Lecturas {MESES_ES.get(mes, mes)}/{anio} importadas",
+                mensaje=f"{len(exitosos)} lecturas registradas correctamente",
+                tipo="exito"
+            )
+        
+        print(f"\n{'='*60}")
+        print(f"✅ COMPLETADO - Exitosos: {len(exitosos)} | Fallidos: {len(fallidos)}")
+        print(f"{'='*60}\n")
+        
+        return LecturaBulkResponse(
+            exitosos=exitosos,
+            fallidos=fallidos,
+            total_procesados=len(exitosos) + len(fallidos),
+            total_exitosos=len(exitosos),
+            total_fallidos=len(fallidos)
+        )
+    
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al importar: {str(e)}"
         )

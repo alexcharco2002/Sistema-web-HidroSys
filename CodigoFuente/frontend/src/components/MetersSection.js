@@ -11,7 +11,7 @@ import './MetersSection.css';
 import {
   Gauge, Search, Edit, Trash2, Eye, CheckCircle, XCircle,
   MapPin, X, Save, RefreshCw, AlertCircle, Map,
-  Navigation, Mountain, UserCheck, 
+  Navigation, Mountain, UserCheck, IdCard,
   User
 } from 'lucide-react';
 
@@ -514,123 +514,173 @@ const MetersSection = () => {
         </div>
       </div>
       {/* GRID DE MEDIDORES */}
-      <div className="users-grid">
-        {sortedMeters.map(meter => (
-          <div key={meter.id_medidor} className={`user-card ${!meter.activo ? 'inactive' : ''}`}>
-            <div className="user-card-header">
-              <div className="user-info">
-                <div className="user-avatar user-avatar-empty">
-                  <Gauge className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="user-name">
-                    Num Medidor: {meter.num_medidor}
-                  </h3>
-                  <div className="user-meta">
-                    <span className={`status-badge ${meter.activo ? 'active' : 'inactive'}`}>
-                      {meter.activo ? (
-                        <>
-                          <CheckCircle className="w-3 h-3" />
-                          Activo
-                        </>
-                      ) : (
-                        <>
-                          <XCircle className="w-3 h-3" />
-                          Inactivo
-                        </>
-                      )}
-                    </span>
-
-                    <span
-                      className={`status-badge ${
-                        meter.id_usuario_afi ? 'active' : 'inactive'
-                      }`}
-                    >
-                      {meter.id_usuario_afi ? (
-                        <>Asignado</>
-                      ) : (
-                        <>No asignado</>
-                      )}
-                    </span>
-                </div>
-
-                </div>
-              </div>
-              
-              <div className="user-actions">
-                <button 
-                  className="action-btn view"
-                  onClick={() => openModal('view', meter)}
-                  title="Ver detalles"
-                >
-                  <Eye className="w-4 h-4 icon-view" />
-                </button>
-
-                {permissions.canUpdate && (
-                  <button 
-                    className="action-btn edit"
-                    onClick={() => openModal('edit', meter)}
-                    title="Editar medidor"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                )}
-
-                {permissions.canToggleStatus && (
-                  <button 
-                    className="action-btn toggle"
-                    onClick={() => toggleMeterStatus(meter.id_medidor)}
-                    title={meter.activo ? 'Desactivar' : 'Activar'}
-                  >
-                    {meter.activo ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
-                  </button>
-                )}
-
-                {permissions.canDelete && (
-                  <button 
-                    className="action-btn delete"
-                    onClick={() => handleDelete(meter.id_medidor)}
-                    title="Eliminar medidor"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
+<div className="users-grid">
+  {sortedMeters.map(meter => {
+    const isAssigned = meter.id_usuario_afi && meter.usuario_afiliado;
+    
+    return (
+      <div key={meter.id_medidor} className={`user-card ${!meter.activo ? 'inactive' : ''}`}>
+        <div className="user-card-header">
+          <div className="user-info">
+            <div className="user-avatar user-avatar-empty">
+              <Gauge className="w-6 h-6" />
             </div>
-            
-            <div className="user-card-body">
-              <div className="user-contact">
-                <div className="contact-item">
-                  <User className="w-4 h-4 text-gray-400" />
-                  <span>{meter.usuario_afiliado?.nombre_afiliado || 'No Asignado'} </span>
-                </div>
-                {meter.id_usuario_afi && meter.usuario_afiliado && (
-                  <div className="contact-item">
-                    <UserCheck className="w-4 h-4 text-gray-400" />
-                    <span> Código: {meter.usuario_afiliado.cod_usuario_afi}</span>
-                  </div>
-                )}
-                <div className="contact-item">
-                  <MapPin className="w-4 h-4 text-gray-400" />
-                  <span>{meter.sector?.nombre_sector || 'Sin sector'}</span>
-                </div>
-                {meter.latitud && meter.longitud && (
-                  <div className="contact-item">
-                    <Navigation className="w-4 h-4 text-gray-400" />
-                    <span>Lat: {meter.latitud}, Lng: {meter.longitud}</span>
-                  </div>
-                )}
-                {meter.altitud && (
-                  <div className="contact-item">
-                    <Mountain className="w-4 h-4 text-gray-400" />
-                    <span>Altitud: {meter.altitud}m</span>
-                  </div>
-                )}
+            <div>
+              <h3 className="user-name">
+                {meter.num_medidor}
+              </h3>
+              <div className="user-meta">
+                {/* Estado Activo/Inactivo */}
+                <span className={`status-badge ${meter.activo ? 'active' : 'inactive'}`}>
+                  {meter.activo ? (
+                    <>
+                      <CheckCircle className="w-3 h-3" />
+                      Activo
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-3 h-3" />
+                      Inactivo
+                    </>
+                  )}
+                </span>
+
+                {/* Estado Asignado/No Asignado */}
+                <span className={`status-badge ${isAssigned ? 'meter-assigned' : 'meter-unassigned'}`}>
+                  {isAssigned ? (
+                    <>
+                      <CheckCircle className="w-3 h-3" />
+                      Asignado
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-3 h-3" />
+                      No Asignado
+                    </>
+                  )}
+                </span>
               </div>
             </div>
           </div>
-        ))}
+          
+          <div className="user-actions">
+            <button 
+              className="action-btn view"
+              onClick={() => openModal('view', meter)}
+              title="Ver detalles"
+            >
+              <Eye className="w-4 h-4 icon-view" />
+            </button>
+
+            {permissions.canUpdate && (
+              <button 
+                className="action-btn edit"
+                onClick={() => openModal('edit', meter)}
+                title="Editar medidor"
+              >
+                <Edit className="w-4 h-4" />
+              </button>
+            )}
+
+            {permissions.canToggleStatus && (
+              <button 
+                className="action-btn toggle"
+                onClick={() => toggleMeterStatus(meter.id_medidor)}
+                title={meter.activo ? 'Desactivar' : 'Activar'}
+              >
+                {meter.activo ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+              </button>
+            )}
+
+            {permissions.canDelete && (
+              <button 
+                className="action-btn delete"
+                onClick={() => handleDelete(meter.id_medidor)}
+                title="Eliminar medidor"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+        
+       
+        <div className="user-card-body">
+          <div className="user-contact">
+
+            {/* Afiliado */}
+            <div className="contact-item">
+              {isAssigned ? (
+                <UserCheck className="w-4 h-4 text-green-500" />
+              ) : (
+                <User className="w-4 h-4 text-amber-500" />
+              )}
+              <div className="contact-text-group">
+                <span className="label">Afiliado</span>
+                <span className="value">
+                  {meter.usuario_afiliado?.nombre_afiliado || "No asignado"}
+                </span>
+              </div>
+            </div>
+
+            {/* Código de Afiliado */}
+            {isAssigned && (
+              <div className="contact-item">
+                <IdCard className="w-4 h-4 text-gray-400" />
+                <div className="contact-text-group">
+                  <span className="label">Código Afiliado</span>
+                  <span className="value">
+                    {meter.usuario_afiliado.cod_usuario_afi}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Sector */}
+            <div className="contact-item">
+              <MapPin className="w-4 h-4 text-gray-400" />
+              <div className="contact-text-group">
+                <span className="label">Sector</span>
+                <span className="value">
+                  {meter.sector?.nombre_sector || "Sin sector"}
+                </span>
+              </div>
+            </div>
+
+            {/* Coordenadas */}
+            {!isNaN(Number(meter.latitud)) && !isNaN(Number(meter.longitud)) && (
+              <div className="contact-item">
+                <Navigation className="w-4 h-4 text-gray-400" />
+                <div className="contact-text-group">
+                  <span className="label">Ubicación</span>
+                  <span className="value">
+                    {Number(meter.latitud).toFixed(4)}°, {Number(meter.longitud).toFixed(4)}°
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Altitud */}
+            {meter.altitud && (
+              <div className="contact-item">
+                <Mountain className="w-4 h-4 text-gray-400" />
+                <div className="contact-text-group">
+                  <span className="label">Altitud</span>
+                  <span className="value">
+                    {meter.altitud} msnm
+                  </span>
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+
       </div>
+    );
+  })}
+</div>
+
 
       {filteredMeters.length === 0 && (
         <div className="empty-state">

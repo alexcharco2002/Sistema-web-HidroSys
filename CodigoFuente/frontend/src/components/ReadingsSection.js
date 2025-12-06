@@ -494,6 +494,7 @@ const ReadingsSection = () => {
     }
   };
 
+  // funcion para normalizar las llaves del excel
   const normalizeKeys = (obj) => {
     const newObj = {};
     Object.keys(obj).forEach((key) => {
@@ -508,6 +509,7 @@ const ReadingsSection = () => {
     return newObj;
   };
 
+  // funcion para previsualizar el excel
   const handleExcelPreview = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -545,6 +547,7 @@ const ReadingsSection = () => {
     }
   };
 
+  // funcion para enviar el excel al backend
   const handleExcelUpload = async () => {
     if (excelPreview.length === 0) {
       setError("No hay datos para enviar");
@@ -670,14 +673,15 @@ return (
         </div>
 
         <div className="periodo-selector-container">
-          <div className="periodo-selector-header">
-            <CalendarDays className="w-5 h-5 text-blue-600 mr-2" />
-            <h3>Seleccionar Periodo</h3>
-            <p className="periodo-selector-subtitle">
-              Selecciona un periodo para gestionar sus lecturas
-            </p>
+          <div className="periodo-selector-header flex items-start">
+            <CalendarDays className="w-5 h-5 text-blue-600 mr-2 mt-1" />
+            <div>
+              <h3 className="font-semibold">Seleccionar Periodo</h3>
+              <p className="periodo-selector-subtitle">
+                Selecciona un periodo para gestionar sus lecturas
+              </p>
+            </div>
           </div>
-
           <div className="periodos-grid">
             {periodos.map(periodo => {
               const porcentaje = getPorcentajeCompletado(periodo);
@@ -722,7 +726,6 @@ return (
         </div>
       </div>
     )}
-
     {/* ==================== PASO 2: GESTIÓN DE LECTURAS DEL PERIODO ==================== */}
     {periodoSeleccionado && (
       <div className="periodo-management-page">
@@ -760,7 +763,7 @@ return (
 
                 <button className="btn-primary" onClick={() => openModal('excel')}>
                   <FileSpreadsheet className="w-4 h-4 mr-2" />
-                  Importar Excel
+                  Crear desde Excel
                 </button>
               </>
             )}
@@ -775,10 +778,7 @@ return (
           </div>
 
           <div className="users-stats">
-            <div
-              className={`stat-item ${filterStatus === 'all' ? 'active' : ''}`}
-              onClick={() => handleStatusFilterClick('all')}
-            >
+            <div className="stat-item">
               <BookOpen className="stat-icon text-blue-600" />
               <div>
                 <p className="stat-label">Total Lecturas</p>
@@ -786,10 +786,7 @@ return (
               </div>
             </div>
 
-            <div
-              className={`stat-item ${filterStatus === 'active' ? 'active green' : ''}`}
-              onClick={() => handleStatusFilterClick('active')}
-            >
+            <div className="stat-item">
               <CheckCircle className="stat-icon text-green-600" />
               <div>
                 <p className="stat-label">Activas</p>
@@ -797,10 +794,7 @@ return (
               </div>
             </div>
 
-            <div
-              className={`stat-item ${filterStatus === 'inactive' ? 'active red' : ''}`}
-              onClick={() => handleStatusFilterClick('inactive')}
-            >
+            <div className="stat-item">
               <XCircle className="stat-icon text-red-600" />
               <div>
                 <p className="stat-label">Inactivas</p>
@@ -834,6 +828,16 @@ return (
           </div>
 
           <div className="filters-right">
+            {/* NUEVO FILTRO DE ESTADOS */}
+            <select
+              className="filter-select"
+              value={filterStatus}
+              onChange={(e) => handleStatusFilterClick(e.target.value)}
+            >
+              <option value="all">Todos los estados</option>
+              <option value="active">Activos</option>
+              <option value="inactive">Inactivos</option>
+            </select>
             <select
               className="filter-select"
               value={sortOption}
@@ -885,8 +889,8 @@ return (
             <div className="readings-list-header">
               <span>#</span>
               <span><Gauge className="w-4 h-4" /> Medidor</span>
-              <span><User className="w-4 h-4" /> Nombre</span>
-              <span>Código</span>
+              <span><User className="w-4 h-4" /> Nombre Afi</span>
+              <span>Código Afi</span>
               <span><MapPin className="w-4 h-4" /> Sector</span>
               <span>Lect. Ant.</span>
               <span>Lect. Act.</span>
@@ -900,7 +904,6 @@ return (
               {sortedReadings.length > 0 ? (
                 sortedReadings.map((reading) => {
                   const consumoClass = reading.consumo_m3 > 100 ? 'alto' : reading.consumo_m3 > 50 ? 'medio' : '';
-                  
                   return (
                     <div 
                       key={reading.id_lectura} 
@@ -1000,13 +1003,6 @@ return (
                   <p>
                     No se encontraron lecturas para {readingsServices.formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}
                   </p>
-                  <button 
-                    className="btn-primary" 
-                    onClick={() => openModal('create')}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Crear primera lectura
-                  </button>
                 </div>
               )}
             </div>
@@ -1045,7 +1041,7 @@ return (
               {modalType === 'create' && 'Crear Nueva Lectura'}
               {modalType === 'edit' && 'Editar Lectura'}
               {modalType === 'view' && 'Detalles de la Lectura'}
-              {modalType === 'excel' && '📊 Importar Lecturas desde Excel'}
+              {modalType === 'excel' && 'Importar Lecturas desde Excel'}
             </h3>
             <button className="modal-close" onClick={closeModal}>
               <X className="w-5 h-5" />
@@ -1061,7 +1057,7 @@ return (
             </div>
           )}
 
-          {/* ==================== MODAL DE EXCEL CON PERIODO ==================== */}
+          {/* ==================== MODAL DE EXCEL  ==================== */}
           {modalType === 'excel' && (
             <div className="user-form">
               <div className="form-grid">
@@ -1125,17 +1121,11 @@ return (
                 <div className="form-group form-group-full">
                   <button
                     type="button"
-                    className="btn-primary"
+                    className="btn-plantilla"
                     onClick={handleDownloadTemplate}
-                    style={{ 
-                      display: "flex", 
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: "100%"
-                    }}
                   >
                     <Download className="w-4 h-4 mr-2" />
-                    Descargar Plantilla Excel
+                    Descargar plantilla Excel
                   </button>
                   <small className="text-gray-500 mt-1">
                     Descarga la plantilla con los medidores y sus últimas lecturas.
@@ -1175,17 +1165,37 @@ return (
                   <div className="form-group form-group-full">
                     <label>
                       📊 Vista previa ({excelPreview.length} lecturas)
-                      {excelPreview.length > 500 && (
-                        <span className="text-red-600 ml-2">⚠️ Excede el límite de 500</span>
-                      )}
-                    </label>
+                      {(() => {
+                        const validas = excelPreview.filter(lectura => {
+                          const esNumerico = /^\d{1,13}$/.test(lectura.lectura_actual);
+                          return (
+                            lectura.num_medidor &&
+                            lectura.lectura_actual &&
+                            esNumerico &&
+                            parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0)
+                          );
+                        }).length;
 
+                        const invalidas = excelPreview.length - validas;
+
+                       return (
+                          <ul className="ml-4 space-y-1">
+                            <li className="text-green-600">{validas} válidas</li>
+
+                            {invalidas > 0 && (
+                              <li className="text-red-600">{invalidas} inválidas (serán omitidas)</li>
+                            )}
+                          </ul>
+                        );
+                      })()}
+                    </label>
                     <div className="excel-preview-container">
                       <table className="excel-preview-table">
                         <thead>
                           <tr>
                             <th>#</th>
                             <th>Medidor</th>
+                            <th>Código Afiliado</th> 
                             <th>Nombre</th>
                             <th className="align-right">Lect. Ant.</th>
                             <th className="align-right">Lect. Act.</th>
@@ -1195,17 +1205,35 @@ return (
                         </thead>
                         <tbody>
                           {excelPreview.map((lectura, idx) => {
+                            // ✅ Validación mejorada con regex para números
+                            const esNumerico = /^\d{1,13}$/.test(lectura.lectura_actual);
                             const esValido =
                               lectura.num_medidor &&
                               lectura.lectura_actual &&
+                              esNumerico &&
                               parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0);
-                            const consumo = parseInt(lectura.lectura_actual || 0) - parseInt(lectura.lectura_anterior || 0);
+                            
+                            const consumo = esValido 
+                              ? parseInt(lectura.lectura_actual) - parseInt(lectura.lectura_anterior || 0)
+                              : 0;
+
+                            // Determinar error específico
+                            let errorMsg = '';
+                            if (!lectura.num_medidor) errorMsg = 'Sin medidor';
+                            else if (!lectura.lectura_actual) errorMsg = 'Sin lectura';
+                            else if (!esNumerico) errorMsg = 'Solo números (máx 13 dígitos)';
+                            else if (parseInt(lectura.lectura_actual) < parseInt(lectura.lectura_anterior || 0)) 
+                              errorMsg = 'Lectura menor que anterior';
 
                             return (
                               <tr key={idx} className={!esValido ? 'invalid' : ''}>
                                 <td className="text-muted">{idx + 1}</td>
                                 <td>
                                   {lectura.num_medidor || <span className="excel-preview-error">❌ Falta</span>}
+                                </td>
+                                {/* ✅ Nueva columna código afiliado */}
+                                <td className="text-small">
+                                  {lectura.codigo_afiliado || '-'}
                                 </td>
                                 <td className="text-small">
                                   {lectura.nombre_afiliado || '-'}
@@ -1214,16 +1242,26 @@ return (
                                   {lectura.lectura_anterior || 0}
                                 </td>
                                 <td className="align-right">
-                                  {lectura.lectura_actual || <span className="excel-preview-error">❌</span>}
+                                  {lectura.lectura_actual ? (
+                                    esNumerico ? (
+                                      lectura.lectura_actual
+                                    ) : (
+                                      <span className="excel-preview-error" title={errorMsg}>
+                                        ❌ {lectura.lectura_actual}
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="excel-preview-error">❌</span>
+                                  )}
                                 </td>
                                 <td className="align-right text-bold text-success">
                                   {consumo} m³
                                 </td>
                                 <td className="align-center">
                                   {esValido ? (
-                                    <span className="excel-preview-success">✓</span>
+                                    <span className="excel-preview-success" title="Válido">✓</span>
                                   ) : (
-                                    <span className="excel-preview-error">✗</span>
+                                    <span className="excel-preview-error" title={errorMsg}>✗</span>
                                   )}
                                 </td>
                               </tr>
@@ -1234,6 +1272,8 @@ return (
                     </div>
                   </div>
                 )}
+
+                
               </div>
 
               <div className="form-actions">
@@ -1249,14 +1289,37 @@ return (
                     !excelMesSeleccionado || 
                     !excelAnioSeleccionado ||
                     excelPreview.length === 0 || 
-                    excelPreview.length > 500 || 
+                    (() => {
+                      // ✅ Contar solo filas válidas
+                      const validas = excelPreview.filter(lectura => {
+                        const esNumerico = /^\d{1,13}$/.test(lectura.lectura_actual);
+                        return (
+                          lectura.num_medidor &&
+                          lectura.lectura_actual &&
+                          esNumerico &&
+                          parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0)
+                        );
+                      }).length;
+                      return validas === 0 || validas > 500;
+                    })() ||
                     loadingExcel
                   }
                 >
                   <Upload className="w-4 h-4 mr-2" />
                   {loadingExcel 
                     ? 'Procesando...' 
-                    : `Importar ${excelPreview.length} lectura${excelPreview.length !== 1 ? 's' : ''}`
+                    : (() => {
+                        const validas = excelPreview.filter(lectura => {
+                          const esNumerico = /^\d{1,13}$/.test(lectura.lectura_actual);
+                          return (
+                            lectura.num_medidor &&
+                            lectura.lectura_actual &&
+                            esNumerico &&
+                            parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0)
+                          );
+                        }).length;
+                        return `Crear ${validas} lectura${validas !== 1 ? 's' : ''} válida${validas !== 1 ? 's' : ''}`;
+                      })()
                   }
                 </button>
               </div>

@@ -1002,9 +1002,52 @@
 }
 
 .btn-secondary:hover {
-  background: var(--text-secondary);
+  background: var(--primary-light); /* #3b82f6 */
   transform: translateY(-1px);
 }
+
+/* Botón principal para descarga de plantilla */
+.btn-plantilla {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #10b981;
+  color: #ffffff;
+  padding: 10px 16px;
+
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+
+  border-radius: 6px;
+  cursor: pointer;
+
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+/* Hover */
+.btn-plantilla:hover {
+  background: #0e9f75;
+}
+
+/* Active: pequeña presión visual */
+.btn-plantilla:active {
+  background: #34d399;
+  transform: scale(0.97);
+}
+
+/* Texto informativo */
+.info-plantilla {
+  display: block;
+  margin-top: 6px;
+  color: #616e7c;
+  font-size: 13px;
+}
+
+
 
 .profile-content {
   padding: 24px;

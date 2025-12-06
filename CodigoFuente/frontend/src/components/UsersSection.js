@@ -10,7 +10,7 @@ import {
   Users, Plus, Search, Edit, Trash2, Eye, UserCheck, UserX,
   Mail, Phone, MapPin, Calendar, X, Save, RefreshCw, Key,
   Image as ImageIcon, AlertCircle, ArrowUpDown, IdCard, CheckCircle, XCircle,
-  UserCog, Wallet, BookOpen, User, FileSpreadsheet
+  UserCog, Wallet, BookOpen, User, FileSpreadsheet, Download 
 } from 'lucide-react';
 
 const UsersSection = () => {
@@ -59,14 +59,25 @@ const UsersSection = () => {
     }
   };
   
+  // función para enviar datos al servidor
   const handleExcelUpload = async () => {
     if (excelPreview.length === 0) {
       setError("No hay datos para enviar");
       return;
     }
 
-    if (excelPreview.length > 100) {
-      setError("Máximo 100 usuarios por carga");
+    // ✅ FILTRAR: Solo usuarios válidos
+    const usuariosValidos = excelPreview.filter(u => 
+      u.nombres && u.apellidos && u.cedula && u.email
+    );
+
+    if (usuariosValidos.length === 0) {
+      setError("No hay usuarios válidos para importar");
+      return;
+    }
+
+    if (usuariosValidos.length > 500) {
+      setError("Máximo 500 usuarios válidos por carga");
       return;
     }
 
@@ -74,14 +85,21 @@ const UsersSection = () => {
       setLoading(true);
       setError(null);
 
-      const result = await usersService.createManyUsers(excelPreview);
+      // ✅ Enviar solo usuarios válidos
+      const result = await usersService.createManyUsers(usuariosValidos);
 
       if (result.success) {
         const { exitosos, fallidos, total_procesados } = result.data;
+        const omitidos = excelPreview.length - usuariosValidos.length;
         
         // Construir mensaje detallado
         let mensaje = `📊 RESULTADO DE LA CARGA MASIVA\n`;
         mensaje += `${'='.repeat(50)}\n\n`;
+        
+        if (omitidos > 0) {
+          mensaje += `⚠️ Filas omitidas (inválidas): ${omitidos}\n`;
+        }
+        
         mensaje += `✅ Usuarios creados: ${exitosos.length}/${total_procesados}\n`;
         mensaje += `❌ Errores: ${fallidos.length}/${total_procesados}\n\n`;
         
@@ -91,13 +109,17 @@ const UsersSection = () => {
           mensaje += `📋 CREDENCIALES GENERADAS:\n`;
           mensaje += `${'='.repeat(50)}\n\n`;
           
-          exitosos.forEach((u, idx) => {
+          exitosos.slice(0, 10).forEach((u, idx) => {
             mensaje += `${idx + 1}. ${u.nombre}\n`;
             mensaje += `   👤 Usuario: ${u.usuario}\n`;
             mensaje += `   🔑 Contraseña: ${u.contraseña}\n`;
             mensaje += `   📧 Email: ${u.email}\n`;
             mensaje += `   🆔 Cédula: ${u.cedula}\n\n`;
           });
+          
+          if (exitosos.length > 10) {
+            mensaje += `... y ${exitosos.length - 10} más\n\n`;
+          }
         }
         
         // Mostrar errores
@@ -106,24 +128,19 @@ const UsersSection = () => {
           mensaje += `❌ ERRORES ENCONTRADOS:\n`;
           mensaje += `${'='.repeat(50)}\n\n`;
           
-          fallidos.forEach((f, idx) => {
+          fallidos.slice(0, 5).forEach((f, idx) => {
             mensaje += `${idx + 1}. Fila ${f.fila}: ${f.nombre}\n`;
             mensaje += `   Error: ${f.error}\n`;
             if (f.email) mensaje += `   Email: ${f.email}\n`;
             if (f.cedula) mensaje += `   Cédula: ${f.cedula}\n`;
             mensaje += `\n`;
           });
+          
+          if (fallidos.length > 5) {
+            mensaje += `... y ${fallidos.length - 5} errores más\n`;
+          }
         }
-        
-        // Mostrar alerta con scroll
-        const alertDiv = document.createElement('div');
-        alertDiv.innerHTML = `
-          <div style="max-height: 500px; overflow-y: auto; text-align: left; font-family: monospace; white-space: pre-wrap; font-size: 12px; line-height: 1.5;">
-            ${mensaje}
-          </div>
-        `;
-        
-        // Usar SweetAlert2 si lo tienes, o alert simple
+
         alert(mensaje);
         
         // Recargar usuarios y cerrar modal
@@ -131,7 +148,7 @@ const UsersSection = () => {
         closeModal();
         setExcelPreview([]);
         setSelectedExcel(null);
-        
+          
       } else {
         setError(result.message || "Error al procesar usuarios");
       }
@@ -143,6 +160,7 @@ const UsersSection = () => {
       setLoading(false);
     }
   };
+
 
 
   // 🔽 Estados de ordenamiento mejorados
@@ -1055,205 +1073,230 @@ const UsersSection = () => {
                   {error}
                 </div>
               )}
+              
               {/* ==================== MODAL DE CARGA DESDE EXCEL ==================== */}
-              {modalType === 'excel' && (
-                <div className="user-form">
-                  {/* 📥 BOTÓN DE DESCARGA DE PLANTILLA */}
-                  <div className="form-group form-group-full" style={{ marginBottom: "20px" }}>
-                    <button className='btn-primary'
-                      onClick={() => usersService.ExcelTemplate.generateTemplate()}
+{modalType === 'excel' && (
+  <div className="user-form">
+    {/* 📥 BOTÓN DE DESCARGA DE PLANTILLA */}
+    <div className="form-group form-group-full" style={{ marginBottom: "20px" }}>
+      <button className='btn-plantilla'
+        onClick={() => usersService.ExcelTemplate.generateTemplate()}
+      >
+        <Download className="w-4 h-4 mr-2" />
+        Descargar plantilla Excel
+      </button>
+
+      <small className="text-gray-500 mt-1 block">
+        La plantilla incluye: nombres, apellidos, sexo, fecha_nac, cedula, email, telefono, direccion
+      </small>
+    </div>
+    <div className="form-grid">
+      {/* Selector de archivo */}
+      <div className="form-group form-group-full">
+        <label>Seleccionar archivo Excel *</label>
+        <input
+          type="file"
+          accept=".xlsx,.xls"
+          onChange={handleExcelPreview}
+          className="file-input"
+        />
+        <small className="text-gray-500 mt-1">
+          📋 <strong>Formato requerido:</strong> Excel (.xlsx, .xls)
+          <br />
+          📝 <strong>Columnas obligatorias:</strong>
+          <br />
+          &nbsp;&nbsp;&nbsp;• nombres, apellidos, sexo , fecha_nac 
+          <br />
+          &nbsp;&nbsp;&nbsp;• cedula , email, telefono, direccion
+          <br />
+          <br />
+          ℹ️ <strong>Notas importantes:</strong>
+          <br />
+          &nbsp;&nbsp;&nbsp;• Todos los usuarios se crearán con <strong>rol Cliente</strong>
+          <br />
+          &nbsp;&nbsp;&nbsp;• Estado: <strong>Activo</strong>
+          <br />
+          &nbsp;&nbsp;&nbsp;• Contraseña: <strong>Su número de cédula</strong>
+          <br />
+          &nbsp;&nbsp;&nbsp;• Usuario: <strong>Se genera automáticamente</strong>
+          <br />
+          &nbsp;&nbsp;&nbsp;• Máximo: <strong>500 usuarios por carga</strong>
+        </small>
+      </div>
+
+      {/* Archivo seleccionado */}
+      {selectedExcel && (
+        <div className="form-group form-group-full">
+          <div className="alert alert-info">
+            <AlertCircle className="w-5 h-5 mr-2" />
+            <div>
+              <strong>Archivo seleccionado:</strong> {selectedExcel.name}
+              <br />
+              <small>Tamaño: {(selectedExcel.size / 1024).toFixed(2)} KB</small>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vista previa */}
+      {excelPreview.length > 0 && (
+        <div className="form-group form-group-full">
+          <label>
+            📊 Vista previa ({excelPreview.length} usuario{excelPreview.length !== 1 ? 's' : ''})
+            {(() => {
+              const validos = excelPreview.filter(u => u.nombres && u.apellidos && u.cedula && u.email).length;
+              const invalidos = excelPreview.length - validos;
+              
+              return (
+                <ul className="ml-4 space-y-1">
+                  <li className="text-green-600">✓ {validos} válidos</li>
+                  {invalidos > 0 && (
+                    <li className="text-red-600">⚠️ {invalidos} inválidos (serán omitidos)</li>
+                  )}
+                </ul>
+              );
+            })()}
+          </label>
+          
+          <div style={{ 
+            maxHeight: '400px', 
+            overflowY: 'auto', 
+            border: '1px solid #e5e7eb', 
+            borderRadius: '8px',
+            backgroundColor: '#fff'
+          }}>
+            <table style={{ 
+              width: '100%', 
+              fontSize: '13px', 
+              borderCollapse: 'collapse' 
+            }}>
+              <thead style={{ 
+                position: 'sticky', 
+                top: 0, 
+                backgroundColor: '#f9fafb', 
+                borderBottom: '2px solid #e5e7eb',
+                zIndex: 1
+              }}>
+                <tr>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>#</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Nombres</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Apellidos</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Sexo</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>F. Nac.</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Cédula</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Email</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Teléfono</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {excelPreview.map((u, idx) => {
+                  // ✅ Validación mejorada
+                  const esValido = u.nombres && u.apellidos && u.cedula && u.email;
+                  const tieneErrores = !esValido;
+                  
+                  return (
+                    <tr 
+                      key={idx} 
+                      style={{ 
+                        borderBottom: '1px solid #f3f4f6',
+                        backgroundColor: tieneErrores ? '#fef2f2' : 'transparent'
+                      }}
                     >
-                      📥 Descargar plantilla Excel
-                    </button>
+                      <td style={{ padding: '8px', color: '#6b7280' }}>{idx + 1}</td>
+                      <td style={{ padding: '8px' }}>
+                        {u.nombres || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                      </td>
+                      <td style={{ padding: '8px' }}>
+                        {u.apellidos || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                      </td>
+                      <td style={{ padding: '8px' }}>
+                        {u.sexo || <span style={{ color: '#f59e0b' }}>⚠️ O</span>}
+                      </td>
+                      <td style={{ padding: '8px', fontSize: '12px' }}>
+                        {u.fecha_nac || <span style={{ color: '#f59e0b' }}>⚠️ Sin fecha</span>}
+                      </td>
+                      <td style={{ padding: '8px' }}>
+                        {u.cedula || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                      </td>
+                      <td style={{ padding: '8px', fontSize: '12px' }}>
+                        {u.email || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                      </td>
+                      <td style={{ padding: '8px' }}>
+                        {u.telefono || <span style={{ color: '#9ca3af' }}>-</span>}
+                      </td>
+                      <td style={{ padding: '8px' }}>
+                        {esValido ? (
+                          <span style={{ color: '#10b981', fontSize: '12px' }}>✓ OK</span>
+                        ) : (
+                          <span style={{ color: '#ef4444', fontSize: '12px' }}>✗ Error</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          
+          {/* ✅ RESUMEN MEJORADO */}
+          <div style={{ 
+            marginTop: '12px', 
+            padding: '12px', 
+            backgroundColor: '#f9fafb', 
+            borderRadius: '6px',
+            fontSize: '13px'
+          }}>
+            <strong>ℹ️ Información:</strong>
+            <ul style={{ marginTop: '8px', marginLeft: '20px' }}>
+              <li>Usuario y contraseña se generarán automáticamente</li>
+              <li>Rol asignado: <strong>Cliente</strong></li>
+              <li>Estado: <strong>Activo</strong></li>
+              <li>Contraseña inicial: <strong>Número de cédula</strong></li>
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
 
-                    <small className="text-gray-500 mt-1 block">
-                      La plantilla incluye: nombres, apellidos, sexo, fecha_nac, cedula, email, telefono, direccion
-                    </small>
-                  </div>
-                  <div className="form-grid">
-                    {/* Selector de archivo */}
-                    <div className="form-group form-group-full">
-                      <label>Seleccionar archivo Excel *</label>
-                      <input
-                        type="file"
-                        accept=".xlsx,.xls"
-                        onChange={handleExcelPreview}
-                        className="file-input"
-                      />
-                      <small className="text-gray-500 mt-1">
-                        📋 <strong>Formato requerido:</strong> Excel (.xlsx, .xls)
-                        <br />
-                        📝 <strong>Columnas obligatorias:</strong>
-                        <br />
-                        &nbsp;&nbsp;&nbsp;• nombres, apellidos, sexo , fecha_nac 
-                        <br />
-                        &nbsp;&nbsp;&nbsp;• cedula , email, telefono, direccion
-                        <br />
-                        <br />
-                        ℹ️ <strong>Notas importantes:</strong>
-                        <br />
-                        &nbsp;&nbsp;&nbsp;• Todos los usuarios se crearán con <strong>rol Cliente</strong>
-                        <br />
-                        &nbsp;&nbsp;&nbsp;• Estado: <strong>Activo</strong>
-                        <br />
-                        &nbsp;&nbsp;&nbsp;• Contraseña: <strong>Su número de cédula</strong>
-                        <br />
-                        &nbsp;&nbsp;&nbsp;• Usuario: <strong>Se genera automáticamente</strong>
-                        <br />
-                        &nbsp;&nbsp;&nbsp;• Máximo: <strong>100 usuarios por carga</strong>
-                      </small>
-                    </div>
+    {/* Botones */}
+    <div className="form-actions">
+      <button 
+        type="button" 
+        className="btn-secondary" 
+        onClick={closeModal}
+      >
+        <X className="w-4 h-4 mr-2" />
+        Cancelar
+      </button>
 
-                    {/* Archivo seleccionado */}
-                    {selectedExcel && (
-                      <div className="form-group form-group-full">
-                        <div className="alert alert-info">
-                          <AlertCircle className="w-5 h-5 mr-2" />
-                          <div>
-                            <strong>Archivo seleccionado:</strong> {selectedExcel.name}
-                            <br />
-                            <small>Tamaño: {(selectedExcel.size / 1024).toFixed(2)} KB</small>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+      <button 
+        type="button" 
+        className="btn-primary"
+        onClick={handleExcelUpload}
+        disabled={
+          excelPreview.length === 0 || 
+          (() => {
+            // ✅ Contar solo usuarios válidos
+            const validos = excelPreview.filter(u => u.nombres && u.apellidos && u.cedula && u.email).length;
+            return validos === 0 || validos > 500;
+          })() ||
+          loading
+        }
+      >
+        <Save className="w-4 h-4 mr-2" />
+        {loading 
+          ? 'Procesando...' 
+          : (() => {
+              const validos = excelPreview.filter(u => u.nombres && u.apellidos && u.cedula && u.email).length;
+              return `Crear ${validos} usuario${validos !== 1 ? 's' : ''} válido${validos !== 1 ? 's' : ''}`;
+            })()
+        }
+      </button>
+    </div>
+  </div>
+)}
 
-                    {/* Vista previa */}
-                    {excelPreview.length > 0 && (
-                      <div className="form-group form-group-full">
-                        <label>
-                          📊 Vista previa ({excelPreview.length} usuario{excelPreview.length !== 1 ? 's' : ''})
-                          {excelPreview.length > 100 && (
-                            <span className="text-red-600 ml-2">
-                              ⚠️ Excede el límite de 100 usuarios
-                            </span>
-                          )}
-                        </label>
-                        
-                        <div style={{ 
-                          maxHeight: '400px', 
-                          overflowY: 'auto', 
-                          border: '1px solid #e5e7eb', 
-                          borderRadius: '8px',
-                          backgroundColor: '#fff'
-                        }}>
-                          <table style={{ 
-                            width: '100%', 
-                            fontSize: '13px', 
-                            borderCollapse: 'collapse' 
-                          }}>
-                            <thead style={{ 
-                              position: 'sticky', 
-                              top: 0, 
-                              backgroundColor: '#f9fafb', 
-                              borderBottom: '2px solid #e5e7eb',
-                              zIndex: 1
-                            }}>
-                              <tr>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>#</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Nombres</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Apellidos</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Sexo</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>F. Nac.</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Cédula</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Email</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Teléfono</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Estado</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {excelPreview.map((u, idx) => {
-                                // Validar fila
-                                const esValida = u.nombres && u.apellidos && u.cedula && u.email;
-                                const tieneErrores = !esValida;
-                                
-                                return (
-                                  <tr 
-                                    key={idx} 
-                                    style={{ 
-                                      borderBottom: '1px solid #f3f4f6',
-                                      backgroundColor: tieneErrores ? '#fef2f2' : 'transparent'
-                                    }}
-                                  >
-                                    <td style={{ padding: '8px', color: '#6b7280' }}>{idx + 1}</td>
-                                    <td style={{ padding: '8px' }}>
-                                      {u.nombres || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
-                                    </td>
-                                    <td style={{ padding: '8px' }}>
-                                      {u.apellidos || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
-                                    </td>
-                                    <td style={{ padding: '8px' }}>
-                                      {u.sexo || <span style={{ color: '#f59e0b' }}>⚠️ O</span>}
-                                    </td>
-                                    <td style={{ padding: '8px', fontSize: '12px' }}>
-                                      {u.fecha_nac || <span style={{ color: '#f59e0b' }}>⚠️ Sin fecha</span>}
-                                    </td>
-                                    <td style={{ padding: '8px' }}>
-                                      {u.cedula || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
-                                    </td>
-                                    <td style={{ padding: '8px', fontSize: '12px' }}>
-                                      {u.email || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
-                                    </td>
-                                    <td style={{ padding: '8px' }}>
-                                      {u.telefono || <span style={{ color: '#9ca3af' }}>-</span>}
-                                    </td>
-                                    <td style={{ padding: '8px' }}>
-                                      {esValida ? (
-                                        <span style={{ color: '#10b981', fontSize: '12px' }}>✓ OK</span>
-                                      ) : (
-                                        <span style={{ color: '#ef4444', fontSize: '12px' }}>✗ Error</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                        
-                        {/* Resumen */}
-                        <div style={{ 
-                          marginTop: '12px', 
-                          padding: '12px', 
-                          backgroundColor: '#f9fafb', 
-                          borderRadius: '6px',
-                          fontSize: '13px'
-                        }}>
-                          <strong>ℹ️ Información:</strong>
-                          <ul style={{ marginTop: '8px', marginLeft: '20px' }}>
-                            <li>Usuario y contraseña se generarán automáticamente</li>
-                            <li>Rol asignado: <strong>Cliente</strong></li>
-                            <li>Estado: <strong>Activo</strong></li>
-                            <li>Contraseña inicial: <strong>Número de cédula</strong></li>
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Botones */}
-                  <div className="form-actions">
-                    <button 
-                      type="button" 
-                      className="btn-secondary" 
-                      onClick={closeModal}
-                    >
-                      <X className="w-4 h-4 mr-2" />
-                      Cancelar
-                    </button>
-
-                    <button 
-                      type="button" 
-                      className="btn-primary"
-                      onClick={handleExcelUpload}
-                      disabled={excelPreview.length === 0 || excelPreview.length > 100}
-                    >
-                      <Save className="w-4 h-4 mr-2" />
-                      Crear {excelPreview.length} Usuario{excelPreview.length !== 1 ? 's' : ''}
-                    </button>
-                  </div>
-                </div>
-              )}
     
               {/* ==================== MODAL DE VISTA ==================== */}
               {modalType === 'view' && selectedUser && (

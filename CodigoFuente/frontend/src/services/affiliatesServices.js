@@ -598,67 +598,67 @@ downloadBlobFallback(blob, filename) {
   link.click();
 }
 
-
-/**
- * ✅ Crear múltiples afiliados con medidores desde Excel
- */
-async createManyAffiliates(affiliatesArray) {
-  try {
-    if (!Array.isArray(affiliatesArray) || affiliatesArray.length === 0) {
-      return {
-        success: false,
-        message: 'Debe proporcionar un array de afiliados válido'
-      };
-    }
-
-    if (affiliatesArray.length > 100) {
-      return {
-        success: false,
-        message: 'Máximo 100 afiliados por carga. Actualmente: ' + affiliatesArray.length
-      };
-    }
-
-    // Validar estructura básica
-    const afiliadosValidados = affiliatesArray.map((aff, index) => {
-      if (!aff.id_usuario_sistema || !aff.id_sector || !aff.num_medidor) {
-        throw new Error(`Fila ${index + 1}: Faltan campos obligatorios`);
+  /**
+   * ✅ Crear múltiples afiliados con medidores desde Excel
+   */
+  async createManyAffiliates(affiliatesArray) {
+    try {
+      if (!Array.isArray(affiliatesArray) || affiliatesArray.length === 0) {
+        return {
+          success: false,
+          message: 'Debe proporcionar un array de afiliados válido'
+        };
       }
 
-      return {
-        id_usuario_sistema: parseInt(aff.id_usuario_sistema),
-        id_sector: parseInt(aff.id_sector),
-        num_medidor: String(aff.num_medidor).trim(),
-        latitud: aff.latitud ? parseFloat(aff.latitud) : null,
-        longitud: aff.longitud ? parseFloat(aff.longitud) : null,
-        altitud: aff.altitud ? parseFloat(aff.altitud) : null
-      };
-    });
-
-    console.log('📤 Enviando afiliados al backend:', afiliadosValidados.length);
-
-    const data = await this.makeRequest(`${API_CONFIG.endpoints.affiliates}/bulk`, {
-      method: 'POST',
-      body: {
-        affiliates: afiliadosValidados
+      // ✅ Validar máximo 500 afiliados
+      if (affiliatesArray.length > 500) {
+        return {
+          success: false,
+          message: 'Máximo 500 afiliados por carga. Actualmente: ' + affiliatesArray.length
+        };
       }
-    });
 
-    console.log('📥 Respuesta del backend:', data);
+      // Validar estructura básica
+      const afiliadosValidados = affiliatesArray.map((aff, index) => {
+        if (!aff.id_usuario_sistema || !aff.id_sector || !aff.num_medidor) {
+          throw new Error(`Fila ${index + 1}: Faltan campos obligatorios`);
+        }
 
-    return {
-      success: true,
-      data: data,
-      message: `Proceso completado: ${data.total_exitosos} exitosos, ${data.total_fallidos} fallidos`
-    };
+        return {
+          id_usuario_sistema: parseInt(aff.id_usuario_sistema),
+          id_sector: parseInt(aff.id_sector),
+          num_medidor: String(aff.num_medidor).trim(),
+          latitud: aff.latitud ? parseFloat(aff.latitud) : null,
+          longitud: aff.longitud ? parseFloat(aff.longitud) : null,
+          altitud: aff.altitud ? parseFloat(aff.altitud) : null
+        };
+      });
 
-  } catch (error) {
-    console.error('❌ Error en carga masiva:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al crear afiliados masivamente'
-    };
+      console.log('📤 Enviando afiliados al backend:', afiliadosValidados.length);
+
+      const data = await this.makeRequest(`${API_CONFIG.endpoints.affiliates}/bulk`, {
+        method: 'POST',
+        body: {
+          affiliates: afiliadosValidados
+        }
+      });
+
+      console.log('📥 Respuesta del backend:', data);
+
+      return {
+        success: true,
+        data: data,
+        message: `Proceso completado: ${data.total_exitosos} exitosos, ${data.total_fallidos} fallidos`
+      };
+
+    } catch (error) {
+      console.error('❌ Error en carga masiva:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al crear afiliados masivamente'
+      };
+    }
   }
-}
 }
 
 const affiliatesService = new AffiliatesService();

@@ -4,7 +4,7 @@
  */
 import {
   BarChart3, Users, FileText, DollarSign, Gauge, UserCircle,
-  Calendar, Settings, Package, Clock, Bell, Tally4,
+  Calendar, Settings, Package, Clock, Bell, BookOpen,
   TrendingUp, Database, Home, Briefcase, PieChart, Cog, AlertCircle, MapPin, Layers, ShieldCheck, Handshake, UserCheck
 } from "lucide-react";
 
@@ -145,7 +145,7 @@ export const MODULE_DEFINITIONS = {
     id: "readings",
     path: "readings", // 🔥 Ruta URL: /admin/dashboard/readings
     label: "Lecturas",
-    icon: Tally4,
+    icon: BookOpen,
     color: "indigo",
     category: "OPERATIONS",
     order: 1,

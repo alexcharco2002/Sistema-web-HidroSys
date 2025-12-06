@@ -243,17 +243,17 @@ class UsersService {
         };
       }
 
-      // Validar máximo 100 usuarios
-      if (usersArray.length > 100) {
+      // ✅ Validar máximo 500 usuarios
+      if (usersArray.length > 500) {
         return {
           success: false,
-          message: 'Máximo 100 usuarios por carga. Actualmente: ' + usersArray.length
+          message: 'Máximo 500 usuarios por carga. Actualmente: ' + usersArray.length
         };
       }
 
       // Validar estructura básica de cada usuario
       const usuariosValidados = usersArray.map((user, index) => {
-        // Validaciones mínimas
+        // Validaciones mínimas (ya filtradas en frontend)
         if (!user.nombres || !user.apellidos || !user.cedula || !user.email) {
           throw new Error(`Fila ${index + 1}: Faltan campos obligatorios (nombres, apellidos, cedula, email)`);
         }
@@ -296,6 +296,7 @@ class UsersService {
       };
     }
   }
+
 
   /**
    * ✅ Actualizar un usuario existente - CORREGIDO

@@ -1051,6 +1051,8 @@ def get_blocked_users(
 # ========================================
 # CREAR USUARIOS MASIVAMENTE DESDE EXCEL
 # ========================================
+# En el endpoint, reemplaza la validación de máximo:
+
 @router.post("/bulk", response_model=UserBulkResponse, status_code=status.HTTP_201_CREATED)
 def create_users_bulk(
     request: UserBulkCreateRequest,
@@ -1059,21 +1061,23 @@ def create_users_bulk(
 ):
     """
     Crea múltiples usuarios desde Excel.
-    Requiere permiso: usuarios.crear o usuarios.crud
     
-    ✅ Todos los usuarios se crean con:
-       - id_rol: 4 (Cliente)
-       - activo: True
-       - usuario: generado automáticamente (primer_nombre + contador si existe)
-       - contraseña: la cédula completa
-    
-    📊 Retorna:
-       - Lista de usuarios creados exitosamente con sus credenciales
-       - Lista de errores con detalles de cada fallo
+    ✅ AHORA SOPORTA:
+       - Máximo: 500 usuarios por carga (mejorado de 100)
+       - Procesamiento en lotes para mejor rendimiento
+       - Validaciones de duplicados más eficientes
     """
+    
     # Verificar permisos
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "usuarios", "crear")
+    
+    # ✅ VALIDAR MÁXIMO 500 USUARIOS
+    if len(request.users) > 500:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Máximo 500 usuarios por carga. Enviaste: {len(request.users)}"
+        )
     
     exitosos = []
     fallidos = []

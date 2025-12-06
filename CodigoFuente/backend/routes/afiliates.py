@@ -932,6 +932,10 @@ def create_affiliates_bulk(
     """
     Crea múltiples afiliados con sus medidores desde Excel.
     
+    ✅ AHORA SOPORTA:
+       - Máximo: 500 afiliados por carga (mejorado de 100)
+       - Procesamiento eficiente de lotes grandes
+    
     ✅ Por cada fila se crea:
        1. Un registro en t_usuario_afiliado
        2. Un registro en t_medidor asociado
@@ -942,6 +946,13 @@ def create_affiliates_bulk(
        - activo: True
     """
     current_user = get_current_user(payload, db)
+    
+    # ✅ VALIDAR MÁXIMO 500 AFILIADOS
+    if len(request.affiliates) > 500:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Máximo 500 afiliados por carga. Enviaste: {len(request.affiliates)}"
+        )
     
     exitosos = []
     fallidos = []
@@ -1109,7 +1120,7 @@ def create_affiliates_bulk(
             id_usuario=current_user.id_usuario_sistema,
             titulo="Carga masiva completada",
             mensaje=f"Se crearon {len(exitosos)} afiliados con medidores. {len(fallidos)} errores.",
-            tipo="exito" if len(fallidos) == 0 else "exito"
+            tipo="exito" if len(fallidos) == 0 else "advertencia"
         )
         
     except Exception as e:

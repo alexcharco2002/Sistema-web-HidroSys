@@ -10,7 +10,7 @@ import * as XLSX from "xlsx";
 
 import {
   UserPlus, Search, Edit, Trash2, Eye, UserCheck, UserX, Phone, MapPin, Calendar, X, Save, RefreshCw, AlertCircle, 
-  CheckCircle, XCircle, Map, ArrowUpDown, Gauge, IdCard, Plus, FileSpreadsheet
+  CheckCircle, XCircle, Map, ArrowUpDown, Gauge, IdCard, Plus, FileSpreadsheet, Download
 } from 'lucide-react';
 
 const AffiliatesSection = () => {
@@ -37,7 +37,7 @@ const AffiliatesSection = () => {
   // ===== Variables para carga desde Excel =====
   const [selectedExcel, setSelectedExcel] = useState(null);
   const [excelPreview, setExcelPreview] = useState([]);
-  const [, setLoadingExcel] = useState(false); // ✅ CORREGIDO: remover la coma inicial
+  const [loadingExcel, setLoadingExcel] = useState(false); // ✅ CORREGIDO: remover la coma inicial
 
   // ==== Función para leer Excel ====
   const handleExcelPreview = async (e) => {
@@ -54,10 +54,10 @@ const AffiliatesSection = () => {
       const rows = XLSX.utils.sheet_to_json(sheet);
 
       // 🔥 Normalizar todas las filas
-const cleanedRows = rows.map((row) => normalizeKeys(row));
+      const cleanedRows = rows.map((row) => normalizeKeys(row));
 
-setExcelPreview(cleanedRows);
-      setSelectedExcel(file);
+      setExcelPreview(cleanedRows);
+          setSelectedExcel(file);
 
     } catch (error) {
       console.error(error);
@@ -70,33 +70,63 @@ setExcelPreview(cleanedRows);
   };
 
   // Limpia claves del Excel (quita espacios, saltos, unicode raro)
-const normalizeKeys = (obj) => {
-  const newObj = {};
-  Object.keys(obj).forEach((key) => {
-    const cleanKey = key
-      .toString()
-      .trim()
-      .replace(/\s+/g, "_")
-      .replace(/[^\w]/g, "") // Solo letras, números y _
-      .toLowerCase();
+  const normalizeKeys = (obj) => {
+    const newObj = {};
+    Object.keys(obj).forEach((key) => {
+      const cleanKey = key
+        .toString()
+        .trim()
+        .replace(/\s+/g, "_")
+        .replace(/[^\w]/g, "") // Solo letras, números y _
+        .toLowerCase();
 
-    newObj[cleanKey] = obj[key];
-  });
+      newObj[cleanKey] = obj[key];
+    });
 
-  return newObj;
-};
+    return newObj;
+  };
 
-
-
-// ==== Función para subir Excel ====
+  // ==== Función para subir Excel ====
   const handleExcelUpload = async () => {
     if (excelPreview.length === 0) {
       setError("No hay datos para enviar");
       return;
     }
 
-    if (excelPreview.length > 100) {
-      setError("Máximo 100 afiliados por carga");
+    // ✅ FILTRAR: Solo filas válidas
+    const afiliadosValidos = excelPreview.filter(a => {
+      const camposObligatorios =
+        a.id_usuario_sistema &&
+        a.nombres &&
+        a.apellidos &&
+        a.id_sector;
+
+      const medidorTieneMinLongitud =
+        a.num_medidor &&
+        String(a.num_medidor).trim().length >= 3;
+
+      const medidorSoloAlfanumerico =
+        /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
+
+      const medidorDuplicado =
+        excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
+
+      const esMedidorValido =
+        a.num_medidor &&
+        medidorTieneMinLongitud &&
+        medidorSoloAlfanumerico &&
+        !medidorDuplicado;
+
+      return camposObligatorios && esMedidorValido;
+    });
+
+    if (afiliadosValidos.length === 0) {
+      setError("No hay afiliados válidos para importar");
+      return;
+    }
+
+    if (afiliadosValidos.length > 500) {
+      setError("Máximo 500 afiliados válidos por carga");
       return;
     }
 
@@ -104,14 +134,21 @@ const normalizeKeys = (obj) => {
     setError(null);
 
     try {
-      const result = await affiliatesService.createManyAffiliates(excelPreview);
+      // ✅ Enviar solo afiliados válidos
+      const result = await affiliatesService.createManyAffiliates(afiliadosValidos);
 
       if (result.success) {
         const { exitosos, fallidos, total_procesados } = result.data;
+        const omitidos = excelPreview.length - afiliadosValidos.length;
         
         let mensaje = `📊 RESULTADO DE LA CARGA MASIVA\n`;
         mensaje += `${'='.repeat(60)}\n\n`;
-        mensaje += `✅ Afiliados creados: ${exitosos.length}/${total_procesados}\n`;
+        
+        if (omitidos > 0) {
+          mensaje += `⚠️ Filas omitidas (inválidas): ${omitidos}\n`;
+        }
+        
+        mensaje += `✅ Afiliados + Medidores creados: ${exitosos.length}/${total_procesados}\n`;
         mensaje += `❌ Errores: ${fallidos.length}/${total_procesados}\n\n`;
         
         if (exitosos.length > 0) {
@@ -119,7 +156,7 @@ const normalizeKeys = (obj) => {
           mensaje += `📋 AFILIADOS Y MEDIDORES CREADOS:\n`;
           mensaje += `${'='.repeat(60)}\n\n`;
           
-          exitosos.forEach((a, idx) => {
+          exitosos.slice(0, 10).forEach((a, idx) => {
             mensaje += `${idx + 1}. ${a.nombre_usuario} (${a.cedula})\n`;
             mensaje += `   🔢 Código Afiliado: ${a.cod_usuario_afi}\n`;
             mensaje += `   📍 Sector: ${a.sector}\n`;
@@ -127,6 +164,10 @@ const normalizeKeys = (obj) => {
             mensaje += `   🆔 ID Afiliado: ${a.id_usuario_afi}\n`;
             mensaje += `   🆔 ID Medidor: ${a.id_medidor}\n\n`;
           });
+          
+          if (exitosos.length > 10) {
+            mensaje += `... y ${exitosos.length - 10} más\n\n`;
+          }
         }
         
         if (fallidos.length > 0) {
@@ -134,13 +175,17 @@ const normalizeKeys = (obj) => {
           mensaje += `❌ ERRORES ENCONTRADOS:\n`;
           mensaje += `${'='.repeat(60)}\n\n`;
           
-          fallidos.forEach((f, idx) => {
+          fallidos.slice(0, 5).forEach((f, idx) => {
             mensaje += `${idx + 1}. Fila ${f.fila}\n`;
             if (f.nombre_usuario) mensaje += `   Usuario: ${f.nombre_usuario}\n`;
             if (f.id_usuario_sistema) mensaje += `   ID Usuario: ${f.id_usuario_sistema}\n`;
             if (f.num_medidor) mensaje += `   Medidor: ${f.num_medidor}\n`;
             mensaje += `   ⚠️ Error: ${f.error}\n\n`;
           });
+          
+          if (fallidos.length > 5) {
+            mensaje += `... y ${fallidos.length - 5} errores más\n`;
+          }
         }
         
         alert(mensaje);
@@ -152,7 +197,7 @@ const normalizeKeys = (obj) => {
         
         // ✅ Recargar después de limpiar
         await fetchAffiliates();
-        
+          
       } else {
         setError(result.message || "Error al procesar afiliados");
       }
@@ -1032,11 +1077,12 @@ const normalizeKeys = (obj) => {
                     <div className="form-group form-group-full" style={{ marginBottom: "12px" }}>
                       <button 
                         type="button" 
-                        className="btn-primary"
+                        className="btn-plantilla"
                         onClick={handleDownloadTemplate}
                         style={{ display: "flex", alignItems: "center" }}
                       >
-                        📥 Descargar plantilla Excel
+                        <Download className="w-4 h-4 mr-2" />
+                        Descargar plantilla Excel
                       </button>
 
                       <small className="text-gray-500 mt-1">
@@ -1065,6 +1111,8 @@ const normalizeKeys = (obj) => {
                         <br />
                         🗺️ <strong>Campos opcionales:</strong><br />
                         &nbsp;&nbsp;&nbsp;• latitud, longitud, altitud
+                        <br /><br />
+                        <strong>Límite máximo: 500 afiliados por carga</strong>
                       </small>
                     </div>
 
@@ -1087,9 +1135,44 @@ const normalizeKeys = (obj) => {
                       <div className="form-group form-group-full">
                         <label>
                           📊 Vista previa ({excelPreview.length} filas)
-                          {excelPreview.length > 100 && (
-                            <span className="text-red-600 ml-2">⚠️ Excede el límite de 100 afiliados</span>
-                          )}
+                          {(() => {
+                            const validas = excelPreview.filter(a => {
+                              const camposObligatorios =
+                                a.id_usuario_sistema &&
+                                a.nombres &&
+                                a.apellidos &&
+                                a.id_sector;
+
+                              const medidorTieneMinLongitud =
+                                a.num_medidor &&
+                                String(a.num_medidor).trim().length >= 3;
+
+                              const medidorSoloAlfanumerico =
+                                /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
+
+                              const medidorDuplicado =
+                                excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
+
+                              const esMedidorValido =
+                                a.num_medidor &&
+                                medidorTieneMinLongitud &&
+                                medidorSoloAlfanumerico &&
+                                !medidorDuplicado;
+
+                              return camposObligatorios && esMedidorValido;
+                            }).length;
+
+                            const invalidas = excelPreview.length - validas;
+
+                            return (
+                              <ul className="ml-4 space-y-1">
+                                <li className="text-green-600">✓ {validas} válidas</li>
+                                {invalidas > 0 && (
+                                  <li className="text-red-600">⚠️ {invalidas} inválidas (serán omitidas)</li>
+                                )}
+                              </ul>
+                            );
+                          })()}
                         </label>
 
                         <div style={{
@@ -1108,123 +1191,120 @@ const normalizeKeys = (obj) => {
                               zIndex: 1
                             }}>
                               <tr>
-                                <th>#</th>
-                                <th>ID Usuario Sistema</th>
-                                <th>Nombres</th>
-                                <th>Apellidos</th>
-                                <th>ID Sector</th>
-                                <th>Medidor</th>
-                                <th>Lat</th>
-                                <th>Lng</th>
-                                <th>Alt</th>
-                                <th>Estado</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>#</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>ID Usuario</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Nombres</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Apellidos</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>ID Sector</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Medidor</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Lat</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Lng</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Alt</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Estado</th>
                               </tr>
                             </thead>
 
                             <tbody>
-  {excelPreview.map((a, idx) => {
+                              {excelPreview.map((a, idx) => {
+                                // 🟦 VALIDACIÓN DE CAMPOS OBLIGATORIOS
+                                const camposObligatorios =
+                                  a.id_usuario_sistema &&
+                                  a.nombres &&
+                                  a.apellidos &&
+                                  a.id_sector;
 
-    // 🟦 VALIDACIÓN DE CAMPOS OBLIGATORIOS
-    const camposObligatorios =
-      a.id_usuario_sistema &&
-      a.nombres &&
-      a.apellidos &&
-      a.id_sector;
+                                // 🟩 Validación longitud mínima
+                                const medidorTieneMinLongitud =
+                                  a.num_medidor &&
+                                  String(a.num_medidor).trim().length >= 3;
 
-    // 🟩 Validación longitud mínima
-    const medidorTieneMinLongitud =
-      a.num_medidor &&
-      String(a.num_medidor).trim().length >= 3;
+                                // 🟨 Validación caracteres permitidos (solo letras y números)
+                                const medidorSoloAlfanumerico =
+                                  /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
 
-    // 🟨 Validación caracteres permitidos (solo letras y números)
-    const medidorSoloAlfanumerico =
-      /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
+                                // 🟥 Validación de duplicados dentro del archivo
+                                const medidorDuplicado =
+                                  excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
 
-    // 🟥 Validación de duplicados dentro del archivo
-    const medidorDuplicado =
-      excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
+                                // Resultado final
+                                const esMedidorValido =
+                                  a.num_medidor &&
+                                  medidorTieneMinLongitud &&
+                                  medidorSoloAlfanumerico &&
+                                  !medidorDuplicado;
 
-    // Resultado final
-    const esMedidorValido =
-      a.num_medidor &&
-      medidorTieneMinLongitud &&
-      medidorSoloAlfanumerico &&
-      !medidorDuplicado;
+                                const esValidaFila =
+                                  camposObligatorios && esMedidorValido;
 
-    const esValidaFila =
-      camposObligatorios && esMedidorValido;
+                                return (
+                                  <tr
+                                    key={idx}
+                                    style={{
+                                      borderBottom: '1px solid #f3f4f6',
+                                      backgroundColor: esValidaFila ? 'transparent' : '#fef2f2'
+                                    }}
+                                  >
+                                    <td style={{ padding: '8px', color: '#6b7280' }}>{idx + 1}</td>
 
-    return (
-      <tr
-        key={idx}
-        style={{
-          borderBottom: '1px solid #f3f4f6',
-          backgroundColor: esValidaFila ? 'transparent' : '#fef2f2'
-        }}
-      >
+                                    {/* id_usuario_sistema */}
+                                    <td style={{ padding: '8px' }}>
+                                      {a.id_usuario_sistema || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                                    </td>
 
-        <td style={{ padding: '8px', color: '#6b7280' }}>{idx + 1}</td>
+                                    {/* nombres */}
+                                    <td style={{ padding: '8px' }}>
+                                      {a.nombres || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                                    </td>
 
-        {/* id_usuario_sistema */}
-        <td style={{ padding: '8px' }}>
-          {a.id_usuario_sistema || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
-        </td>
+                                    {/* apellidos */}
+                                    <td style={{ padding: '8px' }}>
+                                      {a.apellidos || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                                    </td>
 
-        {/* nombres */}
-        <td style={{ padding: '8px' }}>
-          {a.nombres || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
-        </td>
+                                    {/* id_sector */}
+                                    <td style={{ padding: '8px' }}>
+                                      {a.id_sector || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                                    </td>
 
-        {/* apellidos */}
-        <td style={{ padding: '8px' }}>
-          {a.apellidos || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
-        </td>
+                                    {/* num_medidor – VALIDACIONES COMPLETAS */}
+                                    <td style={{ padding: '8px' }}>
+                                      {!a.num_medidor ? (
+                                        <span style={{ color: '#ef4444' }}>❌ Falta</span>
+                                      ) : !medidorTieneMinLongitud ? (
+                                        <span style={{ color: '#ef4444' }}>❌ Min 3 caracteres</span>
+                                      ) : !medidorSoloAlfanumerico ? (
+                                        <span style={{ color: '#ef4444' }}>
+                                          ❌ Solo letras/números
+                                        </span>
+                                      ) : medidorDuplicado ? (
+                                        <span style={{ color: '#ef4444' }}>
+                                          ❌ Duplicado
+                                        </span>
+                                      ) : (
+                                        a.num_medidor
+                                      )}
+                                    </td>
 
-        {/* id_sector */}
-        <td style={{ padding: '8px' }}>
-          {a.id_sector || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
-        </td>
+                                    <td style={{ padding: '8px' }}>{a.latitud || '-'}</td>
+                                    <td style={{ padding: '8px' }}>{a.longitud || '-'}</td>
+                                    <td style={{ padding: '8px' }}>{a.altitud || '-'}</td>
 
-        {/* num_medidor – VALIDACIONES COMPLETAS */}
-        <td style={{ padding: '8px' }}>
-          {!a.num_medidor ? (
-            <span style={{ color: '#ef4444' }}>❌ Falta</span>
-          ) : !medidorTieneMinLongitud ? (
-            <span style={{ color: '#ef4444' }}>❌ Min 3 caracteres</span>
-          ) : !medidorSoloAlfanumerico ? (
-            <span style={{ color: '#ef4444' }}>
-              ❌ Solo letras y números
-            </span>
-          ) : medidorDuplicado ? (
-            <span style={{ color: '#ef4444' }}>
-              ❌ Duplicado
-            </span>
-          ) : (
-            a.num_medidor
-          )}
-        </td>
-
-        <td style={{ padding: '8px' }}>{a.latitud || '-'}</td>
-        <td style={{ padding: '8px' }}>{a.longitud || '-'}</td>
-        <td style={{ padding: '8px' }}>{a.altitud || '-'}</td>
-
-        {/* Estado */}
-        <td style={{ padding: '8px' }}>
-          {esValidaFila ? (
-            <span style={{ color: '#10b981', fontSize: '12px' }}>✓ OK</span>
-          ) : (
-            <span style={{ color: '#ef4444', fontSize: '12px' }}>✗ Error</span>
-          )}
-        </td>
-      </tr>
-    );
-  })}
-</tbody>
-
-
+                                    {/* Estado */}
+                                    <td style={{ padding: '8px' }}>
+                                      {esValidaFila ? (
+                                        <span style={{ color: '#10b981', fontSize: '12px' }}>✓ OK</span>
+                                      ) : (
+                                        <span style={{ color: '#ef4444', fontSize: '12px' }}>✗ Error</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
                           </table>
                         </div>
 
+                        {/* ✅ RESUMEN MEJORADO */}
                         <div style={{
                           marginTop: '12px',
                           padding: '12px',
@@ -1236,7 +1316,8 @@ const normalizeKeys = (obj) => {
                           <ul style={{ marginTop: '8px', marginLeft: '20px' }}>
                             <li>Los afiliados se vincularán al usuario seleccionado.</li>
                             <li>El medidor será registrado automáticamente.</li>
-                            <li>Límite máximo: 100 filas por carga.</li>
+                            <li>Se generará código de afiliado secuencialmente.</li>
+                            <li>Límite máximo: 500 filas válidas por carga.</li>
                           </ul>
                         </div>
                       </div>
@@ -1255,14 +1336,77 @@ const normalizeKeys = (obj) => {
                       type="button"
                       className="btn-primary"
                       onClick={handleExcelUpload}
-                      disabled={excelPreview.length === 0 || excelPreview.length > 100}
+                      disabled={
+                        excelPreview.length === 0 || 
+                        (() => {
+                          // ✅ Contar solo filas válidas
+                          const validas = excelPreview.filter(a => {
+                            const camposObligatorios =
+                              a.id_usuario_sistema &&
+                              a.nombres &&
+                              a.apellidos &&
+                              a.id_sector;
+
+                            const medidorTieneMinLongitud =
+                              a.num_medidor &&
+                              String(a.num_medidor).trim().length >= 3;
+
+                            const medidorSoloAlfanumerico =
+                              /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
+
+                            const medidorDuplicado =
+                              excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
+
+                            const esMedidorValido =
+                              a.num_medidor &&
+                              medidorTieneMinLongitud &&
+                              medidorSoloAlfanumerico &&
+                              !medidorDuplicado;
+
+                            return camposObligatorios && esMedidorValido;
+                          }).length;
+                          return validas === 0 || validas > 500;
+                        })() ||
+                        loadingExcel
+                      }
                     >
                       <Save className="w-4 h-4 mr-2" />
-                      Crear {excelPreview.length} afiliado{excelPreview.length !== 1 ? 's' : ''}
+                      {loadingExcel 
+                        ? 'Procesando...' 
+                        : (() => {
+                            const validas = excelPreview.filter(a => {
+                              const camposObligatorios =
+                                a.id_usuario_sistema &&
+                                a.nombres &&
+                                a.apellidos &&
+                                a.id_sector;
+
+                              const medidorTieneMinLongitud =
+                                a.num_medidor &&
+                                String(a.num_medidor).trim().length >= 3;
+
+                              const medidorSoloAlfanumerico =
+                                /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
+
+                              const medidorDuplicado =
+                                excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
+
+                              const esMedidorValido =
+                                a.num_medidor &&
+                                medidorTieneMinLongitud &&
+                                medidorSoloAlfanumerico &&
+                                !medidorDuplicado;
+
+                              return camposObligatorios && esMedidorValido;
+                            }).length;
+                            return `Crear ${validas} afiliado${validas !== 1 ? 's' : ''} válido${validas !== 1 ? 's' : ''}`;
+                          })()
+                      }
                     </button>
                   </div>
                 </div>
               )}
+
 
 
 

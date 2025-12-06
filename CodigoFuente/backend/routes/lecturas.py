@@ -660,6 +660,8 @@ def listar_medidores_con_info(
 # EXPORTAR PLANTILLA EXCEL
 # ========================================
 
+from openpyxl.styles import Protection  # Agregar esta importación al inicio del archivo
+
 @router.get("/export/template")
 def exportar_plantilla(
     payload: dict = Depends(verify_token),
@@ -675,12 +677,15 @@ def exportar_plantilla(
     require_permission(current_user, db, "lecturas", "lectura")
     
     try:
-        # Obtener medidores activos con sus relaciones
+        # ✅ FILTRAR: Solo medidores activos CON usuario afiliado
+        # ✅ CORRECCIÓN: Usar .has() para filtrar por existencia de relación
         medidores = db.query(Medidor).filter(
-            Medidor.activo == True
+            Medidor.activo == True,
+            Medidor.usuario_afiliado.has()  # ✅ Filtra solo medidores CON usuario afiliado
         ).order_by(Medidor.num_medidor).all()
+
         
-        print(f"📊 Generando plantilla con {len(medidores)} medidores")
+        print(f"📊 Generando plantilla con {len(medidores)} medidores con usuarios afiliados")
         
         # Crear libro de Excel
         wb = Workbook()
@@ -712,6 +717,8 @@ def exportar_plantilla(
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
+            # ✅ BLOQUEAR encabezados
+            cell.protection = Protection(locked=True)
         
         # Anchos de columna
         column_widths = [20, 25, 18, 35, 18, 18, 40]
@@ -743,14 +750,33 @@ def exportar_plantilla(
             
             lectura_anterior = ultima_lectura.lectura_actual if ultima_lectura else 0
             
-            # Llenar datos en las columnas
-            ws_plantilla.cell(row=row_num, column=1, value=medidor.num_medidor)
-            ws_plantilla.cell(row=row_num, column=2, value=sector_nombre)
-            ws_plantilla.cell(row=row_num, column=3, value=codigo_UsuarioAfiliado)
-            ws_plantilla.cell(row=row_num, column=4, value=nombre_UsuarioAfiliado)
-            ws_plantilla.cell(row=row_num, column=5, value=lectura_anterior)
-            ws_plantilla.cell(row=row_num, column=6, value="")  # lectura_actual -> usuario llena
-            ws_plantilla.cell(row=row_num, column=7, value="")  # observacion
+            # ✅ COLUMNAS BLOQUEADAS (1-5): num_medidor, sector, codigo, nombre, lectura_anterior
+            cell = ws_plantilla.cell(row=row_num, column=1, value=medidor.num_medidor)
+            cell.protection = Protection(locked=True)
+            
+            cell = ws_plantilla.cell(row=row_num, column=2, value=sector_nombre)
+            cell.protection = Protection(locked=True)
+            
+            cell = ws_plantilla.cell(row=row_num, column=3, value=codigo_UsuarioAfiliado)
+            cell.protection = Protection(locked=True)
+            
+            cell = ws_plantilla.cell(row=row_num, column=4, value=nombre_UsuarioAfiliado)
+            cell.protection = Protection(locked=True)
+            
+            cell = ws_plantilla.cell(row=row_num, column=5, value=lectura_anterior)
+            cell.protection = Protection(locked=True)
+            
+            # ✅ COLUMNAS DESBLOQUEADAS (6-7): lectura_actual y observacion
+            cell = ws_plantilla.cell(row=row_num, column=6, value="")
+            cell.protection = Protection(locked=False)  # ✅ Desbloquear
+            
+            cell = ws_plantilla.cell(row=row_num, column=7, value="")
+            cell.protection = Protection(locked=False)  # ✅ Desbloquear
+        
+        # ✅ ACTIVAR PROTECCIÓN DE LA HOJA
+        ws_plantilla.protection.sheet = True
+        #ws_plantilla.protection.password = None  # Sin contraseña para facilitar uso
+        ws_plantilla.protection.enable()
         
         # ===============================
         # HOJA 2: INSTRUCCIONES
@@ -761,19 +787,19 @@ def exportar_plantilla(
             ["📋 INSTRUCCIONES PARA CARGA MASIVA DE LECTURAS"],
             [""],
             ["1️⃣ USO DE LA PLANTILLA:"],
-            [" • Complete SOLO la columna 'lectura_actual' con los nuevos valores"],
+            [" • Complete SOLO las columnas 'lectura_actual' y 'observacion' (las demás están bloqueadas)"],
             [" • La columna 'lectura_anterior' ya está prellenada con la última lectura"],
-            [" • NO modifique las columnas: num_medidor, sector, codigo_UsuarioAfiliado, nombre_UsuarioAfiliado"],
-            [" • Agregue observaciones si es necesario"],
+            [" • Solo se incluyen medidores CON usuario afiliado"],
+            [" • NO modifique las columnas bloqueadas: num_medidor, sector, codigo, nombre, lectura_anterior"],
             [""],
             ["2️⃣ COLUMNAS:"],
-            [" • num_medidor: Número del medidor (NO MODIFICAR)"],
-            [" • sector: Sector del medidor (NO MODIFICAR)"],
-            [" • codigo_UsuarioAfiliado: Código del UsuarioAfiliado (NO MODIFICAR)"],
-            [" • nombre_UsuarioAfiliado: Nombre completo del UsuarioAfiliado (NO MODIFICAR)"],
-            [" • lectura_anterior: Última lectura registrada (NO MODIFICAR)"],
-            [" • lectura_actual: RELLENAR con el nuevo valor"],
-            [" • observacion: Comentarios opcionales"],
+            [" • num_medidor: Número del medidor (🔒 BLOQUEADA)"],
+            [" • sector: Sector del medidor (🔒 BLOQUEADA)"],
+            [" • codigo_UsuarioAfiliado: Código del UsuarioAfiliado (🔒 BLOQUEADA)"],
+            [" • nombre_UsuarioAfiliado: Nombre completo del UsuarioAfiliado (🔒 BLOQUEADA)"],
+            [" • lectura_anterior: Última lectura registrada (🔒 BLOQUEADA)"],
+            [" • lectura_actual: ✏️ RELLENAR con el nuevo valor (EDITABLE)"],
+            [" • observacion: ✏️ Comentarios opcionales (EDITABLE)"],
             [""],
             ["3️⃣ VALIDACIONES:"],
             [" • La lectura actual debe ser mayor o igual a la anterior"],
@@ -793,6 +819,7 @@ def exportar_plantilla(
             [""],
             [f"📅 Plantilla generada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"],
             [f"👤 Usuario: {current_user.nombres} {current_user.apellidos}"],
+            [f"📊 Total medidores con usuarios afiliados: {len(medidores)}"],
         ]
         
         for row_num, fila in enumerate(instrucciones, 1):
@@ -817,7 +844,7 @@ def exportar_plantilla(
         registrar_auditoria(
             db=db,
             accion="DOWNLOAD_TEMPLATE",
-            descripcion=f"Plantilla de lecturas descargada por '{current_user.usuario}'",
+            descripcion=f"Plantilla de lecturas descargada por '{current_user.usuario}' - {len(medidores)} medidores con usuarios afiliados",
             id_usuario=current_user.id_usuario_sistema
         )
         

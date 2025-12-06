@@ -10,6 +10,30 @@ const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL,
 });
 
+// 🔥 Flag para evitar múltiples redirecciones
+let isHandlingExpiredSession = false;
+
+// Interceptor general
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response && error.response.status === 401) {
+      // Solo emitir si no se está manejando ya
+      if (!isHandlingExpiredSession) {
+        isHandlingExpiredSession = true;
+        console.warn("⚠️ Sesión expirada detectada en interceptor");
+        window.dispatchEvent(new Event("sessionExpired"));
+        
+        // Resetear el flag después de 2 segundos
+        setTimeout(() => {
+          isHandlingExpiredSession = false;
+        }, 2000);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Interceptor general
 api.interceptors.response.use(
   response => response,
@@ -139,17 +163,27 @@ class AuthService {
           // 🔥 Control automático de token expirado
           // -------------------------
           if (response.status === 401) {
-              console.warn("⚠️ Token expirado o inválido, cerrando sesión…");
-
+            console.warn("⚠️ Token expirado o inválido, cerrando sesión…");
+            
+            // Solo ejecutar si no se está manejando ya
+            if (!isHandlingExpiredSession) {
+              isHandlingExpiredSession = true;
+              
               // Limpiar datos
               this.clearLocalData();
-
-              // Emitir evento global para cualquier listener
+              
+              // Emitir evento global
               window.dispatchEvent(new Event("sessionExpired"));
-
-              // Detener aquí
-              return Promise.reject(new Error("Sesión expirada"));
+              
+              // Resetear el flag después de 2 segundos
+              setTimeout(() => {
+                isHandlingExpiredSession = false;
+              }, 2000);
+            }
+            
+            return Promise.reject(new Error("Sesión expirada"));
           }
+
           // -------------------------
 
           if (typeof errorData.detail === 'string') {

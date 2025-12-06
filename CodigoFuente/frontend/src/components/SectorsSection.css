@@ -864,24 +864,7 @@
 }
 
 /* Botón secundario */
-.btn-secondary {
-  display: flex;
-  align-items: center;
-  padding: 10px 20px;
-  background: var(--text-light);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.btn-secondary:hover {
-  background: #eff6ff;
-  transform: translateY(-1px);
-}
 
 /* Responsive */
 @media (max-width: 768px) {

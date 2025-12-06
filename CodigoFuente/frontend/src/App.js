@@ -1,6 +1,7 @@
-// src/App.js - VERSIÓN CORREGIDA
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect } from 'react';
+// src/App.js
+// Librerías
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
 
 // Páginas públicas
 import Login from './pages/login.js';
@@ -78,36 +79,70 @@ const DynamicRoleDashboard = () => {
 };
 
 const App = () => {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
+  );
+};
+
+const AppContent = () => {
+  const navigate = useNavigate();
+  const isRedirectingRef = useRef(false); // 🔥 Flag para prevenir múltiples redirecciones
+  const listenerAttachedRef = useRef(false); // 🔥 Prevenir múltiples listeners
+
   // Manejar sesiones expiradas
   useEffect(() => {
+    // Solo agregar el listener una vez
+    if (listenerAttachedRef.current) return;
+
     const handleExpired = () => {
-      console.log('⏰ Sesión expirada');
+      // Solo redirigir si no se está redirigiendo ya
+      if (isRedirectingRef.current) {
+        console.log('⏸️ Ya se está redirigiendo, ignorando...');
+        return;
+      }
+
+      console.log('⏰ Sesión expirada detectada');
+      isRedirectingRef.current = true;
+      
+      // Limpiar datos
       authService.clearLocalData();
-      window.location.href = "/login";
+      
+      // Usar navigate en lugar de window.location.href
+      navigate('/login', { replace: true });
+      
+      // Resetear el flag después de 2 segundos
+      setTimeout(() => {
+        isRedirectingRef.current = false;
+      }, 2000);
     };
 
     window.addEventListener("sessionExpired", handleExpired);
-    return () => window.removeEventListener("sessionExpired", handleExpired);
-  }, []);
+    listenerAttachedRef.current = true;
+
+    return () => {
+      window.removeEventListener("sessionExpired", handleExpired);
+      listenerAttachedRef.current = false;
+    };
+  }, [navigate]);
 
   return (
-    <Router>
-      <Routes>
-        {/* RUTAS PÚBLICAS */}
-        <Route path="/" element={<SmartRedirect />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/forgot-password" element={<Forgotpassword />} />
+    <Routes>
+      {/* RUTAS PÚBLICAS */}
+      <Route path="/" element={<SmartRedirect />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<Forgotpassword />} />
 
-        {/* RUTAS DINÁMICAS POR ROL */}
-        <Route path="/:rolePath/*" element={<DynamicRoleDashboard />} />
+      {/* RUTAS DINÁMICAS POR ROL */}
+      <Route path="/:rolePath/*" element={<DynamicRoleDashboard />} />
 
-        {/* REDIRECCIÓN GENÉRICA */}
-        <Route path="/dashboard/*" element={<SmartRedirect />} />
+      {/* REDIRECCIÓN GENÉRICA */}
+      <Route path="/dashboard/*" element={<SmartRedirect />} />
 
-        {/* RUTA 404 */}
-        <Route path="*" element={<SmartRedirect />} />
-      </Routes>
-    </Router>
+      {/* RUTA 404 */}
+      <Route path="*" element={<SmartRedirect />} />
+    </Routes>
   );
 };
 

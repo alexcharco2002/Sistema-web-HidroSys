@@ -5,6 +5,7 @@
  * Con control de permisos granular
 */
 import React, { useState, useEffect, useCallback } from 'react';
+import { useModal } from '../context/ModalContext';
 import './RolesSection.css';
 
 import rolesService from '../services/rolesServices';
@@ -44,7 +45,8 @@ const RolesSection = () => {
   const [selectedAction, setSelectedAction] = useState(null);
   const [error, setError] = useState(null);
   const [editingRoleId, setEditingRoleId] = useState(null);
-  
+  const { showConfirm, showAlert, showSuccess } = useModal();
+
   const [roleFormData, setRoleFormData] = useState({
     nombre_rol: '',
     descripcion: '',
@@ -350,58 +352,109 @@ const RolesSection = () => {
   };
 
   const handleDeleteRole = async (roleId) => {
-    // 🔑 Verificar permiso antes de eliminar
+    // 🔑 Verificar permisos
     if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para eliminar roles');
+      showAlert({
+        title: "Permiso denegado",
+        message: "❌ No tienes permiso para eliminar roles",
+        confirmText: "Entendido"
+      });
       return;
     }
 
-    if (!window.confirm('¿Está seguro de eliminar este rol? Esta acción eliminará todas sus acciones asociadas.')) {
-      return;
-    }
+    // 🔥 Confirmación personalizada
+    const confirmed = await showConfirm({
+      title: "Eliminar Rol",
+      message: "¿Está seguro de eliminar este rol? Esta acción eliminará todas sus acciones asociadas.",
+      confirmText: "Sí, eliminar rol",
+      cancelText: "Cancelar"
+    });
+
+    if (!confirmed) return;
 
     try {
       const result = await rolesService.deleteRole(roleId);
-      
+
       if (result.success) {
-        alert(result.message);
+
+        // 🎉 Modal de éxito
+        await showSuccess({
+          title: "Rol Eliminado",
+          message: result.message
+        });
+
+        // Si el rol eliminado es el seleccionado, limpiar
         if (selectedRole?.id_rol === roleId) {
           setSelectedRole(null);
           setRoleActions([]);
         }
+
         await fetchRoles();
+
       } else {
-        alert('Error: ' + result.message);
+        showAlert({
+          title: "Error",
+          message: result.message
+        });
       }
+
     } catch (error) {
-      alert('Error al eliminar rol: ' + error.message);
+      showAlert({
+        title: "Error inesperado",
+        message: "Error al eliminar rol: " + error.message
+      });
     }
   };
 
+
   const handleDeleteAction = async (actionId) => {
-    // 🔑 Verificar permiso antes de eliminar
+    // 🔑 Verificar permiso
     if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para eliminar acciones');
+      showAlert({
+        title: "Permiso denegado",
+        message: "❌ No tienes permiso para eliminar acciones",
+        confirmText: "Entendido"
+      });
       return;
     }
 
-    if (!window.confirm('¿Está seguro de eliminar esta acción?')) {
-      return;
-    }
+    // 🔥 Confirmación
+    const confirmed = await showConfirm({
+      title: "Eliminar Acción",
+      message: "¿Está seguro de eliminar esta acción?",
+      confirmText: "Sí, eliminar",
+      cancelText: "Cancelar"
+    });
+
+    if (!confirmed) return;
 
     try {
       const result = await rolesService.deleteRoleAction(actionId);
-      
+
       if (result.success) {
-        alert(result.message);
+
+        await showSuccess({
+          title: "Acción Eliminada",
+          message: result.message
+        });
+
         await fetchRoleActions(selectedRole.id_rol);
+
       } else {
-        alert('Error: ' + result.message);
+        showAlert({
+          title: "Error",
+          message: result.message
+        });
       }
+
     } catch (error) {
-      alert('Error al eliminar acción: ' + error.message);
+      showAlert({
+        title: "Error inesperado",
+        message: "Error al eliminar acción: " + error.message
+      });
     }
   };
+
 
   const handleToggleActionStatus = async (actionId) => {
     // 🔑 Verificar permiso antes de cambiar estado

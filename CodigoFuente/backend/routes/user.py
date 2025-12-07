@@ -527,10 +527,17 @@ def delete_user(
 ):
     """
     Elimina el usuario solo si NO tiene relaciones.
-    Si tiene relaciones, NO lo elimina y manda un mensaje al usuario.
+    Además NO permite que un usuario se elimine a sí mismo.
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "usuarios", "eliminar")
+
+    # 🚫 No permitir auto-eliminación
+    if current_user.id_usuario_sistema == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes eliminar tu propio usuario"
+        )
 
     # Buscar usuario
     user = db.query(UsuarioSistema).filter(
@@ -579,7 +586,7 @@ def delete_user(
                 "success": False,
                 "accion": "no_eliminado",
                 "message": (
-                    f"NO se puede elimiar el usuario '{user.usuario}', porque "
+                    f"NO se puede eliminar el usuario '{user.usuario}', porque "
                     f"tiene relaciones con otros módulos del sistema. Elimine esos elementos antes "
                     "de intentar borrar este usuario."
                 )
@@ -589,6 +596,7 @@ def delete_user(
             status_code=500,
             detail="Error al intentar eliminar el usuario"
         )
+
 
 # ========================================
 # CAMBIAR ESTADO (ACTIVAR/DESACTIVAR)
@@ -606,6 +614,14 @@ def toggle_user_status(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "usuarios", "actualizar")
     
+    # ✅ Validar que no intente cambiar su propio estado
+    if current_user.id_usuario_sistema == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes activar/desactivar tu propio usuario"
+        )
+
+    
     user = db.query(UsuarioSistema).filter(
         UsuarioSistema.id_usuario_sistema == user_id
     ).first()
@@ -619,6 +635,7 @@ def toggle_user_status(
     # Cambiar estado
     user.activo = not user.activo
     estado_texto = "activado" if user.activo else "desactivado"
+    
     try:
         db.commit()
         db.refresh(user)

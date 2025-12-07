@@ -1,6 +1,7 @@
 // src/components/MetersSection.js
 // MÓDULO DE MEDIDORES - Con control de permisos granular
 import React, { useState, useEffect, useCallback } from 'react';
+import { useModal } from '../context/ModalContext';
  
 import metersService from '../services/metersServices';
 import sectorsService from '../services/sectorServices';
@@ -11,7 +12,7 @@ import './MetersSection.css';
 import {
   Gauge, Search, Edit, Trash2, Eye, CheckCircle, XCircle,
   MapPin, X, Save, RefreshCw, AlertCircle, Map,
-  Navigation, Mountain, UserCheck, IdCard,
+  Navigation, Mountain, UserCheck, IdCard, UserX,
   User
 } from 'lucide-react';
 
@@ -31,6 +32,8 @@ const MetersSection = () => {
   const [error, setError] = useState(null);
   // usuario afiliado local 
   const currentUser = authService.getCurrentUser();
+  const { showConfirm, showAlert, showSuccess } = useModal();
+
 
   const [formData, setFormData] = useState({
     num_medidor: '',
@@ -326,25 +329,53 @@ const MetersSection = () => {
 
   const handleDelete = async (meterId) => {
     if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para eliminar medidores');
+      showAlert({
+        title: "Permiso denegado",
+        message: "❌ No tienes permiso para eliminar medidores",
+        confirmText: "Entendido"
+      });
       return;
     }
 
-    if (window.confirm('¿Estás seguro de que deseas eliminar este medidor?')) {
-      try {
-        const result = await metersService.deleteMeter(meterId);
-        
-        if (result.success) {
-          alert(result.message);
-          await fetchMeters();
-        } else {
-          alert('Error: ' + result.message);
-        }
-      } catch (error) {
-        alert('Error al eliminar medidor: ' + error.message);
+    // 🔥 Confirmación personalizada
+    const confirmed = await showConfirm({
+      title: "Eliminar Medidor",
+      message: "¿Estás seguro de que deseas eliminar este medidor?",
+      confirmText: "Sí, eliminar",
+      cancelText: "Cancelar"
+    });
+
+    if (!confirmed) return; // El usuario canceló
+
+    try {
+      const result = await metersService.deleteMeter(meterId);
+
+      if (result.success) {
+
+        // 🎉 Modal de éxito
+        await showSuccess({
+          title: "Medidor Eliminado",
+          message: result.message,
+          confirmText: "OK"
+        });
+
+        await fetchMeters();
+
+      } else {
+        showAlert({
+          title: "Error",
+          message: result.message
+        });
       }
+
+    } catch (error) {
+      showAlert({
+        title: "Error inesperado",
+        message: "Error al eliminar medidor: " + error.message
+      });
     }
   };
+
 
   const toggleMeterStatus = async (meterId) => {
     if (!permissions.canToggleStatus) {
@@ -399,6 +430,7 @@ const MetersSection = () => {
     );
   }
 
+  // INTERFAZ PRINCIPAL
   return (
     <div className="meters-section">
       <div className="section-header">
@@ -514,172 +546,166 @@ const MetersSection = () => {
         </div>
       </div>
       {/* GRID DE MEDIDORES */}
-<div className="users-grid">
-  {sortedMeters.map(meter => {
-    const isAssigned = meter.id_usuario_afi && meter.usuario_afiliado;
-    
-    return (
-      <div key={meter.id_medidor} className={`user-card ${!meter.activo ? 'inactive' : ''}`}>
-        <div className="user-card-header">
-          <div className="user-info">
-            <div className="user-avatar user-avatar-empty">
-              <Gauge className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="user-name">
-                {meter.num_medidor}
-              </h3>
-              <div className="user-meta">
-                {/* Estado Activo/Inactivo */}
-                <span className={`status-badge ${meter.activo ? 'active' : 'inactive'}`}>
-                  {meter.activo ? (
-                    <>
-                      <CheckCircle className="w-3 h-3" />
-                      Activo
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="w-3 h-3" />
-                      Inactivo
-                    </>
-                  )}
-                </span>
-
-                {/* Estado Asignado/No Asignado */}
-                <span className={`status-badge ${isAssigned ? 'meter-assigned' : 'meter-unassigned'}`}>
-                  {isAssigned ? (
-                    <>
-                      <CheckCircle className="w-3 h-3" />
-                      Asignado
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="w-3 h-3" />
-                      No Asignado
-                    </>
-                  )}
-                </span>
-              </div>
-            </div>
-          </div>
+      <div className="users-grid">
+        {sortedMeters.map(meter => {
+          const isAssigned = meter.id_usuario_afi && meter.usuario_afiliado;
           
-          <div className="user-actions">
-            <button 
-              className="action-btn view"
-              onClick={() => openModal('view', meter)}
-              title="Ver detalles"
-            >
-              <Eye className="w-4 h-4 icon-view" />
-            </button>
+          return (
+            <div key={meter.id_medidor} className={`user-card ${!meter.activo ? 'inactive' : ''}`}>
+              <div className="user-card-header">
+                <div className="user-info">
+                  <div className="user-avatar user-avatar-empty">
+                    <Gauge className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="user-name">
+                      {meter.num_medidor}
+                    </h3>
+                    <div className="user-meta">
+                      {/* Estado Activo/Inactivo */}
+                      <span className={`status-badge ${meter.activo ? 'active' : 'inactive'}`}>
+                        {meter.activo ? (
+                          <>
+                            <CheckCircle className="w-3 h-3" />
+                            Activo
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="w-3 h-3" />
+                            Inactivo
+                          </>
+                        )}
+                      </span>
+                      {/* Estado Asignado/No Asignado */}
+                      <span className={`status-badge ${isAssigned ? 'meter-assigned' : 'meter-unassigned'}`}>
+                      {isAssigned ? (
+                        <>
+                          <UserCheck className="w-3 h-3" />
+                          Asignado
+                        </>
+                      ) : (
+                        <>
+                          <UserX className="w-3 h-3" />
+                          No Asignado
+                        </>
+                      )}
+                    </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="user-actions">
+                  <button 
+                    className="action-btn view"
+                    onClick={() => openModal('view', meter)}
+                    title="Ver detalles"
+                  >
+                    <Eye className="w-4 h-4 icon-view" />
+                  </button>
 
-            {permissions.canUpdate && (
-              <button 
-                className="action-btn edit"
-                onClick={() => openModal('edit', meter)}
-                title="Editar medidor"
-              >
-                <Edit className="w-4 h-4" />
-              </button>
-            )}
+                  {permissions.canUpdate && (
+                    <button 
+                      className="action-btn edit"
+                      onClick={() => openModal('edit', meter)}
+                      title="Editar medidor"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                  )}
 
-            {permissions.canToggleStatus && (
-              <button 
-                className="action-btn toggle"
-                onClick={() => toggleMeterStatus(meter.id_medidor)}
-                title={meter.activo ? 'Desactivar' : 'Activar'}
-              >
-                {meter.activo ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
-              </button>
-            )}
+                  {permissions.canToggleStatus && (
+                    <button 
+                      className="action-btn toggle"
+                      onClick={() => toggleMeterStatus(meter.id_medidor)}
+                      title={meter.activo ? 'Desactivar' : 'Activar'}
+                    >
+                      {meter.activo ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                    </button>
+                  )}
 
-            {permissions.canDelete && (
-              <button 
-                className="action-btn delete"
-                onClick={() => handleDelete(meter.id_medidor)}
-                title="Eliminar medidor"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-        
-       
-        <div className="user-card-body">
-          <div className="user-contact">
+                  {permissions.canDelete && (
+                    <button 
+                      className="action-btn delete"
+                      onClick={() => handleDelete(meter.id_medidor)}
+                      title="Eliminar medidor"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
 
-            {/* Afiliado */}
-            <div className="contact-item">
-              {isAssigned ? (
-                <UserCheck className="w-4 h-4 text-green-500" />
-              ) : (
-                <User className="w-4 h-4 text-amber-500" />
-              )}
-              <div className="contact-text-group">
-                <span className="label">Afiliado</span>
-                <span className="value">
-                  {meter.usuario_afiliado?.nombre_afiliado || "No asignado"}
-                </span>
+              <div className="user-card-body">
+                <div className="user-contact">
+
+                  {/* Afiliado */}
+                  <div className="contact-item">
+                    {isAssigned ? (
+                      <UserCheck className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <User className="w-4 h-4 text-amber-500" />
+                    )}
+                    <div className="contact-text-group flex">
+                      <span className="label font-semibold mr-1">Afiliado:</span>
+                      <span className="value">
+                        {meter.usuario_afiliado?.nombre_afiliado || "No asignado"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Código de Afiliado */}
+                  {isAssigned && (
+                    <div className="contact-item">
+                      <IdCard className="w-4 h-4 text-gray-400" />
+                      <div className="contact-text-group flex">
+                        <span className="label font-semibold mr-1">Código Afiliado:</span>
+                        <span className="value">
+                          {meter.usuario_afiliado.cod_usuario_afi}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sector */}
+                  <div className="contact-item">
+                    <MapPin className="w-4 h-4 text-gray-400" />
+                    <div className="contact-text-group flex">
+                      <span className="label font-semibold mr-1">Sector:</span>
+                      <span className="value">
+                        {meter.sector?.nombre_sector || "Sin sector"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Coordenadas */}
+                  {!isNaN(Number(meter.latitud)) && !isNaN(Number(meter.longitud)) && (
+                    <div className="contact-item">
+                      <Navigation className="w-4 h-4 text-gray-400" />
+                      <div className="contact-text-group flex">
+                        <span className="label font-semibold mr-1">Ubicación:</span>
+                        <span className="value">
+                          {Number(meter.latitud).toFixed(4)}°, {Number(meter.longitud).toFixed(4)}°
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Altitud */}
+                  {meter.altitud && (
+                    <div className="contact-item">
+                      <Mountain className="w-4 h-4 text-gray-400" />
+                      <div className="contact-text-group flex">
+                        <span className="label font-semibold mr-1">Altitud:</span>
+                        <span className="value">{meter.altitud} msnm</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-
-            {/* Código de Afiliado */}
-            {isAssigned && (
-              <div className="contact-item">
-                <IdCard className="w-4 h-4 text-gray-400" />
-                <div className="contact-text-group">
-                  <span className="label">Código Afiliado</span>
-                  <span className="value">
-                    {meter.usuario_afiliado.cod_usuario_afi}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Sector */}
-            <div className="contact-item">
-              <MapPin className="w-4 h-4 text-gray-400" />
-              <div className="contact-text-group">
-                <span className="label">Sector</span>
-                <span className="value">
-                  {meter.sector?.nombre_sector || "Sin sector"}
-                </span>
-              </div>
-            </div>
-
-            {/* Coordenadas */}
-            {!isNaN(Number(meter.latitud)) && !isNaN(Number(meter.longitud)) && (
-              <div className="contact-item">
-                <Navigation className="w-4 h-4 text-gray-400" />
-                <div className="contact-text-group">
-                  <span className="label">Ubicación</span>
-                  <span className="value">
-                    {Number(meter.latitud).toFixed(4)}°, {Number(meter.longitud).toFixed(4)}°
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Altitud */}
-            {meter.altitud && (
-              <div className="contact-item">
-                <Mountain className="w-4 h-4 text-gray-400" />
-                <div className="contact-text-group">
-                  <span className="label">Altitud</span>
-                  <span className="value">
-                    {meter.altitud} msnm
-                  </span>
-                </div>
-              </div>
-            )}
-
-          </div>
-        </div>
-
+          );
+        })}
       </div>
-    );
-  })}
-</div>
 
 
       {filteredMeters.length === 0 && (
@@ -750,8 +776,21 @@ const MetersSection = () => {
                   )}
                   <div className="detail-group">
                     <label>Estado:</label>
-                    <span className={`status-badge ${selectedMeter.activo ? 'active' : 'inactive'}`}>
-                      {selectedMeter.activo ? 'Activo' : 'Inactivo'}
+
+                    <span
+                      className={`status-badge ${selectedMeter.activo ? 'active' : 'inactive'}`}
+                    >
+                      {selectedMeter.activo ? (
+                        <>
+                          <CheckCircle className="w-3 h-3 mr-1" />
+                          Activo
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="w-3 h-3 mr-1" />
+                          Inactivo
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>

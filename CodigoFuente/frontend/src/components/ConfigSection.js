@@ -1,6 +1,7 @@
 // src/components/ConfigSection.js
 // MÓDULO DE CONFIGURACIÓN - Solo Backups
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useModal } from '../context/ModalContext';
 import './RolesSection.css';
 import configService from '../services/configServices';
 import authService from '../services/authServices';
@@ -15,6 +16,7 @@ const ConfigSection = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const { showConfirm, showSuccess, showAlert } = useModal();
 
   // Estado para backups
   const [backups, setBackups] = useState([]);
@@ -117,13 +119,23 @@ const ConfigSection = () => {
 
   const handleCreateBackup = async () => {
     if (!permissions.canCreate) {
-      alert('❌ No tienes permiso para crear backups');
+      showAlert({
+        title: "Permiso denegado",
+        message: "❌ No tienes permiso para crear backups",
+        confirmText: "Entendido"
+      });
       return;
     }
 
-    if (!window.confirm('¿Deseas crear un nuevo backup de la base de datos?')) {
-      return;
-    }
+    // 🔥 Mostrar confirmación
+    const confirmed = await showConfirm({
+      title: "Crear Backup",
+      message: "¿Deseas crear un nuevo backup de la base de datos?",
+      confirmText: "Sí, crear backup",
+      cancelText: "Cancelar"
+    });
+
+    if (!confirmed) return; // usuario canceló
 
     setLoading(true);
     setError(null);
@@ -133,34 +145,62 @@ const ConfigSection = () => {
       const result = await configService.createBackup();
 
       if (result.success) {
-        setSuccess(result.message);
+
+        // 🎉 Modal de éxito
+        await showSuccess({
+          title: "Backup creado",
+          message: result.message,
+          confirmText: "OK"
+        });
+
         await loadBackups();
-        
+        setSuccess(result.message);
+
         setTimeout(() => setSuccess(null), 5000);
+
       } else {
+        // ❌ Error mostrado con tu modal
+        showAlert({
+          title: "Error",
+          message: result.message
+        });
         setError(result.message);
       }
 
     } catch (err) {
-      setError('Error al crear el backup');
-      console.error('Error:', err);
+      showAlert({
+        title: "Error inesperado",
+        message: "Error al crear el backup."
+      });
+      setError("Error al crear el backup");
+      console.error("Error:", err);
     } finally {
       setLoading(false);
     }
   };
 
+
   const handleRestoreBackup = async (filename) => {
     if (!permissions.canUpdate) {
-      alert('❌ No tienes permiso para restaurar backups');
+      showAlert({
+        title: "Permiso denegado",
+        message: "❌ No tienes permiso para restaurar backups",
+        confirmText: "Entendido"
+      });
       return;
     }
 
-    if (!window.confirm(
-      `⚠️ ADVERTENCIA: Esta acción restaurará la base de datos y reemplazará todos los datos actuales.\n\n` +
-      `¿Estás seguro de que deseas restaurar el backup:\n"${filename}"?`
-    )) {
-      return;
-    }
+    // ⚠ Advertencia seria
+    const confirmed = await showConfirm({
+      title: "Restaurar Backup",
+      message: 
+        `⚠️ Esta acción restaurará la base de datos y reemplazará todos los datos actuales.\n\n` +
+        `¿Deseas restaurar el backup:\n"${filename}"?`,
+      confirmText: "Sí, restaurar",
+      cancelText: "Cancelar"
+    });
+
+    if (!confirmed) return;
 
     setLoading(true);
     setError(null);
@@ -170,52 +210,88 @@ const ConfigSection = () => {
       const result = await configService.restoreBackup(filename);
 
       if (result.success) {
-        setSuccess(result.message);
+
+        // 🎉 Mostrar éxito
+        await showSuccess({
+          title: "Base restaurada",
+          message: result.message,
+          confirmText: "Aceptar"
+        });
+
         
-        setTimeout(() => {
-          alert('La base de datos ha sido restaurada. Por seguridad, se cerrará tu sesión.');
-          authService.logout();
-          window.location.reload();
-        }, 3000);
+
       } else {
+        showAlert({
+          title: "Error",
+          message: result.message
+        });
         setError(result.message);
       }
 
     } catch (err) {
-      setError('Error al restaurar el backup');
-      console.error('Error:', err);
+      showAlert({
+        title: "Error inesperado",
+        message: "Error al restaurar el backup"
+      });
+      setError("Error al restaurar el backup");
+      console.error("Error:", err);
     } finally {
       setLoading(false);
     }
   };
 
+
   const handleDeleteBackup = async (filename) => {
     if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para eliminar backups');
+      showAlert({
+        title: "Permiso denegado",
+        message: "❌ No tienes permiso para eliminar backups",
+        confirmText: "Entendido"
+      });
       return;
     }
 
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar el backup "${filename}"?`)) {
-      return;
-    }
+    // ⚠ Confirmación personalizada
+    const confirmed = await showConfirm({
+      title: "Eliminar Backup",
+      message: `¿Estás seguro de que deseas eliminar el backup "${filename}"?`,
+      confirmText: "Sí, eliminar",
+      cancelText: "Cancelar"
+    });
+
+    if (!confirmed) return;
 
     try {
       const result = await configService.deleteBackup(filename);
 
       if (result.success) {
+        await showSuccess({
+          title: "Backup Eliminado",
+          message: result.message
+        });
+
         setSuccess(result.message);
         await loadBackups();
-        
         setTimeout(() => setSuccess(null), 3000);
+
       } else {
+        showAlert({
+          title: "Error",
+          message: result.message
+        });
         setError(result.message);
       }
 
     } catch (err) {
-      setError('Error al eliminar el backup');
-      console.error('Error:', err);
+      showAlert({
+        title: "Error inesperado",
+        message: "Error al eliminar el backup"
+      });
+      setError("Error al eliminar el backup");
+      console.error("Error:", err);
     }
   };
+
 
   const handleDownloadBackup = async (filename) => {
     if (!permissions.canRead) {

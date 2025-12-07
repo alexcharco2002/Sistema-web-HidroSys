@@ -31,7 +31,7 @@ class NotificacionBase(BaseModel):
     @field_validator('tipo')
     @classmethod
     def validate_tipo(cls, v):
-        tipos_validos = ['info', 'alerta', 'error', 'sistema', 'exito']
+        tipos_validos = ['info', 'alerta', 'error', 'sistema', 'exito', 'advertencia']
         if v not in tipos_validos:
             raise ValueError(f"Tipo inválido. Debe ser uno de: {', '.join(tipos_validos)}")
         return v

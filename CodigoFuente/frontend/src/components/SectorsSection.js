@@ -1,6 +1,7 @@
 // src/components/SectorsSection.js
 // MÓDULO DE SECTORES - Con control de permisos granular y ordenamiento mejorado
 import React, { useState, useEffect, useCallback } from 'react';
+import { useModal } from '../context/ModalContext';
 import './SectorsSection.css';
 import sectorsService from '../services/sectorServices';
 import authService from '../services/authServices';
@@ -22,6 +23,8 @@ const SectorsSection = () => {
   const [modalType, setModalType] = useState('create');
   const [selectedSector, setSelectedSector] = useState(null);
   const [error, setError] = useState(null);
+  const { showConfirm, showAlert, showSuccess } = useModal();
+
   const [formData, setFormData] = useState({
     nombre_sector: '',
     descripcion: '',
@@ -75,50 +78,58 @@ const SectorsSection = () => {
   };
 
   // Fetch sectors
-  const fetchSectors = useCallback(async () => {
-    if (!permissions.canRead) {
-      setError('No tienes permiso para ver sectores');
-      setLoading(false);
-      return;
-    }
+const fetchSectors = useCallback(async () => {
+  if (!permissions.canRead) {
+    setError('No tienes permiso para ver sectores');
+    setLoading(false);
+    return;
+  }
 
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const result = await sectorsService.getSectors({
-        search: debouncedSearchTerm
-      });
-
-      if (result.success) {
-        setSectors(result.data);
-        console.log('✅ Sectores cargados:', result.data.length);
-      } else {
-        setError(result.message);
-        console.error('Error al cargar sectores:', result.message);
-      }
-    } catch (err) {
-      setError('Error al cargar sectores desde el servidor');
-      console.error('Error en fetchSectors:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [debouncedSearchTerm, permissions.canRead]);
-
-  useEffect(() => {
-    if (permissions.canRead) {
-      console.log('🔄 Componente montado, cargando sectores...');
-      fetchSectors();
-    }
-  }, [fetchSectors, permissions.canRead]);
-
+  setLoading(true);
+  setError(null);
   
+  try {
+    const result = await sectorsService.getSectors({
+      search: debouncedSearchTerm
+    });
 
-  useEffect(() => {
-    if (permissions.canRead) {
-      fetchSectors();
+    if (result.success) {
+      setSectors(result.data);
+      console.log('✅ Sectores cargados:', result.data.length);
+    } else {
+      setError(result.message);
+      console.error('Error al cargar sectores:', result.message);
     }
-  }, [debouncedSearchTerm, fetchSectors, permissions.canRead]);
+  } catch (err) {
+    setError('Error al cargar sectores desde el servidor');
+    console.error('Error en fetchSectors:', err);
+  } finally {
+    setLoading(false);
+  }
+}, [debouncedSearchTerm, permissions.canRead]);
+
+// ✅ SOLO UN useEffect - se ejecuta al montar y cuando cambian los permisos
+useEffect(() => {
+  if (permissions.canRead) {
+    console.log('🔄 Cargando sectores inicialmente...');
+    fetchSectors();
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [permissions.canRead]); // Solo cuando cambian permisos, NO fetchSectors
+
+// ✅ Separado: solo para búsqueda con debounce
+useEffect(() => {
+  if (!permissions.canRead) return;
+  
+  const timeoutId = setTimeout(() => {
+    console.log('🔍 Aplicando búsqueda:', debouncedSearchTerm);
+    fetchSectors();
+  }, 300); // 300ms de debounce
+
+  return () => clearTimeout(timeoutId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [debouncedSearchTerm]); // Solo cuando cambia el término de búsqueda
+
 
   // 🔄 Cambiar el orden de clasificación (ascendente/descendente)
   const toggleSortOrder = () => {
@@ -235,46 +246,105 @@ const SectorsSection = () => {
     }
   };
 
-  const handleDelete = async (sectorId) => {
-    if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para eliminar sectores');
-      return;
-    }
+  
+const handleDelete = async (sectorId) => {
+  console.log("🔴 1. Inicio handleDelete");
+  
+  if (!permissions.canDelete) {
+    console.log("🔴 2. Sin permisos");
+    await showAlert({
+      title: "Permiso denegado",
+      message: "❌ No tienes permiso para eliminar sectores",
+      confirmText: "Entendido"
+    });
+    return;
+  }
 
-    if (window.confirm('¿Estás seguro de que deseas eliminar este sector?')) {
-      try {
-        const result = await sectorsService.deleteSector(sectorId);
-        
-        if (result.success) {
-          alert(result.message);
-          await fetchSectors();
-        } else {
-          alert('Error: ' + result.message);
-        }
-      } catch (error) {
-        alert('Error al eliminar sector: ' + error.message);
-      }
-    }
-  };
+  console.log("🔴 3. Mostrando modal de confirmación");
+  
+  const confirmed = await showConfirm({
+    title: "Eliminar Sector",
+    message: "¿Estás seguro de que deseas eliminar este sector?",
+    confirmText: "Sí, eliminar",
+    cancelText: "Cancelar"
+  });
 
-  const toggleSectorStatus = async (sectorId) => {
-    if (!permissions.canToggleStatus) {
-      alert('❌ No tienes permiso para cambiar el estado de sectores');
-      return;
-    }
+  console.log("🔴 4. Usuario respondió:", confirmed);
 
-    try {
-      const result = await sectorsService.toggleSectorStatus(sectorId);
-      
-      if (result.success) {
-        await fetchSectors();
-      } else {
-        alert('Error: ' + result.message);
-      }
-    } catch (error) {
-      alert('Error al cambiar estado del sector');
+  if (!confirmed) {
+    console.log("🔴 5. Usuario CANCELÓ");
+    return;
+  }
+
+  console.log("🔴 6. Usuario CONFIRMÓ - eliminando...");
+
+  try {
+    const result = await sectorsService.deleteSector(sectorId);
+
+    console.log("🔴 7. Resultado de eliminar:", result);
+
+    if (result.success) {
+      await showSuccess({
+        title: "Sector Eliminado",
+        message: result.message
+      });
+
+      console.log("🔴 8. Recargando sectores...");
+      await fetchSectors();
+    } else {
+      await showAlert({
+        title: "Error",
+        message: result.message
+      });
     }
-  };
+  } catch (error) {
+    await showAlert({
+      title: "Error inesperado",
+      message: "Error al eliminar sector: " + error.message
+    });
+  }
+};
+
+
+  // ✅ CORRECTO - pide confirmación primero
+const toggleSectorStatus = async (sectorId) => {
+  if (!permissions.canToggleStatus) {
+    showAlert({
+      title: "Permiso denegado",
+      message: "❌ No tienes permiso para cambiar el estado de sectores"
+    });
+    return;
+  }
+  
+  const sector = sectors.find(s => s.id_sector === sectorId);
+  const confirmed = await showConfirm({
+    title: `${sector.activo ? 'Desactivar' : 'Activar'} Sector`,
+    message: `¿Estás seguro de que deseas ${sector.activo ? 'desactivar' : 'activar'} este sector?`,
+    confirmText: "Sí, continuar",
+    cancelText: "Cancelar"
+  });
+  
+  if (!confirmed) return; // Si cancela, no hace nada
+  
+  try {
+    const result = await sectorsService.toggleSectorStatus(sectorId);
+    if (result.success) {
+      await showSuccess({
+        title: "Estado actualizado",
+        message: result.message || "El sector se actualizó correctamente"
+      });
+      await fetchSectors();
+    } else {
+      showAlert({ title: "Error", message: result.message });
+    }
+  } catch (error) {
+    showAlert({ 
+      title: "Error inesperado", 
+      message: "Error al cambiar estado del sector: " + error.message 
+    });
+  }
+};
+
 
   if (!permissions.canRead) {
     return (

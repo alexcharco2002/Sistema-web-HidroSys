@@ -1,6 +1,7 @@
 // src/pages/UniversalDashboard.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { useModal } from '../context/ModalContext';
 import authService from '../services/authServices';
 import userService from '../services/userServices';
 
@@ -41,6 +42,7 @@ import {
   ChevronRight,
   Menu, 
   X, 
+  ChevronLeft
 } from 'lucide-react';
 
 // ============================================================================
@@ -79,11 +81,15 @@ const UniversalDashboard = () => {
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [dashboardStats, setDashboardStats] = useState({});
   const [dataLoading, setDataLoading] = useState(true);
-
-  const [sidebarCollapsed] = useState(false); // 🔥 NUEVO
+  const { showConfirm } = useModal();
+  
   const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false); // 🔥 NUEVO
 
+const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+const toggleSidebar = () => {
+  setSidebarCollapsed(!sidebarCollapsed);
+};
   //  Obtener ruta base del rol actual
   const roleBasePath = authService.getRoleBasePath();
 
@@ -331,16 +337,20 @@ const UniversalDashboard = () => {
   };
 
   const handleLogout = async () => {
-    if (window.confirm('¿Estás seguro de que deseas cerrar sesión?')) {
-      try {
-        await authService.logout();
-        navigate('/login');
-      } catch (error) {
-        console.error('Error en logout:', error);
-        navigate('/login');
-      }
-    }
-  };
+  const confirmed = await showConfirm({
+    title: 'Cerrar sesión',
+    message: '¿Seguro que deseas cerrar sesión?',
+    confirmText: 'Sí, cerrar sesión',
+    cancelText: 'Cancelar',
+  });
+
+  if (!confirmed) return;
+
+  // Aquí recién haces el logout y redirección
+  await authService.logout();
+  navigate('/login');
+};
+
 
   const handleMarkAsRead = (notificationId) => {
     console.log('Marcar como leída:', notificationId);
@@ -513,225 +523,233 @@ const UniversalDashboard = () => {
   // ============================================================================
   // RENDER PRINCIPAL
   // ============================================================================
- return (
-  <div className="dashboard">
+  return (
+    <div className="dashboard">
 
-    {/* 🔥 BOTÓN HAMBURGUESA MÓVIL */}
-    <button
-      className="mobile-menu-toggle"
-      onClick={toggleSidebarMobile}
-      aria-label="Abrir menú"
-    >
-      <Menu size={24} />
-    </button>
-
-    {/* SIDEBAR */}
-    <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${sidebarMobileOpen ? 'mobile-open' : ''}`}>
-
-      {/* Overlay para cerrar en móvil */}
-      {sidebarMobileOpen && (
-        <div
-          className="sidebar-overlay"
-          onClick={toggleSidebarMobile}
-        />
-      )}
-      {/* 🔥 Botón cerrar móvil */}
-      <button 
-        className="sidebar-close-btn-mobile" 
+      {/* 🔥 BOTÓN HAMBURGUESA MÓVIL */}
+      <button
+        className="mobile-menu-toggle"
         onClick={toggleSidebarMobile}
+        aria-label="Abrir menú"
       >
-        <X className="w-5 h-5" />
+        <Menu size={24} />
       </button>
 
-      {/* Header del Sidebar */}
-      <div className="sidebar-header">
-        <div className="logo-container">
-          <div className="logo-icon">
-            <Droplets className="text-white" size={32} />
-          </div>
+      {/* SIDEBAR */}
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${sidebarMobileOpen ? 'mobile-open' : ''}`}>
 
-          {!sidebarCollapsed && (
-            <div className="logo-text">
-              <h2>TecniCobro</h2>
-              <p>JAAP Sanjapamba</p>
-            </div>
-          )}
-          
-        </div>
-
-        
-      </div>
-
-      {/* Navegación */}
-      <nav className="sidebar-nav">
-
-        <button
-          className="sidebar-close-btn-mobile"
+        {/* Overlay para cerrar en móvil */}
+        {sidebarMobileOpen && (
+          <div
+            className="sidebar-overlay"
+            onClick={toggleSidebarMobile}
+          />
+        )}
+        {/* 🔥 Botón cerrar móvil */}
+        <button 
+          className="sidebar-close-btn-mobile" 
           onClick={toggleSidebarMobile}
-          aria-label="Cerrar menú"
         >
-          <X size={24} />
+          <X className="w-5 h-5" />
         </button>
-        {/* 🔥 CATEGORÍAS REALES DEL SISTEMA */}
-        {organizedModules.map((category) => (
-          <div key={category.id} className="nav-category">
 
-            {/* Header */}
+        {/* Header del Sidebar */}
+        <div className="sidebar-header">
+          <div className="logo-container">
+            <div className="logo-icon">
+              <Droplets className="text-white" size={32} />
+            </div>
+
             {!sidebarCollapsed && (
-              <button
-                className="category-header"
-                onClick={() => toggleCategory(category.id)}
-              >
-                <div className="category-header-content">
-                  <category.icon size={16} />
-                  <span>{category.label}</span>
-                  {expandedCategories[category.id] ? (
-                    <ChevronDown size={16} />
-                  ) : (
-                    <ChevronRight size={16} />
-                  )}
-                </div>
-              </button>
-            )}
-
-            {/* Módulos */}
-            {(expandedCategories[category.id] || sidebarCollapsed) && (
-              <div className="category-modules">
-                {category.modules.map((module) => {
-                  const ModuleIcon = module.icon;
-                  const isActive = currentPath === module.path;
-
-                  return (
-                    <button
-                      key={module.id}
-                      className={`nav-item ${isActive ? 'active' : ''}`}
-                      onClick={() => {
-                        handleNavigateToModule(module.path);
-                        if (window.innerWidth <= 1024) {
-                          setSidebarMobileOpen(false);
-                        }
-                      }}
-                      title={sidebarCollapsed ? module.label : ''}
-                    >
-                      <ModuleIcon size={20} />
-                      {!sidebarCollapsed && <span>{module.label}</span>}
-                    </button>
-                  );
-                })}
+              <div className="logo-text">
+                <h2>TecniCobro</h2>
+                <p>JAAP Sanjapamba</p>
               </div>
             )}
           </div>
-        ))}
-      </nav>
 
-
-      {/* Footer del Sidebar */}
-      {!sidebarCollapsed && (
-        <div className="sidebar-footer">
-          <div className="user-permissions-info">
-            <Shield size={16} />
-            <span>{userPermissions.length} permisos activos</span>
-          </div>
-        </div>
-      )}
-    </aside>
-
-    {/* MAIN CONTENT */}
-    <main className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-
-      {/* HEADER */}
-      <header className="header">
-        <div className="header-content">
-          {/* 🔥 BOTÓN HAMBURGUESA MÓVIL */}
-          <button 
-            className="mobile-menu-toggle" 
-            onClick={toggleSidebarMobile}
-            aria-label="Toggle menu"
+          {/* 🔥 BOTÓN TOGGLE PARA COLAPSAR/EXPANDIR SIDEBAR */}
+          <button
+            className="sidebar-toggle-btn"
+            onClick={toggleSidebar}
+            aria-label={sidebarCollapsed ? "Expandir menú" : "Contraer menú"}
+            title={sidebarCollapsed ? "Expandir menú" : "Contraer menú"}
           >
-            <Menu className="w-6 h-6" />
+            {sidebarCollapsed ? (
+              <ChevronRight size={20} />
+            ) : (
+              <ChevronLeft size={20} />
+            )}
           </button>
-          <div className="header-title">
-            <h1>Panel de {user?.rol?.nombre_rol || 'Usuario'}</h1>
-            <p>Bienvenido 👋, {user.nombres} {user.apellidos}</p>
-          </div>
-
-          <div className="header-actions">
-            <button
-              className={`refresh-btn ${loading ? 'loading' : ''}`}
-              onClick={handleRefresh}
-              disabled={loading}
-              title="Actualizar datos"
-            >
-              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-
-            <NotificationDropdown
-              notifications={notifications}
-              onMarkAsRead={handleMarkAsRead}
-              onViewAll={handleViewAllNotifications}
-            />
-
-            <UserProfile
-              user={user}
-              onLogout={handleLogout}
-              onViewProfile={handleProfileClick}
-              onSettingsClick={handleSettingsClick}
-            />
-          </div>
         </div>
-      </header>
 
-      {/* CONTENIDO */}
-      <div className="content">
-        <Routes>
-          <Route path="/" element={<Navigate to="home" replace />} />
+        {/* Navegación */}
+        <nav className="sidebar-nav">
 
-          <Route path="home" element={<DynamicModuleRenderer modulePath="home" />} />
-          <Route path="profile" element={<DynamicModuleRenderer modulePath="profile" />} />
-          <Route path="notifications" element={<DynamicModuleRenderer modulePath="notifications" />} />
+          <button
+            className="sidebar-close-btn-mobile"
+            onClick={toggleSidebarMobile}
+            aria-label="Cerrar menú"
+          >
+            <X size={24} />
+          </button>
+          {/* 🔥 CATEGORÍAS REALES DEL SISTEMA */}
+          {organizedModules.map((category) => (
+            <div key={category.id} className="nav-category">
 
-          {organizedModules.flatMap(category =>
-            category.modules.map(module => (
-              <Route
-                key={module.path}
-                path={module.path}
-                element={<DynamicModuleRenderer modulePath={module.path} />}
+              {/* Header */}
+              {!sidebarCollapsed && (
+                <button
+                  className="category-header"
+                  onClick={() => toggleCategory(category.id)}
+                >
+                  <div className="category-header-content">
+                    <category.icon size={16} />
+                    <span>{category.label}</span>
+                    {expandedCategories[category.id] ? (
+                      <ChevronDown size={16} />
+                    ) : (
+                      <ChevronRight size={16} />
+                    )}
+                  </div>
+                </button>
+              )}
+
+              {/* Módulos */}
+              {(expandedCategories[category.id] || sidebarCollapsed) && (
+                <div className="category-modules">
+                  {category.modules.map((module) => {
+                    const ModuleIcon = module.icon;
+                    const isActive = currentPath === module.path;
+
+                    return (
+                      <button
+                        key={module.id}
+                        className={`nav-item ${isActive ? 'active' : ''}`}
+                        onClick={() => {
+                          handleNavigateToModule(module.path);
+                          if (window.innerWidth <= 1024) {
+                            setSidebarMobileOpen(false);
+                          }
+                        }}
+                        title={sidebarCollapsed ? module.label : ''}
+                      >
+                        <ModuleIcon size={20} />
+                        {!sidebarCollapsed && <span>{module.label}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+        </nav>
+
+
+        {/* Footer del Sidebar */}
+        {!sidebarCollapsed && (
+          <div className="sidebar-footer">
+            <div className="user-permissions-info">
+              <Shield size={16} />
+              <span>{userPermissions.length} permisos activos</span>
+            </div>
+          </div>
+        )}
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <main className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+
+        {/* HEADER */}
+        <header className="header">
+          <div className="header-content">
+            {/* 🔥 BOTÓN HAMBURGUESA MÓVIL */}
+            <button 
+              className="mobile-menu-toggle" 
+              onClick={toggleSidebarMobile}
+              aria-label="Toggle menu"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="header-title">
+              <h1>Panel de {user?.rol?.nombre_rol || 'Usuario'}</h1>
+              <p>Bienvenido 👋, {user.nombres} {user.apellidos}</p>
+            </div>
+
+            <div className="header-actions">
+              <button
+                className={`refresh-btn ${loading ? 'loading' : ''}`}
+                onClick={handleRefresh}
+                disabled={loading}
+                title="Actualizar datos"
+              >
+                <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+
+              <NotificationDropdown
+                notifications={notifications}
+                onMarkAsRead={handleMarkAsRead}
+                onViewAll={handleViewAllNotifications}
               />
-            ))
-          )}
 
-          <Route path="*" element={<Navigate to="home" replace />} />
-        </Routes>
-      </div>
-            
+              <UserProfile
+                user={user}
+                onLogout={handleLogout}
+                onViewProfile={handleProfileClick}
+                onSettingsClick={handleSettingsClick}
+              />
+            </div>
+          </div>
+        </header>
 
-      {/* 🔥 FOOTER DINÁMICO */}
-{/* 🔥 FOOTER COMPACTO */}
-<footer className="dashboard-footer">
-  <div className="footer-bottom">
-    <p>© 2025 TecniCobro. Todos los derechos reservados.</p>
-  </div>
-</footer>
+        {/* CONTENIDO */}
+        <div className="content">
+          <Routes>
+            <Route path="/" element={<Navigate to="home" replace />} />
 
+            <Route path="home" element={<DynamicModuleRenderer modulePath="home" />} />
+            <Route path="profile" element={<DynamicModuleRenderer modulePath="profile" />} />
+            <Route path="notifications" element={<DynamicModuleRenderer modulePath="notifications" />} />
 
+            {organizedModules.flatMap(category =>
+              category.modules.map(module => (
+                <Route
+                  key={module.path}
+                  path={module.path}
+                  element={<DynamicModuleRenderer modulePath={module.path} />}
+                />
+              ))
+            )}
 
+            <Route path="*" element={<Navigate to="home" replace />} />
+          </Routes>
+          
+          {/* 🔥 FOOTER  */}
+          <footer className="dashboard-footer">
+            <div className="footer-bottom">
+              <p>© 2025 TecniCobro. Todos los derechos reservados.</p>
+            </div>
+          </footer>
+        </div>
+              
 
-    </main>
+        
+      </main>
 
-    {/* 🔐 MODAL DE CAMBIO DE CONTRASEÑA */}
-    {user && (
-      <ChangePasswordModal
-        isOpen={showChangePasswordModal}
-        onClose={handleClosePasswordModal}
-        userId={user.id_usuario_sistema}
-        userEmail={user.email}
-        isPrimerLogin={user.primer_login === true || user.primer_login === 1}
-        onSuccess={handlePasswordChangeSuccess}
-      />
-    )}
+      {/* 🔐 MODAL DE CAMBIO DE CONTRASEÑA */}
+      {user && (
+        <ChangePasswordModal
+          isOpen={showChangePasswordModal}
+          onClose={handleClosePasswordModal}
+          userId={user.id_usuario_sistema}
+          userEmail={user.email}
+          isPrimerLogin={user.primer_login === true || user.primer_login === 1}
+          onSuccess={handlePasswordChangeSuccess}
+        />
+      )}
 
-  </div>
-);
+    </div>
+  );
 
 };
 

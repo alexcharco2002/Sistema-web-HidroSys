@@ -2,6 +2,7 @@
 // MÓDULO DE LECTURAS - Con sistema de periodos mensuales REORGANIZADO
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useModal } from '../context/ModalContext';
 import './ReadingsList.css';
 import readingsServices from '../services/readingsServices';
 import authService from '../services/authServices';
@@ -65,6 +66,7 @@ const ReadingsSection = () => {
   const [selectedReading, setSelectedReading] = useState(null);
   const [selectedMeterInfo, setSelectedMeterInfo] = useState(null);
   const [meterSearchTerm, setMeterSearchTerm] = useState('');
+  const { showConfirm, showAlert, showSuccess } = useModal();
 
   // ============================================================
   // ESTADOS DE EXCEL CON PERIODO
@@ -457,26 +459,54 @@ const ReadingsSection = () => {
 
   const handleDelete = async (readingId) => {
     if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para eliminar lecturas');
+      showAlert({
+        title: "Permiso denegado",
+        message: "❌ No tienes permiso para eliminar lecturas",
+        confirmText: "Entendido"
+      });
       return;
     }
 
-    if (window.confirm('¿Estás seguro de que deseas eliminar esta lectura?')) {
-      try {
-        const result = await readingsServices.deleteLectura(readingId);
+    // 🔥 Modal de confirmación
+    const confirmed = await showConfirm({
+      title: "Eliminar Lectura",
+      message: "¿Estás seguro de que deseas eliminar esta lectura?",
+      confirmText: "Sí, eliminar",
+      cancelText: "Cancelar"
+    });
 
-        if (result.success) {
-          alert(result.message);
-          await fetchReadingsByPeriodo();
-          await fetchPeriodosDisponibles();
-        } else {
-          alert('Error: ' + result.message);
-        }
-      } catch (error) {
-        alert('Error al eliminar lectura: ' + error.message);
+    if (!confirmed) return; // Usuario canceló
+
+    try {
+      const result = await readingsServices.deleteLectura(readingId);
+
+      if (result.success) {
+
+        // 🎉 Modal de éxito
+        await showSuccess({
+          title: "Lectura Eliminada",
+          message: result.message,
+          confirmText: "OK"
+        });
+
+        await fetchReadingsByPeriodo();
+        await fetchPeriodosDisponibles();
+
+      } else {
+        showAlert({
+          title: "Error",
+          message: result.message
+        });
       }
+
+    } catch (error) {
+      showAlert({
+        title: "Error inesperado",
+        message: "Error al eliminar lectura: " + error.message
+      });
     }
   };
+
 
   // ============================================================
   // FUNCIONES DE EXCEL CON PERIODO
@@ -902,14 +932,14 @@ return (
 
             <div className="readings-list-body">
               {sortedReadings.length > 0 ? (
-                sortedReadings.map((reading) => {
+                sortedReadings.map((reading, index) => {
                   const consumoClass = reading.consumo_m3 > 100 ? 'alto' : reading.consumo_m3 > 50 ? 'medio' : '';
                   return (
                     <div 
                       key={reading.id_lectura} 
                       className={`readings-list-item ${!reading.activo ? 'inactive' : ''}`}
                     >
-                      <div className="list-col-id">{reading.id_lectura}</div>
+                      <div className="list-col-id">{index + 1}</div>
 
                       <div className="list-col-medidor">
                         <div className="medidor-icon">
@@ -1329,40 +1359,97 @@ return (
           {/* ==================== MODAL DE VISTA ==================== */}
           {modalType === 'view' && selectedReading && (
             <div className="user-details">
+
+              {/* ID Lectura */}
               <div className="detail-group">
                 <label>ID Lectura:</label>
                 <p>{selectedReading.id_lectura}</p>
               </div>
+
+              {/* Código de Usuario */}
+              <div className="detail-group">
+                <label>Código de Usuario:</label>
+                <p>{selectedReading.medidor?.codigo_afiliado || 'N/A'}</p>
+              </div>
+
+              {/* Medidor */}
               <div className="detail-group">
                 <label>Medidor:</label>
                 <p>{selectedReading.medidor?.num_medidor || 'N/A'}</p>
               </div>
+
+              {/* Sector */}
+              <div className="detail-group">
+                <label>Sector:</label>
+                <p>{selectedReading.medidor?.sector || 'Sin sector'}</p>
+              </div>
+
+              {/* Nombre Afiliado */}
               <div className="detail-group">
                 <label>Nombre Afiliado:</label>
                 <p>{selectedReading.medidor?.nombre_afiliado || 'Sin afiliado'}</p>
               </div>
+
+              {/* Lecturas */}
               <div className="detail-group">
                 <label>Lectura Anterior:</label>
                 <p>{selectedReading.lectura_anterior} m³</p>
               </div>
+
               <div className="detail-group">
                 <label>Lectura Actual:</label>
                 <p>{selectedReading.lectura_actual} m³</p>
               </div>
+
+              {/* Consumo */}
               <div className="detail-group">
                 <label>Consumo:</label>
                 <p className="text-green-700 font-semibold">{selectedReading.consumo_m3} m³</p>
               </div>
+
+              {/* Fecha */}
               <div className="detail-group">
                 <label>Fecha:</label>
                 <p>{new Date(selectedReading.fecha_lectura + 'T00:00:00').toLocaleDateString('es-EC')}</p>
               </div>
-              {selectedReading.observacion && (
-                <div className="detail-group">
-                  <label>Observación:</label>
-                  <p>{selectedReading.observacion}</p>
-                </div>
-              )}
+
+              {/* Lector */}
+              <div className="detail-group">
+                <label>Lector:</label>
+                <p>
+                  {selectedReading.lector
+                    ? `${selectedReading.lector.nombres} ${selectedReading.lector.apellidos}`
+                    : 'No registrado'}
+                </p>
+              </div>
+
+              {/* Observación */}
+              <div className="detail-group">
+                <label>Observación:</label>
+                <p>{selectedReading.observacion || 'Sin observaciones'}</p>
+              </div>
+
+              {/* Estado  */}
+              <div className="detail-group">
+                <label>Estado:</label>
+
+                <span
+                  className={`status-badge ${selectedReading.activo ? 'active' : 'inactive'}`}
+                >
+                  {selectedReading.activo ? (
+                    <>
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Activo
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-3 h-3 mr-1" />
+                      Inactivo
+                    </>
+                  )}
+                </span>
+              </div>
+
             </div>
           )}
 

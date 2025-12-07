@@ -2,6 +2,8 @@
 // MÓDULO DE AFILIADOS - Con creación simultánea de medidor
 
 import React, { useState, useEffect, useCallback  } from 'react';
+import { useModal } from '../context/ModalContext';
+
 import './AffiliatesSection.css';
 import affiliatesService from '../services/affiliatesServices';
 import sectorsService from '../services/sectorServices';
@@ -30,6 +32,7 @@ const AffiliatesSection = () => {
   
   const [sortOption, setSortOption] = useState('codigo');
   const [sortOrder, setSortOrder] = useState('asc');
+  const { showConfirm, showSuccess, showAlert } = useModal();
 
   // Estado para controlar si se quiere crear medidor junto con el afiliado
   const [createWithMeter, setCreateWithMeter] = useState(false);
@@ -675,21 +678,37 @@ const AffiliatesSection = () => {
       alert('❌ No tienes permiso para eliminar afiliados');
       return;
     }
+    const confirmed = await showConfirm({
+      title: '¿Eliminar Afiliado?',
+      message: '¿Estás seguro de que deseas eliminar este afiliado? Esta acción no se puede deshacer.',
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar'
+    });
 
-    if (window.confirm('¿Estás seguro de que deseas eliminar este afiliado?')) {
+    if (confirmed) {
       try {
         const result = await affiliatesService.deleteAffiliate(affiliateId);
         
         if (result.success) {
-          alert(result.message);
+          await showSuccess({
+            title: 'Afiliado Eliminado',
+            message: result.message
+          });
           await fetchAffiliates();
         } else {
-          alert('Error: ' + result.message);
+          await showAlert({
+            title: 'Error al Eliminar',
+            message: result.message
+          });
         }
       } catch (error) {
-        alert('Error al eliminar afiliado: ' + error.message);
+        await showAlert({
+          title: 'Error',
+          message: 'Error al eliminar afiliado: ' + error.message
+        });
       }
     }
+  
   };
 
   const toggleAffiliateStatus = async (affiliateId) => {

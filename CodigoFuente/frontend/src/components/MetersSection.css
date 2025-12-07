@@ -73,39 +73,42 @@
 }
 /* ==================== MEJORAS DE BADGE DE MEDIDOR ==================== */
 
-.status-badge.meter-assigned {
-  background-color: rgba(34, 197, 94, 0.1);
-  color: #16a34a;
-  border: 1px solid rgba(34, 197, 94, 0.2);
+/* ========================================
+   BADGES – MEDIDORES ASIGNADOS / NO ASIGNADOS
+   ======================================== */
+
+/* Base general para todos los badges */
+.status-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+  padding: 0.25rem 0.6rem;   /* 4px 10px */
+  border-radius: 9999px;     /* Forma de píldora */
+  font-size: 0.70rem;        /* 11px aprox */
   font-weight: 500;
   white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+/* === Meter Asignado === */
+.status-badge.meter-assigned {
+  background-color: #dcfce7;        /* Verde claro */
+  color: #166534;                   /* Verde oscuro */
+  border-color: #bbf7d0;            /* Verde borde suave */
 }
 
 .status-badge.meter-assigned svg {
-  color: #16a34a;
+  color: #166534;
 }
 
+/* === Meter No Asignado === */
 .status-badge.meter-unassigned {
-  background-color: rgba(245, 158, 11, 0.1);
-  color: #d97706;
-  border: 1px solid rgba(245, 158, 11, 0.2);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
+  background-color: #ffedd5;        /* Naranja claro */
+  color: #9a3412;                   /* Naranja oscuro */
+  border-color: #fed7aa;            /* Naranja borde suave */
 }
 
 .status-badge.meter-unassigned svg {
-  color: #d97706;
+  color: #9a3412;
 }
 

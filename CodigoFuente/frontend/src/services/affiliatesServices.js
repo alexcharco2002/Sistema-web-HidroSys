@@ -307,7 +307,7 @@ class AffiliatesService {
       if (data?.accion === 'eliminado') {
         return {
           success: true,
-          message: `✅ El afiliado con código "${cod}" fue eliminado correctamente.`,
+          message: `El afiliado con código "${cod}" fue eliminado correctamente.`,
           data
         };
       }
@@ -315,7 +315,7 @@ class AffiliatesService {
       if (data?.accion === 'desactivado') {
         return {
           success: true,
-          message: `⚠️ El afiliado con código "${cod}" no se pudo eliminar porque está relacionado con otros módulos. Fue desactivado.`,
+          message: `El afiliado con código "${cod}" no se pudo eliminar porque está relacionado con otros módulos. Fue desactivado.`,
           data
         };
       }

@@ -1,7 +1,7 @@
 // src/pages/UniversalDashboard.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { useModal } from '../context/ModalContext';
+
 import authService from '../services/authServices';
 import userService from '../services/userServices';
 
@@ -81,7 +81,7 @@ const UniversalDashboard = () => {
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [dashboardStats, setDashboardStats] = useState({});
   const [dataLoading, setDataLoading] = useState(true);
-  const { showConfirm } = useModal();
+ 
   
   const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false); // 🔥 NUEVO
 
@@ -337,19 +337,13 @@ const toggleSidebar = () => {
   };
 
   const handleLogout = async () => {
-  const confirmed = await showConfirm({
-    title: 'Cerrar sesión',
-    message: '¿Seguro que deseas cerrar sesión?',
-    confirmText: 'Sí, cerrar sesión',
-    cancelText: 'Cancelar',
-  });
+    const confirmed = window.confirm("¿Seguro que deseas cerrar sesión?");
+    if (!confirmed) return;
 
-  if (!confirmed) return;
-
-  // Aquí recién haces el logout y redirección
-  await authService.logout();
-  navigate('/login');
-};
+    // Logout y redirección
+    await authService.logout();
+    navigate('/login');
+  };
 
 
   const handleMarkAsRead = (notificationId) => {

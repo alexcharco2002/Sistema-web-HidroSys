@@ -13,18 +13,18 @@ const API_CONFIG = {
     toggleStatus: (id) => `/lecturas/${id}/toggle-status`,
     exportTemplate: '/lecturas/export/template',
     importExcel: '/lecturas/import/excel',
-    importExcelPeriodo: '/lecturas/import/excel/periodo',  // 🆕 NUEVO
+    importExcelPeriodo: '/lecturas/import/excel/periodo',  
     exportExcel: '/lecturas/export/excel',
     medidoresCompletos: '/lecturas/medidores/lista/completa',
     stats: '/lecturas/stats/count',
-    periodosDisponibles: '/lecturas/periodos/disponibles'  // 🆕 NUEVO
+    periodosDisponibles: '/lecturas/periodos/disponibles'  
   }
 };
 
 class ReadingsServices {
   constructor() {
     this.cachedLecturas = null;
-    this.cachedPeriodos = null;  // 🆕 Caché de periodos
+    this.cachedPeriodos = null; 
   }
 
   /**
@@ -278,9 +278,6 @@ class ReadingsServices {
     return `${this.getNombreMes(mes)} ${anio}`;
   }
 
-  // ========================================
-  // MÉTODOS EXISTENTES (mantenidos)
-  // ========================================
 
   /**
    * Obtener lista completa de medidores con información de afiliados
@@ -696,6 +693,73 @@ class ReadingsServices {
     this.cachedLecturas = null;
     this.cachedPeriodos = null;
   }
+  
+  /**
+   * Generar lecturas estimadas para medidores sin lectura
+   * @param {number} mes - Mes (1-12)
+   * @param {number} anio - Año
+   * @param {number} mesesPromedio - Meses para calcular promedio (default: 3)
+   */
+  async generarLecturasEstimadas(mes, anio, mesesPromedio = 3) {
+      try {
+          const endpoint = `/lecturas/generar-estimadas?mes=${mes}&anio=${anio}&meses_promedio=${mesesPromedio}`;
+          const data = await this.makeRequest(endpoint, {
+              method: 'POST'
+          });
+          
+          // Limpiar cachés
+          this.cachedLecturas = null;
+          this.cachedPeriodos = null;
+          
+          return {
+              success: true,
+              data: data,
+              message: data.message || 'Lecturas estimadas generadas'
+          };
+      } catch (error) {
+          console.error('Error generando lecturas estimadas:', error);
+          return {
+              success: false,
+              message: error.message || 'Error al generar lecturas estimadas'
+          };
+      }
+  }
+
+  /**
+   * Confirmar una lectura estimada con el valor real
+   * @param {number} idLectura - ID de la lectura estimada
+   * @param {number} lecturaReal - Valor real de la lectura
+   * @param {string} observacion - Observación adicional
+   */
+  async confirmarLecturaEstimada(idLectura, lecturaReal, observacion = null) {
+      try {
+          let endpoint = `/lecturas/${idLectura}/confirmar-estimada?lectura_real=${lecturaReal}`;
+          if (observacion) {
+              endpoint += `&observacion=${encodeURIComponent(observacion)}`;
+          }
+          
+          const data = await this.makeRequest(endpoint, {
+              method: 'PATCH'
+          });
+          
+          // Limpiar cachés
+          this.cachedLecturas = null;
+          this.cachedPeriodos = null;
+          
+          return {
+              success: true,
+              data: data,
+              message: 'Lectura confirmada exitosamente'
+          };
+      } catch (error) {
+          console.error('Error confirmando lectura:', error);
+          return {
+              success: false,
+              message: error.message || 'Error al confirmar lectura'
+          };
+      }
+  }
+
 }
 
 const readingsServices = new ReadingsServices();

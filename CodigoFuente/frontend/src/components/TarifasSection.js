@@ -1,7 +1,7 @@
 // src/components/TarifasSection.js
 // MÓDULO DE TARIFAS - Con control de versiones y vigencia
 import React, { useState, useEffect, useCallback } from 'react';
-import { useModal } from '../context/ModalContext';
+
 import tarifasService from '../services/tarifasServices';
 import authService from '../services/authServices';
 
@@ -27,7 +27,6 @@ const TarifasSection = () => {
   const [stats, setStats] = useState(null);
   const [historialVersiones, setHistorialVersiones] = useState([]);
   const [showHistorialModal, setShowHistorialModal] = useState(false);
-  const { showConfirm, showAlert, showSuccess } = useModal();
  
   const [formData, setFormData] = useState({
     nombre: '',
@@ -217,48 +216,31 @@ const TarifasSection = () => {
     }
   };
 
-  // ⏹️ Finalizar vigencia manualmente
+  // Finalizar vigencia de una tarifa 
   const finalizarVigencia = async (tarifaId, nombreTarifa) => {
     if (!permissions.canUpdate) {
-      showAlert({
-        title: "Permiso denegado",
-        message: "❌ No tienes permiso para finalizar vigencia."
-      });
+      alert("❌ No tienes permiso para finalizar vigencia.");
       return;
     }
 
-    const confirmado = await showConfirm({
-      title: "Finalizar vigencia",
-      message: `¿Estás seguro de finalizar la vigencia de "${nombreTarifa}"? Esta acción no se puede deshacer.`,
-      confirmText: "Sí, finalizar",
-      cancelText: "Cancelar"
-    });
-
+    const confirmado = window.confirm(
+      `¿Estás seguro de finalizar la vigencia de "${nombreTarifa}"? Esta acción no se puede deshacer.`
+    );
     if (!confirmado) return;
 
     try {
       const result = await tarifasService.finalizarVigenciaTarifa(tarifaId);
-          
-      if (result.success) {
-        await showSuccess({
-          title: "Vigencia finalizada",
-          message: "La vigencia se finalizó correctamente."
-        });
 
+      if (result.success) {
+        alert("✅ Vigencia finalizada: La vigencia se finalizó correctamente.");
         await fetchTarifas();
         await fetchStats();
       } else {
-        showAlert({
-          title: "Error",
-          message: result.message
-        });
+        alert("❌ Error: " + result.message);
       }
 
     } catch (error) {
-      showAlert({
-        title: "Error al finalizar vigencia",
-        message: error.message
-      });
+      alert("❌ Error al finalizar vigencia: " + error.message);
     }
   };
 
@@ -360,47 +342,29 @@ const TarifasSection = () => {
 
   const handleDelete = async (tarifaId) => {
     if (!permissions.canDelete) {
-      showAlert({
-        title: "Permiso denegado",
-        message: "❌ No tienes permiso para eliminar tarifas."
-      });
+      alert("❌ No tienes permiso para eliminar tarifas.");
       return;
     }
 
-    const confirmado = await showConfirm({
-      title: "Eliminar tarifa",
-      message: "¿Estás seguro de que deseas eliminar esta tarifa?",
-      confirmText: "Sí, eliminar",
-      cancelText: "Cancelar"
-    });
-
+    const confirmado = window.confirm("¿Estás seguro de que deseas eliminar esta tarifa?");
     if (!confirmado) return;
 
     try {
       const result = await tarifasService.deleteTarifa(tarifaId);
-      
-      if (result.success) {
-        await showSuccess({
-          title: "Eliminada",
-          message: result.message
-        });
 
+      if (result.success) {
+        alert("✅ Tarifa eliminada: " + result.message);
         await fetchTarifas();
         await fetchStats();
       } else {
-        showAlert({
-          title: "Advertencia",
-          message: result.message
-        });
+        alert("❌ Advertencia: " + result.message);
       }
 
     } catch (error) {
-      showAlert({
-        title: "Error al eliminar tarifa",
-        message: error.message
-      });
+      alert("❌ Error al eliminar tarifa: " + error.message);
     }
   };
+
 
 
   const toggleTarifaStatus = async (tarifaId) => {

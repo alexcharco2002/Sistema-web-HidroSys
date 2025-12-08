@@ -4,8 +4,7 @@
  * Permite crear, editar, eliminar roles y asignarles permisos específicos
  * Con control de permisos granular
 */
-import React, { useState, useEffect, useCallback } from 'react';
-import { useModal } from '../context/ModalContext';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import './RolesSection.css';
 
 import rolesService from '../services/rolesServices';
@@ -45,7 +44,6 @@ const RolesSection = () => {
   const [selectedAction, setSelectedAction] = useState(null);
   const [error, setError] = useState(null);
   const [editingRoleId, setEditingRoleId] = useState(null);
-  const { showConfirm, showAlert, showSuccess } = useModal();
 
   const [roleFormData, setRoleFormData] = useState({
     nombre_rol: '',
@@ -68,13 +66,13 @@ const RolesSection = () => {
     canToggleStatus: false
   });
 
-  const tiposAccion = [
+  const tiposAccion = useMemo(() => [
     { value: 'Operaciones CRUD', label: 'Todas los permisos (Lectura, Crear, Actualizar y Eliminar)' },
     { value: 'Lectura', label: 'Lectura' },
     { value: 'Crear', label: 'Crear' },
     { value: 'Actualizar', label: 'Actualizar' },
     { value: 'Eliminar', label: 'Eliminar' }
-  ];
+  ], []);
 
   const modulosSistema = [
     { value: 'Usuarios', label: 'Usuarios' },
@@ -164,11 +162,24 @@ const RolesSection = () => {
       setLoading(false);
     }
   }, [permissions.canRead]);
+
   useEffect(() => {
     if (permissions.canRead) {
       fetchRoles();
     }
   }, [permissions.canRead, fetchRoles]);
+
+  useEffect(() => {
+  setActionFormData(prev => {
+    if (!prev.tipo_accion) return prev; // nada que hacer
+    const match = tiposAccion.find(t => t.value === prev.tipo_accion);
+    if (!match) return {...prev, tipo_accion: ''};
+    return prev;
+  });
+}, [tiposAccion]); // solo dependemos del array de tiposAccion
+
+
+
   const fetchRoleActions = async (roleId) => {
     setLoadingActions(true);
     setError(null);
@@ -354,34 +365,22 @@ const RolesSection = () => {
   const handleDeleteRole = async (roleId) => {
     // 🔑 Verificar permisos
     if (!permissions.canDelete) {
-      showAlert({
-        title: "Permiso denegado",
-        message: "❌ No tienes permiso para eliminar roles",
-        confirmText: "Entendido"
-      });
+      alert("❌ No tienes permiso para eliminar roles");
       return;
     }
 
-    // 🔥 Confirmación personalizada
-    const confirmed = await showConfirm({
-      title: "Eliminar Rol",
-      message: "¿Está seguro de eliminar este rol? Esta acción eliminará todas sus acciones asociadas.",
-      confirmText: "Sí, eliminar rol",
-      cancelText: "Cancelar"
-    });
-
+    // ✅ Confirmación simple
+    const confirmed = window.confirm(
+      "¿Está seguro de eliminar este rol? Esta acción eliminará todas sus acciones asociadas."
+    );
     if (!confirmed) return;
 
     try {
       const result = await rolesService.deleteRole(roleId);
 
       if (result.success) {
-
-        // 🎉 Modal de éxito
-        await showSuccess({
-          title: "Rol Eliminado",
-          message: result.message
-        });
+        // 🎉 Éxito con emoji
+        alert("✅ Rol Eliminado: " + result.message);
 
         // Si el rol eliminado es el seleccionado, limpiar
         if (selectedRole?.id_rol === roleId) {
@@ -392,66 +391,42 @@ const RolesSection = () => {
         await fetchRoles();
 
       } else {
-        showAlert({
-          title: "Error",
-          message: result.message
-        });
+        // ❌ Error al eliminar
+        alert("❌ Error: " + result.message);
       }
 
     } catch (error) {
-      showAlert({
-        title: "Error inesperado",
-        message: "Error al eliminar rol: " + error.message
-      });
+      alert("❌ Error inesperado al eliminar rol: " + error.message);
     }
   };
-
 
   const handleDeleteAction = async (actionId) => {
     // 🔑 Verificar permiso
     if (!permissions.canDelete) {
-      showAlert({
-        title: "Permiso denegado",
-        message: "❌ No tienes permiso para eliminar acciones",
-        confirmText: "Entendido"
-      });
+      alert("❌ No tienes permiso para eliminar acciones");
       return;
     }
 
-    // 🔥 Confirmación
-    const confirmed = await showConfirm({
-      title: "Eliminar Acción",
-      message: "¿Está seguro de eliminar esta acción?",
-      confirmText: "Sí, eliminar",
-      cancelText: "Cancelar"
-    });
-
+    // ✅ Confirmación simple
+    const confirmed = window.confirm("¿Está seguro de eliminar esta acción?");
     if (!confirmed) return;
 
     try {
       const result = await rolesService.deleteRoleAction(actionId);
 
       if (result.success) {
-
-        await showSuccess({
-          title: "Acción Eliminada",
-          message: result.message
-        });
+        // 🎉 Éxito con emoji
+        alert("✅ Acción Eliminada: " + result.message);
 
         await fetchRoleActions(selectedRole.id_rol);
 
       } else {
-        showAlert({
-          title: "Error",
-          message: result.message
-        });
+        // ❌ Error al eliminar
+        alert("❌ Error: " + result.message);
       }
 
     } catch (error) {
-      showAlert({
-        title: "Error inesperado",
-        message: "Error al eliminar acción: " + error.message
-      });
+      alert("❌ Error inesperado al eliminar acción: " + error.message);
     }
   };
 
@@ -522,6 +497,7 @@ const RolesSection = () => {
       </div>
     );
   }
+  
 
   return (
     <div className="roles-section">

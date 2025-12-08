@@ -3,8 +3,8 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 from datetime import date
+from typing import List  # Para listas en los schemas
 
-from typing import List # Para listas en los schemas
 
 class LecturaBase(BaseModel):
     """Schema base para Lectura"""
@@ -15,6 +15,7 @@ class LecturaBase(BaseModel):
     fecha_lectura: date = Field(..., description="Fecha de la lectura")
     observacion: Optional[str] = Field(None, max_length=500, description="Observaciones")
     activo: bool = Field(default=True, description="Estado de la lectura")
+    es_estimada: bool = Field(default=False, description="Si es una lectura estimada/sugerida")  # ✅ NUEVO
     
     @field_validator('observacion')
     @classmethod
@@ -56,6 +57,7 @@ class LecturaUpdate(BaseModel):
     fecha_lectura: Optional[date] = None
     observacion: Optional[str] = Field(None, max_length=500)
     activo: Optional[bool] = None
+    es_estimada: Optional[bool] = None  # ✅ NUEVO
     
     @field_validator('observacion')
     @classmethod
@@ -105,7 +107,8 @@ class LecturaResponse(LecturaBase):
                 "fecha_lectura": "2025-01-15",
                 "id_lector": 3,
                 "observacion": "Lectura normal",
-                "activo": True
+                "activo": True,
+                "es_estimada": False  # ✅ AGREGADO AL EJEMPLO
             }
         }
 
@@ -116,6 +119,9 @@ class LecturaStats(BaseModel):
     activos: int
     inactivos: int
     consumo_total: int
+    # ✅ NUEVAS ESTADÍSTICAS PARA ESTIMADAS
+    total_estimadas: int = Field(default=0, description="Total de lecturas estimadas")
+    total_reales: int = Field(default=0, description="Total de lecturas reales")
     
     class Config:
         json_schema_extra = {
@@ -123,7 +129,9 @@ class LecturaStats(BaseModel):
                 "total": 150,
                 "activos": 145,
                 "inactivos": 5,
-                "consumo_total": 3500
+                "consumo_total": 3500,
+                "total_estimadas": 15,  # ✅ NUEVO
+                "total_reales": 135  # ✅ NUEVO
             }
         }
 
@@ -187,6 +195,7 @@ class LecturaBulkResult(BaseModel):
     lectura_actual: int
     consumo_m3: int
     id_lectura: int
+    es_estimada: bool = Field(default=False, description="Si fue estimada o real")  # ✅ NUEVO
 
 
 class LecturaBulkError(BaseModel):
@@ -205,9 +214,11 @@ class LecturaBulkResponse(BaseModel):
     total_exitosos: int
     total_fallidos: int
 
+
 # ========================================
 # SCHEMAS PARA PERIODOS DE LECTURA
 # ========================================
+
 class PeriodoDisponible(BaseModel):
     """Schema para periodo de lectura disponible"""
     mes: int = Field(..., ge=1, le=12, description="Número de mes (1-12)")
@@ -254,4 +265,74 @@ class LecturaBulkCreateWithPeriod(BaseModel):
             raise ValueError('La lista de lecturas no puede estar vacía')
         if len(v) > 500:
             raise ValueError('Máximo 500 lecturas por carga')
+        return v
+
+
+# ========================================
+# SCHEMAS PARA LECTURAS ESTIMADAS
+# ========================================
+
+class LecturaEstimadaGenerar(BaseModel):
+    """Request para generar lecturas estimadas"""
+    mes: int = Field(..., ge=1, le=12, description="Mes para generar lecturas")
+    anio: int = Field(..., ge=2020, description="Año para generar lecturas")
+    meses_promedio: int = Field(default=3, ge=1, le=12, description="Meses para calcular promedio")
+    consumo_default: int = Field(default=10, ge=0, description="Consumo por defecto para medidores sin historial")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "mes": 12,
+                "anio": 2025,
+                "meses_promedio": 3,
+                "consumo_default": 10
+            }
+        }
+
+
+class LecturaEstimadaDetalle(BaseModel):
+    """Detalle de una lectura estimada generada"""
+    id_lectura: int
+    medidor: str
+    codigo_afiliado: str
+    nombre_afiliado: str
+    lectura_anterior: int
+    lectura_estimada: int
+    consumo_estimado: int
+    metodo_calculo: str
+    tiene_historial: bool
+
+
+class LecturaEstimadaFallida(BaseModel):
+    """Detalle de una lectura estimada que falló"""
+    medidor: str
+    razon: str
+
+
+class LecturaEstimadaResponse(BaseModel):
+    """Respuesta de generación de lecturas estimadas"""
+    success: bool
+    message: str
+    lecturas_generadas: int
+    lecturas_fallidas: int
+    con_historial: int
+    sin_historial: int
+    periodo: str
+    consumo_promedio_sistema: int
+    detalles: List[LecturaEstimadaDetalle]
+    fallidas: List[LecturaEstimadaFallida]
+
+
+class LecturaEstimadaConfirmar(BaseModel):
+    """Request para confirmar una lectura estimada"""
+    lectura_real: int = Field(..., ge=0, description="Lectura real tomada")
+    observacion: Optional[str] = Field(None, max_length=500, description="Observación adicional")
+    
+    @field_validator('observacion')
+    @classmethod
+    def validar_observacion(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            if not v.strip():
+                return None
+            return v.strip()
         return v

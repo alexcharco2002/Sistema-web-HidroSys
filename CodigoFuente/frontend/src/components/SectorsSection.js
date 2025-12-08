@@ -1,7 +1,6 @@
 // src/components/SectorsSection.js
 // MÓDULO DE SECTORES - Con control de permisos granular y ordenamiento mejorado
 import React, { useState, useEffect, useCallback } from 'react';
-import { useModal } from '../context/ModalContext';
 import './SectorsSection.css';
 import sectorsService from '../services/sectorServices';
 import authService from '../services/authServices';
@@ -23,7 +22,6 @@ const SectorsSection = () => {
   const [modalType, setModalType] = useState('create');
   const [selectedSector, setSelectedSector] = useState(null);
   const [error, setError] = useState(null);
-  const { showConfirm, showAlert, showSuccess } = useModal();
 
   const [formData, setFormData] = useState({
     nombre_sector: '',
@@ -246,104 +244,54 @@ useEffect(() => {
     }
   };
 
-  
-const handleDelete = async (sectorId) => {
-  console.log("🔴 1. Inicio handleDelete");
-  
-  if (!permissions.canDelete) {
-    console.log("🔴 2. Sin permisos");
-    await showAlert({
-      title: "Permiso denegado",
-      message: "❌ No tienes permiso para eliminar sectores",
-      confirmText: "Entendido"
-    });
-    return;
-  }
-
-  console.log("🔴 3. Mostrando modal de confirmación");
-  
-  const confirmed = await showConfirm({
-    title: "Eliminar Sector",
-    message: "¿Estás seguro de que deseas eliminar este sector?",
-    confirmText: "Sí, eliminar",
-    cancelText: "Cancelar"
-  });
-
-  console.log("🔴 4. Usuario respondió:", confirmed);
-
-  if (!confirmed) {
-    console.log("🔴 5. Usuario CANCELÓ");
-    return;
-  }
-
-  console.log("🔴 6. Usuario CONFIRMÓ - eliminando...");
-
-  try {
-    const result = await sectorsService.deleteSector(sectorId);
-
-    console.log("🔴 7. Resultado de eliminar:", result);
-
-    if (result.success) {
-      await showSuccess({
-        title: "Sector Eliminado",
-        message: result.message
-      });
-
-      console.log("🔴 8. Recargando sectores...");
-      await fetchSectors();
-    } else {
-      await showAlert({
-        title: "Error",
-        message: result.message
-      });
+  const handleDelete = async (sectorId) => {
+    if (!permissions.canDelete) {
+      alert("❌ No tienes permiso para eliminar sectores");
+      return;
     }
-  } catch (error) {
-    await showAlert({
-      title: "Error inesperado",
-      message: "Error al eliminar sector: " + error.message
-    });
-  }
-};
 
+    const confirmed = window.confirm("¿Estás seguro de que deseas eliminar este sector?");
+    if (!confirmed) return;
 
-  // ✅ CORRECTO - pide confirmación primero
-const toggleSectorStatus = async (sectorId) => {
-  if (!permissions.canToggleStatus) {
-    showAlert({
-      title: "Permiso denegado",
-      message: "❌ No tienes permiso para cambiar el estado de sectores"
-    });
-    return;
-  }
-  
-  const sector = sectors.find(s => s.id_sector === sectorId);
-  const confirmed = await showConfirm({
-    title: `${sector.activo ? 'Desactivar' : 'Activar'} Sector`,
-    message: `¿Estás seguro de que deseas ${sector.activo ? 'desactivar' : 'activar'} este sector?`,
-    confirmText: "Sí, continuar",
-    cancelText: "Cancelar"
-  });
-  
-  if (!confirmed) return; // Si cancela, no hace nada
-  
-  try {
-    const result = await sectorsService.toggleSectorStatus(sectorId);
-    if (result.success) {
-      await showSuccess({
-        title: "Estado actualizado",
-        message: result.message || "El sector se actualizó correctamente"
-      });
-      await fetchSectors();
-    } else {
-      showAlert({ title: "Error", message: result.message });
+    try {
+      const result = await sectorsService.deleteSector(sectorId);
+
+      if (result.success) {
+        alert("✅ Sector Eliminado: " + result.message);
+        await fetchSectors();
+      } else {
+        alert("❌ Error: " + result.message);
+      }
+    } catch (error) {
+      alert("❌ Error inesperado al eliminar sector: " + error.message);
     }
-  } catch (error) {
-    showAlert({ 
-      title: "Error inesperado", 
-      message: "Error al cambiar estado del sector: " + error.message 
-    });
-  }
-};
+  };
+
+  const toggleSectorStatus = async (sectorId) => {
+    if (!permissions.canToggleStatus) {
+      alert("❌ No tienes permiso para cambiar el estado de sectores");
+      return;
+    }
+
+    const sector = sectors.find(s => s.id_sector === sectorId);
+    const actionText = sector.activo ? "desactivar" : "activar";
+
+    const confirmed = window.confirm(`¿Estás seguro de que deseas ${actionText} este sector?`);
+    if (!confirmed) return;
+
+    try {
+      const result = await sectorsService.toggleSectorStatus(sectorId);
+
+      if (result.success) {
+        alert("✅ Estado actualizado: " + (result.message || "El sector se actualizó correctamente"));
+        await fetchSectors();
+      } else {
+        alert("❌ Error: " + result.message);
+      }
+    } catch (error) {
+      alert("❌ Error inesperado al cambiar estado del sector: " + error.message);
+    }
+  };
 
 
   if (!permissions.canRead) {

@@ -2,7 +2,7 @@
 // MÓDULO DE AFILIADOS - Con creación simultánea de medidor
 
 import React, { useState, useEffect, useCallback  } from 'react';
-import { useModal } from '../context/ModalContext';
+
 
 import './AffiliatesSection.css';
 import affiliatesService from '../services/affiliatesServices';
@@ -32,7 +32,7 @@ const AffiliatesSection = () => {
   
   const [sortOption, setSortOption] = useState('codigo');
   const [sortOrder, setSortOrder] = useState('asc');
-  const { showConfirm, showSuccess, showAlert } = useModal();
+
 
   // Estado para controlar si se quiere crear medidor junto con el afiliado
   const [createWithMeter, setCreateWithMeter] = useState(false);
@@ -675,41 +675,30 @@ const AffiliatesSection = () => {
 
   const handleDelete = async (affiliateId) => {
     if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para eliminar afiliados');
+      alert("❌ No tienes permiso para eliminar afiliados");
       return;
     }
-    const confirmed = await showConfirm({
-      title: '¿Eliminar Afiliado?',
-      message: '¿Estás seguro de que deseas eliminar este afiliado? Esta acción no se puede deshacer.',
-      confirmText: 'Sí, eliminar',
-      cancelText: 'Cancelar'
-    });
 
-    if (confirmed) {
-      try {
-        const result = await affiliatesService.deleteAffiliate(affiliateId);
-        
-        if (result.success) {
-          await showSuccess({
-            title: 'Afiliado Eliminado',
-            message: result.message
-          });
-          await fetchAffiliates();
-        } else {
-          await showAlert({
-            title: 'Error al Eliminar',
-            message: result.message
-          });
-        }
-      } catch (error) {
-        await showAlert({
-          title: 'Error',
-          message: 'Error al eliminar afiliado: ' + error.message
-        });
+    const confirmed = window.confirm(
+      "¿Estás seguro de que deseas eliminar este afiliado? Esta acción no se puede deshacer."
+    );
+    if (!confirmed) return;
+
+    try {
+      const result = await affiliatesService.deleteAffiliate(affiliateId);
+
+      if (result.success) {
+        alert("✅ Afiliado eliminado: " + result.message);
+        await fetchAffiliates();
+      } else {
+        alert("❌ Error al eliminar: " + result.message);
       }
+
+    } catch (error) {
+      alert("❌ Error al eliminar afiliado: " + error.message);
     }
-  
   };
+
 
   const toggleAffiliateStatus = async (affiliateId) => {
     if (!permissions.canToggleStatus) {

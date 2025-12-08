@@ -12,6 +12,7 @@ from fastapi import UploadFile, File
 from calendar import month_name
 import locale
 
+from openpyxl.styles import Protection  # Importar Protection para proteger/desproteger celdas
 from models.lectura import Lectura
 from models.meter import Medidor
 from models.user import UsuarioSistema
@@ -135,6 +136,7 @@ def lectura_to_response(lectura: Lectura) -> dict:
         "id_lector": lectura.id_lector,
         "observacion": lectura.observacion,
         "activo": lectura.activo,
+        "es_estimada": lectura.es_estimada,
         "medidor": {
             "id_medidor": medidor.id_medidor,
             "num_medidor": medidor.num_medidor
@@ -238,6 +240,7 @@ def listar_lecturas(
             "fecha_lectura": lectura.fecha_lectura,
             "observacion": lectura.observacion,
             "activo": lectura.activo,
+            "es_estimada": lectura.es_estimada,
 
             # 🔵 datos del medidor
             "medidor": {
@@ -595,23 +598,22 @@ def listar_medidores_con_info(
     payload: dict = Depends(verify_token)
 ):
     """
-    Lista todos los medidores activos con información del UsuarioAfiliado y sector
-    Necesario para llenar el select en el frontend
+    Lista todos los medidores activos y con afiliados, con información del UsuarioAfiliado 
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "lectura")
     
     try:
-        # Obtener medidores activos con sus relaciones
+        # ✅ Obtener solo medidores activos Y que tengan afiliado asignado
         medidores = db.query(Medidor).filter(
-            Medidor.activo == True
+            Medidor.activo == True,
+            Medidor.id_usuario_afi.isnot(None)  # Solo medidores con afiliado
         ).all()
         
         resultado = []
         
         for medidor in medidores:
-            # ✅ CORRECCIÓN: Usar la relación correcta
-            afiliado = medidor.usuario_afiliado  # Cambio de usuario_UsuarioAfiliado a usuario_afiliado
+            afiliado = medidor.usuario_afiliado
             codigo_afiliado = None
             nombre_afiliado = "Sin Afiliado"
             
@@ -656,11 +658,11 @@ def listar_medidores_con_info(
         )
 
 
+
 # ========================================
 # EXPORTAR PLANTILLA EXCEL
 # ========================================
 
-from openpyxl.styles import Protection  # Agregar esta importación al inicio del archivo
 
 @router.get("/export/template")
 def exportar_plantilla(
@@ -1151,7 +1153,6 @@ MESES_ES = {
 # ========================================
 # 🆕 ENDPOINT: OBTENER PERIODOS DISPONIBLES
 # ========================================
-
 @router.get("/periodos/disponibles", response_model=dict)
 def obtener_periodos_disponibles(
     db: Session = Depends(get_db),
@@ -1173,9 +1174,10 @@ def obtener_periodos_disponibles(
         mes_actual = hoy.month
         anio_actual = hoy.year
         
-        # Total de medidores activos
+        # ✅ Total de medidores activos CON AFILIADOS
         total_medidores = db.query(func.count(Medidor.id_medidor)).filter(
-            Medidor.activo == True
+            Medidor.activo == True,
+            Medidor.id_usuario_afi.isnot(None)  # Solo medidores con afiliado
         ).scalar() or 0
         
         periodos = []
@@ -1243,6 +1245,7 @@ def obtener_periodos_disponibles(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener periodos disponibles: {str(e)}"
         )
+
 
 
 # ========================================
@@ -1393,4 +1396,284 @@ async def importar_lecturas_excel_con_periodo(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al importar: {str(e)}"
+        )
+    
+# ========================================
+# ENDPOINT: GENERAR LECTURAS ESTIMADA
+# ========================================
+
+@router.post("/generar-estimadas", response_model=dict)
+def generar_lecturas_estimadas(
+    mes: int = Query(..., ge=1, le=12, description="Mes para generar lecturas"),
+    anio: int = Query(..., ge=2020, description="Año para generar lecturas"),
+    meses_promedio: int = Query(3, ge=1, le=12, description="Meses para calcular promedio"),
+    consumo_default: int = Query(10, ge=0, description="Consumo por defecto para medidores sin historial (m³)"),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Genera lecturas estimadas para medidores que NO tienen lectura en el período especificado.
+    
+    CASOS MANEJADOS:
+    1. Medidor CON historial: Calcula promedio de últimos N meses
+    2. Medidor SIN historial: Usa lectura_anterior del medidor + consumo_default
+    3. Medidor nuevo (lectura_anterior = 0): Genera lectura inicial con consumo_default
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "lecturas", "crear")
+    
+    try:
+        # 1. Obtener todos los medidores activos con usuarios
+        medidores_con_usuario = db.query(Medidor).filter(
+            Medidor.activo == True,
+            Medidor.id_usuario_afi.isnot(None)
+        ).all()
+        
+        if not medidores_con_usuario:
+            return {
+                "success": False,
+                "message": "No hay medidores con usuarios asignados"
+            }
+        
+        # 2. Obtener medidores que YA tienen lectura en el período
+        medidores_con_lectura = db.query(Lectura.id_medidor).filter(
+            func.extract('month', Lectura.fecha_lectura) == mes,
+            func.extract('year', Lectura.fecha_lectura) == anio,
+            Lectura.activo == True
+        ).distinct().all()
+        
+        ids_con_lectura = {m[0] for m in medidores_con_lectura}
+        
+        # 3. Filtrar medidores SIN lectura en el período
+        medidores_sin_lectura = [
+            m for m in medidores_con_usuario 
+            if m.id_medidor not in ids_con_lectura
+        ]
+        
+        if not medidores_sin_lectura:
+            return {
+                "success": True,
+                "message": "Todos los medidores ya tienen lectura registrada",
+                "lecturas_generadas": 0,
+                "detalles": []
+            }
+        
+        # 4. Calcular consumo promedio del sistema (para referencia)
+        consumo_promedio_sistema = db.query(
+            func.avg(Lectura.consumo_m3)
+        ).filter(
+            Lectura.activo == True,
+            Lectura.es_estimada == False,
+            Lectura.consumo_m3 > 0
+        ).scalar() or consumo_default
+        
+        consumo_promedio_sistema = round(consumo_promedio_sistema)
+        
+        # 5. Generar lecturas estimadas
+        lecturas_generadas = []
+        lecturas_fallidas = []
+        
+        for medidor in medidores_sin_lectura:
+            try:
+                # 🔹 CASO 1: Buscar historial de lecturas del medidor
+                ultimas_lecturas = db.query(Lectura).filter(
+                    Lectura.id_medidor == medidor.id_medidor,
+                    Lectura.activo == True,
+                    Lectura.es_estimada == False
+                ).order_by(
+                    Lectura.fecha_lectura.desc()
+                ).limit(meses_promedio).all()
+                
+                # Variables para la lectura estimada
+                lectura_anterior = 0
+                consumo_estimado = 0
+                metodo_calculo = ""
+                
+                if ultimas_lecturas:
+                    # ✅ MEDIDOR CON HISTORIAL: Calcular promedio
+                    consumo_estimado = sum(l.consumo_m3 for l in ultimas_lecturas) / len(ultimas_lecturas)
+                    consumo_estimado = round(consumo_estimado)
+                    lectura_anterior = ultimas_lecturas[0].lectura_actual
+                    metodo_calculo = f"Promedio de {len(ultimas_lecturas)} meses anteriores"
+                    
+                else:
+                    # 🔹 CASO 2: MEDIDOR SIN HISTORIAL
+                    # Obtener última lectura conocida del endpoint /medidores/lista/completa
+                    ultima_lectura_conocida = db.query(Lectura).filter(
+                        Lectura.id_medidor == medidor.id_medidor
+                    ).order_by(Lectura.fecha_lectura.desc()).first()
+                    
+                    if ultima_lectura_conocida:
+                        # ✅ Tiene una lectura previa (aunque sea antigua)
+                        lectura_anterior = ultima_lectura_conocida.lectura_actual
+                        consumo_estimado = consumo_default
+                        metodo_calculo = f"Sin historial reciente - Consumo sugerido: {consumo_default} m³"
+                    else:
+                        # ✅ MEDIDOR COMPLETAMENTE NUEVO (primera lectura)
+                        lectura_anterior = 0
+                        consumo_estimado = consumo_default
+                        metodo_calculo = f"Primera lectura - Consumo inicial sugerido: {consumo_default} m³"
+                
+                # Calcular lectura estimada
+                lectura_estimada = lectura_anterior + consumo_estimado
+                
+                # Crear lectura estimada
+                nueva_lectura = Lectura(
+                    id_medidor=medidor.id_medidor,
+                    lectura_actual=lectura_estimada,
+                    lectura_anterior=lectura_anterior,
+                    consumo_m3=consumo_estimado,
+                    fecha_lectura=date(anio, mes, 1),
+                    id_lector=current_user.id_usuario_sistema,
+                    observacion=f"⚡ Lectura estimada - {metodo_calculo}",
+                    activo=True,
+                    es_estimada=True
+                )
+                
+                db.add(nueva_lectura)
+                db.flush()
+                
+                # Obtener información del afiliado
+                afiliado = medidor.usuario_afiliado
+                nombre_afiliado = "Sin afiliado"
+                codigo_afiliado = "N/A"
+                if afiliado:
+                    codigo_afiliado = afiliado.cod_usuario_afi or "N/A"
+                    if afiliado.usuario_sistema:
+                        us = afiliado.usuario_sistema
+                        nombre_afiliado = f"{us.nombres} {us.apellidos}"
+                
+                lecturas_generadas.append({
+                    "id_lectura": nueva_lectura.id_lectura,
+                    "medidor": medidor.num_medidor,
+                    "codigo_afiliado": codigo_afiliado,
+                    "nombre_afiliado": nombre_afiliado,
+                    "lectura_anterior": lectura_anterior,
+                    "lectura_estimada": lectura_estimada,
+                    "consumo_estimado": consumo_estimado,
+                    "metodo_calculo": metodo_calculo,
+                    "tiene_historial": len(ultimas_lecturas) > 0
+                })
+                
+            except Exception as e:
+                lecturas_fallidas.append({
+                    "medidor": medidor.num_medidor,
+                    "razon": str(e)
+                })
+                continue
+        
+        # 6. Confirmar transacción
+        if lecturas_generadas:
+            db.commit()
+            
+            # Contadores por tipo
+            con_historial = sum(1 for l in lecturas_generadas if l["tiene_historial"])
+            sin_historial = len(lecturas_generadas) - con_historial
+            
+            # Auditoría
+            registrar_auditoria(
+                db=db,
+                accion="GENERAR_ESTIMADAS",
+                descripcion=f"Generadas {len(lecturas_generadas)} lecturas estimadas para {MESES_ES.get(mes)}/{anio} - Con historial: {con_historial}, Sin historial: {sin_historial}",
+                id_usuario=current_user.id_usuario_sistema
+            )
+        
+        return {
+            "success": True,
+            "message": f"Proceso completado. Generadas {len(lecturas_generadas)} lecturas estimadas",
+            "lecturas_generadas": len(lecturas_generadas),
+            "lecturas_fallidas": len(lecturas_fallidas),
+            "con_historial": sum(1 for l in lecturas_generadas if l["tiene_historial"]),
+            "sin_historial": sum(1 for l in lecturas_generadas if not l["tiene_historial"]),
+            "periodo": f"{MESES_ES.get(mes)} {anio}",
+            "consumo_promedio_sistema": consumo_promedio_sistema,
+            "detalles": lecturas_generadas,
+            "fallidas": lecturas_fallidas
+        }
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error generando lecturas estimadas: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar lecturas estimadas: {str(e)}"
+        )
+
+
+# ========================================
+# ENDPOINT PARA CONFIRMAR LECTURA ESTIMADA
+# ========================================
+
+@router.patch("/{id_lectura}/confirmar-estimada", response_model=dict)
+def confirmar_lectura_estimada(
+    id_lectura: int,
+    lectura_real: int = Query(..., description="Lectura real tomada"),
+    observacion: Optional[str] = Query(None, description="Observación adicional"),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Convierte una lectura estimada en lectura real con el valor correcto.
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "lecturas", "actualizar")
+    
+    try:
+        lectura = db.query(Lectura).filter(
+            Lectura.id_lectura == id_lectura
+        ).first()
+        
+        if not lectura:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Lectura no encontrada"
+            )
+        
+        if not lectura.es_estimada:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Esta lectura no es estimada"
+            )
+        
+        # Validar que la lectura real sea mayor o igual a la anterior
+        if lectura_real < lectura.lectura_anterior:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La lectura real no puede ser menor que la lectura anterior"
+            )
+        
+        # Actualizar lectura
+        lectura.lectura_actual = lectura_real
+        lectura.consumo_m3 = lectura_real - lectura.lectura_anterior
+        lectura.es_estimada = False  # Ya no es estimada
+        lectura.id_lector = current_user.id_usuario_sistema
+        
+        if observacion:
+            lectura.observacion = f"Confirmada - {observacion}"
+        else:
+            lectura.observacion = "Lectura confirmada y corregida"
+        
+        db.commit()
+        db.refresh(lectura)
+        
+        # Auditoría
+        registrar_auditoria(
+            db=db,
+            accion="CONFIRMAR_ESTIMADA",
+            descripcion=f"Lectura {id_lectura} confirmada - Real: {lectura_real}m³",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
+        return lectura_to_response(lectura)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error confirmando lectura: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al confirmar lectura: {str(e)}"
         )

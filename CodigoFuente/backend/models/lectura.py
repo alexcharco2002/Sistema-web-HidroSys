@@ -4,6 +4,7 @@ from sqlalchemy import Column, Integer, Date, Text, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from db.session import Base
 
+
 class Lectura(Base):
     """
     Modelo de Lectura de Medidor
@@ -23,6 +24,7 @@ class Lectura(Base):
     id_lector = Column(Integer, ForeignKey("usuarios.t_usuario_sistema.id_usuario_sistema"), nullable=True)
     observacion = Column(Text, nullable=True)
     activo = Column(Boolean, default=True, nullable=False, index=True)
+    es_estimada = Column(Boolean, default=False, nullable=False, index=True)  # ✅ AGREGADO index=True, nullable=False
     
     # Relaciones ORM
     medidor = relationship(
@@ -38,7 +40,8 @@ class Lectura(Base):
     )
     
     def __repr__(self):
-        return f"<Lectura(id={self.id_lectura}, medidor={self.id_medidor}, consumo={self.consumo_m3}m³, fecha={self.fecha_lectura})>"
+        tipo = "ESTIMADA" if self.es_estimada else "REAL"  # ✅ MEJORADO
+        return f"<Lectura(id={self.id_lectura}, medidor={self.id_medidor}, consumo={self.consumo_m3}m³, fecha={self.fecha_lectura}, tipo={tipo})>"
     
     def to_dict(self):
         """Convierte el objeto a diccionario"""
@@ -51,5 +54,6 @@ class Lectura(Base):
             'fecha_lectura': self.fecha_lectura.isoformat() if self.fecha_lectura else None,
             'id_lector': self.id_lector,
             'observacion': self.observacion,
-            'activo': self.activo
+            'activo': self.activo,
+            'es_estimada': self.es_estimada  # ✅ AGREGADO
         }

@@ -1,7 +1,6 @@
 // src/components/MetersSection.js
 // MÓDULO DE MEDIDORES - Con control de permisos granular
 import React, { useState, useEffect, useCallback } from 'react';
-import { useModal } from '../context/ModalContext';
  
 import metersService from '../services/metersServices';
 import sectorsService from '../services/sectorServices';
@@ -32,7 +31,6 @@ const MetersSection = () => {
   const [error, setError] = useState(null);
   // usuario afiliado local 
   const currentUser = authService.getCurrentUser();
-  const { showConfirm, showAlert, showSuccess } = useModal();
 
 
   const [formData, setFormData] = useState({
@@ -328,54 +326,30 @@ const MetersSection = () => {
   };
 
   const handleDelete = async (meterId) => {
-    if (!permissions.canDelete) {
-      showAlert({
-        title: "Permiso denegado",
-        message: "❌ No tienes permiso para eliminar medidores",
-        confirmText: "Entendido"
-      });
-      return;
-    }
+  if (!permissions.canDelete) {
+    alert("❌ No tienes permiso para eliminar medidores");
+    return;
+  }
 
-    // 🔥 Confirmación personalizada
-    const confirmed = await showConfirm({
-      title: "Eliminar Medidor",
-      message: "¿Estás seguro de que deseas eliminar este medidor?",
-      confirmText: "Sí, eliminar",
-      cancelText: "Cancelar"
-    });
-
+  // ✅ Confirmación simple con window.confirm
+  const confirmed = window.confirm("¿Estás seguro de que deseas eliminar este medidor?");
     if (!confirmed) return; // El usuario canceló
 
     try {
       const result = await metersService.deleteMeter(meterId);
 
       if (result.success) {
-
-        // 🎉 Modal de éxito
-        await showSuccess({
-          title: "Medidor Eliminado",
-          message: result.message,
-          confirmText: "OK"
-        });
-
+        // 🎉 Éxito simple
+        alert("Medidor Eliminado: " + result.message);
         await fetchMeters();
-
       } else {
-        showAlert({
-          title: "Error",
-          message: result.message
-        });
+        alert("Error: " + result.message);
       }
 
     } catch (error) {
-      showAlert({
-        title: "Error inesperado",
-        message: "Error al eliminar medidor: " + error.message
-      });
+      alert("Error inesperado al eliminar medidor: " + error.message);
     }
   };
-
 
   const toggleMeterStatus = async (meterId) => {
     if (!permissions.canToggleStatus) {

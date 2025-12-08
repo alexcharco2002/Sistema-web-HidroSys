@@ -2,7 +2,6 @@
 // MÓDULO DE LECTURAS - Con sistema de periodos mensuales REORGANIZADO
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useModal } from '../context/ModalContext';
 import './ReadingsList.css';
 import readingsServices from '../services/readingsServices';
 import authService from '../services/authServices';
@@ -39,7 +38,7 @@ const ReadingsSection = () => {
   // ============================================================
   const [readings, setReadings] = useState([]);
   const [meters, setMeters] = useState([]);
-  const [loading, setLoading] = useState(false); // 🔴 Cambiado a false
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   // ============================================================
@@ -47,7 +46,7 @@ const ReadingsSection = () => {
   // ============================================================
   const [periodos, setPeriodos] = useState([]);
   const [periodoActual, setPeriodoActual] = useState(null);
-  const [periodoSeleccionado, setPeriodoSeleccionado] = useState(null); // 🔴 Inicia como null
+  const [periodoSeleccionado, setPeriodoSeleccionado] = useState(null); 
   const [loadingPeriodos, setLoadingPeriodos] = useState(false);
 
   // ============================================================
@@ -66,7 +65,6 @@ const ReadingsSection = () => {
   const [selectedReading, setSelectedReading] = useState(null);
   const [selectedMeterInfo, setSelectedMeterInfo] = useState(null);
   const [meterSearchTerm, setMeterSearchTerm] = useState('');
-  const { showConfirm, showAlert, showSuccess } = useModal();
 
   // ============================================================
   // ESTADOS DE EXCEL CON PERIODO
@@ -76,6 +74,85 @@ const ReadingsSection = () => {
   const [loadingExcel, setLoadingExcel] = useState(false);
   const [excelMesSeleccionado, setExcelMesSeleccionado] = useState('');
   const [excelAnioSeleccionado, setExcelAnioSeleccionado] = useState('');
+
+  // ESTADOS DE LECTURAS ESTIMADAS
+  const [showEstimadasModal, setShowEstimadasModal] = useState(false);
+  const [loadingEstimadas, setLoadingEstimadas] = useState(false);
+  const [estimadasResult, setEstimadasResult] = useState(null);
+
+  // FUNCIÓN PARA GENERAR LECTURAS ESTIMADAS
+  const handleGenerarEstimadas = async () => {
+      if (!periodoSeleccionado) {
+          alert('Debe seleccionar un periodo primero');
+          return;
+      }
+      
+      const confirmado = window.confirm(
+          `¿Generar lecturas estimadas para ${readingsServices.formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}?\n\n` +
+          `Esto creará lecturas sugeridas basadas en consumos anteriores para los medidores que no tienen lectura registrada.`
+      );
+      
+      if (!confirmado) return;
+      
+      setLoadingEstimadas(true);
+      setError(null);
+      
+      try {
+          const result = await readingsServices.generarLecturasEstimadas(
+              periodoSeleccionado.mes,
+              periodoSeleccionado.anio,
+              3 // Promedio de 3 meses
+          );
+          
+          if (result.success) {
+              setEstimadasResult(result.data);
+              setShowEstimadasModal(true);
+              await fetchReadingsByPeriodo();
+              await fetchPeriodosDisponibles();
+          } else {
+              setError(result.message);
+          }
+      } catch (error) {
+          setError(error.message || 'Error al generar lecturas estimadas');
+      } finally {
+          setLoadingEstimadas(false);
+      }
+  };
+
+  // FUNCIÓN PARA CONFIRMAR LECTURA ESTIMADA
+  const handleConfirmarEstimada = async (lectura) => {
+      const lecturaReal = prompt(
+          `Confirmar lectura del medidor ${lectura.medidor?.num_medidor}\n\n` +
+          `Lectura estimada: ${lectura.lectura_actual} m³\n` +
+          `Ingrese la lectura real:`,
+          lectura.lectura_actual
+      );
+      
+      if (!lecturaReal) return;
+      
+      const valor = parseInt(lecturaReal);
+      if (isNaN(valor) || valor < lectura.lectura_anterior) {
+          alert('Lectura inválida. Debe ser mayor o igual a la lectura anterior.');
+          return;
+      }
+      
+      try {
+          const result = await readingsServices.confirmarLecturaEstimada(
+              lectura.id_lectura,
+              valor
+          );
+          
+          if (result.success) {
+              alert('Lectura confirmada correctamente');
+              await fetchReadingsByPeriodo();
+              await fetchPeriodosDisponibles();
+          } else {
+              alert(`Error: ${result.message}`);
+          }
+      } catch (error) {
+          alert(`Error al confirmar: ${error.message}`);
+      }
+  };
 
   // ============================================================
   // ESTADOS DE FORMULARIO
@@ -128,10 +205,6 @@ const ReadingsSection = () => {
       if (result.success) {
         setPeriodos(result.data.periodos_disponibles);
         setPeriodoActual(result.data.periodo_actual);
-        
-        // 🔴 NO establecer periodo seleccionado automáticamente
-        // El usuario debe seleccionar manualmente
-        // setPeriodoSeleccionado permanece null
 
         // Solo configurar valores para Excel
         setExcelMesSeleccionado(result.data.periodo_actual.mes.toString());
@@ -176,7 +249,7 @@ const ReadingsSection = () => {
     }
   }, [periodoSeleccionado]);
 
-  // 🔴 Este efecto solo se ejecuta cuando hay periodo seleccionado
+  // efecto solo se ejecuta cuando hay periodo seleccionado
   useEffect(() => {
     if (permissions.canRead && periodoSeleccionado) {
       fetchReadingsByPeriodo();
@@ -459,53 +532,32 @@ const ReadingsSection = () => {
 
   const handleDelete = async (readingId) => {
     if (!permissions.canDelete) {
-      showAlert({
-        title: "Permiso denegado",
-        message: "❌ No tienes permiso para eliminar lecturas",
-        confirmText: "Entendido"
-      });
+      alert("❌ No tienes permiso para eliminar lecturas");
       return;
     }
 
-    // 🔥 Modal de confirmación
-    const confirmed = await showConfirm({
-      title: "Eliminar Lectura",
-      message: "¿Estás seguro de que deseas eliminar esta lectura?",
-      confirmText: "Sí, eliminar",
-      cancelText: "Cancelar"
-    });
-
+    // ✅ Confirmación simple
+    const confirmed = window.confirm("¿Estás seguro de que deseas eliminar esta lectura?");
     if (!confirmed) return; // Usuario canceló
 
     try {
       const result = await readingsServices.deleteLectura(readingId);
 
       if (result.success) {
-
-        // 🎉 Modal de éxito
-        await showSuccess({
-          title: "Lectura Eliminada",
-          message: result.message,
-          confirmText: "OK"
-        });
+        // 🎉 Éxito simple
+        alert("Lectura Eliminada: " + result.message);
 
         await fetchReadingsByPeriodo();
         await fetchPeriodosDisponibles();
-
       } else {
-        showAlert({
-          title: "Error",
-          message: result.message
-        });
+        alert("Error: " + result.message);
       }
 
     } catch (error) {
-      showAlert({
-        title: "Error inesperado",
-        message: "Error al eliminar lectura: " + error.message
-      });
+      alert("Error inesperado al eliminar lectura: " + error.message);
     }
   };
+
 
 
   // ============================================================
@@ -687,7 +739,7 @@ const ReadingsSection = () => {
   }
 
  // ============================================================
-// RENDERIZADO PRINCIPAL - CON NAVEGACIÓN POR PASOS
+// RENDERIZADO PRINCIPAL
 // ============================================================
 return (
   <div className="affiliates-section">
@@ -794,6 +846,20 @@ return (
                 <button className="btn-primary" onClick={() => openModal('excel')}>
                   <FileSpreadsheet className="w-4 h-4 mr-2" />
                   Crear desde Excel
+                </button>
+                {/*boton para generar lecturas estimadas*/}
+                <button 
+                    className="btn-success"
+                    onClick={handleGenerarEstimadas}
+                    disabled={loadingEstimadas}
+                    title="Generar lecturas estimadas para medidores sin lectura"
+                >
+                    {loadingEstimadas ? (
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                        <TrendingUp className="w-4 h-4 mr-2" />
+                    )}
+                    Generar Estimadas
                 </button>
               </>
             )}
@@ -937,7 +1003,7 @@ return (
                   return (
                     <div 
                       key={reading.id_lectura} 
-                      className={`readings-list-item ${!reading.activo ? 'inactive' : ''}`}
+                      className={`readings-list-item ${!reading.activo ? 'inactive' : ''} ${reading.es_estimada ? 'estimated' : ''}`}
                     >
                       <div className="list-col-id">{index + 1}</div>
 
@@ -992,6 +1058,12 @@ return (
                             <><XCircle className="w-4 h-4" /> Inact</>
                           )}
                         </span>
+                        {/* ✅ NUEVO BADGE ESTIMADA */}
+                        {reading.es_estimada && (
+                            <span className="list-status-badge estimated" title="Lectura estimada - Requiere confirmación">
+                                <TrendingUp className="w-4 h-4" /> Estimada
+                            </span>
+                        )}
                       </div>
 
                       <div className="list-actions">
@@ -1002,6 +1074,17 @@ return (
                         >
                           <Eye className="w-4 h-4" />
                         </button>
+
+                        {/* ✅ BOTÓN CONFIRMAR ESTIMADA */}
+                        {reading.es_estimada && permissions.canUpdate && (
+                            <button 
+                                className="list-action-btn confirm" 
+                                onClick={() => handleConfirmarEstimada(reading)} 
+                                title="Confirmar lectura estimada"
+                            >
+                                <CheckCircle className="w-4 h-4" />
+                            </button>
+                        )}
 
                         {permissions.canUpdate && (
                           <button 
@@ -1590,6 +1673,87 @@ return (
               </div>
             </form>
           )}
+          {/* ✅ MODAL DE RESULTADOS DE ESTIMADAS */}
+          {showEstimadasModal && estimadasResult && (
+              <div className="modal-overlay">
+                  <div className="modal">
+                      <div className="modal-header">
+                          <h3>Lecturas Estimadas Generadas</h3>
+                          <button className="modal-close" onClick={() => setShowEstimadasModal(false)}>
+                              <X className="w-5 h-5" />
+                          </button>
+                      </div>
+                      
+                      <div className="modal-body">
+                          <div className="alert alert-info mb-4">
+                              <TrendingUp className="w-5 h-5 mr-2" />
+                              <div>
+                                  <strong>Periodo:</strong> {estimadasResult.periodo}<br />
+                                  <strong>Lecturas generadas:</strong> {estimadasResult.lecturas_generadas}<br />
+                                  <strong>Fallidas:</strong> {estimadasResult.lecturas_fallidas}
+                              </div>
+                          </div>
+                          
+                          {estimadasResult.detalles && estimadasResult.detalles.length > 0 && (
+                              <div>
+                                  <h4 className="font-semibold mb-2">Lecturas generadas correctamente:</h4>
+                                  <div style={{maxHeight: '300px', overflowY: 'auto'}}>
+                                      <table className="excel-preview-table">
+                                          <thead>
+                                              <tr>
+                                                  <th>Medidor</th>
+                                                  <th>Afiliado</th>
+                                                  <th className="align-right">Lect. Ant.</th>
+                                                  <th className="align-right">Lect. Est.</th>
+                                                  <th className="align-right">Consumo</th>
+                                              </tr>
+                                          </thead>
+                                          <tbody>
+                                              {estimadasResult.detalles.map((det, idx) => (
+                                                  <tr key={idx}>
+                                                      <td>{det.medidor}</td>
+                                                      <td className="text-small">{det.nombre_afiliado}</td>
+                                                      <td className="align-right">{det.lectura_anterior} m³</td>
+                                                      <td className="align-right text-success">{det.lectura_estimada} m³</td>
+                                                      <td className="align-right text-bold">{det.consumo_estimado} m³</td>
+                                                  </tr>
+                                              ))}
+                                          </tbody>
+                                      </table>
+                                  </div>
+                              </div>
+                          )}
+                          
+                          {estimadasResult.fallidas && estimadasResult.fallidas.length > 0 && (
+                              <div className="mt-4">
+                                  <h4 className="font-semibold mb-2 text-red-600">Medidores sin generar:</h4>
+                                  <ul className="ml-4 space-y-1">
+                                      {estimadasResult.fallidas.slice(0, 5).map((fal, idx) => (
+                                          <li key={idx} className="text-small">
+                                              <strong>{fal.medidor}:</strong> {fal.razon}
+                                          </li>
+                                      ))}
+                                      {estimadasResult.fallidas.length > 5 && (
+                                          <li className="text-muted">... y {estimadasResult.fallidas.length - 5} más</li>
+                                      )}
+                                  </ul>
+                              </div>
+                          )}
+                      </div>
+                      
+                      <div className="form-actions">
+                          <button 
+                              type="button" 
+                              className="btn-primary" 
+                              onClick={() => setShowEstimadasModal(false)}
+                          >
+                              Cerrar
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          )}
+
         </div>
       </div>
     </div>

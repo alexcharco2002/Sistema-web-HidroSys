@@ -1,7 +1,7 @@
 // src/components/users/UsersSection.js
 // MODULO DE USUARIOS de sistema - Con control de permisos 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useModal } from '../context/ModalContext';
+
 import './UserSection.css';
 import usersService from '../services/userServices';
 import authService from '../services/authServices'; // 🔑 Importar authService
@@ -25,7 +25,7 @@ const UsersSection = () => {
   const [modalType, setModalType] = useState('create');
   const [selectedUser, setSelectedUser] = useState(null);
   const [error, setError] = useState(null);
-  const { showConfirm, showAlert, showSuccess } = useModal();
+  
   // usuario logeado
   const currentUser = authService.getCurrentUser(); 
   // mover primero al usuario logeado
@@ -611,24 +611,17 @@ const UsersSection = () => {
   /**
  * 🗑️ Elimina un usuario del sistema
  */
+ 
   const handleDelete = async (userId) => {
-    
 
     // 🔑 Verificar permisos
     if (!permissions.canDelete) {
-      showAlert({
-        title: "Permiso denegado",
-        message: "❌ No tienes permiso para eliminar usuarios."
-      });
+      window.alert("❌ No tienes permiso para eliminar usuarios.");
       return;
     }
 
-    const confirmado = await showConfirm({
-      title: "Eliminar usuario",
-      message: "¿Estás seguro de que deseas eliminar este usuario?",
-      confirmText: "Sí, eliminar",
-      cancelText: "Cancelar"
-    });
+    // Confirmación nativa de Windows
+    const confirmado = window.confirm("¿Estás seguro de que deseas eliminar este usuario?");
 
     if (!confirmado) return;
 
@@ -636,25 +629,17 @@ const UsersSection = () => {
       const result = await usersService.deleteUser(userId);
 
       if (result.success) {
-        await showSuccess({
-          title: "Usuario eliminado",
-          message: result.message
-        });
-
+        window.alert("✔ Usuario eliminado correctamente.");
         await fetchUsers();
       } else {
-        showAlert({
-          title: "Error",
-          message: result.message
-        });
+        window.alert(`❌ Error: ${result.message}`);
       }
+
     } catch (error) {
-      showAlert({
-        title: "Error al eliminar usuario",
-        message: error.message
-      });
+      window.alert(`❌ Error al eliminar usuario: ${error.message}`);
     }
   };
+
 
 
   /**

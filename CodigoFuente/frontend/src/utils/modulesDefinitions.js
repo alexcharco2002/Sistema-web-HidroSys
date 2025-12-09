@@ -4,8 +4,8 @@
  */
 import {
   BarChart3, Users, FileText, DollarSign, Gauge, UserCircle,
-  Calendar, Settings, Package, Clock, Bell, BookOpen,
-  TrendingUp, Database, Home, Briefcase, PieChart, Cog, AlertCircle, MapPin, Layers, ShieldCheck, Handshake, UserCheck
+  Calendar, Settings, Package, Clock, Bell, BookOpen, UserX,
+  TrendingUp, Database, Home, Briefcase, PieChart, Cog, AlertTriangle, MapPin, Layers, ShieldCheck, Handshake, UserCheck
 } from "lucide-react";
 
 // ============================================================================
@@ -224,12 +224,23 @@ export const MODULE_DEFINITIONS = {
     id: "fines",
     path: "fines",
     label: "Multas",
-    icon: AlertCircle,
+    icon: AlertTriangle,
     color: "red",
     category: "FINANCIAL",
     order: 3,
     componentName: "FinesSection",
     description: "Gestión de multas y penalizaciones."
+  },
+  multasafiliados: {
+    id: "fines_affiliates",
+    path: "fines-affiliates",
+    label: "MultasAfiliados",
+    icon: UserX,              // 🔧 Puedes cambiarlo si quieres otro
+    color: "orange",
+    category: "FINANCIAL",
+    order: 4,
+    componentName: "FinesAffiliatesSection",
+    description: "Asignación y gestión de multas aplicadas a usuarios afiliados."
   },
   cobranzas: {
     id: "collections",
@@ -238,7 +249,7 @@ export const MODULE_DEFINITIONS = {
     icon: DollarSign,
     color: "lime",
     category: "FINANCIAL",
-    order: 4,
+    order: 5,
     componentName: "CollectionsSection",
     description: "Gestión de cobranzas y estados de cuenta."
   },
@@ -249,7 +260,7 @@ export const MODULE_DEFINITIONS = {
     icon: DollarSign,
     color: "yellow",
     category: "FINANCIAL",
-    order: 5,
+    order: 6,
     componentName: "CashboxesSection",
     description: "Control de ingresos y egresos de caja."
   },
@@ -260,7 +271,7 @@ export const MODULE_DEFINITIONS = {
     icon: DollarSign,
     color: "orange",
     category: "FINANCIAL",
-    order: 6,
+    order: 7,
     componentName: "TarifasSection",
     description: "Configuración de tarifas y precios."
   },
@@ -271,7 +282,7 @@ export const MODULE_DEFINITIONS = {
     icon: Briefcase,
     color: "violet",
     category: "FINANCIAL",
-    order: 7,
+    order: 8,
     componentName: "ServiciosSection",
     description: "Gestión de servicios ofrecidos."
   },

@@ -2,6 +2,7 @@
 from sqlalchemy import Column, Integer, Boolean, Date, ForeignKey
 from sqlalchemy.orm import relationship
 from db.session import Base
+from models.multa_afiliado import MultaAfiliado
 
 class UsuarioAfiliado(Base):
     __tablename__ = "t_usuario_afiliado"
@@ -15,24 +16,30 @@ class UsuarioAfiliado(Base):
     id_sector = Column(Integer, ForeignKey("medidores.t_sector.id_sector"), nullable=False)
     id_usuario_sistema = Column(Integer, ForeignKey("usuarios.t_usuario_sistema.id_usuario_sistema"), nullable=False)
     
-    # Relaciones ORM
+    # Relaciones ORM con UsuarioSistema
     usuario_sistema = relationship(
         "UsuarioSistema", 
         back_populates="afiliaciones", 
         lazy="joined"
     )
-    
+    # Relación con Sector
     sector = relationship(
         "Sector", 
         backref="afiliados", 
         lazy="joined"
     )
     
-    # ✅ NUEVA RELACIÓN CON MEDIDORES
     # Relación correcta (1 usuario afiliado → muchos medidores)
     medidores = relationship(
         "Medidor",
         back_populates="usuario_afiliado",
+        lazy="joined"
+    )
+
+    # Relación con MultaAfiliado
+    multas = relationship(
+        "MultaAfiliado",
+        back_populates="usuario",
         lazy="joined"
     )
 

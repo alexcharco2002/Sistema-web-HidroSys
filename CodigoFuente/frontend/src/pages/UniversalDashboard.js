@@ -31,6 +31,8 @@ import TarifasSection from '../components/TarifasSection';
 import ConfigSection from '../components/ConfigSection';
 import ServiciosSection from '../components/ServiciosSection';
 import ReadingsSection from '../components/ReadingsSection';
+import FinesSection from '../components/FinesSection';
+import FinesAffiliatesSection from '../components/FinesAffiliatesSection';  
 
 // Iconos
 import { 
@@ -63,6 +65,8 @@ const COMPONENT_MAP = {
   HomeSection,
   ServiciosSection,
   ReadingsSection,
+  FinesSection,
+  FinesAffiliatesSection  
 };
 
 // ============================================================================

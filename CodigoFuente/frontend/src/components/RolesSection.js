@@ -88,6 +88,7 @@ const RolesSection = () => {
     { value: 'Facturas', label: 'Facturas' },
     { value: 'Pagos', label: 'Pagos' },
     { value: 'Multas', label: 'Multas' },
+    { value: 'MultasAfiliados', label: 'Multas a Afiliados' },
     { value: 'Configuracion', label: 'Configuración' },
     { value: 'Notificaciones', label: 'Notificaciones' },
     { value: 'Notificaciones', label: 'Notificaciones' },

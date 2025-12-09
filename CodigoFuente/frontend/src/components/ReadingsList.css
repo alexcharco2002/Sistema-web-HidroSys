@@ -1,5 +1,5 @@
 /* src/components/ReadingsList.css */
-/* ESTILOS PARA VISTA DE LISTA DE LECTURAS - MEJORADO */
+/* ESTILOS PARA VISTA DE LISTA DE LECTURAS - MEJORADO CON ESTIMADAS */
 
 /* ==================== CONTENEDOR DE LISTA ==================== */
 .readings-list-container {
@@ -78,6 +78,21 @@
 
 .readings-list-item.inactive:hover {
   background: #fee2e2;
+}
+
+/* ==================== ESTILOS PARA LECTURAS ESTIMADAS ==================== */
+.readings-list-item.estimated {
+  background: linear-gradient(90deg, #fffbeb 0%, #fef3c7 100%);
+  border-left: 4px solid #f59e0b;
+}
+
+.readings-list-item.estimated:hover {
+  background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+}
+
+.readings-list-item.estimated:nth-child(even) {
+  background: linear-gradient(90deg, #fffbeb 0%, #fef9e7 100%);
 }
 
 /* ==================== COLUMNAS ==================== */
@@ -238,19 +253,45 @@
   flex-shrink: 0;
 }
 
-/* ==================== BADGE DE ESTADO ==================== */
-.list-status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+/* ==================== BADGES DE ESTADO ==================== */
+/* Contenedor de badges - ahora apilados verticalmente */
+.status-wrapper {
+  display: flex;
+  flex-direction: column;     /* ⬅ apilar ACT + ESTI */
+  align-items: flex-start;
   gap: 4px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 11px;
+  width: 100%;
+  overflow: hidden;           /* ⬅ evita que se salga */
+}
+
+
+.readings-list-item > div:nth-child(10) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.list-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  width: 100%;            /* ⬅ Badge se ajusta al 100% de la columna */
+  max-width: 100%;        /* ⬅ Nunca se sale */
+  box-sizing: border-box;
+
+  padding: 5px 8px;
+  border-radius: 12px;
+
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  white-space: nowrap;
+
+  white-space: nowrap;    /* ⬅ No se rompe el texto */
+  overflow: hidden;       /* ⬅ Recorte seguro */
+  text-overflow: ellipsis;/* ⬅ Si es muy largo, (...) */
 }
 
 .list-status-badge.active {
@@ -265,11 +306,30 @@
   box-shadow: 0 2px 4px rgba(153, 27, 27, 0.15);
 }
 
+/* ✅ BADGE ESTIMADA - Color distintivo naranja */
+.list-status-badge.estimated {
+  background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%);
+  color: #92400e;
+  border: 1px solid #f59e0b;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+  animation: pulse-orange 2s ease-in-out infinite;
+}
+
+@keyframes pulse-orange {
+  0%, 100% {
+    box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+  }
+  50% {
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+  }
+}
+
 /* ==================== ACCIONES ==================== */
 .list-actions {
   display: flex;
   gap: 6px;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .list-action-btn {
@@ -310,16 +370,6 @@
   color: white;
 }
 
-.list-action-btn.toggle {
-  background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
-  color: #7c3aed;
-}
-
-.list-action-btn.toggle:hover {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
-  color: white;
-}
-
 .list-action-btn.delete {
   background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
   color: #dc2626;
@@ -328,6 +378,19 @@
 .list-action-btn.delete:hover {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
+}
+
+/* ✅ BOTÓN CONFIRMAR ESTIMADA - Color verde distintivo, va al final */
+.list-action-btn.confirm {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  color: #047857;
+  border: 1px solid #10b981;
+}
+
+.list-action-btn.confirm:hover {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 /* ==================== SCROLLBAR ==================== */
@@ -347,6 +410,85 @@
 
 .readings-list-body::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+}
+
+/* ==================== EMPTY STATE ==================== */
+.readings-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #94a3b8;
+}
+
+.readings-list-empty svg {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.readings-list-empty h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.readings-list-empty p {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+/* ==================== FOOTER ==================== */
+.readings-list-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.readings-list-footer-stats {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.readings-list-footer-stats strong {
+  color: #1e293b;
+  font-weight: 600;
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 1400px) {
+  .readings-list-header,
+  .readings-list-item {
+    grid-template-columns: 55px 130px 1fr 100px 130px 95px 95px 85px 115px 120px 130px;
+    /*                                      ↑ Estado   ↑ Acciones */
+  }
+}
+
+@media (max-width: 1200px) {
+  .list-col-nombre,
+  .list-col-sector {
+    font-size: 11px;
+  }
+  
+  .list-action-btn {
+    width: 28px;
+    height: 28px;
+  }
+}
+.readings-list-item div:nth-child(10) {
+  display: flex;
+  flex-direction: row;   /* Antes: column */
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
 }
 
 /* ==================== RESPONSIVE ==================== */
@@ -1052,49 +1194,3 @@
   }
 }
 
-/* Estilos para lecturas estimadas */
-.readings-list-item.estimated {
-    background-color: #fffbeb;
-    border-left: 3px solid #f59e0b;
-}
-
-.list-status-badge.estimated {
-    background-color: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fbbf24;
-}
-
-.list-action-btn.confirm {
-    color: #10b981;
-}
-
-.list-action-btn.confirm:hover {
-    background-color: #d1fae5;
-}
-
-.btn-success {
-    background-color: #10b981;
-    color: white;
-    padding: 0.5rem 1rem;
-    border-radius: 0.375rem;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    font-weight: 500;
-    transition: all 0.2s;
-}
-
-.btn-success:hover:not(:disabled) {
-    background-color: #059669;
-}
-
-.btn-success:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.text-success {
-    color: #10b981;
-    font-weight: 600;
-}

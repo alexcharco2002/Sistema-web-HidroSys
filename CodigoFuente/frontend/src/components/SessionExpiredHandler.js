@@ -6,12 +6,10 @@ const SessionExpiredHandler = () => {
 
   useEffect(() => {
     const handleSessionExpired = () => {
-      const confirmed = window.confirm(
-        "❌ Tu sesión ha expirado. ¿Deseas ir a la pantalla de inicio de sesión?"
-      );
-      if (confirmed) {
-        navigate('/login', { replace: true });
-      }
+      alert("❌ Tu sesión ha expirado. Por favor, inicia sesión de nuevo.");
+
+      // Redirigir SIEMPRE, sin opción a cancelar
+      navigate('/login', { replace: true });
     };
 
     window.addEventListener('sessionExpired', handleSessionExpired);
@@ -20,6 +18,7 @@ const SessionExpiredHandler = () => {
       window.removeEventListener('sessionExpired', handleSessionExpired);
     };
   }, [navigate]);
+
 
   return null;
 };

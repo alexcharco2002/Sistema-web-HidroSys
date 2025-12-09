@@ -120,39 +120,7 @@ const ReadingsSection = () => {
   };
 
   // FUNCIÓN PARA CONFIRMAR LECTURA ESTIMADA
-  const handleConfirmarEstimada = async (lectura) => {
-      const lecturaReal = prompt(
-          `Confirmar lectura del medidor ${lectura.medidor?.num_medidor}\n\n` +
-          `Lectura estimada: ${lectura.lectura_actual} m³\n` +
-          `Ingrese la lectura real:`,
-          lectura.lectura_actual
-      );
-      
-      if (!lecturaReal) return;
-      
-      const valor = parseInt(lecturaReal);
-      if (isNaN(valor) || valor < lectura.lectura_anterior) {
-          alert('Lectura inválida. Debe ser mayor o igual a la lectura anterior.');
-          return;
-      }
-      
-      try {
-          const result = await readingsServices.confirmarLecturaEstimada(
-              lectura.id_lectura,
-              valor
-          );
-          
-          if (result.success) {
-              alert('Lectura confirmada correctamente');
-              await fetchReadingsByPeriodo();
-              await fetchPeriodosDisponibles();
-          } else {
-              alert(`Error: ${result.message}`);
-          }
-      } catch (error) {
-          alert(`Error al confirmar: ${error.message}`);
-      }
-  };
+  
 
   // ============================================================
   // ESTADOS DE FORMULARIO
@@ -1050,7 +1018,7 @@ return (
                         })}
                       </div>
 
-                      <div>
+                      <div className="status-wrapper">
                         <span className={`list-status-badge ${reading.activo ? 'active' : 'inactive'}`}>
                           {reading.activo ? (
                             <><CheckCircle className="w-4 h-4" /> Act</>
@@ -1058,11 +1026,11 @@ return (
                             <><XCircle className="w-4 h-4" /> Inact</>
                           )}
                         </span>
-                        {/* ✅ NUEVO BADGE ESTIMADA */}
+
                         {reading.es_estimada && (
-                            <span className="list-status-badge estimated" title="Lectura estimada - Requiere confirmación">
-                                <TrendingUp className="w-4 h-4" /> Estimada
-                            </span>
+                          <span className="list-status-badge estimated" title="Lectura estimada. Si es necesario, edítala para registrar la lectura real.">
+                              <TrendingUp className="w-4 h-4" /> Esti
+                          </span>
                         )}
                       </div>
 
@@ -1075,16 +1043,7 @@ return (
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        {/* ✅ BOTÓN CONFIRMAR ESTIMADA */}
-                        {reading.es_estimada && permissions.canUpdate && (
-                            <button 
-                                className="list-action-btn confirm" 
-                                onClick={() => handleConfirmarEstimada(reading)} 
-                                title="Confirmar lectura estimada"
-                            >
-                                <CheckCircle className="w-4 h-4" />
-                            </button>
-                        )}
+                        
 
                         {permissions.canUpdate && (
                           <button 

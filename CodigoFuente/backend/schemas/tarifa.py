@@ -15,13 +15,14 @@ class TarifaBase(BaseModel):
     limite_max_m3: Decimal = Field(..., ge=0)  # ⬅ obligatorio
     tipo_tarifa: str = Field(..., min_length=2, max_length=50)
 
-    @model_validator(mode='after')
-    def validar_limites(self):
+    @model_validator(mode='before')
+    def validar_limites_before(self):
         if self.limite_max_m3 <= self.limite_min_m3:
             raise ValueError(
                 f'El límite máximo ({self.limite_max_m3} m³) debe ser mayor que el límite mínimo ({self.limite_min_m3} m³)'
             )
         return self
+
 
     @field_validator('nombre')
     @classmethod
@@ -62,7 +63,7 @@ class TarifaBase(BaseModel):
         return v
 
     @model_validator(mode='after')
-    def validar_limites(self):
+    def validar_limites_after(self):
         if self.limite_max_m3 is not None:
             if self.limite_max_m3 <= self.limite_min_m3:
                 raise ValueError(

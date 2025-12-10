@@ -759,6 +759,36 @@ class ReadingsServices {
           };
       }
   }
+  /**
+   * Confirmar todas las lecturas estimadas de un periodo
+   * @param {number} mes - Mes del periodo
+   * @param {number} anio - Año del periodo
+   */
+  async confirmarTodasLecturasEstimadas(mes, anio) {
+      try {
+          const endpoint = `/lecturas/confirmar-todas-estimadas?mes=${mes}&anio=${anio}`;
+          
+          const data = await this.makeRequest(endpoint, {
+              method: 'PATCH'
+          });
+          
+          // Limpiar cachés
+          this.cachedLecturas = null;
+          this.cachedPeriodos = null;
+          
+          return {
+              success: true,
+              data: data,
+              message: data.mensaje || 'Lecturas confirmadas exitosamente'
+          };
+      } catch (error) {
+          console.error('Error confirmando lecturas masivamente:', error);
+          return {
+              success: false,
+              message: error.message || 'Error al confirmar lecturas'
+          };
+      }
+  }
 
 }
 

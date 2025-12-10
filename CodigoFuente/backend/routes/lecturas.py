@@ -153,7 +153,7 @@ def lectura_to_response(lectura: Lectura) -> dict:
 # CRUD LECTURAS
 # ========================================
 
-@router.get("/", response_model=List[dict])
+@router.get("", response_model=List[dict])
 def listar_lecturas(
     search: Optional[str] = Query(None),
     id_medidor: Optional[int] = Query(None),
@@ -309,7 +309,7 @@ def obtener_lectura(
     return lectura_to_response(lectura)
 
 
-@router.post("/", response_model=dict, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
 def crear_lectura(
     lectura_data: LecturaCreate,
     db: Session = Depends(get_db),
@@ -1676,4 +1676,165 @@ def confirmar_lectura_estimada(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al confirmar lectura: {str(e)}"
+        )
+
+# ========================================
+# ENDPOINT PARA CONFIRMAR TODAS LAS LECTURAS ESTIMADAS
+# ========================================
+
+@router.patch("/confirmar-todas-estimadas", response_model=dict)
+def confirmar_todas_lecturas_estimadas(
+    mes: int = Query(..., ge=1, le=12, description="Mes del periodo"),
+    anio: int = Query(..., ge=2020, le=2100, description="Año del periodo"),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Confirma todas las lecturas estimadas de un periodo específico.
+    Convierte las lecturas estimadas en lecturas reales con los valores actuales.
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "lecturas", "actualizar")
+    
+    try:
+        from datetime import date
+        import calendar
+        
+        # Calcular rango de fechas del periodo
+        fecha_inicio = date(anio, mes, 1)
+        ultimo_dia = calendar.monthrange(anio, mes)[1]
+        fecha_fin = date(anio, mes, ultimo_dia)
+        
+        print(f"🔍 Buscando lecturas estimadas entre {fecha_inicio} y {fecha_fin}")
+        
+        # Obtener todas las lecturas estimadas del periodo
+        lecturas_estimadas = db.query(Lectura).filter(
+            Lectura.fecha_lectura >= fecha_inicio,
+            Lectura.fecha_lectura <= fecha_fin,
+            Lectura.es_estimada == True,
+            Lectura.activo == True
+        ).all()
+        
+        print(f"✅ Encontradas {len(lecturas_estimadas)} lecturas estimadas")
+        
+        if not lecturas_estimadas:
+            return {
+                "success": True,
+                "mensaje": "No hay lecturas estimadas en este periodo",
+                "periodo": f"{mes:02d}/{anio}",
+                "lecturas_confirmadas": 0,
+                "lecturas_fallidas": 0,
+                "detalles": [],
+                "fallidas": []
+            }
+        
+        confirmadas = []
+        fallidas = []
+        
+        # Procesar cada lectura estimada
+        for lectura in lecturas_estimadas:
+            try:
+                medidor = lectura.medidor
+                
+                # Validar que tenga medidor
+                if not medidor:
+                    fallidas.append({
+                        "id_lectura": lectura.id_lectura,
+                        "medidor": "N/A",
+                        "razon": "Medidor no encontrado"
+                    })
+                    continue
+                
+                # =========================
+                # 🔵 INFORMACIÓN DEL AFILIADO (igual que en listar_lecturas)
+                # =========================
+                afiliado = medidor.usuario_afiliado if medidor else None
+                
+                # Nombre afiliado
+                if afiliado and afiliado.usuario_sistema:
+                    usuario_sistema = afiliado.usuario_sistema
+                    nombre_afiliado = f"{usuario_sistema.nombres} {usuario_sistema.apellidos}"
+                else:
+                    nombre_afiliado = "Sin afiliado"
+                
+                # Convertir a lectura real
+                lectura.es_estimada = False
+                lectura.id_lector = current_user.id_usuario_sistema
+                
+                # Actualizar observación
+                if lectura.observacion:
+                    lectura.observacion += " | Confirmada automáticamente"
+                else:
+                    lectura.observacion = "Lectura estimada confirmada automáticamente"
+                
+                confirmadas.append({
+                    "id_lectura": lectura.id_lectura,
+                    "medidor": medidor.num_medidor,
+                    "nombre_afiliado": nombre_afiliado,
+                    "lectura_anterior": lectura.lectura_anterior,
+                    "lectura_confirmada": lectura.lectura_actual,
+                    "consumo": lectura.consumo_m3
+                })
+                
+                print(f"✅ Lectura {lectura.id_lectura} confirmada: {medidor.num_medidor} - {nombre_afiliado}")
+                
+            except Exception as e:
+                print(f"❌ Error procesando lectura {lectura.id_lectura}: {e}")
+                import traceback
+                traceback.print_exc()
+                
+                # Intentar obtener el número de medidor de forma segura
+                num_medidor = "N/A"
+                try:
+                    if lectura.medidor:
+                        num_medidor = lectura.medidor.num_medidor
+                except:
+                    pass
+                
+                fallidas.append({
+                    "id_lectura": lectura.id_lectura,
+                    "medidor": num_medidor,
+                    "razon": str(e)
+                })
+        
+        # Guardar cambios
+        if confirmadas:
+            db.commit()
+            print(f"💾 Guardadas {len(confirmadas)} lecturas confirmadas")
+            
+            # Auditoría
+            registrar_auditoria(
+                db=db,
+                accion="CONFIRMAR_TODAS_ESTIMADAS",
+                descripcion=f"Confirmadas {len(confirmadas)} lecturas estimadas del periodo {mes:02d}/{anio}",
+                id_usuario=current_user.id_usuario_sistema
+            )
+        else:
+            db.rollback()
+            print("⚠️ No hay lecturas para confirmar, todas fallaron")
+        
+        mensaje = f"Se confirmaron {len(confirmadas)} de {len(lecturas_estimadas)} lecturas"
+        if fallidas:
+            mensaje += f" ({len(fallidas)} fallidas)"
+        
+        return {
+            "success": True,
+            "mensaje": mensaje,
+            "periodo": f"{mes:02d}/{anio}",
+            "lecturas_confirmadas": len(confirmadas),
+            "lecturas_fallidas": len(fallidas),
+            "detalles": confirmadas[:50],
+            "fallidas": fallidas[:10]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error confirmando lecturas masivamente: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al confirmar lecturas: {str(e)}"
         )

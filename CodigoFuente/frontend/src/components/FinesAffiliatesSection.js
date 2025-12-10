@@ -10,7 +10,8 @@ import authService from '../services/authServices';
 import {
   DollarSign, Search, Edit, Eye, Calendar, X, Save,
   RefreshCw, AlertCircle, CheckCircle, XCircle, Ban,
-  FileText, UserCheck, Clock, ArrowUpDown, Receipt
+  FileText, UserCheck, Clock, ArrowUpDown
+  , Receipt
 } from 'lucide-react';
 
 const FinesAffiliatesSection = () => {
@@ -30,6 +31,8 @@ const FinesAffiliatesSection = () => {
   const [modalType, setModalType] = useState('create');
   const [selectedMulta, setSelectedMulta] = useState(null);
   const [error, setError] = useState(null);
+  const [affiliateSearchTerm, setAffiliateSearchTerm] = useState('');
+  const [selectedAffiliateInfo, setSelectedAffiliateInfo] = useState(null);
 
   const [formData, setFormData] = useState({
     id_usuario_afi: null,
@@ -120,14 +123,12 @@ const FinesAffiliatesSection = () => {
       setLoading(false);
     }
   }, [filterEstado, filterAfiliado, permissions.canRead]);
-
-  useEffect(() => {
-    if (permissions.canRead) {
-      fetchMultas();
-      fetchStats();
-    }
-  }, [filterEstado, filterAfiliado, permissions.canRead, fetchMultas  ]);
-  
+    useEffect(() => {
+        if (permissions.canRead) {
+          fetchMultas();
+          fetchStats();
+        }
+      }, [filterEstado, filterAfiliado, permissions.canRead, fetchMultas]);
   const fetchStats = async () => {
     try {
       const result = await finesAffiliatesServices.getMultasStats();
@@ -140,6 +141,20 @@ const FinesAffiliatesSection = () => {
   };
 
   // ==================== FUNCIONES DE FILTRADO Y ORDENAMIENTO ====================
+  const filteredAffiliates = affiliates.filter(aff => {
+    if (!affiliateSearchTerm) return true;
+    const searchLower = affiliateSearchTerm.toLowerCase();
+    const nombreCompleto = aff.usuario ? `${aff.usuario.nombres} ${aff.usuario.apellidos}`.toLowerCase() : '';
+    const cedula = aff.usuario?.cedula || '';
+    return nombreCompleto.includes(searchLower) || cedula.includes(searchLower);
+  });
+
+  const handleAffiliateChange = (affiliateId) => {
+    const affiliate = affiliates.find(a => a.id_usuario_afi === parseInt(affiliateId));
+    setFormData({ ...formData, id_usuario_afi: parseInt(affiliateId) });
+    setSelectedAffiliateInfo(affiliate);
+  };
+
   const filteredMultas = multas
     .filter(multa => {
       const matchesSearch = searchTerm === '' ||
@@ -208,13 +223,16 @@ const FinesAffiliatesSection = () => {
         id_usuario_afi: affiliates.length > 0 ? affiliates[0].id_usuario_afi : null,
         id_tipo_multa: tiposMulta.length > 0 ? tiposMulta[0].id_tipo_multa : null,
         monto: tiposMulta.length > 0 ? tiposMulta[0].monto || '' : '',
-        fecha_multa: new Date().toISOString().split('T')[0],
+        fecha_multa: new Date().toLocaleDateString('en-CA'),
         observaciones: ''
       });
+      setAffiliateSearchTerm('');
+      setSelectedAffiliateInfo(null);
     } else if (type === 'edit' && multa) {
       setFormData({
-        monto: multa.monto,
-        observaciones: multa.observaciones || ''
+        id_tipo_multa: multa.id_tipo_multa,
+        observaciones: multa.observaciones || '',
+        activo: multa.activo
       });
     } else if (type === 'pagar' && multa) {
       setPagoData({
@@ -230,6 +248,8 @@ const FinesAffiliatesSection = () => {
     setShowModal(false);
     setSelectedMulta(null);
     setError(null);
+    setAffiliateSearchTerm('');
+    setSelectedAffiliateInfo(null);
   };
 
   // ==================== FUNCIONES DE CRUD ====================
@@ -767,20 +787,58 @@ const FinesAffiliatesSection = () => {
               {modalType === 'create' && (
                 <form onSubmit={handleSubmit} className="user-form">
                   <div className="form-grid">
-                    <div className="form-group">
+                    <div className="form-group form-group-full">
                       <label>Afiliado: *</label>
+                      
+                      <div className="meter-search-container">
+                        <div className="meter-search-input-wrapper">
+                          <Search className="w-4 h-4 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Buscar afiliado por nombre o cédula..."
+                            value={affiliateSearchTerm}
+                            onChange={(e) => setAffiliateSearchTerm(e.target.value)}
+                          />
+                          {affiliateSearchTerm && (
+                            <button
+                              type="button"
+                              onClick={() => setAffiliateSearchTerm('')}
+                              className="meter-search-clear-btn"
+                            >
+                              <X className="w-4 h-4 text-gray-400" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
                       <select
                         value={formData.id_usuario_afi || ''}
-                        onChange={(e) => setFormData({ ...formData, id_usuario_afi: parseInt(e.target.value) })}
+                        onChange={(e) => handleAffiliateChange(e.target.value)}
                         required
                       >
                         <option value="">Seleccionar afiliado</option>
-                        {affiliates.map(aff => (
+                        {filteredAffiliates.map(aff => (
                           <option key={aff.id_usuario_afi} value={aff.id_usuario_afi}>
                             {aff.usuario ? `${aff.usuario.nombres} ${aff.usuario.apellidos} - ${aff.usuario.cedula}` : `Afiliado ${aff.id_usuario_afi}`}
                           </option>
                         ))}
                       </select>
+
+                      {selectedAffiliateInfo && selectedAffiliateInfo.usuario && (
+                        <div className="meter-info-card">
+                          <h4 className="meter-info-title">
+                            <UserCheck className="w-4 h-4 mr-2" />
+                            Información del Afiliado
+                          </h4>
+                          <div className="meter-info-content">
+                            <p><strong>Nombre:</strong> {selectedAffiliateInfo.usuario.nombres} {selectedAffiliateInfo.usuario.apellidos}</p>
+                            <p><strong>Cédula:</strong> {selectedAffiliateInfo.usuario.cedula}</p>
+                            {selectedAffiliateInfo.usuario.email && (
+                              <p><strong>Email:</strong> {selectedAffiliateInfo.usuario.email}</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="form-group">
@@ -816,7 +874,12 @@ const FinesAffiliatesSection = () => {
                         value={formData.monto}
                         onChange={(e) => setFormData({ ...formData, monto: e.target.value })}
                         required
+                        readOnly
+                        className="bg-gray-100 font-semibold"
                       />
+                      <small className="text-gray-500 text-xs mt-1">
+                        El monto se establece automáticamente según el tipo de multa
+                      </small>
                     </div>
 
                     <div className="form-group">
@@ -854,17 +917,68 @@ const FinesAffiliatesSection = () => {
               {/* MODAL EDIT */}
               {modalType === 'edit' && selectedMulta && (
                 <form onSubmit={handleSubmit} className="user-form">
+                  <div className="alert alert-info mb-4">
+                    <AlertCircle className="w-5 h-5 mr-2" />
+                    <div>
+                      <p className="text-sm">Solo puedes modificar el tipo de multa y las observaciones. El monto se actualizará automáticamente según el tipo seleccionado.</p>
+                    </div>
+                  </div>
+
+                  {/* Información de solo lectura */}
+                  <div className="user-details mb-4">
+                    <div className="detail-group">
+                      <label>Afiliado:</label>
+                      <p>{getAfiliadoNombre(selectedMulta)}</p>
+                    </div>
+                    <div className="detail-group">
+                      <label>Cédula:</label>
+                      <p>{selectedMulta.usuario_afi?.cedula || 'N/A'}</p>
+                    </div>
+                    <div className="detail-group">
+                      <label>Monto Actual:</label>
+                      <p className="text-lg font-bold">{formatCurrency(selectedMulta.monto)}</p>
+                    </div>
+                    <div className="detail-group">
+                      <label>Fecha Multa:</label>
+                      <p>{formatDate(selectedMulta.fecha_multa)}</p>
+                    </div>
+                  </div>
+
                   <div className="form-grid">
                     <div className="form-group">
-                      <label>Monto: *</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formData.monto}
-                        onChange={(e) => setFormData({ ...formData, monto: e.target.value })}
+                      <label>Tipo de Multa: *</label>
+                      <select
+                        value={formData.id_tipo_multa || ''}
+                        onChange={(e) => {
+                          const tipoId = parseInt(e.target.value);
+                          setFormData({
+                            ...formData,
+                            id_tipo_multa: tipoId
+                          });
+                        }}
                         required
-                      />
+                      >
+                        <option value="">Seleccionar tipo</option>
+                        {tiposMulta.map(tipo => (
+                          <option key={tipo.id_tipo_multa} value={tipo.id_tipo_multa}>
+                            {tipo.nombre_multa} - {formatCurrency(tipo.monto)}
+                          </option>
+                        ))}
+                      </select>
+                      <small className="text-gray-500 text-xs mt-1">
+                        Al cambiar el tipo, el monto se actualizará automáticamente
+                      </small>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Estado:</label>
+                      <select
+                        value={formData.activo}
+                        onChange={(e) => setFormData({ ...formData, activo: e.target.value === 'true' })}
+                      >
+                        <option value="true">Activo</option>
+                        <option value="false">Inactivo</option>
+                      </select>
                     </div>
 
                     <div className="form-group form-group-full">

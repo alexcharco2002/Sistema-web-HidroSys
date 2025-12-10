@@ -53,6 +53,7 @@ const FinesSection = () => {
     vigencia_desde: '',
     activo: true,
   });
+  
 
   // PERMISOS
   const [permissions, setPermissions] = useState({
@@ -236,7 +237,7 @@ const FinesSection = () => {
         nombre_multa: '',
         descripcion: '',
         monto: '',
-        vigencia_desde: new Date().toISOString().split('T')[0],
+        vigencia_desde: new Date().toLocaleDateString('en-CA'),
         activo: true,
       });
     } else if (type === 'edit' && tipo) {
@@ -623,11 +624,7 @@ const FinesSection = () => {
               )}
               {/*MODAL  VISTA DE DETALLES */}
               {modalType === 'view' && selectedTipoMulta && (
-                <div className="user-details">
-                  <div className="detail-group">
-                    <label>ID Tipo Multa:</label>
-                    <p>{selectedTipoMulta.id_tipo_multa}</p>
-                  </div>
+                <div className="user-details">                 
                   <div className="detail-group">
                     <label>Nombre:</label>
                     <p>{selectedTipoMulta.nombre_multa}</p>
@@ -655,13 +652,34 @@ const FinesSection = () => {
                   <div className="detail-group">
                     <label>Estado de Vigencia:</label>
                     <span className={`status-badge ${selectedTipoMulta.es_vigente ? 'active' : 'inactive'}`}>
-                      {selectedTipoMulta.es_vigente ? 'Vigente' : 'Vencida'}
+                      {selectedTipoMulta.es_vigente ? (
+                        <>
+                          <CheckCircle className="inline-block w-4 h-4 mr-1 text-green-600" />
+                          Vigente
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="inline-block w-4 h-4 mr-1 text-red-600" />
+                          Vencida
+                        </>
+                      )}
                     </span>
                   </div>
+
                   <div className="detail-group">
                     <label>Estado Activo:</label>
                     <span className={`status-badge ${selectedTipoMulta.activo ? 'active' : 'inactive'}`}>
-                      {selectedTipoMulta.activo ? 'Activo' : 'Inactivo'}
+                      {selectedTipoMulta.activo ? (
+                        <>
+                          <CheckCircle className="inline-block w-4 h-4 mr-1 text-green-600" />
+                          Activo
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="inline-block w-4 h-4 mr-1 text-red-600" />
+                          Inactivo
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>

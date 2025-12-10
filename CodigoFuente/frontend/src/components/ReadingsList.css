@@ -275,24 +275,22 @@
 .list-status-badge {
   display: flex;
   align-items: center;
-  gap: 4px;
-
-  width: 100%;            /* ⬅ Badge se ajusta al 100% de la columna */
-  max-width: 100%;        /* ⬅ Nunca se sale */
-  box-sizing: border-box;
-
-  padding: 5px 8px;
-  border-radius: 12px;
-
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-
-  white-space: nowrap;    /* ⬅ No se rompe el texto */
-  overflow: hidden;       /* ⬅ Recorte seguro */
-  text-overflow: ellipsis;/* ⬅ Si es muy largo, (...) */
+  justify-content: center;
+  
+  width: 28px;           /* ⬅ Tamaño fijo pequeño */
+  height: 28px;
+  padding: 6px;
+  border-radius: 50%;    /* ⬅ Circular */
+  
+  font-size: 0;          /* ⬅ Oculta cualquier texto */
 }
+.list-status-badge.combined {
+  gap: 2px;
+  padding: 4px 6px;
+  background: linear-gradient(135deg, #fed7aa 0%, #dcfce7 100%);
+  border: 1px solid #f59e0b;
+}
+
 
 .list-status-badge.active {
   background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);

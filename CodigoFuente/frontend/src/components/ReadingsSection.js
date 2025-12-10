@@ -6,6 +6,7 @@ import './ReadingsList.css';
 import readingsServices from '../services/readingsServices';
 import authService from '../services/authServices';
 import * as XLSX from "xlsx";
+
 import {
   BookOpen,
   Search,
@@ -29,7 +30,8 @@ import {
   Upload,
   MapPin,
   CalendarDays,
-  Clock
+  Clock,
+  Check
 } from 'lucide-react';
 
 const ReadingsSection = () => {
@@ -79,6 +81,9 @@ const ReadingsSection = () => {
   const [showEstimadasModal, setShowEstimadasModal] = useState(false);
   const [loadingEstimadas, setLoadingEstimadas] = useState(false);
   const [estimadasResult, setEstimadasResult] = useState(null);
+  const [, setShowConfirmacionModal] = useState(false);
+  const [, setConfirmacionResult] = useState(null);
+
 
   // FUNCIÓN PARA GENERAR LECTURAS ESTIMADAS
   const handleGenerarEstimadas = async () => {
@@ -119,9 +124,73 @@ const ReadingsSection = () => {
       }
   };
 
-  // FUNCIÓN PARA CONFIRMAR LECTURA ESTIMADA
-  
+  /*FUNCIÓN PARA CONFIRMAR LECTURA ESTIMADA
+  const handleConfirmarEstimada = async (readingId) => {
+      try {
+          const result = await readingsServices.confirmarLecturaEstimada(readingId);
+          if (result.success) {
+              alert('✅ Lectura estimada confirmada correctamente');
+              await fetchReadingsByPeriodo(); 
+              await fetchPeriodosDisponibles();
+          } else {  
+              alert('❌ Error: ' + result.message);
+          }
+      } catch (error) {
+          alert('❌ Error al confirmar lectura estimada');
+      }
+  };
+  */
 
+  // FUNCIÓN PARA CONFIRMAR TODAS LAS LECTURAS ESTIMADAS
+  const handleConfirmarTodas = async () => {
+      if (!periodoSeleccionado) {
+          alert('Debe seleccionar un periodo primero');
+          return;
+      }
+      
+      // Verificar si hay lecturas estimadas
+      const lecturasEstimadas = sortedReadings.filter(r => r.es_estimada);
+      
+      if (lecturasEstimadas.length === 0) {
+          alert('No hay lecturas estimadas para confirmar en este periodo');
+          return;
+      }
+      
+      const confirmado = window.confirm(
+          `¿Confirmar ${lecturasEstimadas.length} lecturas estimadas del periodo ${readingsServices.formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}?\n\n` +
+          `Las lecturas estimadas se convertirán en lecturas reales con los valores actuales.\n\n` +
+          `Esta acción no se puede deshacer.`
+      );
+      
+      if (!confirmado) return;
+      
+      setLoading(true);
+      setError(null);
+      
+      try {
+          const result = await readingsServices.confirmarTodasLecturasEstimadas(
+              periodoSeleccionado.mes,
+              periodoSeleccionado.anio
+          );
+          
+          if (result.success) {
+              setConfirmacionResult(result.data);
+              setShowConfirmacionModal(true);
+              await fetchReadingsByPeriodo();
+              await fetchPeriodosDisponibles();
+          } else {
+              setError(result.message);
+              alert(result.message || 'Error al confirmar lecturas');
+          }
+      } catch (error) {
+          setError(error.message || 'Error al confirmar lecturas estimadas');
+          alert(error.message || 'Error al confirmar lecturas estimadas');
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  
   // ============================================================
   // ESTADOS DE FORMULARIO
   // ============================================================
@@ -302,6 +371,12 @@ const ReadingsSection = () => {
   });
 
   const sortedReadings = [...filteredReadings].sort((a, b) => {
+    // ✅ PRIMERA PRIORIDAD: Lecturas estimadas siempre al final
+    if (a.es_estimada !== b.es_estimada) {
+      return a.es_estimada ? 1 : -1;  
+    }
+
+    // ✅ SEGUNDA PRIORIDAD: Ordenamiento según la opción seleccionada
     let comparison = 0;
 
     if (sortOption === 'fecha') {
@@ -324,6 +399,7 @@ const ReadingsSection = () => {
   const handleStatusFilterClick = (status) => {
     setFilterStatus(status);
   };
+
 
   // ============================================================
   // FUNCIONES DE MODAL
@@ -362,6 +438,7 @@ const ReadingsSection = () => {
       setSelectedMeterInfo(null);
     } else if (type === 'edit' && reading) {
       setFormData({
+        id_lectura: reading.id_lectura, 
         id_medidor: reading.id_medidor,
         lectura_actual: reading.lectura_actual,
         lectura_anterior: reading.lectura_anterior,
@@ -514,7 +591,7 @@ const ReadingsSection = () => {
       if (result.success) {
         // 🎉 Éxito simple
         alert("Lectura Eliminada: " + result.message);
-
+        closeModal();
         await fetchReadingsByPeriodo();
         await fetchPeriodosDisponibles();
       } else {
@@ -946,6 +1023,110 @@ return (
             <h3>Cargando lecturas...</h3>
           </div>
         )}
+        {/* ✅ MODAL DE RESULTADOS DE ESTIMADAS */}
+        {showEstimadasModal && estimadasResult && (
+          <div className="modal-overlay">
+            <div className="modal">
+
+              {/* HEADER */}
+              <div className="modal-header">
+                <h3>Lecturas Estimadas Generadas</h3>
+                <button className="modal-close" onClick={() => setShowEstimadasModal(false)}>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* BODY */}
+              <div className="modal-body"> 
+                <div className="alert alert-info mb-4"> 
+                  <TrendingUp className="w-5 h-5 mr-2" /> 
+                  <div> 
+                    <strong>Periodo:</strong> {estimadasResult.periodo}<br /> 
+                    <strong>Lecturas generadas:</strong> {estimadasResult.lecturas_generadas}<br /> 
+                    <strong>Fallidas:</strong> {estimadasResult.lecturas_fallidas} 
+                  </div> 
+                </div>
+
+                {/* DETALLES CORRECTOS */}
+                {estimadasResult.detalles?.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Lecturas generadas correctamente:</h4>
+
+                    <div style={{ maxHeight: "300px", overflowY: "auto" }}>
+                      <table className="excel-preview-table">
+                        <thead>
+                          <tr>
+                            <th>Medidor</th>
+                            <th>Afiliado</th>
+                            <th className="align-right">Lect. Ant.</th>
+                            <th className="align-right">Lect. Est.</th>
+                            <th className="align-right">Consumo</th>
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {estimadasResult.detalles.map((det, idx) => (
+                            <tr key={idx}>
+                              <td>{det.medidor}</td>
+                              <td className="text-small">{det.nombre_afiliado}</td>
+                              <td className="align-right">{det.lectura_anterior} m³</td>
+                              <td className="align-right text-success">{det.lectura_estimada} m³</td>
+                              <td className="align-right text-bold">{det.consumo_estimado} m³</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* DETALLES FALLIDOS */}
+                {estimadasResult.fallidas?.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="font-semibold mb-2 text-red-600">Medidores sin generar:</h4>
+
+                    <ul className="ml-4 space-y-1">
+                      {estimadasResult.fallidas.slice(0, 5).map((fal, idx) => (
+                        <li key={idx} className="text-small">
+                          <strong>{fal.medidor}:</strong> {fal.razon}
+                        </li>
+                      ))}
+
+                      {estimadasResult.fallidas.length > 5 && (
+                        <li className="text-muted">
+                          ... y {estimadasResult.fallidas.length - 5} más
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+
+              </div>
+
+              {/* FOOTER */}
+              <div className="form-actions"
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",  
+                  alignItems: "center",
+                  gap: "12px",
+                  padding: "16px 20px",
+                  borderTop: "1px solid rgba(0,0,0,0.08)",
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => setShowEstimadasModal(false)}
+                >
+                  Aceptar
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
 
         {/* LISTA DE LECTURAS */}
         {!loading && (
@@ -1019,17 +1200,17 @@ return (
                       </div>
 
                       <div className="status-wrapper">
-                        <span className={`list-status-badge ${reading.activo ? 'active' : 'inactive'}`}>
-                          {reading.activo ? (
-                            <><CheckCircle className="w-4 h-4" /> Act</>
-                          ) : (
-                            <><XCircle className="w-4 h-4" /> Inact</>
-                          )}
-                        </span>
-
-                        {reading.es_estimada && (
-                          <span className="list-status-badge estimated" title="Lectura estimada. Si es necesario, edítala para registrar la lectura real.">
-                              <TrendingUp className="w-4 h-4" /> Esti
+                        {reading.es_estimada ? (
+                          <span 
+                            className={`list-status-badge combined ${reading.activo ? 'active' : 'inactive'}`}
+                            title={`${reading.activo ? 'Activo' : 'Inactivo'} - Estimada`}
+                          >
+                            {reading.activo ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                            <TrendingUp className="w-3 h-3" />
+                          </span>
+                        ) : (
+                          <span className={`list-status-badge ${reading.activo ? 'active' : 'inactive'}`}>
+                            {reading.activo ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                           </span>
                         )}
                       </div>
@@ -1043,8 +1224,6 @@ return (
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        
-
                         {permissions.canUpdate && (
                           <button 
                             className="list-action-btn edit" 
@@ -1055,15 +1234,7 @@ return (
                           </button>
                         )}
                         
-                        {permissions.canDelete && (
-                          <button 
-                            className="list-action-btn delete" 
-                            onClick={() => handleDelete(reading.id_lectura)} 
-                            title="Eliminar"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
+                        
                       </div>
                     </div>
                   );
@@ -1080,25 +1251,38 @@ return (
             </div>
 
             {sortedReadings.length > 0 && (
-              <div className="readings-list-footer">
+            <div className="readings-list-footer">
+              <button 
+                className="btn-secondary"
+                onClick={() => setPeriodoSeleccionado(null)}
+              >
+                <ArrowUpDown className="w-4 h-4 mr-2" style={{ transform: 'rotate(90deg)' }} />
+                Cambiar periodo
+              </button>
+
+              {/* ✅ Botón solo visible si hay estimadas */}
+              {sortedReadings.some(r => r.es_estimada) && permissions.canUpdate && (
                 <button 
-                  className="btn-secondary"
-                  onClick={() => setPeriodoSeleccionado(null)}
+                  className="btn-primary"
+                  onClick={handleConfirmarTodas}
+                  title="Confirmar todas las lecturas estimadas"
                 >
-                  <ArrowUpDown className="w-4 h-4 mr-2" style={{ transform: 'rotate(90deg)' }} />
-                  Cambiar periodo
+                  <Check className="w-4 h-4 mr-2" />
+                  Confirmar lecturas estimadas ({sortedReadings.filter(r => r.es_estimada).length})
                 </button>
-                
-                <div className="readings-list-footer-stats">
-                  <span>
-                    Mostrando <strong>{sortedReadings.length}</strong> lecturas
-                  </span>
-                  <span>
-                    Consumo total: <strong>{sortedReadings.reduce((sum, r) => sum + (r.consumo_m3 || 0), 0)} m³</strong>
-                  </span>
-                </div>
+              )}
+              
+              <div className="readings-list-footer-stats">
+                <span>
+                  Mostrando <strong>{sortedReadings.length}</strong> lecturas
+                </span>
+                <span>
+                  Consumo total: <strong>{sortedReadings.reduce((sum, r) => sum + (r.consumo_m3 || 0), 0)} m³</strong>
+                </span>
               </div>
-            )}
+            </div>
+          )}
+
           </div>
         )}
       </div>
@@ -1402,18 +1586,6 @@ return (
           {modalType === 'view' && selectedReading && (
             <div className="user-details">
 
-              {/* ID Lectura */}
-              <div className="detail-group">
-                <label>ID Lectura:</label>
-                <p>{selectedReading.id_lectura}</p>
-              </div>
-
-              {/* Código de Usuario */}
-              <div className="detail-group">
-                <label>Código de Usuario:</label>
-                <p>{selectedReading.medidor?.codigo_afiliado || 'N/A'}</p>
-              </div>
-
               {/* Medidor */}
               <div className="detail-group">
                 <label>Medidor:</label>
@@ -1424,6 +1596,12 @@ return (
               <div className="detail-group">
                 <label>Sector:</label>
                 <p>{selectedReading.medidor?.sector || 'Sin sector'}</p>
+              </div>
+
+              {/* Código de Usuario */}
+              <div className="detail-group">
+                <label>Código de Usuario:</label>
+                <p>{selectedReading.medidor?.codigo_afiliado || 'N/A'}</p>
               </div>
 
               {/* Nombre Afiliado */}
@@ -1622,96 +1800,28 @@ return (
               </div>
 
               <div className="form-actions">
+
                 <button type="button" className="btn-secondary" onClick={closeModal}>
                   Cancelar
+                </button>
+                {/* ✅ Botón eliminar*/}
+                <button 
+                  type="button" 
+                  className="btn-delete"
+                  onClick={() => handleDelete(formData.id_lectura)}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Eliminar
                 </button>
                 <button type="submit" className="btn-primary">
                   <Save className="w-4 h-4 mr-2" />
                   {modalType === 'create' ? 'Crear Lectura' : 'Guardar Cambios'}
                 </button>
+                
               </div>
             </form>
           )}
-          {/* ✅ MODAL DE RESULTADOS DE ESTIMADAS */}
-          {showEstimadasModal && estimadasResult && (
-              <div className="modal-overlay">
-                  <div className="modal">
-                      <div className="modal-header">
-                          <h3>Lecturas Estimadas Generadas</h3>
-                          <button className="modal-close" onClick={() => setShowEstimadasModal(false)}>
-                              <X className="w-5 h-5" />
-                          </button>
-                      </div>
-                      
-                      <div className="modal-body">
-                          <div className="alert alert-info mb-4">
-                              <TrendingUp className="w-5 h-5 mr-2" />
-                              <div>
-                                  <strong>Periodo:</strong> {estimadasResult.periodo}<br />
-                                  <strong>Lecturas generadas:</strong> {estimadasResult.lecturas_generadas}<br />
-                                  <strong>Fallidas:</strong> {estimadasResult.lecturas_fallidas}
-                              </div>
-                          </div>
-                          
-                          {estimadasResult.detalles && estimadasResult.detalles.length > 0 && (
-                              <div>
-                                  <h4 className="font-semibold mb-2">Lecturas generadas correctamente:</h4>
-                                  <div style={{maxHeight: '300px', overflowY: 'auto'}}>
-                                      <table className="excel-preview-table">
-                                          <thead>
-                                              <tr>
-                                                  <th>Medidor</th>
-                                                  <th>Afiliado</th>
-                                                  <th className="align-right">Lect. Ant.</th>
-                                                  <th className="align-right">Lect. Est.</th>
-                                                  <th className="align-right">Consumo</th>
-                                              </tr>
-                                          </thead>
-                                          <tbody>
-                                              {estimadasResult.detalles.map((det, idx) => (
-                                                  <tr key={idx}>
-                                                      <td>{det.medidor}</td>
-                                                      <td className="text-small">{det.nombre_afiliado}</td>
-                                                      <td className="align-right">{det.lectura_anterior} m³</td>
-                                                      <td className="align-right text-success">{det.lectura_estimada} m³</td>
-                                                      <td className="align-right text-bold">{det.consumo_estimado} m³</td>
-                                                  </tr>
-                                              ))}
-                                          </tbody>
-                                      </table>
-                                  </div>
-                              </div>
-                          )}
-                          
-                          {estimadasResult.fallidas && estimadasResult.fallidas.length > 0 && (
-                              <div className="mt-4">
-                                  <h4 className="font-semibold mb-2 text-red-600">Medidores sin generar:</h4>
-                                  <ul className="ml-4 space-y-1">
-                                      {estimadasResult.fallidas.slice(0, 5).map((fal, idx) => (
-                                          <li key={idx} className="text-small">
-                                              <strong>{fal.medidor}:</strong> {fal.razon}
-                                          </li>
-                                      ))}
-                                      {estimadasResult.fallidas.length > 5 && (
-                                          <li className="text-muted">... y {estimadasResult.fallidas.length - 5} más</li>
-                                      )}
-                                  </ul>
-                              </div>
-                          )}
-                      </div>
-                      
-                      <div className="form-actions">
-                          <button 
-                              type="button" 
-                              className="btn-primary" 
-                              onClick={() => setShowEstimadasModal(false)}
-                          >
-                              Cerrar
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          )}
+          
 
         </div>
       </div>

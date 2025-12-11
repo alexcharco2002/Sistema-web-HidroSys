@@ -20,7 +20,7 @@ import {
   Clock,
   History,
   ArrowUpDown,
-  FileText
+  FileText, Trash2
 } from 'lucide-react';
 
 
@@ -60,6 +60,7 @@ const FinesSection = () => {
     canCreate: false,
     canRead: false,
     canUpdate: false,
+    canDelete: false,
     canToggleStatus: false,
     canViewHistory: false,
   });
@@ -91,6 +92,7 @@ const FinesSection = () => {
     setPermissions({ 
       canCreate, 
       canRead, 
+      canDelete,
       canUpdate, 
       canToggleStatus,
       canViewHistory 
@@ -99,6 +101,7 @@ const FinesSection = () => {
       canCreate,
       canRead,
       canUpdate,
+      canDelete,
       canToggleStatus,
       canViewHistory,
     });
@@ -337,6 +340,33 @@ const FinesSection = () => {
       alert('Error al cambiar estado del tipo de multa: ' + error.message);
     }
   };
+
+  // FUNCIÓN ELIMINAR TIPO DE MULTA
+  const handleDelete = async (tipoMultaId) => {
+    if (!permissions.canDelete) {
+      alert("❌ No tienes permiso para eliminar tipos de multa.");
+      return;
+    }
+
+    const confirmado = window.confirm("¿Estás seguro de que deseas eliminar este tipo de multa?");
+    if (!confirmado) return;
+
+    try {
+      const result = await multasService.deleteTipoMulta(tipoMultaId);
+
+      if (result.success) {
+        alert("✅ Tipo de multa eliminado: " + result.message);
+        await fetchTiposMulta();
+        await fetchStats();
+      } else {
+        alert("❌ Advertencia: " + result.message);
+      }
+
+    } catch (error) {
+      alert("❌ Error al eliminar tipo de multa: " + error.message);
+    }
+  };
+
 
   const formatCurrency = (value) => {
     if (value === null || value === undefined || value === '') return 'N/A';
@@ -581,6 +611,17 @@ const FinesSection = () => {
                     {multa.activo ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                   </button>
                 )}
+                {permissions.canDelete && (
+                  <button 
+                    className="action-btn delete"
+                    onClick={() => handleDelete(multa.id_tipo_multa)}
+                    title="Eliminar tipo de multa"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+
+
               </div>
             </div>
             <div className="user-card-body">

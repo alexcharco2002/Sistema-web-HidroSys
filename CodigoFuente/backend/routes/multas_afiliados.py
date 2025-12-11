@@ -6,14 +6,17 @@ from sqlalchemy import func
 from typing import List, Optional
 from datetime import date, datetime
 from decimal import Decimal
+from sqlalchemy.orm import joinedload
 
+# ⭐ IMPORTANTE: Importar TODOS los modelos que vas a usar en joinedload
 from models.multa_afiliado import MultaAfiliado
 from models.multa import TipoMulta
 from models.user import UsuarioSistema
+from models.affiliate import UsuarioAfiliado  # ⭐ IMPORTAR DESDE affiliate.py
 from models.role import RolAccion
 
 from schemas.multa_afiliado import (
-    MultaAfiliadoCreate, MultaAfiliadoUpdate, MultaAfiliadoResponse,
+    MultaAfiliadoCompleto, MultaAfiliadoCreate, MultaAfiliadoUpdate, MultaAfiliadoResponse,
     MultaAfiliadoPagoRequest, MultaAfiliadoStats, EstadoMulta
 )
 
@@ -86,7 +89,8 @@ def require_permission(user: UsuarioSistema, db: Session, module: str, action: s
 # ==========================
 # LISTAR MULTAS DE AFILIADOS
 # ==========================
-@router.get("/", response_model=List[MultaAfiliadoResponse])
+
+@router.get("/", response_model=List[MultaAfiliadoCompleto])
 def listar_multas_afiliados(
     id_usuario_afi: Optional[int] = Query(None, description="Filtrar por usuario"),
     estado: Optional[EstadoMulta] = Query(None, description="Filtrar por estado"),
@@ -98,10 +102,18 @@ def listar_multas_afiliados(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
+    """
+    Lista todas las multas con filtros opcionales
+    Requiere permiso: multas.lectura o multas.crud
+    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "multas", "lectura")
     
-    query = db.query(MultaAfiliado)
+    # ⭐ CARGAR RELACIONES ANIDADAS CORRECTAMENTE
+    query = db.query(MultaAfiliado).options(
+        joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.usuario_sistema),  # ⭐ Aquí
+        joinedload(MultaAfiliado.tipo_multa)
+    )
     
     if id_usuario_afi is not None:
         query = query.filter(MultaAfiliado.id_usuario_afi == id_usuario_afi)
@@ -120,8 +132,9 @@ def listar_multas_afiliados(
     
     query = query.order_by(MultaAfiliado.fecha_multa.desc())
     
-    return query.offset(skip).limit(limit).all()
-
+    multas = query.offset(skip).limit(limit).all()
+    
+    return multas
 # ==========================
 # ESTADÍSTICAS
 # ==========================

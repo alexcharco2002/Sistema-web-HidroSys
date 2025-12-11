@@ -8,7 +8,7 @@ import authService from '../services/authServices';
 import { 
   Wrench, Plus, Search, Edit, Eye, CheckCircle, XCircle,
   X, Save, RefreshCw, AlertCircle, Package, ArrowUpDown, FileText, 
-  DollarSign, Briefcase, Calendar, Clock, History, TrendingUp
+  DollarSign, Briefcase, Calendar, Clock, History, TrendingUp, Trash2
 } from 'lucide-react';
 
 const ServiciosSection = () => {
@@ -363,6 +363,32 @@ const ServiciosSection = () => {
     }
   };
 
+  // FUNCIONALIDAD DE ELIMINAR SERVICIO
+  const handleDelete = async (servicioId) => {
+    if (!permissions.canDelete) {
+      alert("❌ No tienes permiso para eliminar servicios.");
+      return;
+    }
+
+    const confirmado = window.confirm("¿Estás seguro de que deseas eliminar este servicio?");
+    if (!confirmado) return;
+
+    try {
+      const result = await serviciosService.deleteServicio(servicioId);
+
+      if (result.success) {
+        alert("✅ Servicio eliminado: " + result.message);
+        await fetchServicios();
+        await fetchStats();
+      } else {
+        alert("❌ Advertencia: " + result.message);
+      }
+
+    } catch (error) {
+      alert("❌ Error al eliminar servicio: " + error.message);
+    }
+  };
+
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('es-EC', {
       style: 'currency',
@@ -635,6 +661,16 @@ const ServiciosSection = () => {
                     {servicio.activo ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                   </button>
                 )}
+                {permissions.canDelete && (
+                  <button 
+                    className="action-btn delete"
+                    onClick={() => handleDelete(servicio.id_servicio)}
+                    title="Eliminar servicio"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+
               </div>
             </div>
 

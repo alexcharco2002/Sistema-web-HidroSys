@@ -155,43 +155,46 @@ const FinesAffiliatesSection = () => {
     setSelectedAffiliateInfo(affiliate);
   };
 
-  const filteredMultas = multas
-    .filter(multa => {
-      const matchesSearch = searchTerm === '' ||
-        multa.id_multa_afi.toString().includes(searchTerm) ||
-        (multa.usuario_afi && (
-          multa.usuario_afi.nombres?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          multa.usuario_afi.apellidos?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          multa.usuario_afi.cedula?.includes(searchTerm)
-        ));
+  // ⭐ ACTUALIZAR EL FILTRO
+const filteredMultas = multas
+  .filter(multa => {
+    const matchesSearch = searchTerm === '' ||
+      multa.id_multa_afi.toString().includes(searchTerm) ||
+      (multa.usuario_afi && (
+        // Buscar en los campos calculados
+        multa.usuario_afi.nombres?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        multa.usuario_afi.apellidos?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        multa.usuario_afi.nombre_completo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        multa.usuario_afi.cedula?.includes(searchTerm) ||
+        multa.usuario_afi.cod_usuario_afi?.toString().includes(searchTerm)
+      ));
 
-      const matchesEstado = filterEstado === 'all' || multa.estado === filterEstado;
-      const matchesAfiliado = filterAfiliado === 'all' || multa.id_usuario_afi === parseInt(filterAfiliado);
-      const matchesTipoMulta = filterTipoMulta === 'all' || multa.id_tipo_multa === parseInt(filterTipoMulta);
+    const matchesEstado = filterEstado === 'all' || multa.estado === filterEstado;
+    const matchesAfiliado = filterAfiliado === 'all' || multa.id_usuario_afi === parseInt(filterAfiliado);
+    const matchesTipoMulta = filterTipoMulta === 'all' || multa.id_tipo_multa === parseInt(filterTipoMulta);
 
-      return matchesSearch && matchesEstado && matchesAfiliado && matchesTipoMulta;
-    })
-    .sort((a, b) => {
-      let compareValue = 0;
-      
-      switch (sortBy) {
-        case 'fecha':
-          compareValue = new Date(a.fecha_multa) - new Date(b.fecha_multa);
-          break;
-        case 'monto':
-          compareValue = parseFloat(a.monto) - parseFloat(b.monto);
-          break;
-        case 'afiliado':
-          const nombreA = getAfiliadoNombre(a).toLowerCase();
-          const nombreB = getAfiliadoNombre(b).toLowerCase();
-          compareValue = nombreA.localeCompare(nombreB, 'es');
-          break;
-        default:
-          compareValue = a.id_multa_afi - b.id_multa_afi;
-      }
-      
-      return sortOrder === 'asc' ? compareValue : -compareValue;
-    });
+    return matchesSearch && matchesEstado && matchesAfiliado && matchesTipoMulta;
+  })
+  .sort((a, b) => {
+    let compareValue = 0;
+    switch (sortBy) {
+      case 'fecha':
+        compareValue = new Date(a.fecha_multa) - new Date(b.fecha_multa);
+        break;
+      case 'monto':
+        compareValue = parseFloat(a.monto) - parseFloat(b.monto);
+        break;
+      case 'afiliado':
+        const nombreA = getAfiliadoNombre(a).toLowerCase();
+        const nombreB = getAfiliadoNombre(b).toLowerCase();
+        compareValue = nombreA.localeCompare(nombreB, 'es');
+        break;
+      default:
+        compareValue = a.id_multa_afi - b.id_multa_afi;
+    }
+
+    return sortOrder === 'asc' ? compareValue : -compareValue;
+  });
 
   const toggleSortOrder = () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
@@ -394,20 +397,39 @@ const FinesAffiliatesSection = () => {
     });
   };
 
+  // funcion 
   const getAfiliadoNombre = (multa) => {
-    if (multa.usuario_afi) {
-      return `${multa.usuario_afi.nombres || ''} ${multa.usuario_afi.apellidos || ''}`.trim();
+    if (!multa.usuario_afi) return 'N/A';
+    
+    // Usar nombre_completo si está disponible (computed field del backend)
+    if (multa.usuario_afi.nombre_completo) {
+      return multa.usuario_afi.nombre_completo;
     }
-    return 'N/A';
-  };
-
-  const getTipoMultaNombre = (multa) => {
-    if (multa.tipo_multa) {
-      return multa.tipo_multa.nombre_multa || 'N/A';
+    
+    // Acceder a los datos anidados en usuario_afi.usuario
+    const { nombres, apellidos } = multa.usuario_afi;
+    
+    if (nombres && apellidos) {
+      return `${nombres} ${apellidos}`.trim();
     }
-    return 'N/A';
+    
+    // Fallback al código de afiliado
+    return `Afiliado #${multa.usuario_afi.cod_usuario_afi || multa.id_usuario_afi}`;
   };
+  // ⭐ AGREGAR ESTAS NUEVAS FUNCIONES
+const getAfiliadoCodigo = (multa) => {
+  return multa.usuario_afi?.cod_usuario_afi || 'N/A';
+};
 
+const getAfiliadoCedula = (multa) => {
+  return multa.usuario_afi?.cedula || 'N/A';
+};
+
+const getTipoMultaNombre = (multa) => {
+  return multa.tipo_multa?.nombre_multa || 'N/A';
+};
+
+  
   const limpiarFiltros = () => {
     setSearchTerm('');
     setFilterEstado('all');
@@ -658,34 +680,48 @@ const FinesAffiliatesSection = () => {
               </div>
 
               <div className="user-card-body">
-                <div className="grid grid-cols-2 gap-2 text-sm mb-2">
-                  <div>
-                    <span className="text-gray-500">Monto:</span>
-                    <span className="font-semibold ml-1 text-lg">{formatCurrency(multa.monto)}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Cédula:</span>
-                    <span className="font-semibold ml-1">{multa.usuario_afi?.cedula || 'N/A'}</span>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-2 text-xs text-gray-500 border-t pt-2">
-                  <Calendar className="w-3 h-3" />
-                  <span>Multa: {formatDate(multa.fecha_multa)}</span>
-                  {multa.fecha_pago && (
-                    <>
-                      <span className="mx-1">|</span>
-                      <span>Pago: {formatDate(multa.fecha_pago)}</span>
-                    </>
-                  )}
-                </div>
+  <div className="grid grid-cols-2 gap-2 text-sm mb-2">
+    <div>
+      <span className="text-gray-500">Monto:</span>
+      <span className="font-semibold ml-1 text-lg">{formatCurrency(multa.monto)}</span>
+    </div>
+    <div>
+      <span className="text-gray-500">Código:</span>
+      <span className="font-semibold ml-1">{getAfiliadoCodigo(multa)}</span>
+    </div>
+  </div>
+  
+  <div className="grid grid-cols-2 gap-2 text-sm mb-2">
+    <div>
+      <span className="text-gray-500">Cédula:</span>
+      <span className="font-semibold ml-1">{getAfiliadoCedula(multa)}</span>
+    </div>
+    <div>
+      <span className="text-gray-500">Sector:</span>
+      <span className="font-semibold ml-1">
+        {multa.usuario_afi?.id_sector || 'N/A'}
+      </span>
+    </div>
+  </div>
+  
+  <div className="flex items-center gap-2 text-xs text-gray-500 border-t pt-2">
+    <Calendar className="w-3 h-3" />
+    <span>Multa: {formatDate(multa.fecha_multa)}</span>
+    {multa.fecha_pago && (
+      <>
+        <span className="mx-1">|</span>
+        <span>Pago: {formatDate(multa.fecha_pago)}</span>
+      </>
+    )}
+  </div>
 
-                {multa.observaciones && (
-                  <p className="text-xs text-gray-600 mt-2 pt-2 border-t">
-                    {multa.observaciones}
-                  </p>
-                )}
-              </div>
+  {multa.observaciones && (
+    <p className="text-xs text-gray-600 mt-2 pt-2 border-t line-clamp-2">
+      {multa.observaciones}
+    </p>
+  )}
+</div>
+
             </div>
           ))}
         </div>
@@ -717,71 +753,106 @@ const FinesAffiliatesSection = () => {
               )}
 
               {/* MODAL VIEW */}
-              {modalType === 'view' && selectedMulta && (
-                <div className="user-details">
-                  <div className="detail-group">
-                    <label>ID Multa:</label>
-                    <p>#{selectedMulta.id_multa_afi}</p>
-                  </div>
+{modalType === 'view' && selectedMulta && (
+  <div className="user-details">
+    {/* Información de la Multa */}
+    <div className="detail-group">
+      <label>ID Multa:</label>
+      <p className="font-semibold text-blue-600">#{selectedMulta.id_multa_afi}</p>
+    </div>
 
-                  <div className="detail-group">
-                    <label>Afiliado:</label>
-                    <p>{getAfiliadoNombre(selectedMulta)}</p>
-                  </div>
+    <div className="detail-group">
+      <label>Estado:</label>
+      {getEstadoBadge(selectedMulta.estado)}
+    </div>
 
-                  <div className="detail-group">
-                    <label>Cédula:</label>
-                    <p>{selectedMulta.usuario_afi?.cedula || 'N/A'}</p>
-                  </div>
+    {/* Separador - Información del Afiliado */}
+    <div className="detail-group" style={{ gridColumn: '1 / -1', marginTop: '1rem' }}>
+      <label className="text-blue-600 font-semibold flex items-center gap-2">
+        <UserCheck className="w-4 h-4" />
+        Información del Afiliado
+      </label>
+    </div>
 
-                  <div className="detail-group">
-                    <label>Tipo de Multa:</label>
-                    <p>{getTipoMultaNombre(selectedMulta)}</p>
-                  </div>
+    <div className="detail-group">
+      <label>Nombre Completo:</label>
+      <p className="font-semibold">{getAfiliadoNombre(selectedMulta)}</p>
+    </div>
 
-                  <div className="detail-group">
-                    <label>Monto:</label>
-                    <p className="text-lg font-bold">{formatCurrency(selectedMulta.monto)}</p>
-                  </div>
+    <div className="detail-group">
+      <label>Código:</label>
+      <p className="font-semibold">{getAfiliadoCodigo(selectedMulta)}</p>
+    </div>
 
-                  <div className="detail-group">
-                    <label>Fecha Multa:</label>
-                    <p>{formatDate(selectedMulta.fecha_multa)}</p>
-                  </div>
+    <div className="detail-group">
+      <label>Cédula:</label>
+      <p className="font-semibold">{getAfiliadoCedula(selectedMulta)}</p>
+    </div>
 
-                  <div className="detail-group">
-                    <label>Fecha Pago:</label>
-                    <p>{formatDate(selectedMulta.fecha_pago)}</p>
-                  </div>
+    <div className="detail-group">
+      <label>Sector:</label>
+      <p>{selectedMulta.usuario_afi?.id_sector || 'N/A'}</p>
+    </div>
 
-                  <div className="detail-group">
-                    <label>Estado:</label>
-                    {getEstadoBadge(selectedMulta.estado)}
-                  </div>
+    {/* Separador - Detalles de la Multa */}
+    <div className="detail-group" style={{ gridColumn: '1 / -1', marginTop: '1rem' }}>
+      <label className="text-orange-600 font-semibold flex items-center gap-2">
+        <FileText className="w-4 h-4" />
+        Detalles de la Multa
+      </label>
+    </div>
 
-                  {selectedMulta.observaciones && (
-                    <div className="detail-group" style={{ gridColumn: '1 / -1' }}>
-                      <label>Observaciones:</label>
-                      <p>{selectedMulta.observaciones}</p>
-                    </div>
-                  )}
+    <div className="detail-group">
+      <label>Tipo de Multa:</label>
+      <p className="font-semibold">{getTipoMultaNombre(selectedMulta)}</p>
+    </div>
 
-                  {selectedMulta.estado === 'pendiente' && permissions.canUpdate && (
-                    <div style={{ gridColumn: '1 / -1', marginTop: '1rem' }}>
-                      <button
-                        className="btn-primary w-full"
-                        onClick={() => {
-                          closeModal();
-                          openModal('pagar', selectedMulta);
-                        }}
-                      >
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Registrar Pago
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+    <div className="detail-group">
+      <label>Monto:</label>
+      <p className="text-xl font-bold text-red-600">
+        {formatCurrency(selectedMulta.monto)}
+      </p>
+    </div>
+
+    <div className="detail-group">
+      <label>Fecha de Multa:</label>
+      <p className="font-semibold">{formatDate(selectedMulta.fecha_multa)}</p>
+    </div>
+
+    <div className="detail-group">
+      <label>Fecha de Pago:</label>
+      <p className={selectedMulta.fecha_pago ? 'font-semibold text-green-600' : 'text-gray-400'}>
+        {formatDate(selectedMulta.fecha_pago)}
+      </p>
+    </div>
+
+    {selectedMulta.observaciones && (
+      <div className="detail-group" style={{ gridColumn: '1 / -1' }}>
+        <label>Observaciones:</label>
+        <p className="text-sm text-gray-700 bg-yellow-50 p-3 rounded border-l-4 border-yellow-400">
+          {selectedMulta.observaciones}
+        </p>
+      </div>
+    )}
+
+    {/* Botón de acción */}
+    {selectedMulta.estado === 'pendiente' && permissions.canUpdate && (
+      <div style={{ gridColumn: '1 / -1', marginTop: '1.5rem' }}>
+        <button
+          className="btn-primary w-full"
+          onClick={() => {
+            closeModal();
+            openModal('pagar', selectedMulta);
+          }}
+        >
+          <CheckCircle className="w-4 h-4 mr-2" />
+          Registrar Pago de {formatCurrency(selectedMulta.monto)}
+        </button>
+      </div>
+    )}
+  </div>
+)}
+
 
               {/* MODAL CREATE */}
               {modalType === 'create' && (

@@ -397,6 +397,45 @@ class ServiciosService {
   }
 
   /**
+ * Eliminar un servicio
+ */
+  async deleteServicio(servicioId) {
+    try {
+      const response = await this.makeRequest(
+        `${API_CONFIG.endpoints.servicios}/${servicioId}`,
+        {
+          method: 'DELETE'
+        }
+      );
+
+      this.clearCache();
+
+      if (response && response.success === false) {
+        return {
+          success: false,
+          message: response.message || 'No se pudo eliminar el servicio.',
+          accion: response.accion || 'no_eliminado'
+        };
+      }
+
+      return {
+        success: true,
+        message: response.message || 'Servicio eliminado correctamente.',
+        accion: response.accion || 'eliminado'
+      };
+
+    } catch (error) {
+      console.error('❌ Error eliminando servicio:', error);
+
+      return {
+        success: false,
+        message: error.message || 'Error al eliminar servicio'
+      };
+    }
+  }
+
+
+  /**
    * Obtener servicios desde caché (útil para selects)
    */
   getCachedServicios() {

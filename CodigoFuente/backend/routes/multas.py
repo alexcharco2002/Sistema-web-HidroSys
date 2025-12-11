@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from datetime import datetime
 import unicodedata
@@ -388,4 +389,72 @@ def toggle_tipo_multa_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al cambiar el estado del tipo de multa"
+        )
+
+# ========================================
+# ELIMINAR TIPO DE MULTA (Solo si no tiene registros asociados)
+# ========================================
+@router.delete("/{id_tipo_multa}", status_code=status.HTTP_200_OK)
+def eliminar_tipo_multa(
+    id_tipo_multa: int,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Elimina físicamente un tipo de multa SOLO si no está asociado a registros dependientes.
+    Requiere permiso: multas.eliminar
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "multas", "eliminar")
+
+    tipo = db.query(TipoMulta).filter(TipoMulta.id_tipo_multa == id_tipo_multa).first()
+    
+    if not tipo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tipo de multa no encontrado"
+        )
+
+    try:
+        db.delete(tipo)
+        db.commit()
+
+        registrar_auditoria(
+            db=db,
+            accion="DELETE",
+            descripcion=f"Tipo de multa ID {id_tipo_multa} ('{tipo.nombre_multa}') eliminado por '{payload['sub']}'",
+            id_usuario=current_user.id_usuario_sistema
+        )
+
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Tipo de multa eliminado",
+            mensaje=f"El tipo de multa '{tipo.nombre_multa}' fue eliminado correctamente.",
+            tipo="info"
+        )
+
+        return {
+            "success": True,
+            "accion": "eliminado",
+            "message": f"Tipo de multa '{tipo.nombre_multa}' eliminado correctamente."
+        }
+
+    except IntegrityError:
+        db.rollback()
+        return {
+            "success": False,
+            "accion": "no_eliminado",
+            "message": (
+                f"⚠️ No se puede eliminar el tipo de multa '{tipo.nombre_multa}' porque está "
+                "relacionado con multas u otros elementos. Por integridad histórica, "
+                "estos registros no deben eliminarse."
+            )
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error inesperado al intentar eliminar el tipo de multa."
         )

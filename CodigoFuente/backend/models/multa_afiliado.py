@@ -4,12 +4,9 @@ from sqlalchemy import Column, Integer, Numeric, Date, Text, Boolean, String, Fo
 from sqlalchemy.orm import relationship
 from db.session import Base
 
+
 class MultaAfiliado(Base):
-    """
-    Modelo de Multas Asignadas a Afiliados
-    Tabla: t_multas_afiliados en el esquema multas
-    Registra las multas aplicadas a usuarios afiliados
-    """
+    """Modelo de Multas Asignadas a Afiliados"""
     __tablename__ = "t_multas_afiliados"
     __table_args__ = {'schema': 'multas'}
     
@@ -24,15 +21,14 @@ class MultaAfiliado(Base):
     activo = Column(Boolean, default=True, nullable=False)
     estado = Column(String(20), default='pendiente', nullable=False, index=True)
     
-    # Relaciones ORM
-    # Relación con TipoMulta
+    # ⭐ Relaciones ORM - IGUAL QUE EN MEDIDORES
     tipo_multa = relationship(
         "TipoMulta",
         back_populates="multas_afiliados",
         lazy="joined"
     )
 
-    # Relación con UsuarioAfiliado
+    # ⭐ IMPORTANTE: usar lazy="joined" para eager loading
     usuario = relationship(
         "UsuarioAfiliado",
         back_populates="multas",
@@ -41,16 +37,3 @@ class MultaAfiliado(Base):
     
     def __repr__(self):
         return f"<MultaAfiliado(id={self.id_multa_afi}, usuario={self.id_usuario_afi}, estado={self.estado})>"
-    
-    def to_dict(self):
-        return {
-            "id_multa_afi": self.id_multa_afi,
-            "id_usuario_afi": self.id_usuario_afi,
-            "id_tipo_multa": self.id_tipo_multa,
-            "monto": float(self.monto) if self.monto is not None else None,
-            "fecha_multa": self.fecha_multa.isoformat() if self.fecha_multa else None,
-            "fecha_pago": self.fecha_pago.isoformat() if self.fecha_pago else None,
-            "observaciones": self.observaciones,
-            "activo": self.activo,
-            "estado": self.estado,
-        }

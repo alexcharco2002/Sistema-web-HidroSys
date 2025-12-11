@@ -329,6 +329,42 @@ class MultasService {
     this.cachedTiposMulta = null;
     this.cachedStats = null;
   }
+
+  /**
+   * Eliminar un tipo de multa
+   */
+  async deleteTipoMulta(tipoMultaId) {
+    try {
+      const response = await this.makeRequest(
+        `${API_CONFIG.endpoints.tiposMulta}/${tipoMultaId}`,  // ✅ CORRECTO
+        { method: 'DELETE' }
+      );
+      
+      this.clearCache();
+      
+      if (response && response.success === false) {
+        return {
+          success: false,
+          message: response.message || 'No se pudo eliminar el tipo de multa.',
+          accion: response.accion || 'no_eliminado'
+        };
+      }
+      
+      return {
+        success: true,
+        message: response.message || 'Tipo de multa eliminado correctamente.',
+        accion: response.accion || 'eliminado'
+      };
+    } catch (error) {
+      console.error('❌ Error eliminando tipo de multa:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al eliminar tipo de multa'
+      };
+    }
+  }
+
+
 }
 
 const multasService = new MultasService();

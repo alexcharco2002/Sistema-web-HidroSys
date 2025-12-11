@@ -367,6 +367,7 @@ def actualizar_precio_servicio(
     try:
         # 1. Cerrar la versión actual
         servicio_actual.es_vigente = False
+        servicio_actual.activo = False # desactivar la versión vieja
         servicio_actual.vigencia_hasta = datetime.utcnow()
         
         # 2. Crear nueva versión con nuevo precio
@@ -551,3 +552,73 @@ def listar_servicios_activos(
     ).order_by(Servicio.nombre).all()
     
     return servicios
+
+# ========================================
+# ELIMINAR SERVICIO (Solo si no tiene dependencias)
+# ========================================
+@router.delete("/{id_servicio}", status_code=status.HTTP_200_OK)
+def eliminar_servicio(
+    id_servicio: int,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Elimina físicamente un servicio SOLO si no está asociado a otros registros.
+    
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "servicios", "eliminar")
+
+    servicio = db.query(Servicio).filter(Servicio.id_servicio == id_servicio).first()
+    if not servicio:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Servicio no encontrado"
+        )
+
+    try:
+        db.delete(servicio)
+        db.commit()
+
+        # Auditoría
+        registrar_auditoria(
+            db=db,
+            accion="DELETE",
+            descripcion=f"Servicio ID {id_servicio} ('{servicio.nombre}') eliminado por '{payload['sub']}'",
+            id_usuario=current_user.id_usuario_sistema
+        )
+
+        # Notificación
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Servicio eliminado",
+            mensaje=f"El servicio '{servicio.nombre}' fue eliminado correctamente.",
+            tipo="info"
+        )
+
+        return {
+            "success": True,
+            "accion": "eliminado",
+            "message": f"Servicio '{servicio.nombre}' eliminado correctamente."
+        }
+
+    except IntegrityError:
+        db.rollback()
+        return {
+            "success": False,
+            "accion": "no_eliminado",
+            "message": (
+                f"⚠️ No se puede eliminar el servicio '{servicio.nombre}' porque "
+                "está relacionado con otros registros. Por integridad histórica, "
+                "no debe eliminarse si tiene vínculos asociados."
+            )
+        }
+
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error inesperado al eliminar servicio: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error inesperado al intentar eliminar el servicio."
+        )

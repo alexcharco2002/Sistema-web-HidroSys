@@ -91,27 +91,62 @@ const ReadingsSection = () => {
           alert('Debe seleccionar un periodo primero');
           return;
       }
-      
+
+      // 1️⃣ Validar que existan medidores sin lectura
+      try {
+          const validacion = await readingsServices.validarPeriodoCompleto(
+              periodoSeleccionado.mes,
+              periodoSeleccionado.anio
+          );
+
+          if (!validacion.success) {
+              alert(validacion.message || 'Error validando el periodo');
+              return;
+          }
+
+          const { completo, porcentaje, total_lecturas, total_medidores } = validacion.data;
+
+          // Si ya está completo → No generar estimadas
+          if (completo) {
+              alert(
+                  `No hay lecturas faltantes.\n` +
+                  `El periodo seleccionado está COMPLETO (${porcentaje}%).\n` +
+                  `Total lecturas: ${total_lecturas} / ${total_medidores}`
+              );
+              return;
+          }
+
+          // Si faltan lecturas → continuar
+      } catch (err) {
+          alert(err.message || 'Error al validar el periodo');
+          return;
+      }
+
+      // 2️⃣ Confirmación
       const confirmado = window.confirm(
-          `¿Generar lecturas estimadas para ${readingsServices.formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}?\n\n` +
-          `Esto creará lecturas sugeridas basadas en consumos anteriores para los medidores que no tienen lectura registrada.`
+          `¿Generar lecturas estimadas para ${readingsServices.formatearPeriodo(
+              periodoSeleccionado.mes,
+              periodoSeleccionado.anio
+          )}?\n\nEsto creará lecturas sugeridas basadas en consumos anteriores para los medidores que no tienen lectura registrada.`
       );
-      
+
       if (!confirmado) return;
-      
+
+      // 3️⃣ Ejecutar generación
       setLoadingEstimadas(true);
       setError(null);
-      
+
       try {
           const result = await readingsServices.generarLecturasEstimadas(
               periodoSeleccionado.mes,
               periodoSeleccionado.anio,
               3 // Promedio de 3 meses
           );
-          
+
           if (result.success) {
               setEstimadasResult(result.data);
               setShowEstimadasModal(true);
+
               await fetchReadingsByPeriodo();
               await fetchPeriodosDisponibles();
           } else {
@@ -123,6 +158,7 @@ const ReadingsSection = () => {
           setLoadingEstimadas(false);
       }
   };
+
 
   /*FUNCIÓN PARA CONFIRMAR LECTURA ESTIMADA
   const handleConfirmarEstimada = async (readingId) => {
@@ -691,21 +727,80 @@ const ReadingsSection = () => {
       return;
     }
 
+    // ⛔ VALIDACIÓN MEJORADA — ADVERTENCIA SI EL PERIODO NO COINCIDE
+    const mesExcel = parseInt(excelMesSeleccionado);
+    const anioExcel = parseInt(excelAnioSeleccionado);
+    
+    // Obtener mes/año actual del sistema
+    const hoy = new Date();
+    const mesActual = hoy.getMonth() + 1;
+    const anioActual = hoy.getFullYear();
+
+    let debeAdvertir = false;
+    let mensajeAdvertencia = '';
+
+    // CASO 1: Si hay un período seleccionado, verificar coincidencia
+    if (periodoSeleccionado) {
+      const mismoMes = mesExcel === periodoSeleccionado.mes;
+      const mismoAnio = anioExcel === periodoSeleccionado.anio;
+
+      if (!mismoMes || !mismoAnio) {
+        debeAdvertir = true;
+        mensajeAdvertencia = 
+          `⚠️ ADVERTENCIA: PERÍODO NO COINCIDE\n\n` +
+          `📁 Archivo Excel: ${readingsServices.formatearPeriodo(mesExcel, anioExcel)}\n` +
+          `📍 Período actualmente seleccionado: ${readingsServices.formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}\n\n` +
+          `Las lecturas se cargarán para ${readingsServices.formatearPeriodo(mesExcel, anioExcel)}, ` +
+          `NO para el período que está visualizando actualmente.\n\n` +
+          `¿Está seguro que desea continuar?`;
+      }
+    } 
+    // CASO 2: No hay período seleccionado, pero el Excel no es del mes actual
+    else {
+      const esMesActual = mesExcel === mesActual && anioExcel === anioActual;
+      
+      if (!esMesActual) {
+        debeAdvertir = true;
+        
+        // Calcular si es mes futuro o pasado
+        const fechaExcel = new Date(anioExcel, mesExcel - 1);
+        const fechaActual = new Date(anioActual, mesActual - 1);
+        const esFuturo = fechaExcel > fechaActual;
+        
+        mensajeAdvertencia = 
+          `⚠️ ADVERTENCIA: PERÍODO ${esFuturo ? 'FUTURO' : 'ANTERIOR'}\n\n` +
+          `📁 Archivo Excel: ${readingsServices.formatearPeriodo(mesExcel, anioExcel)}\n` +
+          `📅 Mes actual del sistema: ${readingsServices.formatearPeriodo(mesActual, anioActual)}\n\n` +
+          `Está cargando lecturas para un período ${esFuturo ? 'futuro' : 'anterior'} al mes actual.\n\n` +
+          `¿Está seguro que desea continuar?`;
+      }
+    }
+
+    // Mostrar advertencia si es necesario
+    if (debeAdvertir) {
+      const confirmar = window.confirm(mensajeAdvertencia);
+      if (!confirmar) {
+        console.log('❌ Usuario canceló la importación por período no coincidente');
+        return;
+      }
+      console.log('✅ Usuario confirmó importar en período diferente');
+    }
+
     setLoadingExcel(true);
     setError(null);
 
     try {
       const result = await readingsServices.importarExcelConPeriodo(
         selectedExcel,
-        parseInt(excelMesSeleccionado),
-        parseInt(excelAnioSeleccionado)
+        mesExcel,
+        anioExcel
       );
 
       if (result.success) {
         const { exitosos, fallidos, total_procesados } = result.data;
 
         let mensaje = `📊 RESULTADO DE LA IMPORTACIÓN\n`;
-        mensaje += `Periodo: ${readingsServices.formatearPeriodo(parseInt(excelMesSeleccionado), parseInt(excelAnioSeleccionado))}\n`;
+        mensaje += `Periodo: ${readingsServices.formatearPeriodo(mesExcel, anioExcel)}\n`;
         mensaje += `${'='.repeat(60)}\n\n`;
         mensaje += `✅ Lecturas creadas: ${exitosos.length}/${total_procesados}\n`;
         mensaje += `❌ Errores: ${fallidos.length}/${total_procesados}\n\n`;
@@ -740,22 +835,30 @@ const ReadingsSection = () => {
 
         alert(mensaje);
         closeModal();
-        await fetchReadingsByPeriodo();
+        
+        // Recargar datos del período correspondiente
         await fetchPeriodosDisponibles();
         
+        // Cambiar automáticamente al período donde se cargaron las lecturas
         setPeriodoSeleccionado({
-          mes: parseInt(excelMesSeleccionado),
-          anio: parseInt(excelAnioSeleccionado)
+          mes: mesExcel,
+          anio: anioExcel
         });
+        
+        // La función fetchReadingsByPeriodo se ejecutará automáticamente
+        // por el useEffect que depende de periodoSeleccionado
       } else {
         setError(result.message || "Error al procesar lecturas");
       }
     } catch (error) {
+      console.error('❌ Error en handleExcelUpload:', error);
       setError(error.message || "Error al enviar lecturas");
     } finally {
       setLoadingExcel(false);
     }
   };
+
+
 
   // ============================================================
   // RENDERIZADO - ESTADOS DE CARGA Y ERROR
@@ -790,6 +893,7 @@ return (
   <div className="affiliates-section">
     
     {/* ==================== PASO 1: SELECCIÓN DE PERIODO ==================== */}
+    {/* Parte 1: SELECCIÓN DE PERIODO */}
     {!periodoSeleccionado && (
       <div className="periodo-selection-page">
         <div className="section-header">
@@ -799,60 +903,197 @@ return (
           </div>
         </div>
 
+        {/* SECCIÓN 1: PERÍODOS RECIENTES (Mes actual ± 2 meses) */}
         <div className="periodo-selector-container">
-          <div className="periodo-selector-header flex items-start">
-            <CalendarDays className="w-5 h-5 text-blue-600 mr-2 mt-1" />
+          <div className="periodo-selector-header">
             <div>
-              <h3 className="font-semibold">Seleccionar Periodo</h3>
+              <h3>
+                <CalendarDays className="w-5 h-5 text-blue-600 mr-2" />
+                Períodos Recientes</h3>
               <p className="periodo-selector-subtitle">
-                Selecciona un periodo para gestionar sus lecturas
+                Selecciona el período actual o próximo para cargar lecturas
               </p>
             </div>
           </div>
+
           <div className="periodos-grid">
-            {periodos.map(periodo => {
-              const porcentaje = getPorcentajeCompletado(periodo);
-              const esCompleto = porcentaje >= 100;
+            {(() => {
+              // Filtrar solo períodos recientes: mes actual ± 2 meses
+              const hoy = new Date();
+              const mesActual = hoy.getMonth() + 1;
+              const anioActual = hoy.getFullYear();
               
-              return (
-                <button
-                  key={`${periodo.mes}-${periodo.anio}`}
-                  onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
-                  className="periodo-card hoverable"
-                >
-                  <div className="periodo-card-header">
-                    <span className="periodo-card-title">
-                      {periodo.nombre_mes} {periodo.anio}
-                    </span>
-                    {periodo.sugerido && (
-                      <span className="periodo-badge-sugerido">Sugerido</span>
-                    )}
-                  </div>
+              // Función para calcular diferencia de meses
+              const calcularDiferenciaMeses = (mes, anio) => {
+                return (anio - anioActual) * 12 + (mes - mesActual);
+              };
+              
+              const periodosRecientes = periodos
+                .filter(periodo => {
+                  const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio);
+                  return diff >= -2 && diff <= 2; // ± 2 meses
+                })
+                .sort((a, b) => {
+                  // Ordenar de más reciente a más antiguo
+                  if (a.anio !== b.anio) return b.anio - a.anio;
+                  return b.mes - a.mes;
+                });
 
-                  <div className="periodo-card-info">
-                    {periodo.total_lecturas} / {periodo.total_medidores} lecturas
-                  </div>
+              return periodosRecientes.map(periodo => {
+                const porcentaje = getPorcentajeCompletado(periodo);
+                const esCompleto = porcentaje >= 100;
+                const esMesActual = periodo.mes === mesActual && periodo.anio === anioActual;
 
-                  <div className="periodo-progress-bar">
-                    <div className={`periodo-progress-fill ${esCompleto ? 'complete' : ''}`}
-                      style={{ width: `${porcentaje}%` }}
-                    />
-                  </div>
+                return (
+                  <button
+                    key={`${periodo.mes}-${periodo.anio}`}
+                    onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
+                    className={`periodo-card hoverable ${esMesActual ? 'mes-actual' : ''}`}
+                  >
+                    <div className="periodo-card-header">
+                      <span className="periodo-card-title">
+                        {periodo.nombre_mes} {periodo.anio}
+                      </span>
+                      {esMesActual && (
+                        <span className="periodo-badge-actual">Actual</span>
+                      )}
+                      {periodo.sugerido && !esMesActual && (
+                        <span className="periodo-badge-sugerido">Sugerido</span>
+                      )}
+                    </div>
 
-                  <div className={`periodo-percentage ${esCompleto ? 'complete' : ''}`}>
-                    {porcentaje.toFixed(0)}% completado
-                  </div>
+                    <div className="periodo-card-info">
+                      {periodo.total_lecturas} / {periodo.total_medidores} lecturas
+                    </div>
 
-                  <div className="periodo-card-action">
-                    <span>Ver lecturas →</span>
-                  </div>
-                </button>
-              );
-            })}
+                    <div className="periodo-progress-bar">
+                      <div
+                        className={`periodo-progress-fill ${esCompleto ? 'complete' : ''}`}
+                        style={{ width: `${porcentaje}%` }}
+                      />
+                    </div>
+
+                    <div className={`periodo-percentage ${esCompleto ? 'complete' : ''}`}>
+                      {porcentaje.toFixed(0)}% completado
+                    </div>
+
+                    <div className="periodo-card-action">
+                      <span>{esCompleto ? 'Ver lecturas' : 'Cargar lecturas'}</span>
+                    </div>
+                  </button>
+                );
+              });
+            })()}
           </div>
+        </div>
+        
+        {/* SECCIÓN 2: HISTORIAL DE PERÍODOS CON LECTURAS */}
+        <div className="periodo-historial-container">
+          <div className="flex items-center">
+            <div>
+              <h3 className="font-semibold text-[16px] leading-[1.2]">
+                <Clock className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 self-center" />
+                Historial de Períodos
+              </h3>
+              <p className="periodo-historial-subtitle text-[14px]">
+                Períodos anteriores con lecturas registradas
+              </p>
+            </div>
+          </div>
+          {(() => {
+            // Filtrar períodos con lecturas (excluyendo los recientes ya mostrados)
+            const hoy = new Date();
+            const mesActual = hoy.getMonth() + 1;
+            const anioActual = hoy.getFullYear();
+            
+            const calcularDiferenciaMeses = (mes, anio) => {
+              return (anio - anioActual) * 12 + (mes - mesActual);
+            };
+            
+            const periodosHistorial = periodos
+              .filter(periodo => {
+                const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio);
+                // Solo períodos antiguos (más de 2 meses atrás) Y con lecturas
+                return diff < -2 && periodo.tiene_lecturas;
+              })
+              .sort((a, b) => {
+                // Ordenar cronológicamente (más reciente primero)
+                if (a.anio !== b.anio) return b.anio - a.anio;
+                return b.mes - a.mes;
+              });
+
+            if (periodosHistorial.length === 0) {
+              return (
+                <div className="periodo-historial-empty">
+                  <AlertCircle className="w-12 h-12 text-gray-300 mb-2" />
+                  <p>No hay períodos anteriores con lecturas registradas</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="periodo-historial-list">
+                {periodosHistorial.map(periodo => {
+                  const porcentaje = getPorcentajeCompletado(periodo);
+                  const esCompleto = porcentaje >= 100;
+
+                  return (
+                    <button
+                      key={`hist-${periodo.mes}-${periodo.anio}`}
+                      onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
+                      className="periodo-historial-list-item"
+                    >
+                      {/* Columna 1: Fecha */}
+                      <div className="periodo-historial-col-fecha">
+                        <Calendar className="w-4 h-4 text-gray-500" />
+                        <span className="periodo-historial-mes-nombre">
+                          {periodo.nombre_mes} {periodo.anio}
+                        </span>
+                      </div>
+
+                      {/* Columna 2: Estadísticas */}
+                      <div className="periodo-historial-col-stats">
+                        <div className="periodo-historial-stat-item">
+                          <BookOpen className="w-4 h-4 text-blue-500" />
+                          <span>{periodo.total_lecturas} lecturas</span>
+                        </div>
+                        <div className="periodo-historial-stat-separator">•</div>
+                        <div className="periodo-historial-stat-item">
+                          <Gauge className="w-4 h-4 text-gray-500" />
+                          <span>{periodo.total_medidores} medidores</span>
+                        </div>
+                      </div>
+
+                      {/* Columna 3: Estado */}
+                      <div className="periodo-historial-col-estado">
+                        {esCompleto ? (
+                          <div className="periodo-historial-badge completo">
+                            <CheckCircle className="w-4 h-4" />
+                            <span>Completo</span>
+                          </div>
+                        ) : (
+                          <div className="periodo-historial-badge incompleto">
+                            <XCircle className="w-4 h-4" />
+                            <span>{porcentaje.toFixed(0)}% completado</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Columna 4: Acción */}
+                      <div className="periodo-historial-col-action">
+                        <Eye className="w-4 h-4" />
+                        <span>Ver</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
     )}
+
     {/* ==================== PASO 2: GESTIÓN DE LECTURAS DEL PERIODO ==================== */}
     {periodoSeleccionado && (
       <div className="periodo-management-page">

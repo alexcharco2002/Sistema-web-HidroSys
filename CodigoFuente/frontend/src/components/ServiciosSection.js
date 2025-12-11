@@ -17,7 +17,7 @@ const ServiciosSection = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm] = useState(searchTerm);
   const [filterStatus, setFilterStatus] = useState('all');
-  const [filterVigencia, setFilterVigencia] = useState('vigentes');
+  const [filterVigencia, setFilterVigencia] = useState('all'); // o 'all' para mostrar todas
   const [sortOrder, setSortOrder] = useState('asc');
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('create');
@@ -86,7 +86,6 @@ const ServiciosSection = () => {
     });
   };
 
-  // Fetch servicios con filtro de vigencia
   const fetchServicios = useCallback(async () => {
     if (!permissions.canRead) {
       setError('No tienes permiso para ver servicios');
@@ -96,24 +95,23 @@ const ServiciosSection = () => {
 
     setLoading(true);
     setError(null);
-    
+
     try {
-      const filters = {
-        search: debouncedSearchTerm
-      };
+      const filters = { search: debouncedSearchTerm };
 
       // Aplicar filtro de vigencia
       if (filterVigencia === 'vigentes') {
-        filters.solo_vigentes = true;
-      } else if (filterVigencia === 'todos') {
-        filters.solo_vigentes = false;
+        filters.es_vigente = true;
+      } else if (filterVigencia === 'vencidas') {
+        filters.es_vigente = false;
       }
+      
+      // 🔍 AGREGAR ESTE CONSOLE.LOG
 
       const result = await serviciosService.getServicios(filters);
-
+      
       if (result.success) {
         setServicios(result.data);
-        console.log('✅ Servicios cargados:', result.data.length);
       } else {
         setError(result.message);
         console.error('Error al cargar servicios:', result.message);
@@ -162,27 +160,38 @@ const ServiciosSection = () => {
   // 🎯 Filtrar y ordenar servicios
   const filteredServicios = servicios
     .filter(servicio => {
-      const matchesSearch = 
+      const matchesSearch =
         servicio.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (servicio.descripcion && servicio.descripcion.toLowerCase().includes(searchTerm.toLowerCase()));
-      
-      const matchesStatus = 
-        filterStatus === 'all' || 
+        (servicio.descripcion &&
+          servicio.descripcion.toLowerCase().includes(searchTerm.toLowerCase()));
+
+      const matchesStatus =
+        filterStatus === 'all' ||
         (filterStatus === 'active' && servicio.activo) ||
         (filterStatus === 'inactive' && !servicio.activo);
-      
-      return matchesSearch && matchesStatus;
+
+      // ✅ Filtro de vigencia
+      const matchesVigencia =
+        filterVigencia === 'all' ||
+        (filterVigencia === 'vigentes' && servicio.es_vigente === true) ||
+        (filterVigencia === 'vencidas' && servicio.es_vigente === false);
+
+      return matchesSearch && matchesStatus && matchesVigencia;
     })
     .sort((a, b) => {
+      // 🔥 1. Vigentes primero, vencidos al final
+      if (a.es_vigente && !b.es_vigente) return -1;
+      if (!a.es_vigente && b.es_vigente) return 1;
+
+      // 🔥 2. Entre vigentes o entre vencidos → ordenar por nombre
       const nameA = a.nombre.toLowerCase();
       const nameB = b.nombre.toLowerCase();
-      
-      if (sortOrder === 'asc') {
-        return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
-      } else {
-        return nameB.localeCompare(nameA, 'es', { sensitivity: 'base' });
-      }
+
+      return sortOrder === 'asc'
+        ? nameA.localeCompare(nameB, 'es', { sensitivity: 'base' })
+        : nameB.localeCompare(nameA, 'es', { sensitivity: 'base' });
     });
+
 
   // 📜 Ver historial de versiones
   const verHistorial = async (nombreServicio) => {
@@ -404,6 +413,7 @@ const ServiciosSection = () => {
     );
   }
 
+  // ==================== RENDERIZADO PRINCIPAL ====================
   return (
     <div className="users-section">
       <div className="section-header">
@@ -436,52 +446,50 @@ const ServiciosSection = () => {
         </div>
 
         {/* DERECHA — Filtros y acciones */}
-        <div className="filters-right">
-          {/* 🟢 Vigencia */}
-          <select 
-            className="filter-select"
-            value={filterVigencia}
-            onChange={(e) => setFilterVigencia(e.target.value)}
-          >
-            <option value="vigentes">Solo vigentes</option>
-            <option value="todos">Todas las versiones</option>
-          </select>
+        {/* DERECHA: Filtros y acciones */}
+<div className="filters-right">
+  {/* Vigencia */}
+  <select 
+    className="filter-select" 
+    value={filterVigencia} 
+    onChange={(e) => setFilterVigencia(e.target.value)}
+  >
+    <option value="all">Todas las vigencias</option>
+    <option value="vigentes">Solo vigentes</option>
+    <option value="vencidas">Solo vencidas</option>
+  </select>
 
-          {/* 🔧 Estado */}
-          <select 
-            className="filter-select"
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="all">Todos los estados</option>
-            <option value="active">Activos</option>
-            <option value="inactive">Inactivos</option>
-          </select>
+  {/* Estado */}
+  <select 
+    className="filter-select" 
+    value={filterStatus} 
+    onChange={(e) => setFilterStatus(e.target.value)}
+  >
+    <option value="all">Todos los estados</option>
+    <option value="active">Activos</option>
+    <option value="inactive">Inactivos</option>
+  </select>
 
-          {/* ⬆⬇ Ordenamiento */}
-          <button 
-            className="btn-secondary"
-            onClick={toggleSortOrder}
-            title={`Ordenar ${sortOrder === 'asc' ? 'descendente' : 'ascendente'}`}
-          >
-            <ArrowUpDown className="w-4 h-4" />
-            <span className="ml-1 text-xs">
-              {sortOrder === 'asc' ? '↑' : '↓'}
-            </span>
-          </button>
+  {/* Ordenamiento */}
+  <button 
+    className="btn-secondary" 
+    onClick={toggleSortOrder}
+    title={`Ordenar ${sortOrder === 'asc' ? 'descendente' : 'ascendente'}`}
+  >
+    <ArrowUpDown className="w-4 h-4" />
+    <span className="ml-1 text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+  </button>
 
-          {/* 🔄 Recargar */}
-          <button 
-            className="btn-secondary"
-            onClick={() => {
-              fetchServicios();
-              fetchStats();
-            }}
-            title="Recargar lista"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
-        </div>
+  {/* Recargar */}
+  <button 
+    className="btn-secondary" 
+    onClick={() => { fetchServicios(); fetchStats(); }}
+    title="Recargar lista"
+  >
+    <RefreshCw className="w-4 h-4" />
+  </button>
+</div>
+
       </div>
 
       {/* Tarjetas de estadísticas */}
@@ -520,15 +528,23 @@ const ServiciosSection = () => {
 
       <div className="users-grid">
         {filteredServicios.map(servicio => (
-          <div key={servicio.id_servicio} className={`user-card ${!servicio.activo ? 'inactive' : ''} ${!servicio.es_vigente ? 'vencida' : ''}`}>
+          <div 
+            key={servicio.id_servicio} 
+            className={`user-card ${!servicio.activo ? 'inactive' : ''} ${!servicio.es_vigente ? 'vencida' : ''}`}
+          >
             <div className="user-card-header">
               <div className="user-info">
+                
                 <div className="user-icon">
                   <Wrench className="w-6 h-6 text-blue-600" />
                 </div>
+
                 <div>
                   <h3 className="user-name">{servicio.nombre}</h3>
+
                   <div className="flex gap-2 items-center mt-1 flex-wrap">
+
+                    {/* Estado Activo / Inactivo */}
                     <span className={`status-badge ${servicio.activo ? 'active' : 'inactive'}`}>
                       {servicio.activo ? (
                         <>
@@ -542,11 +558,15 @@ const ServiciosSection = () => {
                         </>
                       )}
                     </span>
-                    <span className={`status-badge ${servicio.es_vigente ? 'vigente' : 'vencida'}`} 
-                          style={{
-                            backgroundColor: servicio.es_vigente ? '#f0fdf4' : '#fef2f2',
-                            color: servicio.es_vigente ? '#16a34a' : '#dc2626'
-                          }}>
+
+                    {/* Vigente / Vencida (con los mismos estilos de tarifas) */}
+                    <span
+                      className={`status-badge ${servicio.es_vigente ? 'vigente' : 'vencida'}`}
+                      style={{
+                        backgroundColor: servicio.es_vigente ? '#f0fdf4' : '#fef2f2',
+                        color: servicio.es_vigente ? '#16a34a' : '#dc2626'
+                      }}
+                    >
                       {servicio.es_vigente ? (
                         <>
                           <CheckCircle className="w-3 h-3" />
@@ -559,11 +579,14 @@ const ServiciosSection = () => {
                         </>
                       )}
                     </span>
+
                   </div>
                 </div>
               </div>
-              
+
+              {/* ACCIONES */}
               <div className="user-actions">
+
                 <button 
                   className="action-btn view"
                   onClick={() => openModal('view', servicio)}
@@ -594,9 +617,9 @@ const ServiciosSection = () => {
 
                 {permissions.canUpdate && servicio.es_vigente && (
                   <button 
-                    className="action-btn precio"
+                    className="action-btn warning"
                     onClick={() => abrirModalPrecio(servicio)}
-                    title="Actualizar precio (crea nueva versión)"
+                    title="Actualizar precio (crear nueva versión)"
                     style={{color: '#059669'}}
                   >
                     <TrendingUp className="w-4 h-4" />
@@ -614,18 +637,27 @@ const ServiciosSection = () => {
                 )}
               </div>
             </div>
+
             <div className="user-card-body">
+              
+              {/* Descripción */}
               <p className="user-description flex items-center gap-2 text-gray-700 mb-2">
                 <FileText className="w-4 h-4 text-gray-400" />
                 {servicio.descripcion?.trim() ? servicio.descripcion : 'Sin descripción'}
               </p>
+
+              {/* Precio */}
               <div className="text-sm mb-2">
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-4 h-4 text-green-600" />
                   <span className="text-gray-500">Precio Base: </span>
-                  <span className="font-semibold text-green-700">{formatCurrency(servicio.precio_base)}</span>
+                  <span className="font-semibold text-green-700">
+                    {formatCurrency(servicio.precio_base)}
+                  </span>
                 </div>
               </div>
+
+              {/* Fechas */}
               <div className="flex items-center gap-2 text-xs text-gray-500 border-t pt-2">
                 <Calendar className="w-3 h-3" />
                 <span>
@@ -633,10 +665,12 @@ const ServiciosSection = () => {
                   {servicio.vigencia_hasta && ` | Hasta: ${formatDate(servicio.vigencia_hasta)}`}
                 </span>
               </div>
+
             </div>
           </div>
         ))}
       </div>
+
 
       {filteredServicios.length === 0 && (
         <div className="empty-state">

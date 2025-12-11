@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
+import unicodedata
+import re
 
 from models.multa import TipoMulta
 from models.user import UsuarioSistema
@@ -20,6 +22,7 @@ from security.jwt import verify_token
 
 router = APIRouter(prefix="/multas/tipos", tags=["multas-tipos"])
 
+# Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:
@@ -27,6 +30,9 @@ def get_db():
     finally:
         db.close()
 
+# ==========================
+# PERMISSIONS UTILITIES
+# ==========================
 def get_current_user(payload: dict, db: Session) -> UsuarioSistema:
     user = db.query(UsuarioSistema).filter(
         UsuarioSistema.usuario == payload["sub"]
@@ -38,6 +44,9 @@ def get_current_user(payload: dict, db: Session) -> UsuarioSistema:
         )
     return user
 
+# ==========================
+# PERMISSION CHECKING
+# ==========================
 def check_permission(user: UsuarioSistema, db: Session, module: str, action: str = None) -> bool:
     module = module.lower().strip()
     action = action.lower().strip() if action else None
@@ -71,6 +80,9 @@ def check_permission(user: UsuarioSistema, db: Session, module: str, action: str
 
     return action in acciones_usuario
 
+# ==========================
+# Funcion PARA REQUERIR PERMISOS
+# ==========================
 def require_permission(user: UsuarioSistema, db: Session, module: str, action: str = None):
     if not check_permission(user, db, module, action):
         raise HTTPException(
@@ -79,13 +91,33 @@ def require_permission(user: UsuarioSistema, db: Session, module: str, action: s
         )
 
 # ==========================
+# NORMALIZACION DE TEXTO
+# =========================  
+def normalize_text(text: str) -> str:
+    """Normaliza texto para comparación sin afectar el valor original."""
+    if not text:
+        return ""
+    text = text.lower().strip()
+
+    # Quitar acentos
+    text = ''.join(
+        c for c in unicodedata.normalize('NFD', text)
+        if unicodedata.category(c) != 'Mn'
+    )
+
+    # Normalizar múltiples espacios
+    text = re.sub(r"\s+", " ", text)
+
+    return text
+
+# ==========================
 # LISTAR TIPOS DE MULTA
 # ==========================
 
 @router.get("/", response_model=List[TipoMultaResponse])
 def listar_tipos_multa(
     search: Optional[str] = Query(None, description="Buscar por nombre o descripción"),
-    es_vigente: Optional[bool] = Query(True, description="Filtrar por vigencia (por defecto solo vigentes)"),
+    es_vigente: Optional[bool] = Query(None, description="Filtrar por vigencia (None = todas, True = vigentes, False = vencidas)"),
     activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -194,19 +226,29 @@ def crear_tipo_multa(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "multas", "crear")
 
-    existente = db.query(TipoMulta).filter(
-        TipoMulta.nombre_multa == tipo.nombre_multa.strip(),
+    # ============================
+    # 🔍 Normalizar nombre ingresado
+    # ============================
+    nombre_original = tipo.nombre_multa.strip()
+    nombre_normalizado = normalize_text(nombre_original)
+
+    # ============================
+    # 🔍 Buscar coincidencias normalizadas
+    # ============================
+    tipos_existentes = db.query(TipoMulta).filter(
         TipoMulta.es_vigente == True
-    ).first()
+    ).all()
 
-    if existente:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ya existe un tipo de multa vigente con el nombre '{tipo.nombre_multa}'"
-        )
+    for t in tipos_existentes:
+        if normalize_text(t.nombre_multa) == nombre_normalizado:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ya existe un tipo de multa vigente con el nombre '{t.nombre_multa}' similar."
+            )
 
+    # Crear el registro
     nuevo_tipo = TipoMulta(
-        nombre_multa=tipo.nombre_multa.strip(),
+        nombre_multa=nombre_original,
         descripcion=tipo.descripcion.strip() if tipo.descripcion else None,
         monto=tipo.monto,
         activo=True,
@@ -235,12 +277,14 @@ def crear_tipo_multa(
         )
 
         return nuevo_tipo
+
     except Exception as e:
         db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"Error al crear el tipo de multa: {str(e)}"
         )
+
 
 # ==========================
 # VERSIONAR (UPDATE)

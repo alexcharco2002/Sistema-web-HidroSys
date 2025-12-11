@@ -38,7 +38,7 @@ class ReadingsServices {
         'Accept': 'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 10000,
+      timeout: 20000,
     };
 
     const finalOptions = {
@@ -104,6 +104,8 @@ class ReadingsServices {
       throw error;
     }
   }
+ 
+
 
   // ========================================
   // 🆕 GESTIÓN DE PERIODOS MENSUALES
@@ -789,6 +791,39 @@ class ReadingsServices {
           };
       }
   }
+  /**
+   * Verificar si existen medidores sin lectura en un periodo (mes/año)
+   * @param {number} mes - Mes (1-12)
+   * @param {number} anio - Año
+   * @returns {Promise<{success: boolean, data?: {total: number, medidores: []}, message?: string}>}
+   */
+  async verificarMedidoresSinLectura(mes, anio) {
+      try {
+          // Endpoint del backend que devuelve los medidores sin lectura
+          const endpoint = `/lecturas/faltantes?mes=${mes}&anio=${anio}`;
+
+          const data = await this.makeRequest(endpoint);
+
+          // data esperado:
+          // { total_sin_lectura: number, medidores: number[] }
+
+          return {
+              success: true,
+              data: {
+                  total: data.total_sin_lectura || 0,
+                  medidores: data.medidores || []
+              }
+          };
+
+      } catch (error) {
+          console.error('❌ Error verificando medidores sin lectura:', error);
+          return {
+              success: false,
+              message: error.message || 'Error al verificar medidores sin lectura'
+          };
+      }
+  }
+    
 
 }
 

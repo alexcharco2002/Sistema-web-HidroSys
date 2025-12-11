@@ -1,3 +1,5 @@
+// src/components/SessionExpiredHandler.js  
+// Componente para manejar la expiración de sesión globalmente
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 

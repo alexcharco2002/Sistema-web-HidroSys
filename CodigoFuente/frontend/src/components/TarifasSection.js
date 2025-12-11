@@ -17,7 +17,7 @@ const TarifasSection = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm] = useState(searchTerm);
   const [filterStatus, setFilterStatus] = useState('all');
-  const [filterVigencia, setFilterVigencia] = useState('vigentes'); // Nuevo filtro
+  const [filterVigencia, setFilterVigencia] = useState('all'); // Nuevo filtro
   const [filterTipo, setFilterTipo] = useState('all');
   const [sortOrder, setSortOrder] = useState('asc');
   const [showModal, setShowModal] = useState(false);
@@ -99,28 +99,26 @@ const TarifasSection = () => {
 
     setLoading(true);
     setError(null);
-    
-    try {
-      const filters = {
-        search: debouncedSearchTerm
-      };
 
-      // Aplicar filtro de vigencia
+    try {
+      const filters = { search: debouncedSearchTerm };
+
+      // ✅ SOLO agregar es_vigente si NO es 'all'
       if (filterVigencia === 'vigentes') {
         filters.es_vigente = true;
       } else if (filterVigencia === 'vencidas') {
         filters.es_vigente = false;
       }
-      // Si es 'all', no se filtra por vigencia
+      // ❌ NO hacer esto: else { filters.es_vigente = 'all'; }
+
+      console.log('🔍 Filtros enviados:', filters); // Debe mostrar {search: ''} sin es_vigente
 
       const result = await tarifasService.getTarifas(filters);
-
       if (result.success) {
         setTarifas(result.data);
         console.log('✅ Tarifas cargadas:', result.data.length);
       } else {
         setError(result.message);
-        console.error('Error al cargar tarifas:', result.message);
       }
     } catch (err) {
       setError('Error al cargar tarifas desde el servidor');
@@ -129,6 +127,7 @@ const TarifasSection = () => {
       setLoading(false);
     }
   }, [debouncedSearchTerm, filterVigencia, permissions.canRead]);
+
 
   // Fetch estadísticas
   const fetchStats = useCallback(async () => {
@@ -163,34 +162,38 @@ const TarifasSection = () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
   };
 
-  // 🎯 Filtrar y ordenar tarifas
+  // Filtrar y ordenar tarifas
   const filteredTarifas = tarifas
     .filter(tarifa => {
-      const matchesSearch = 
-        tarifa.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      const matchesSearch = tarifa.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (tarifa.detalle && tarifa.detalle.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (tarifa.tipo_tarifa && tarifa.tipo_tarifa.toLowerCase().includes(searchTerm.toLowerCase()));
       
-      const matchesStatus = 
-        filterStatus === 'all' || 
+      const matchesStatus = filterStatus === 'all' ||
         (filterStatus === 'active' && tarifa.activo) ||
         (filterStatus === 'inactive' && !tarifa.activo);
       
-      const matchesTipo = 
-        filterTipo === 'all' || 
-        tarifa.tipo_tarifa === filterTipo;
+      const matchesTipo = filterTipo === 'all' || tarifa.tipo_tarifa === filterTipo;
       
-      return matchesSearch && matchesStatus && matchesTipo;
+      const matchesVigencia = filterVigencia === 'all' ||
+        (filterVigencia === 'vigentes' && tarifa.es_vigente === true) ||
+        (filterVigencia === 'vencidas' && tarifa.es_vigente === false);
+
+      return matchesSearch && matchesStatus && matchesTipo && matchesVigencia;
     })
     .sort((a, b) => {
+      // 🚨 PRIMERO: ordenar por vigencia (vigentes primero)
+      if (a.es_vigente !== b.es_vigente) {
+        return a.es_vigente ? -1 : 1; // Vigentes antes que vencidas
+      }
+
+      // 👇 SI AMBAS tienen misma vigencia, ordenar por nombre
       const nameA = a.nombre.toLowerCase();
       const nameB = b.nombre.toLowerCase();
-      
-      if (sortOrder === 'asc') {
-        return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
-      } else {
-        return nameB.localeCompare(nameA, 'es', { sensitivity: 'base' });
-      }
+
+      return sortOrder === 'asc'
+        ? nameA.localeCompare(nameB, 'es', { sensitivity: 'base' })
+        : nameB.localeCompare(nameA, 'es', { sensitivity: 'base' });
     });
 
   // Obtener tipos únicos para el filtro

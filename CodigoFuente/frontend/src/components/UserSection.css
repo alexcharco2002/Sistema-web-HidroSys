@@ -284,6 +284,17 @@
   min-width: 0; /* para evitar overflow en flex */
 }
 
+ 
+.user-card.vencida {
+  opacity: 0.88;               
+  filter: grayscale(0.15);    
+  background-color: #fff7f7;   
+  border-left: 4px solid #dc2626; 
+  transition: all 0.2s ease;
+}
+
+
+
 .user-info {
   display: flex;
   align-items: center;

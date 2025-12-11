@@ -105,7 +105,7 @@ def normalize_text(text: str) -> str:
 def listar_tarifas(
     search: Optional[str] = Query(None, description="Buscar por nombre, detalle o tipo"),
     tipo_tarifa: Optional[str] = Query(None, description="Filtrar por tipo de tarifa"),
-    es_vigente: Optional[bool] = Query(True, description="Filtrar por vigencia (por defecto solo vigentes)"),
+    es_vigente: Optional[bool] = Query(None, description="Filtrar por vigencia (None = todas, True = vigentes, False = vencidas)"),
     activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),

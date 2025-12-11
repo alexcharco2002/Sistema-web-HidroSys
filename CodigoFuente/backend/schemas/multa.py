@@ -20,9 +20,9 @@ class TipoMultaBase(BaseModel):
         nombre_limpio = v.strip()
         if len(nombre_limpio) < 3:
             raise ValueError("El nombre debe tener al menos 3 caracteres")
-        # Si quieres restringir caracteres, descomenta:
-        # if not re.match(r"^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9 ]+$", nombre_limpio):
-        #     raise ValueError("El nombre solo puede contener letras, números y espacios")
+        # para evitar caracteres especiales y solo permitir letras, números y espacios
+        if not re.match(r"^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9 ]+$", nombre_limpio):
+             raise ValueError("El nombre solo puede contener letras, números y espacios")
         return nombre_limpio
 
     @field_validator("descripcion")

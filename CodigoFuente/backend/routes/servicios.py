@@ -138,7 +138,7 @@ def normalize_text(text: str) -> str:
 def listar_servicios(
     search: Optional[str] = Query(None, description="Buscar por nombre o descripción"),
     activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
-    solo_vigentes: bool = Query(True, description="Mostrar solo versiones vigentes"),
+    es_vigente: Optional[bool] = Query(None, description="Filtrar por vigencia: True=vigentes, False=vencidas, None=todas"),  # ← CAMBIO AQUÍ
     skip: int = Query(0, ge=0, description="Número de registros a saltar"),
     limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros"),
     db: Session = Depends(get_db),
@@ -146,18 +146,18 @@ def listar_servicios(
 ):
     """
     Lista servicios con filtros opcionales
-    Por defecto muestra solo versiones vigentes
+    Por defecto muestra todas las versiones
     Requiere permiso: servicios.lectura o servicios.crud
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "servicios", "lectura")
-    
+
     query = db.query(Servicio)
-    
-    # Filtro por vigencia (por defecto solo vigentes)
-    if solo_vigentes:
-        query = query.filter(Servicio.es_vigente == True)
-    
+
+    # Filtro por vigencia (NUEVO)
+    if es_vigente is not None:  # ← CAMBIO AQUÍ
+        query = query.filter(Servicio.es_vigente == es_vigente)
+
     # Filtro de búsqueda
     if search:
         search_filter = f"%{search}%"
@@ -165,19 +165,18 @@ def listar_servicios(
             (Servicio.nombre.ilike(search_filter)) |
             (Servicio.descripcion.ilike(search_filter))
         )
-    
+
     # Filtro por estado
     if activo is not None:
         query = query.filter(Servicio.activo == activo)
-    
+
     # Ordenar por nombre y vigencia
     query = query.order_by(Servicio.nombre, Servicio.vigencia_desde.desc())
-    
+
     # Paginación
     servicios = query.offset(skip).limit(limit).all()
-    
-    return servicios
 
+    return servicios
 
 @router.get("/stats/count", response_model=ServicioStats)
 def obtener_estadisticas_servicios(

@@ -32,7 +32,7 @@ const FinesSection = () => {
   const [debouncedSearchTerm] = useState(searchTerm);
 
   const [filterStatus, setFilterStatus] = useState('all'); // all | active | inactive
-  const [filterVigencia, setFilterVigencia] = useState('vigentes'); // vigentes | vencidas | all
+  const [filterVigencia, setFilterVigencia] = useState('all'); // vigentes | vencidas | all
 
   const [sortOrder, setSortOrder] = useState('asc');
 
@@ -172,30 +172,45 @@ const FinesSection = () => {
     setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
   };
 
-  // FILTRADO Y ORDEN
+  // FILTRADO Y ORDENAMIENTO
   const filteredTiposMulta = tiposMulta
     .filter((m) => {
       const search = searchTerm.toLowerCase();
-      const matchesSearch =
+
+      const matchesSearch = 
         m.nombre_multa.toLowerCase().includes(search) ||
         (m.descripcion && m.descripcion.toLowerCase().includes(search));
-
-      const matchesStatus =
+      
+      const matchesStatus = 
         filterStatus === 'all' ||
         (filterStatus === 'active' && m.activo) ||
         (filterStatus === 'inactive' && !m.activo);
-
-      return matchesSearch && matchesStatus;
+      
+      const matchesVigencia = 
+        filterVigencia === 'all' ||
+        (filterVigencia === 'vigentes' && m.es_vigente === true) ||
+        (filterVigencia === 'vencidas' && m.es_vigente === false);
+      
+      return matchesSearch && matchesStatus && matchesVigencia;
     })
     .sort((a, b) => {
+      // 🚨 PRIMERO ORDENAR POR VIGENCIA (vigentes arriba)
+      if (a.es_vigente !== b.es_vigente) {
+        return a.es_vigente ? -1 : 1; 
+        // a.es_vigente true → va primero
+        // a.es_vigente false → va al final
+      }
+
+      // 👇 SI tienen la misma vigencia, ordenar por nombre
       const nameA = a.nombre_multa.toLowerCase();
       const nameB = b.nombre_multa.toLowerCase();
 
-      if (sortOrder === 'asc') {
-        return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
-      }
-      return nameB.localeCompare(nameA, 'es', { sensitivity: 'base' });
+      return sortOrder === 'asc'
+        ? nameA.localeCompare(nameB, 'es', { sensitivity: 'base' })
+        : nameB.localeCompare(nameA, 'es', { sensitivity: 'base' });
     });
+
+
 
   // HISTORIAL
   const verHistorial = async (nombreMulta) => {

@@ -1,8 +1,14 @@
+// src/index.js
+// Punto de entrada principal de la aplicación React
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+
+// Importar e inicializar interceptor ANTES de cualquier fetch
+import { initializeFetchInterceptor } from './utils/fetchInterceptor';
+initializeFetchInterceptor();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

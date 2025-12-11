@@ -1,51 +1,34 @@
 /**
  * Servicio de Autenticación con Sistema de Roles y Permisos
- * Maneja login, logout, verificación de sesión,
+ * Maneja login, logout, verificación de sesión
  * services/authServices.js
+ * ✅ Optimizado con fetchInterceptor global
  */
 
 import axios from "axios";
 
+// ========================================
+// CONFIGURACIÓN DE AXIOS (solo para peticiones específicas con axios)
+// ========================================
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL,
 });
 
-// 🔥 Flag para evitar múltiples redirecciones
-let isHandlingExpiredSession = false;
-
-// Interceptor general
+// ✅ Interceptor simplificado de axios (opcional, solo si usas axios)
 api.interceptors.response.use(
   response => response,
   error => {
     if (error.response && error.response.status === 401) {
-      // Solo emitir si no se está manejando ya
-      if (!isHandlingExpiredSession) {
-        isHandlingExpiredSession = true;
-        console.warn("⚠️ Sesión expirada detectada en interceptor");
-        window.dispatchEvent(new Event("sessionExpired"));
-        
-        // Resetear el flag después de 2 segundos
-        setTimeout(() => {
-          isHandlingExpiredSession = false;
-        }, 2000);
-      }
+      console.warn("⚠️ 401 detectado en petición axios");
+      // El fetchInterceptor global ya maneja la sesión expirada
     }
     return Promise.reject(error);
   }
 );
 
-// Interceptor general
-api.interceptors.response.use(
-  response => response,
-  error => {
-    if (error.response && error.response.status === 401) {
-      // Emitimos evento global
-      window.dispatchEvent(new Event("sessionExpired"));
-    }
-    return Promise.reject(error);
-  }
-);
-
+// ========================================
+// CONFIGURACIÓN DE API
+// ========================================
 const API_CONFIG = {
   baseURL: process.env.REACT_APP_API_URL || 'https://localhost:8000',
   timeout: 10000,
@@ -64,6 +47,9 @@ const API_CONFIG = {
   }
 };
 
+// ========================================
+// CLASE PRINCIPAL
+// ========================================
 class AuthService {
   constructor() {
     this.token = this.getStoredToken();
@@ -113,7 +99,8 @@ class AuthService {
   }
 
   /**
-   * Realizar petición HTTP
+   * ✅ Realizar petición HTTP - SIMPLIFICADO
+   * El fetchInterceptor global maneja los 401 automáticamente
    */
   async makeRequest(endpoint, options = {}) {
     const url = `${API_CONFIG.baseURL}${endpoint}`;
@@ -155,48 +142,21 @@ class AuthService {
 
       clearTimeout(timeoutId);
 
+      // ✅ Manejo simplificado - fetchInterceptor maneja 401 globalmente
       if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          let errorMessage = '';
+        const errorData = await response.json().catch(() => ({}));
+        let errorMessage = '';
 
-          // -------------------------
-          // 🔥 Control automático de token expirado
-          // -------------------------
-          if (response.status === 401) {
-            console.warn("⚠️ Token expirado o inválido, cerrando sesión…");
-            
-            // Solo ejecutar si no se está manejando ya
-            if (!isHandlingExpiredSession) {
-              isHandlingExpiredSession = true;
-              
-              // Limpiar datos
-              this.clearLocalData();
-              
-              // Emitir evento global
-              window.dispatchEvent(new Event("sessionExpired"));
-              
-              // Resetear el flag después de 2 segundos
-              setTimeout(() => {
-                isHandlingExpiredSession = false;
-              }, 2000);
-            }
-            
-            return Promise.reject(new Error("Sesión expirada"));
-          }
+        if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (typeof errorData.detail === 'object') {
+          errorMessage = JSON.stringify(errorData.detail);
+        } else {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
 
-          // -------------------------
-
-          if (typeof errorData.detail === 'string') {
-              errorMessage = errorData.detail;
-          } else if (typeof errorData.detail === 'object') {
-              errorMessage = JSON.stringify(errorData.detail);
-          } else {
-              errorMessage = `HTTPS ${response.status}: ${response.statusText}`;
-          }
-
-          throw new Error(errorMessage);
+        throw new Error(errorMessage);
       }
-
 
       const data = await response.json();
       return data;
@@ -215,36 +175,38 @@ class AuthService {
       throw error;
     }
   }
-/**
- * 🔥 Obtener la ruta completa del dashboard con /home
- */
-getRoleBasedRoute() {
-  const basePath = this.getRoleBasePath();
-  return `${basePath}/home`; // ✅ Ahora incluye /home
-}
 
-
+  // ========================================
+  // 🔥 MÉTODOS DE ROLES Y RUTAS DINÁMICAS
+  // ========================================
 
   /**
-   * 🔥 Convertir nombre de rol a ruta válida
+   * Obtener la ruta completa del dashboard con /home
+   */
+  getRoleBasedRoute() {
+    const basePath = this.getRoleBasePath();
+    return `${basePath}/home`;
+  }
+
+  /**
+   * Convertir nombre de rol a ruta válida
    * Ej: "Super Administrador" -> "super-administrador"
    */
   normalizeRoleToRoute(roleName) {
     if (!roleName) return 'dashboard';
-    
     return roleName
       .toLowerCase()
       .trim()
-      .normalize('NFD') // Normalizar caracteres unicode
-      .replace(/[\u0300-\u036f]/g, '') // Quitar acentos
-      .replace(/\s+/g, '-') // Espacios a guiones
-      .replace(/[^a-z0-9-]/g, '') // Solo letras, números y guiones
-      .replace(/-+/g, '-') // Múltiples guiones a uno solo
-      .replace(/^-|-$/g, ''); // Quitar guiones al inicio/fin
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
   }
 
   /**
-   * 🔥 Obtener la ruta del dashboard según el rol del usuario (DINÁMICO)
+   * Obtener la ruta del dashboard según el rol del usuario (DINÁMICO)
    */
   getRoleBasePath() {
     if (!this.user || !this.user.rol) {
@@ -253,26 +215,22 @@ getRoleBasedRoute() {
     }
 
     const roleName = this.user.rol.nombre_rol;
-    
     if (!roleName) {
       return '/dashboard';
     }
 
-    // Convertir el nombre del rol a una ruta válida
     const routePath = this.normalizeRoleToRoute(roleName);
-    
     return `/${routePath}`;
   }
-  
 
   /**
-   * 🔥 Obtener información del rol actual
+   * Obtener información del rol actual
    */
   getCurrentRole() {
     if (!this.user || !this.user.rol) {
       return null;
     }
-    
+
     return {
       id: this.user.rol.id_rol,
       nombre: this.user.rol.nombre_rol,
@@ -282,46 +240,43 @@ getRoleBasedRoute() {
   }
 
   /**
-   * 🔥 Verificar si el usuario puede acceder a una ruta específica
+   * Verificar si el usuario puede acceder a una ruta específica
    */
   canAccessRoute(route) {
     if (!this.user || !this.user.rol) {
       return false;
     }
 
-    // Limpiar la ruta (quitar / inicial si existe)
     const cleanRoute = route.startsWith('/') ? route.slice(1) : route;
-    const allowedRoute = this.getRoleBasedRoute().slice(1); // Quitar / inicial
+    const allowedRoute = this.getRoleBasedRoute().slice(1);
     const currentRole = this.user.rol.nombre_rol?.toLowerCase() || '';
 
-    // Rutas públicas o genéricas siempre accesibles
     const publicRoutes = ['dashboard', 'perfil', 'configuracion'];
     if (publicRoutes.includes(cleanRoute)) {
       return true;
     }
 
-    // El administrador puede acceder a todas las rutas
     if (currentRole === 'administrador' || currentRole === 'admin') {
       return true;
     }
 
-    // Verificar si la ruta coincide con el rol del usuario
     return cleanRoute === allowedRoute;
   }
 
   /**
-   * 🔥 Verificar si dos roles son equivalentes
+   * Verificar si dos roles son equivalentes
    */
   rolesMatch(role1, role2) {
     if (!role1 || !role2) return false;
-    
     const normalized1 = this.normalizeRoleToRoute(role1);
     const normalized2 = this.normalizeRoleToRoute(role2);
-    
     return normalized1 === normalized2;
   }
 
-  
+  // ========================================
+  // 🔐 AUTENTICACIÓN
+  // ========================================
+
   /**
    * Iniciar sesión
    */
@@ -337,19 +292,17 @@ getRoleBasedRoute() {
         }),
         skipAuth: true,
       });
-      
+
       if (response.success) {
         this.user = response.data.user;
         this.token = response.data.token;
         this.permissions = response.data.user.permisos || [];
 
-        // Almacenar en sessionStorage
         sessionStorage.setItem('auth_token', this.token);
         sessionStorage.setItem('user_data', JSON.stringify(this.user));
         sessionStorage.setItem('user_permissions', JSON.stringify(this.permissions));
         sessionStorage.setItem('login_time', new Date().toISOString());
 
-        // 🔥 Obtener la ruta dinámica según el rol
         const redirectRoute = this.getRoleBasedRoute();
 
         console.log('✅ Login exitoso:', {
@@ -358,10 +311,10 @@ getRoleBasedRoute() {
           permisos: this.permissions.length,
           redirectTo: redirectRoute
         });
-        
+
         return {
           success: true,
-          redirectTo: redirectRoute, // 🔥 Ruta dinámica
+          redirectTo: redirectRoute,
           data: {
             user: this.user,
             token: this.token,
@@ -381,190 +334,6 @@ getRoleBasedRoute() {
         success: false,
         message: error.message || 'Error de conexión'
       };
-    }
-  }
-
-/**
- * Verificar si el usuario tiene un permiso específico
- * @param {string} moduleName - Nombre del módulo (ej: 'usuarios', 'lecturas')
- * @param {string} actionType - Tipo de acción (ej: 'lectura', 'crear', 'eliminar')
- */
-hasPermission(moduleName, actionType = null) {
-  if (!this.permissions || this.permissions.length === 0) {
-    console.warn('⚠️ No hay permisos cargados');
-    return false;
-  }
-
-  // Normalizar los parámetros
-  moduleName = moduleName.toLowerCase();
-  const requestedAction = actionType ? actionType.toLowerCase() : null;
-
-  // Recorremos los permisos del usuario
-  const hasAccess = this.permissions.some(perm => {
-    if (!perm.nombre_accion || !perm.tipo_accion) return false;
-
-    const permModule = perm.nombre_accion.toLowerCase();
-    const permAction = perm.tipo_accion.toLowerCase();
-
-    // ✅ Si coincide el módulo y no se especifica una acción, ya tiene acceso
-    if (permModule === moduleName && !requestedAction) {
-      return true;
-    }
-
-    // ✅ Si el permiso es CRUD, tiene todas las acciones básicas
-    if (permModule === moduleName && permAction === 'operaciones crud') {
-      const basicActions = [
-        'lectura',
-        'escritura',
-        'eliminacion',
-        'administracion',
-        'reportes',
-        'configuracion',
-        'crear',
-        'editar',
-        'actualizar',
-        'borrar',
-        'eliminar'
-      ];
-      return basicActions.includes(requestedAction);
-    }
-
-    // ✅ Coincidencia exacta de módulo + tipo de acción
-    if (permModule === moduleName && permAction === requestedAction) {
-      return true;
-    }
-
-    return false;
-  });
-
-  console.log(`🔐 Verificando permiso: ${moduleName}${actionType ? '.' + actionType : '.*'} = ${hasAccess}`);
-  return hasAccess;
-}
-
-
-/**
- * Verificar acción específica en un módulo
- */
-canPerformAction(moduleName, actionType) {
-  return this.hasPermission(moduleName, actionType);
-}
-
-/**
- * Obtener acciones disponibles para un módulo específico
- */
-getModuleActions(moduleName) {
-  if (!this.permissions || this.permissions.length === 0) {
-    return [];
-  }
-
-  moduleName = moduleName.toLowerCase();
-  const actions = [];
-
-  this.permissions.forEach(perm => {
-    if (!perm.nombre_accion) return;
-
-    const [permModule, permAction] = perm.nombre_accion.split('.');
-    
-    if (permModule.toLowerCase() === moduleName) {
-      if (permAction.toLowerCase() === 'crud') {
-        // Si tiene CRUD, agregar todas las acciones básicas
-        actions.push('crear', 'leer', 'actualizar', 'eliminar');
-      } else {
-        actions.push(permAction.toLowerCase());
-      }
-    }
-  });
-
-  // Retornar acciones únicas
-  return [...new Set(actions)];
-}
-
-/**
- * Verificar si tiene permiso CRUD completo sobre un módulo
- */
-hasCRUDAccess(moduleName) {
-  if (!this.permissions || this.permissions.length === 0) {
-    return false;
-  }
-
-  moduleName = moduleName.toLowerCase();
-  
-  return this.permissions.some(perm => {
-    if (!perm.nombre_accion) return false;
-    const [permModule, permAction] = perm.nombre_accion.split('.');
-    return permModule.toLowerCase() === moduleName && 
-           permAction.toLowerCase() === 'crud';
-  });
-}
-
-  /**
-   * Verificar si puede acceder a un módulo (cualquier acción)
-   */
-  canAccessModule(moduleName) {
-    return this.hasPermission(moduleName);
-  }
-
-  /**
-   * Obtener todos los permisos del usuario
-   */
-  getUserPermissions() {
-    return this.permissions;
-  }
-
-  /**
-   * Verificar si el usuario tiene un rol específico
-   */
-  hasRole(roleName) {
-    if (!this.user || !this.user.rol) {
-      return false;
-    }
-    
-    const userRole = this.user.rol.nombre_rol || '';
-    return userRole.toLowerCase() === roleName.toLowerCase();
-  }
-
-  /**
-   * Verificar si es administrador
-   */
-  isAdmin() {
-    return this.hasRole('administrador');
-  }
-
-  /**
-   * Obtener módulos accesibles para el usuario
-   */
-  getAccessibleModules() {
-    if (!this.permissions || this.permissions.length === 0) {
-      return [];
-    }
-
-    // Extraer módulos únicos de los permisos
-    const modules = new Set();
-    this.permissions.forEach(perm => {
-      const [module] = perm.nombre_accion.split('.');
-      modules.add(module);
-    });
-
-    return Array.from(modules);
-  }
-
-  /**
-   * Verificar permiso en el servidor (opcional, para seguridad adicional)
-   */
-  async checkPermissionOnServer(nombreAccion, tipoAccion) {
-    try {
-      const response = await this.makeRequest(API_CONFIG.endpoints.checkPermission, {
-        method: 'POST',
-        body: JSON.stringify({
-          nombre_accion: nombreAccion,
-          tipo_accion: tipoAccion
-        })
-      });
-
-      return response.has_permission || false;
-    } catch (error) {
-      console.error('Error verificando permiso en servidor:', error);
-      return false;
     }
   }
 
@@ -600,14 +369,12 @@ hasCRUDAccess(moduleName) {
 
     try {
       const response = await this.makeRequest(API_CONFIG.endpoints.verifySession);
-      
+
       if (response && !response.detail) {
         this.user = response;
         this.permissions = response.permisos || [];
-        
         sessionStorage.setItem('user_data', JSON.stringify(this.user));
         sessionStorage.setItem('user_permissions', JSON.stringify(this.permissions));
-        
         return { success: true, user: this.user };
       } else {
         this.clearLocalData();
@@ -622,7 +389,7 @@ hasCRUDAccess(moduleName) {
   }
 
   /**
-   * Limpiar datos locales
+   * ✅ Limpiar datos locales (llamado por fetchInterceptor y logout)
    */
   clearLocalData() {
     this.token = null;
@@ -632,6 +399,7 @@ hasCRUDAccess(moduleName) {
     sessionStorage.removeItem('user_data');
     sessionStorage.removeItem('user_permissions');
     sessionStorage.removeItem('login_time');
+    console.log('🧹 Datos locales limpiados');
   }
 
   /**
@@ -654,36 +422,34 @@ hasCRUDAccess(moduleName) {
   getToken() {
     return this.token;
   }
-   /**
-   * ✅ Actualizar información del usuario en localStorage
-   * Este método se usa cuando el usuario actualiza su perfil
+
+  /**
+   * Actualizar información del usuario en sessionStorage
    */
   updateUserInfo(updatedUserData) {
     try {
       const currentUser = this.getCurrentUser();
-      
       if (!currentUser) {
         console.warn('⚠️ No hay usuario en sesión para actualizar');
         return false;
       }
 
-      // Combinar datos existentes con los nuevos
       const updatedUser = {
         ...currentUser,
         ...updatedUserData
       };
 
-      // Guardar en localStorage
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      
-      console.log('✅ Información del usuario actualizada en localStorage');
-      
+      this.user = updatedUser;
+      sessionStorage.setItem('user_data', JSON.stringify(updatedUser));
+      console.log('✅ Información del usuario actualizada');
       return true;
+
     } catch (error) {
       console.error('❌ Error actualizando información del usuario:', error);
       return false;
     }
   }
+
   /**
    * Validar credenciales
    */
@@ -701,7 +467,181 @@ hasCRUDAccess(moduleName) {
     }
   }
 
-  // Métodos de recuperación de contraseña (mantener los existentes)
+  // ========================================
+  // 🔑 PERMISOS Y ROLES
+  // ========================================
+
+  /**
+   * Verificar si el usuario tiene un permiso específico
+   */
+  hasPermission(moduleName, actionType = null) {
+    if (!this.permissions || this.permissions.length === 0) {
+      console.warn('⚠️ No hay permisos cargados');
+      return false;
+    }
+
+    moduleName = moduleName.toLowerCase();
+    const requestedAction = actionType ? actionType.toLowerCase() : null;
+
+    const hasAccess = this.permissions.some(perm => {
+      if (!perm.nombre_accion || !perm.tipo_accion) return false;
+
+      const permModule = perm.nombre_accion.toLowerCase();
+      const permAction = perm.tipo_accion.toLowerCase();
+
+      if (permModule === moduleName && !requestedAction) {
+        return true;
+      }
+
+      if (permModule === moduleName && permAction === 'operaciones crud') {
+        const basicActions = [
+          'lectura', 'escritura', 'eliminacion', 'administracion',
+          'reportes', 'configuracion', 'crear', 'editar',
+          'actualizar', 'borrar', 'eliminar'
+        ];
+        return basicActions.includes(requestedAction);
+      }
+
+      if (permModule === moduleName && permAction === requestedAction) {
+        return true;
+      }
+
+      return false;
+    });
+
+    console.log(`🔐 Verificando permiso: ${moduleName}${actionType ? '.' + actionType : '.*'} = ${hasAccess}`);
+    return hasAccess;
+  }
+
+  /**
+   * Verificar acción específica en un módulo
+   */
+  canPerformAction(moduleName, actionType) {
+    return this.hasPermission(moduleName, actionType);
+  }
+
+  /**
+   * Obtener acciones disponibles para un módulo específico
+   */
+  getModuleActions(moduleName) {
+    if (!this.permissions || this.permissions.length === 0) {
+      return [];
+    }
+
+    moduleName = moduleName.toLowerCase();
+    const actions = [];
+
+    this.permissions.forEach(perm => {
+      if (!perm.nombre_accion) return;
+      const [permModule, permAction] = perm.nombre_accion.split('.');
+
+      if (permModule.toLowerCase() === moduleName) {
+        if (permAction.toLowerCase() === 'crud') {
+          actions.push('crear', 'leer', 'actualizar', 'eliminar');
+        } else {
+          actions.push(permAction.toLowerCase());
+        }
+      }
+    });
+
+    return [...new Set(actions)];
+  }
+
+  /**
+   * Verificar si tiene permiso CRUD completo sobre un módulo
+   */
+  hasCRUDAccess(moduleName) {
+    if (!this.permissions || this.permissions.length === 0) {
+      return false;
+    }
+
+    moduleName = moduleName.toLowerCase();
+    return this.permissions.some(perm => {
+      if (!perm.nombre_accion) return false;
+      const [permModule, permAction] = perm.nombre_accion.split('.');
+      return permModule.toLowerCase() === moduleName &&
+             permAction.toLowerCase() === 'crud';
+    });
+  }
+
+  /**
+   * Verificar si puede acceder a un módulo
+   */
+  canAccessModule(moduleName) {
+    return this.hasPermission(moduleName);
+  }
+
+  /**
+   * Obtener todos los permisos del usuario
+   */
+  getUserPermissions() {
+    return this.permissions;
+  }
+
+  /**
+   * Verificar si el usuario tiene un rol específico
+   */
+  hasRole(roleName) {
+    if (!this.user || !this.user.rol) {
+      return false;
+    }
+
+    const userRole = this.user.rol.nombre_rol || '';
+    return userRole.toLowerCase() === roleName.toLowerCase();
+  }
+
+  /**
+   * Verificar si es administrador
+   */
+  isAdmin() {
+    return this.hasRole('administrador');
+  }
+
+  /**
+   * Obtener módulos accesibles para el usuario
+   */
+  getAccessibleModules() {
+    if (!this.permissions || this.permissions.length === 0) {
+      return [];
+    }
+
+    const modules = new Set();
+    this.permissions.forEach(perm => {
+      const [module] = perm.nombre_accion.split('.');
+      modules.add(module);
+    });
+
+    return Array.from(modules);
+  }
+
+  /**
+   * Verificar permiso en el servidor
+   */
+  async checkPermissionOnServer(nombreAccion, tipoAccion) {
+    try {
+      const response = await this.makeRequest(API_CONFIG.endpoints.checkPermission, {
+        method: 'POST',
+        body: JSON.stringify({
+          nombre_accion: nombreAccion,
+          tipo_accion: tipoAccion
+        })
+      });
+
+      return response.has_permission || false;
+
+    } catch (error) {
+      console.error('Error verificando permiso en servidor:', error);
+      return false;
+    }
+  }
+
+  // ========================================
+  // 🔄 RECUPERACIÓN DE CONTRASEÑA
+  // ========================================
+
+  /**
+   * Solicitar recuperación de contraseña
+   */
   async forgotPassword(email) {
     try {
       if (!email || !email.trim()) {
@@ -720,6 +660,7 @@ hasCRUDAccess(moduleName) {
       });
 
       return response;
+
     } catch (error) {
       console.error('❌ Error en forgotPassword:', error);
       return {
@@ -729,6 +670,9 @@ hasCRUDAccess(moduleName) {
     }
   }
 
+  /**
+   * Verificar código de recuperación
+   */
   async verifyRecoveryCode(email, code) {
     try {
       if (!email || !code) {
@@ -745,6 +689,7 @@ hasCRUDAccess(moduleName) {
       });
 
       return response;
+
     } catch (error) {
       console.error('❌ Error en verifyRecoveryCode:', error);
       return {
@@ -754,6 +699,9 @@ hasCRUDAccess(moduleName) {
     }
   }
 
+  /**
+   * Restablecer contraseña
+   */
   async resetPassword(email, resetToken, newPassword) {
     try {
       if (!email || !resetToken || !newPassword) {
@@ -771,6 +719,7 @@ hasCRUDAccess(moduleName) {
       });
 
       return response;
+
     } catch (error) {
       console.error('❌ Error en resetPassword:', error);
       return {
@@ -780,6 +729,9 @@ hasCRUDAccess(moduleName) {
     }
   }
 
+  /**
+   * Reenviar código de verificación
+   */
   async resendCode(email) {
     try {
       if (!email || !email.trim()) {
@@ -793,6 +745,7 @@ hasCRUDAccess(moduleName) {
       });
 
       return response;
+
     } catch (error) {
       console.error('❌ Error en resendCode:', error);
       return {
@@ -803,7 +756,10 @@ hasCRUDAccess(moduleName) {
   }
 }
 
+// ========================================
+// EXPORTAR INSTANCIA ÚNICA
+// ========================================
 const authService = new AuthService();
 
 export default authService;
-export { AuthService };
+export { AuthService, api };

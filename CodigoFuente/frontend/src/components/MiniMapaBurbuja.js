@@ -1,29 +1,36 @@
 // src/components/MiniMapaBurbuja.js
 // COMPONENTE DE MINI-MAPA FLOTANTE - UBICACIÓN Y MEDIDORES CERCANOS
-
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './MiniMapaBurbuja.css';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin, Navigation, Maximize2, X, Loader } from 'lucide-react';
-
-// IMPORTAR TU SERVICIO DE GEOLOCALIZACIÓN
-//import geolocalizacionService from '../services/geolocationsServices';
+import { MapPin, Navigation, Maximize2, X, Loader, User, MapPinned } from 'lucide-react';
+import geolocalizacionService from '../services/geolocationsServices';
+import authService from '../services/authServices';
+import { createPortal } from 'react-dom';
 
 const MiniMapaBurbuja = () => {
+  const navigate = useNavigate();
+  
   // Estados
   const [miniMapVisible, setMiniMapVisible] = useState(false);
   const [miniMapMinimized, setMiniMapMinimized] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [nearbyMeters, setNearbyMeters] = useState([]);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [showMetersList, setShowMetersList] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  
   const miniMapRef = useRef(null);
   const miniMapContainerRef = useRef(null);
+
+  // Obtener ruta base del rol actual
+  const roleBasePath = authService.getRoleBasePath();
 
   // Obtener ubicación actual del dispositivo
   const getCurrentLocation = () => {
     setLoadingLocation(true);
-
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -55,7 +62,7 @@ const MiniMapaBurbuja = () => {
 
   // Calcular distancia entre dos puntos GPS (en km)
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371; // Radio de la Tierra en km
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = 
@@ -69,258 +76,324 @@ const MiniMapaBurbuja = () => {
   // Cargar medidores cercanos (radio de ~1km)
   const loadNearbyMeters = async (location) => {
     try {
-      // 🔧 DESCOMENTAR Y CONECTAR CON TU SERVICIO REAL:
-      /*
+      console.log('🔍 Cargando medidores cercanos...', location);
       const result = await geolocalizacionService.getMedidoresGeo();
-
+      console.log('📊 Resultado de medidores:', result);
+      
       if (result.success) {
         const nearby = result.data
           .map(meter => ({
             ...meter,
             distance: calculateDistance(
-              location.lat, 
+              location.lat,
               location.lng,
-              parseFloat(meter.latitud), 
+              parseFloat(meter.latitud),
               parseFloat(meter.longitud)
             )
           }))
           .filter(meter => meter.distance <= 1) // Radio de 1km
           .sort((a, b) => a.distance - b.distance);
-
+        
+        console.log('✅ Medidores cercanos encontrados:', nearby.length);
         setNearbyMeters(nearby);
       }
-      */
-
-      // 📍 DATOS SIMULADOS (REEMPLAZAR ARRIBA):
-      const mockMeters = [
-        {
-          id: 1,
-          num_medidor: 'MED-001',
-          latitud: location.lat + 0.001,
-          longitud: location.lng + 0.001,
-          usuario_afiliado: { nombre_afiliado: 'Juan Pérez' },
-          activo: true
-        },
-        {
-          id: 2,
-          num_medidor: 'MED-002',
-          latitud: location.lat - 0.002,
-          longitud: location.lng + 0.0015,
-          usuario_afiliado: { nombre_afiliado: 'María González' },
-          activo: true
-        },
-        {
-          id: 3,
-          num_medidor: 'MED-003',
-          latitud: location.lat + 0.0015,
-          longitud: location.lng - 0.001,
-          usuario_afiliado: null,
-          activo: false
-        }
-      ];
-
-      setNearbyMeters(mockMeters);
     } catch (error) {
-      console.error('Error cargando medidores cercanos:', error);
+      console.error('❌ Error cargando medidores cercanos:', error);
     }
   };
 
-  // Inicializar mini-mapa
+  // 🔥 CORRECCIÓN: Inicializar mini-mapa con cleanup apropiado
   useEffect(() => {
-    if (miniMapVisible && !miniMapMinimized && currentLocation && miniMapContainerRef.current) {
+    let timeoutId = null; // 🔥 GUARDAR el ID del timeout
+    
+    if (miniMapVisible && !miniMapMinimized && !showMetersList && currentLocation && miniMapContainerRef.current) {
+      
+      // Limpiar mapa existente
       if (miniMapRef.current) {
-        miniMapRef.current.remove();
+        try {
+          miniMapRef.current.remove();
+          miniMapRef.current = null;
+        } catch (error) {
+          console.error('Error limpiando mapa:', error);
+        }
       }
 
-      setTimeout(() => {
+      // 🔥 GUARDAR el timeoutId
+      timeoutId = setTimeout(() => {
         if (!miniMapContainerRef.current) return;
 
         try {
+          console.log('🗺️ Inicializando mapa con', nearbyMeters.length, 'medidores');
+          
           const map = L.map(miniMapContainerRef.current, {
             center: [currentLocation.lat, currentLocation.lng],
             zoom: 16,
             zoomControl: false,
-            attributionControl: false
+            attributionControl: false,
+            preferCanvas: true
           });
 
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19
+            maxZoom: 19,
+            updateWhenIdle: true
           }).addTo(map);
 
           // Marcador de ubicación actual
           const currentIcon = L.divIcon({
-            html: '<div class="current-location-marker">📍</div>',
-            className: 'custom-marker',
-            iconSize: [30, 30],
-            iconAnchor: [15, 15]
+            html: `
+              <div class="current-location-marker">
+                <svg width="38" height="38" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z" fill="#1A73E8"/>
+                  <circle cx="12" cy="9" r="3" fill="white"/>
+                  <path d="M12 22s-3.5-4-5.5-7.5C4.3 12.2 4 10.7 4 9c0-4.4 3.6-8 8-8s8 3.6 8 8c0 1.7-.3 3.2-2.5 5.5C15.5 18 12 22 12 22z" fill="#EA4335" opacity="0.9"/>
+                </svg>
+              </div>
+            `,
+            className: "",
+            iconSize: [38, 38],
+            iconAnchor: [19, 38]
           });
 
-          L.marker([currentLocation.lat, currentLocation.lng], { icon: currentIcon })
-            .addTo(map)
-            .bindPopup('<strong>Tu ubicación</strong>');
+          L.marker([currentLocation.lat, currentLocation.lng], {
+            icon: currentIcon
+          }).addTo(map).bindPopup('<b>Tu ubicación actual</b>');
 
-          // Marcadores de medidores cercanos
+          // Agregar marcadores de medidores cercanos
+          console.log('📍 Agregando', nearbyMeters.length, 'marcadores al mapa');
           nearbyMeters.forEach(meter => {
             const meterIcon = L.divIcon({
-              html: `<div class="meter-marker ${meter.activo ? 'active' : 'inactive'}">💧</div>`,
-              className: 'custom-marker',
+              html: `<div class="meter-marker ${meter.activo ? 'active' : 'inactive'}">${meter.activo ? '💧' : '🚫'}</div>`,
+              className: '',
               iconSize: [24, 24],
               iconAnchor: [12, 12]
             });
 
-            const usuario = meter.usuario_afiliado?.nombre_afiliado || 'Sin asignar';
-            const estado = meter.activo ? 'Activo' : 'Inactivo';
+            const marker = L.marker([parseFloat(meter.latitud), parseFloat(meter.longitud)], {
+              icon: meterIcon
+            }).addTo(map);
 
-            L.marker([meter.latitud, meter.longitud], { icon: meterIcon })
-              .addTo(map)
-              .bindPopup(`<strong>${meter.num_medidor}</strong><br>${usuario}<br><small>${estado}</small>`);
+            const popupContent = `
+              <div style="text-align: center;">
+                <b>${meter.num_medidor}</b><br>
+                <small>${meter.usuario_afiliado?.nombre_afiliado || 'Sin propietario'}</small><br>
+                <small>${(meter.distance * 1000).toFixed(0)}m de distancia</small>
+              </div>
+            `;
+
+            marker.bindPopup(popupContent);
+
+            // Eventos de hover
+            marker.on('mouseover', function(e) {
+              this.openPopup();
+            });
+
+            marker.on('mouseout', function(e) {
+              this.closePopup();
+            });
           });
 
-          // Círculo de precisión
-          L.circle([currentLocation.lat, currentLocation.lng], {
-            radius: currentLocation.accuracy,
-            color: '#3b82f6',
-            fillColor: '#3b82f6',
-            fillOpacity: 0.1,
-            weight: 1
-          }).addTo(map);
-
           miniMapRef.current = map;
-          setTimeout(() => map.invalidateSize(), 100);
-        } catch (error) {
-          console.error('Error inicializando mini-mapa:', error);
+
+          setTimeout(() => {
+            if (map && miniMapContainerRef.current) {
+              map.invalidateSize();
+            }
+          }, 100);
+
+        } catch (err) {
+          console.error('❌ Error inicializando mini-mapa:', err);
         }
-      }, 200);
+      }, 150); // Tiempo suficiente para que el DOM esté listo
     }
 
+    // 🔥 CLEANUP CORRECTO
     return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId); // 🔥 Limpiar el timeout
+      }
       if (miniMapRef.current) {
-        miniMapRef.current.remove();
-        miniMapRef.current = null;
+        try {
+          miniMapRef.current.remove();
+          miniMapRef.current = null;
+        } catch (error) {
+          console.error('Error en cleanup del mapa:', error);
+        }
       }
     };
-  }, [miniMapVisible, miniMapMinimized, currentLocation, nearbyMeters]);
+  }, [miniMapVisible, miniMapMinimized, showMetersList, currentLocation, nearbyMeters]);
 
-  // Abrir mini-mapa
-  const openMiniMap = () => {
-    setMiniMapVisible(true);
-    if (!currentLocation) {
-      getCurrentLocation();
+  // Alternar visibilidad del mini-mapa
+  const toggleMiniMap = () => {
+    if (!miniMapVisible) {
+      setMiniMapVisible(true);
+      setShowMetersList(false);
+      if (!currentLocation) {
+        getCurrentLocation();
+      }
+    } else {
+      setMiniMapVisible(false);
+      setMiniMapMinimized(false);
+      setShowMetersList(false);
     }
   };
 
-  // Navegar a la sección de geolocalización
-  const goToGeolocation = () => {
-    window.location.href = 'https://localhost:3000/administrador/geolocation';
+  // Ir a vista completa de geolocalización
+  const handleGoToFullGeolocation = () => {
+    navigate(`${roleBasePath}/geolocation`);
   };
 
-  return (
+  // Alternar entre mapa y lista
+  const toggleView = () => {
+    setShowMetersList(!showMetersList);
+  };
+
+  // Montar componente
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  if (!mounted) return null;
+
+  return createPortal(
     <>
-      {/* BURBUJA DEL MINI-MAPA */}
+      {/* Botón flotante FAB */}
+      {!miniMapVisible && (
+        <button className="mini-map-fab" onClick={toggleMiniMap}>
+          <div className="mini-map-fab-pulse" />
+          <MapPin className="w-8 h-8" />
+        </button>
+      )}
+
+      {/* Burbuja del mini-mapa */}
       <div className={`mini-map-bubble ${miniMapVisible ? 'visible' : ''} ${miniMapMinimized ? 'minimized' : ''}`}>
-        <div className="mini-map-header">
+        {/* Header */}
+        <div className="mini-map-header" onClick={() => setMiniMapMinimized(!miniMapMinimized)}>
           <div className="mini-map-title">
             <MapPin className="w-5 h-5" />
-            <span>Tu Ubicación y Medidores</span>
+            <span>Medidores Cercanos</span>
           </div>
           <div className="mini-map-actions">
             <button 
-              className="mini-map-btn"
-              onClick={() => setMiniMapMinimized(!miniMapMinimized)}
-              title={miniMapMinimized ? "Expandir" : "Minimizar"}
+              className="mini-map-btn" 
+              onClick={(e) => { e.stopPropagation(); toggleView(); }}
+              title={showMetersList ? "Ver Mapa" : "Ver Lista"}
             >
-              {miniMapMinimized ? '▲' : '▼'}
+              {showMetersList ? <MapPin className="w-4 h-4" /> : <User className="w-4 h-4" />}
             </button>
             <button 
-              className="mini-map-btn"
-              onClick={() => {
-                setMiniMapVisible(false);
-                setMiniMapMinimized(false);
-              }}
-              title="Cerrar"
+              className="mini-map-btn" 
+              onClick={(e) => { e.stopPropagation(); setMiniMapVisible(false); }}
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
+        {/* Body */}
         {!miniMapMinimized && (
           <div className="mini-map-body">
             {loadingLocation ? (
               <div className="mini-map-loading">
-                <Loader className="w-12 h-12 text-blue-500 animate-spin" />
-                <p className="text-sm text-gray-600 mt-3">Obteniendo tu ubicación...</p>
+                <Loader className="w-12 h-12 text-blue-500 animate-spin mb-3" />
+                <p className="text-sm text-gray-600">Obteniendo tu ubicación...</p>
               </div>
-            ) : currentLocation ? (
+            ) : !currentLocation ? (
+              <div className="mini-map-empty">
+                <Navigation className="w-16 h-16 text-gray-300 mb-3" />
+                <p className="text-sm text-gray-600 mb-3">No se pudo obtener tu ubicación</p>
+                <button className="btn-retry" onClick={getCurrentLocation}>
+                  <Navigation className="w-4 h-4 mr-2" />
+                  Reintentar
+                </button>
+              </div>
+            ) : (
               <>
-                <div ref={miniMapContainerRef} className="mini-map-container"></div>
+                {/* Vista de Mapa */}
+                {!showMetersList && (
+                  <div ref={miniMapContainerRef} className="mini-map-container" />
+                )}
 
+                {/* Vista de Lista de Medidores */}
+                {showMetersList && (
+                  <div className="meters-list-container">
+                    <div className="meters-list-header">
+                      <h3 className="meters-list-title">
+                        <MapPinned className="w-4 h-4" />
+                        {nearbyMeters.length} Medidores Cercanos
+                      </h3>
+                    </div>
+                    
+                    <div className="meters-list-scroll">
+                      {nearbyMeters.length === 0 ? (
+                        <div className="meters-list-empty">
+                          <MapPin className="w-12 h-12 text-gray-300" />
+                          <p className="text-sm text-gray-500">
+                            No hay medidores en un radio de 1km
+                          </p>
+                        </div>
+                      ) : (
+                        nearbyMeters.map((meter) => (
+                          <div key={meter.id_medidor} className="meter-list-item">
+                            <div className="meter-item-icon">
+                              {meter.activo ? '💧' : '🚫'}
+                            </div>
+                            <div className="meter-item-info">
+                              <div className="meter-item-number">
+                                {meter.num_medidor}
+                              </div>
+                              <div className="meter-item-owner">
+                                <User className="w-3 h-3" />
+                                {meter.usuario_afiliado?.nombre_afiliado || 'Sin propietario'}
+                              </div>
+                              {meter.usuario_afiliado?.cod_usuario_afi && (
+                                <div className="meter-item-code">
+                                  Código: {meter.usuario_afiliado.cod_usuario_afi}
+                                </div>
+                              )}
+                              <div className="meter-item-distance">
+                                📍 {(meter.distance * 1000).toFixed(0)}m de distancia
+                              </div>
+                            </div>
+                            <div className={`meter-item-status ${meter.activo ? 'active' : 'inactive'}`}>
+                              {meter.activo ? 'Activo' : 'Inactivo'}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Info y botón */}
                 <div className="mini-map-info">
                   <div className="mini-map-stats">
                     <div className="mini-stat">
-                      <MapPin className="w-4 h-4 text-blue-600" />
-                      <span className="text-xs text-gray-600">
-                        {currentLocation.lat.toFixed(5)}, {currentLocation.lng.toFixed(5)}
+                      <MapPin className="w-4 h-4 text-blue-500" />
+                      <span className="text-sm text-gray-600">
+                        <strong>{nearbyMeters.length}</strong> cercanos
                       </span>
                     </div>
                     <div className="mini-stat">
                       <Navigation className="w-4 h-4 text-green-600" />
-                      <span className="text-xs text-gray-600">
-                        {nearbyMeters.length} medidores cercanos
+                      <span className="text-sm text-gray-600">
+                        Radio <strong>1km</strong>
                       </span>
                     </div>
                   </div>
 
-                  <div className="mini-map-legend">
-                    <div className="legend-item-mini">
-                      <span className="legend-marker current">📍</span>
-                      <span className="text-xs">Tu ubicación</span>
-                    </div>
-                    <div className="legend-item-mini">
-                      <span className="legend-marker active">💧</span>
-                      <span className="text-xs">Medidor activo</span>
-                    </div>
-                    <div className="legend-item-mini">
-                      <span className="legend-marker inactive">💧</span>
-                      <span className="text-xs">Medidor inactivo</span>
-                    </div>
-                  </div>
-
-                  <button className="mini-map-go-btn" onClick={goToGeolocation}>
+                  <button className="mini-map-go-btn" onClick={handleGoToFullGeolocation}>
                     <Maximize2 className="w-4 h-4" />
                     Ir a Geolocalización Completa
                   </button>
                 </div>
               </>
-            ) : (
-              <div className="mini-map-empty">
-                <MapPin className="w-16 h-16 text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-600">No se pudo obtener tu ubicación</p>
-                <button 
-                  className="btn-retry mt-3"
-                  onClick={getCurrentLocation}
-                >
-                  <Navigation className="w-4 h-4 mr-2" />
-                  Reintentar
-                </button>
-              </div>
             )}
           </div>
         )}
       </div>
-
-      {/* BOTÓN FLOTANTE (FAB) */}
-      {!miniMapVisible && (
-        <button 
-          className="mini-map-fab"
-          onClick={openMiniMap}
-          title="Ver mi ubicación y medidores cercanos"
-        >
-          <MapPin className="w-6 h-6" />
-          <span className="mini-map-fab-pulse"></span>
-        </button>
-      )}
-    </>
+    </>,
+    document.body
   );
 };
 

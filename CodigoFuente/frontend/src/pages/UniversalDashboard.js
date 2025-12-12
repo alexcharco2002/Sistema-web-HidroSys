@@ -34,6 +34,8 @@ import ReadingsSection from '../components/ReadingsSection';
 import FinesSection from '../components/FinesSection';
 import FinesAffiliatesSection from '../components/FinesAffiliatesSection';  
 
+import MiniMapaBurbuja from '../components/MiniMapaBurbuja'; // ✅ AGREGAR AQUÍ
+
 // Iconos
 import { 
   Activity, 
@@ -522,6 +524,7 @@ const toggleSidebar = () => {
   // RENDER PRINCIPAL
   // ============================================================================
   return (
+    <>
     <div className="dashboard">
 
       {/* 🔥 BOTÓN HAMBURGUESA MÓVIL */}
@@ -747,6 +750,8 @@ const toggleSidebar = () => {
       )}
 
     </div>
+    <MiniMapaBurbuja />
+    </>
   );
 
 };

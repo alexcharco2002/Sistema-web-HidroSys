@@ -19,69 +19,28 @@ class EstadoMulta(str, Enum):
 # SCHEMAS AUXILIARES
 # ============================================================================
 
-class UsuarioSistemaInfo(BaseModel):
-    """Info básica del usuario del sistema"""
-    id_usuario_sistema: int
-    nombres: str
-    apellidos: str
-    cedula: Optional[str] = None
-    email: Optional[str] = None
-    telefono: Optional[str] = None
+class SectorInfo(BaseModel):
+    """Info básica del sector"""
+    id_sector: int
+    nombre_sector: str
     
     model_config = ConfigDict(from_attributes=True)
 
 
 class UsuarioAfiliadoInfo(BaseModel):
-    """Info del usuario afiliado con datos del usuario del sistema"""
-    id_usuario_afi: int
-    cod_usuario_afi: int  # ⭐ Código del afiliado
-    fecha_afiliacion: Optional[date] = None
+    """Info simplificada del afiliado para respuestas"""
+    cod_usuario_afi: int
+    nombre_completo: str
+    cedula: str
     id_sector: Optional[int] = None
-    activo: Optional[bool] = None
+    nombre_sector: Optional[str] = None
     
-    # Relación con UsuarioSistema
-    usuario: Optional[UsuarioSistemaInfo] = Field(None, alias="usuario_sistema")
-    
-    model_config = ConfigDict(
-        from_attributes=True,
-        populate_by_name=True
-    )
-    
-    # ⭐ Campos calculados para facilitar acceso en frontend
-    @computed_field
-    @property
-    def nombres(self) -> Optional[str]:
-        """Retorna nombres del usuario sistema"""
-        return self.usuario.nombres if self.usuario else None
-    
-    @computed_field
-    @property
-    def apellidos(self) -> Optional[str]:
-        """Retorna apellidos del usuario sistema"""
-        return self.usuario.apellidos if self.usuario else None
-    
-    @computed_field
-    @property
-    def cedula(self) -> Optional[str]:
-        """Retorna cédula del usuario sistema"""
-        return self.usuario.cedula if self.usuario else None
-    
-    @computed_field
-    @property
-    def nombre_completo(self) -> Optional[str]:
-        """Retorna nombre completo del afiliado"""
-        if self.usuario:
-            return f"{self.usuario.nombres} {self.usuario.apellidos}".strip()
-        return None
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TipoMultaInfo(BaseModel):
-    """Info del tipo de multa"""
-    id_tipo_multa: int
+    """Info del tipo de multa - Solo campos esenciales"""
     nombre_multa: str
-    monto: Decimal
-    descripcion: Optional[str] = None
-    es_vigente: Optional[bool] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -139,19 +98,18 @@ class MultaAfiliadoResponse(MultaAfiliadoBase):
 
 
 class MultaAfiliadoCompleto(BaseModel):
-    """Schema completo con relaciones anidadas"""
+    """Schema completo con relaciones anidadas - OPTIMIZADO"""
     id_multa_afi: int
-    id_usuario_afi: int
-    id_tipo_multa: int
     monto: Decimal
     fecha_multa: date
     fecha_pago: Optional[date] = None
     observaciones: Optional[str] = None
-    activo: bool
     estado: str
     
-    # Relaciones anidadas
-    usuario_afi: Optional[UsuarioAfiliadoInfo] = Field(None, alias="usuario")
+    # Información del afiliado (simplificada)
+    afiliado: Optional[UsuarioAfiliadoInfo] = None
+    
+    # Información del tipo de multa (simplificada)
     tipo_multa: Optional[TipoMultaInfo] = None
     
     model_config = ConfigDict(

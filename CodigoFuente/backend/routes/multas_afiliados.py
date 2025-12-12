@@ -27,6 +27,7 @@ from security.jwt import verify_token
 
 router = APIRouter(prefix="/multas/afiliados", tags=["multas-afiliados"])
 
+
 def get_db():
     db = SessionLocal()
     try:
@@ -109,9 +110,10 @@ def listar_multas_afiliados(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "multas", "lectura")
     
-    # ⭐ CARGAR RELACIONES ANIDADAS CORRECTAMENTE
+    # ⭐ Cargar relaciones con joinedload
     query = db.query(MultaAfiliado).options(
-        joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.usuario_sistema),  # ⭐ Aquí
+        joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.usuario_sistema),
+        joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.sector),  # ⭐ Cargar sector
         joinedload(MultaAfiliado.tipo_multa)
     )
     
@@ -131,10 +133,41 @@ def listar_multas_afiliados(
         query = query.filter(MultaAfiliado.fecha_multa <= fecha_hasta)
     
     query = query.order_by(MultaAfiliado.fecha_multa.desc())
-    
     multas = query.offset(skip).limit(limit).all()
     
-    return multas
+    # ⭐ Transformar a estructura optimizada
+    resultado = []
+    for multa in multas:
+        afiliado_info = None
+        if multa.usuario and multa.usuario.usuario_sistema:
+            us = multa.usuario.usuario_sistema
+            afiliado_info = {
+                "cod_usuario_afi": multa.usuario.cod_usuario_afi,
+                "nombre_completo": f"{us.nombres} {us.apellidos}".strip(),
+                "cedula": us.cedula or "N/A",
+                "id_sector": multa.usuario.id_sector,
+                "nombre_sector": multa.usuario.sector.nombre_sector if multa.usuario.sector else "N/A"
+            }
+        
+        tipo_multa_info = None
+        if multa.tipo_multa:
+            tipo_multa_info = {
+                "nombre_multa": multa.tipo_multa.nombre_multa
+            }
+        
+        resultado.append({
+            "id_multa_afi": multa.id_multa_afi,
+            "monto": multa.monto,
+            "fecha_multa": multa.fecha_multa,
+            "fecha_pago": multa.fecha_pago,
+            "observaciones": multa.observaciones,
+            "estado": multa.estado,
+            "afiliado": afiliado_info,
+            "tipo_multa": tipo_multa_info
+        })
+    
+    return resultado
+
 # ==========================
 # ESTADÍSTICAS
 # ==========================

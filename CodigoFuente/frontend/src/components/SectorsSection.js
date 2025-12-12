@@ -329,6 +329,7 @@ useEffect(() => {
   }
 
   return (
+    <>
     <div className="users-section">
       <div className="section-header">
         <div className="section-title">
@@ -608,8 +609,10 @@ useEffect(() => {
           </div>
         </div>
       )}
-       <MiniMapaBurbuja />
     </div>
+     {/* ✅ MOVER FUERA - Después del cierre de users-section */}
+    <MiniMapaBurbuja />
+  </>
   );
 };
 

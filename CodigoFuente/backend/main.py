@@ -15,6 +15,9 @@ from routes import servicios
 from routes import lecturas
 from routes import multas
 from routes import multas_afiliados
+from routes.vulnerables import sqli_usuarios
+from routes.test_sqli import router as sqli_router
+
 import os
 
 app = FastAPI(
@@ -58,6 +61,7 @@ app.include_router(servicios.router)
 app.include_router(lecturas.router)
 app.include_router(multas.router)
 app.include_router(multas_afiliados.router)
+app.include_router(sqli_router, prefix="/test")
 
 # Health check general
 @app.get("/health")

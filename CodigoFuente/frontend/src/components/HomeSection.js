@@ -5,9 +5,6 @@ import { useNavigate } from 'react-router-dom';
 import './HomeSection.css';
 import authService from '../services/authServices';
 
-import MiniMapaBurbuja from './MiniMapaBurbuja';
-
-
 
 import { 
   Users, UserPlus, Shield, Settings, Bell, 
@@ -498,7 +495,7 @@ const HomeSection = ({ user, stats, dataLoading }) => {
           </div>
         </div>
       )}
-       <MiniMapaBurbuja />
+      
 
     </div>
   );

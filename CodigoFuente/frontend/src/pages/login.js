@@ -144,9 +144,9 @@ const Login = () => {
             <Droplets className="logo-icon" />
           </div>
           <h1 className="system-title">
-            JAAP Sanjapamba
+            TecniCobro
           </h1>
-          <p className="system-subtitle">Sistema de Facturación</p>
+          <p className="system-subtitle">JAAP Sanjapamba - Sistema de Facturación</p>
         </div>
 
         {/* Formulario de login */}

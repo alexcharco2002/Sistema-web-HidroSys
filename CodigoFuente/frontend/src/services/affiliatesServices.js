@@ -8,12 +8,13 @@ import authService from './authServices';
 const API_CONFIG = {
   baseURL: 'https://localhost:8000',
   endpoints: {
-    affiliates: '/affiliates',
-    availableUsers: '/affiliates/available/users',
-    toggleStatus: (id) => `/affiliates/${id}/toggle-status`,
-    stats: '/affiliates/stats/count'
+    affiliates: '/affiliates/',                  // ✅ lleva /
+    availableUsers: '/affiliates/available/users', // ❌ NO lleva /
+    toggleStatus: (id) => `/affiliates/${id}/toggle-status`, // ❌ NO lleva /
+    stats: '/affiliates/stats/count'              // ❌ NO lleva /
   }
 };
+
 
 class AffiliatesService {
   constructor() {

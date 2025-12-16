@@ -20,6 +20,7 @@ class MultaAfiliado(Base):
     observaciones = Column(Text, nullable=True)
     activo = Column(Boolean, default=True, nullable=False)
     estado = Column(String(20), default='pendiente', nullable=False, index=True)
+    facturado = Column(Boolean, default=False, nullable=False, index=True)
     
     # ⭐ Relaciones ORM - IGUAL QUE EN MEDIDORES
     tipo_multa = relationship(

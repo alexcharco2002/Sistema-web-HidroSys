@@ -8,6 +8,7 @@ import authService from './authServices';
 const API_CONFIG = {
   baseURL: 'https://localhost:8000',
   endpoints: {
+    availableAffiliates: '/multas/afiliados/available',
     multas: '/multas/afiliados',
     stats: '/multas/afiliados/stats',
     pagar: (id) => `/multas/afiliados/${id}/pagar`,
@@ -31,7 +32,7 @@ class FinesAffiliatesServices {
         'Accept': 'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 10000,
+      timeout: 30000,
     };
 
     const finalOptions = {
@@ -97,6 +98,26 @@ class FinesAffiliatesServices {
       throw error;
     }
   }
+  async getAvailableAffiliates() {
+    try {
+      const data = await this.makeRequest(
+        API_CONFIG.endpoints.availableAffiliates
+      );
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('❌ Error cargando afiliados para multas:', error);
+      return {
+        success: false,
+        data: [],
+      };
+    }
+  }
+
+
 
   /**
    * Obtener lista de multas con filtros opcionales

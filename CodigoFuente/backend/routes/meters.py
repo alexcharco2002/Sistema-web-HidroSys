@@ -322,33 +322,54 @@ def crear_medidor(
     payload: dict = Depends(verify_token)
 ):
     """
-    Crea un nuevo medidor con validación de coordenadas geográficas
+    Crea un nuevo medidor con validación de coordenadas geográficas y altitud
     Requiere permiso: medidores.crear o medidores.crud
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "medidores", "crear")
     
     # ========================================================================
-    # VALIDACIÓN GEOGRÁFICA DE COORDENADAS
+    # VALIDACIÓN GEOGRÁFICA DE COORDENADAS (INCLUYE ALTITUD)
     # ========================================================================
-    if medidor.latitud is not None and medidor.longitud is not None:
+    if any([
+        medidor.latitud is not None,
+        medidor.longitud is not None,
+        medidor.altitud is not None
+    ]):
+        es_valida_formato, mensaje_formato = GeoUtils.validar_coordenadas_formato(
+            medidor.latitud,
+            medidor.longitud,
+            medidor.altitud
+        )
+        if not es_valida_formato:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Formato de coordenadas inválido",
+                    "mensaje": mensaje_formato
+                }
+            )
+
         es_valida, nombre_limite, mensaje = GeoUtils.validar_coordenadas_contra_limite(
             db,
             medidor.latitud,
-            medidor.longitud
+            medidor.longitud,
+            medidor.altitud
         )
-        
+
         if not es_valida:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=400,
                 detail={
                     "error": "Coordenadas fuera del límite geográfico permitido",
                     "limite": nombre_limite,
-                    "latitud": float(medidor.latitud),
-                    "longitud": float(medidor.longitud),
+                    "latitud": float(medidor.latitud) if medidor.latitud else None,
+                    "longitud": float(medidor.longitud) if medidor.longitud else None,
+                    "altitud": float(medidor.altitud) if medidor.altitud else None,
                     "mensaje": mensaje
                 }
             )
+
     # ========================================================================
     
     # Verificar que no exista el número de medidor
@@ -435,7 +456,6 @@ def crear_medidor(
             detail=f"Error al crear el medidor: {str(e)}"
         )
 
-
 @router.put("/{id_medidor}", response_model=MedidorCompleto)
 def actualizar_medidor(
     id_medidor: int,
@@ -444,12 +464,13 @@ def actualizar_medidor(
     payload: dict = Depends(verify_token)
 ):
     """
-    Actualiza un medidor con validación de coordenadas geográficas
+    Actualiza un medidor con validación de coordenadas geográficas y altitud
     Requiere permiso: medidores.actualizar o medidores.crud
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "medidores", "actualizar")
     
+    # PRIMERO: Buscar el medidor en la base de datos
     medidor = db.query(Medidor).options(
         joinedload(Medidor.sector),
         joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
@@ -462,7 +483,7 @@ def actualizar_medidor(
         )
     
     # ========================================================================
-    # VALIDACIÓN GEOGRÁFICA DE COORDENADAS
+    # VALIDACIÓN GEOGRÁFICA DE COORDENADAS (INCLUYE ALTITUD)
     # ========================================================================
     datos_actualizacion = medidor_update.dict(exclude_unset=True)
     
@@ -477,26 +498,52 @@ def actualizar_medidor(
         if 'longitud' in datos_actualizacion
         else medidor.longitud
     )
+    altitud_final = (
+        datos_actualizacion.get('altitud')
+        if 'altitud' in datos_actualizacion
+        else medidor.altitud
+    )
     
-    # Validar coordenadas si existen
-    if latitud_final is not None and longitud_final is not None:
+    # Validar formato de coordenadas si hay algún cambio
+    if any([
+        latitud_final is not None,
+        longitud_final is not None,
+        altitud_final is not None
+    ]):
+        es_valida_formato, mensaje_formato = GeoUtils.validar_coordenadas_formato(
+            latitud_final,
+            longitud_final,
+            altitud_final
+        )
+        if not es_valida_formato:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Formato de coordenadas inválido",
+                    "mensaje": mensaje_formato
+                }
+            )
+
         es_valida, nombre_limite, mensaje = GeoUtils.validar_coordenadas_contra_limite(
             db,
             latitud_final,
-            longitud_final
+            longitud_final,
+            altitud_final
         )
-        
+
         if not es_valida:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=400,
                 detail={
                     "error": "Coordenadas fuera del límite geográfico permitido",
                     "limite": nombre_limite,
-                    "latitud": float(latitud_final),
-                    "longitud": float(longitud_final),
+                    "latitud": float(latitud_final) if latitud_final else None,
+                    "longitud": float(longitud_final) if longitud_final else None,
+                    "altitud": float(altitud_final) if altitud_final else None,
                     "mensaje": mensaje
                 }
             )
+
     # ========================================================================
     
     # Validar número de medidor único
@@ -563,6 +610,7 @@ def actualizar_medidor(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al actualizar el medidor"
         )
+
 
 
 @router.delete("/{id_medidor}", status_code=status.HTTP_200_OK)

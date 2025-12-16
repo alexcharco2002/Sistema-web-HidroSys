@@ -2,13 +2,12 @@
  * Servicio de Autenticación con Sistema de Roles y Permisos
  * Maneja login, logout, verificación de sesión
  * services/authServices.js
- * ✅ Optimizado con fetchInterceptor global
  */
 
 import axios from "axios";
 
 // ========================================
-// CONFIGURACIÓN DE AXIOS (solo para peticiones específicas con axios)
+// CONFIGURACIÓN DE AXIOS 
 // ========================================
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL,

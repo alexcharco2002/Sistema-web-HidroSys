@@ -1,10 +1,11 @@
 # schemas/tarifa.py
 
-from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Optional
 from datetime import datetime
 from decimal import Decimal
+from typing import Optional, List
 import re
+from pydantic import BaseModel, Field, field_validator, model_validator
+
 
 class TarifaBase(BaseModel):
     """Schema base para Tarifa"""
@@ -12,18 +13,12 @@ class TarifaBase(BaseModel):
     detalle: Optional[str] = Field(None, max_length=500)
     precio_por_m3: Decimal = Field(..., ge=0)
     limite_min_m3: Decimal = Field(..., ge=0)
-    limite_max_m3: Decimal = Field(..., ge=0)  # ⬅ obligatorio
+    limite_max_m3: Decimal = Field(..., ge=0)  
     tipo_tarifa: str = Field(..., min_length=2, max_length=50)
 
-    @model_validator(mode='before')
-    def validar_limites_before(self):
-        if self.limite_max_m3 <= self.limite_min_m3:
-            raise ValueError(
-                f'El límite máximo ({self.limite_max_m3} m³) debe ser mayor que el límite mínimo ({self.limite_min_m3} m³)'
-            )
-        return self
-
-
+    # ---------------------------
+    # Validadores de campos
+    # ---------------------------
     @field_validator('nombre')
     @classmethod
     def validar_nombre(cls, v: str) -> str:
@@ -55,23 +50,21 @@ class TarifaBase(BaseModel):
             return None
         return v.strip()
 
-    @field_validator('precio_por_m3', 'limite_min_m3', 'limite_max_m3')
-    @classmethod
-    def validar_valores_numericos(cls, v: Optional[Decimal]) -> Optional[Decimal]:
-        if v is not None and v < 0:
-            raise ValueError('Los valores numéricos no pueden ser negativos')
-        return v
-
+    # ---------------------------
+    # Validador de límites
+    # ---------------------------
     @model_validator(mode='after')
-    def validar_limites_after(self):
-        if self.limite_max_m3 is not None:
-            if self.limite_max_m3 <= self.limite_min_m3:
-                raise ValueError(
-                    f'El límite máximo ({self.limite_max_m3} m³) debe ser mayor que el límite mínimo ({self.limite_min_m3} m³)'
-                )
+    def validar_limites(cls, self):
+        if self.limite_max_m3 <= self.limite_min_m3:
+            raise ValueError(
+                f'El límite máximo ({self.limite_max_m3} m³) debe ser mayor que el límite mínimo ({self.limite_min_m3} m³)'
+            )
         return self
 
 
+# ===========================
+# Schemas de creación y actualización
+# ===========================
 class TarifaCreate(TarifaBase):
     """Schema para crear una nueva tarifa"""
     vigencia_desde: Optional[datetime] = Field(None, description="Fecha desde la cual la tarifa es vigente")
@@ -79,13 +72,16 @@ class TarifaCreate(TarifaBase):
 
 class TarifaUpdate(TarifaBase):
     """
-    Schema para crear una NUEVA VERSIÓN de la tarifa
+    Schema para crear una NUEVA VERSIÓN de la tarifa.
     NO actualiza la existente, crea una nueva y desactiva la anterior
     """
     vigencia_desde: Optional[datetime] = Field(None, description="Fecha desde la cual la nueva versión es vigente")
     motivo_cambio: Optional[str] = Field(None, max_length=500, description="Motivo del cambio de versión")
 
 
+# ===========================
+# Schemas de respuesta
+# ===========================
 class TarifaResponse(TarifaBase):
     """Schema para la respuesta de tarifa"""
     id_tarifa: int
@@ -105,7 +101,7 @@ class TarifaHistorialResponse(BaseModel):
     nombre: str
     precio_por_m3: Decimal
     limite_min_m3: Decimal
-    limite_max_m3: Decimal   # ⬅ obligatorio, no opcional
+    limite_max_m3: Decimal
     tipo_tarifa: str
     vigencia_desde: datetime
     vigencia_hasta: Optional[datetime]
@@ -116,11 +112,13 @@ class TarifaHistorialResponse(BaseModel):
         from_attributes = True
 
 
-
+# ===========================
+# Schema de estadísticas
+# ===========================
 class TarifaStats(BaseModel):
     """Schema para estadísticas de tarifas"""
     total_versiones: int
     tarifas_vigentes: int
     tarifas_vencidas: int
     tipos_unicos: int
-    tipos_tarifa: list[str]
+    tipos_tarifa: List[str]

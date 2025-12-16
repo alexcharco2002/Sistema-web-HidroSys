@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './AffiliatesSection.css';
 import finesAffiliatesServices from '../services/finesAffiliatesServices';
-import affiliatesService from '../services/affiliatesServices';
+
 import fineService from '../services/fineServices';
 import authService from '../services/authServices';
 import {
@@ -108,19 +108,24 @@ const FinesAffiliatesSection = () => {
   // ============================================================
   const loadInitialData = async () => {
     try {
-      const affiliatesResult = await affiliatesService.getAffiliates({ activo: true });
+      const [affiliatesResult, tiposResult] = await Promise.all([
+        finesAffiliatesServices.getAvailableAffiliates(),
+        fineService.getTiposMulta({ activo: true, es_vigente: true }),
+      ]);
+
       if (affiliatesResult.success) {
         setAffiliates(affiliatesResult.data);
       }
 
-      const tiposResult = await fineService.getTiposMulta({ es_vigente: true, activo: true });
       if (tiposResult.success) {
         setTiposMulta(tiposResult.data);
       }
+
     } catch (error) {
-      console.error('Error cargando datos iniciales:', error);
+      console.error('❌ Error cargando datos iniciales:', error);
     }
   };
+
 
   const fetchMultas = useCallback(async () => {
     if (!permissions.canRead) {
@@ -259,12 +264,14 @@ const FinesAffiliatesSection = () => {
   // ============================================================
   
   const filteredAffiliates = affiliates.filter(aff => {
-    if (!affiliateSearchTerm) return true;
-    const searchLower = affiliateSearchTerm.toLowerCase();
-    const nombreCompleto = aff.usuario ? `${aff.usuario.nombres} ${aff.usuario.apellidos}`.toLowerCase() : '';
-    const cedula = aff.usuario?.cedula || '';
-    return nombreCompleto.includes(searchLower) || cedula.includes(searchLower);
-  });
+  if (!affiliateSearchTerm) return true;
+  const searchLower = affiliateSearchTerm.toLowerCase();
+  // Corregido: acceder directamente a las propiedades sin .usuario
+  const nombreCompleto = `${aff.nombres || ''} ${aff.apellidos || ''}`.toLowerCase();
+  const cedula = aff.cedula || '';
+  return nombreCompleto.includes(searchLower) || cedula.includes(searchLower);
+});
+
 
   const filteredMultas = multas
     .filter(multa => {
@@ -1034,9 +1041,9 @@ const FinesAffiliatesSection = () => {
                         required
                       >
                         <option value="">Seleccionar afiliado</option>
-                        {filteredAffiliates.map(aff => (
+                          {filteredAffiliates.map(aff => (
                           <option key={aff.id_usuario_afi} value={aff.id_usuario_afi}>
-                            {aff.usuario ? `${aff.usuario.nombres} ${aff.usuario.apellidos} - ${aff.usuario.cedula}` : `Afiliado ${aff.id_usuario_afi}`}
+                            {`${aff.nombres} ${aff.apellidos} - ${aff.cedula}`}
                           </option>
                         ))}
                       </select>

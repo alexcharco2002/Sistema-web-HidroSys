@@ -9,6 +9,7 @@ from decimal import Decimal
 from sqlalchemy.orm import joinedload
 
 # ⭐ IMPORTANTE: Importar TODOS los modelos que vas a usar en joinedload
+from models.meter import Medidor
 from models.multa_afiliado import MultaAfiliado
 from models.multa import TipoMulta
 from models.user import UsuarioSistema
@@ -24,6 +25,8 @@ from utils.notifications import registrar_notificacion
 from utils.audit_logger import registrar_auditoria
 from db.session import SessionLocal
 from security.jwt import verify_token
+
+from utils.facturacion import crear_detalle_factura_multa, obtener_o_crear_factura_activa # Para generar deatlle de factura multas 
 
 router = APIRouter(prefix="/multas/afiliados", tags=["multas-afiliados"])
 
@@ -86,6 +89,44 @@ def require_permission(user: UsuarioSistema, db: Session, module: str, action: s
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"No tienes permisos para {action or 'acceder a'} {module}"
         )
+
+@router.get("/available", response_model=List[dict])
+def listar_afiliados_para_multas(
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "multas", "lectura")
+
+    medidores = (
+        db.query(Medidor)
+        .filter(
+            Medidor.activo == True,
+            Medidor.usuario_afiliado.has(
+                UsuarioAfiliado.activo == True
+            )
+        )
+        .order_by(Medidor.num_medidor)
+        .all()
+    )
+
+    afiliados = []
+
+    for medidor in medidores:
+        afi = medidor.usuario_afiliado
+        usuario = afi.usuario_sistema  # ✅ relación correcta
+
+        afiliados.append({
+            "id_usuario_afi": afi.id_usuario_afi,
+            "cod_usuario_afi": afi.cod_usuario_afi,
+            "nombres": usuario.nombres,
+            "apellidos": usuario.apellidos,
+            "cedula": usuario.cedula,
+            "num_medidor": medidor.num_medidor,
+        })
+
+    return afiliados
+
 
 # ==========================
 # LISTAR MULTAS DE AFILIADOS
@@ -242,20 +283,19 @@ def crear_multa_afiliado(
 ):
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "multas", "crear")
-    
-    # Validar que el tipo de multa existe y está vigente
+
     tipo_multa = db.query(TipoMulta).filter(
         TipoMulta.id_tipo_multa == multa.id_tipo_multa,
         TipoMulta.es_vigente == True,
         TipoMulta.activo == True
     ).first()
-    
+
     if not tipo_multa:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Tipo de multa no encontrado o no vigente"
         )
-    
+
     nueva_multa = MultaAfiliado(
         id_usuario_afi=multa.id_usuario_afi,
         id_tipo_multa=multa.id_tipo_multa,
@@ -265,26 +305,43 @@ def crear_multa_afiliado(
         estado=multa.estado.value if multa.estado else "pendiente",
         activo=True
     )
-    
+
     try:
         db.add(nueva_multa)
+        db.flush()  # 🔥 NECESARIO para obtener el ID antes del commit
+
+        # ⚠️ SOLO si la multa queda pendiente se factura
+        if nueva_multa.estado == "pendiente":
+            factura_activa = obtener_o_crear_factura_activa(
+                db=db,
+                id_usuario_afi=nueva_multa.id_usuario_afi
+            )
+
+            crear_detalle_factura_multa(
+                db=db,
+                id_factura=factura_activa.id_factura,
+                multa=nueva_multa
+            )
+
         db.commit()
         db.refresh(nueva_multa)
-        
+
         registrar_auditoria(
             db=db,
             accion="CREATE",
             descripcion=f"Multa creada para usuario {multa.id_usuario_afi} - Tipo: {tipo_multa.nombre_multa}",
             id_usuario=current_user.id_usuario_sistema
         )
-        
+
         return nueva_multa
+
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear la multa: {str(e)}"
         )
+
 
 # ==========================
 # ACTUALIZAR MULTA

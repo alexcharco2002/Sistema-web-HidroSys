@@ -1,10 +1,18 @@
 # routes/limite_geografico.py
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
-from database import get_db
+
+import unicodedata
+import re
+
+from db.session import SessionLocal
+from security.jwt import verify_token
 from models.limite_geografico import LimiteGeografico
+from models.user import UsuarioSistema
+from models.role import RolAccion
 from schemas.limite_geografico import (
     LimiteGeograficoCreate,
     LimiteGeograficoUpdate,
@@ -19,14 +27,108 @@ router = APIRouter(
 )
 
 
+# ============================================================================
+# DEPENDENCIAS
+# ============================================================================
+
+def get_db():
+    """Dependencia para obtener la sesión de base de datos"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_current_user(payload: dict, db: Session) -> UsuarioSistema:
+    """Obtiene el usuario actual desde el payload del JWT"""
+    user = db.query(UsuarioSistema).filter(
+        UsuarioSistema.usuario == payload["sub"]
+    ).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario no encontrado"
+        )
+    
+    return user
+
+
+def check_permission(user: UsuarioSistema, db: Session, module: str, action: str = None) -> bool:
+    """
+    Verifica si el usuario tiene permiso para una acción.
+    """
+    module = module.lower().strip()
+    action = action.lower().strip() if action else None
+    
+    permisos = db.query(RolAccion).filter(
+        RolAccion.id_rol == user.id_rol,
+        RolAccion.activo == True
+    ).all()
+    
+    acciones_usuario = set()
+    
+    for permiso in permisos:
+        if not permiso.nombre_accion:
+            continue
+        
+        perm_module = permiso.nombre_accion.lower().strip()
+        perm_action = (permiso.tipo_accion or '').lower().strip()
+        
+        if perm_module != module:
+            continue
+        
+        if perm_action in ['crud', 'operaciones crud']:
+            return True
+        
+        acciones_usuario.add(perm_action)
+    
+    if action is None:
+        return bool(acciones_usuario)
+    
+    if action in ['leer', 'lectura']:
+        if any(a in acciones_usuario for a in ['lectura', 'leer', 'crear', 'actualizar', 'eliminar']):
+            return True
+    
+    return action in acciones_usuario
+
+
+def require_permission(user: UsuarioSistema, db: Session, module: str, action: str = None):
+    """Verifica permiso y lanza excepción si no lo tiene"""
+    if not check_permission(user, db, module, action):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"No tienes permisos para {action or 'acceder a'} {module}"
+        )
+
+def normalize_text(text: str) -> str:
+    """Normaliza texto para comparación"""
+    if not text:
+        return ""
+    text = text.lower().strip()
+    text = ''.join(
+        c for c in unicodedata.normalize('NFD', text)
+        if unicodedata.category(c) != 'Mn'
+    )
+    text = re.sub(r"\s+", " ", text)
+    return text
+# ============================================================================
+# ENDPOINTS
+# ============================================================================
+
 @router.get("/", response_model=List[LimiteGeograficoResponse])
 def listar_limites(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     activo: Optional[bool] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
 ):
     """Lista todos los límites geográficos con filtros opcionales"""
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "configuracion", "lectura")
+    
     query = db.query(LimiteGeografico)
     
     if activo is not None:
@@ -37,20 +139,31 @@ def listar_limites(
 
 
 @router.get("/activo", response_model=Optional[LimiteGeograficoResponse])
-def obtener_limite_activo(db: Session = Depends(get_db)):
+def obtener_limite_activo(
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
     """Obtiene el límite geográfico actualmente activo"""
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "configuracion", "lectura")
+    
     limite = db.query(LimiteGeografico).filter(
         LimiteGeografico.activo == True
     ).first()
+    
     return limite
 
 
 @router.get("/{limite_id}", response_model=LimiteGeograficoResponse)
 def obtener_limite(
     limite_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
 ):
     """Obtiene un límite geográfico por ID"""
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "configuracion", "lectura")
+    
     limite = db.query(LimiteGeografico).filter(
         LimiteGeografico.id == limite_id
     ).first()
@@ -60,21 +173,62 @@ def obtener_limite(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Límite geográfico no encontrado"
         )
+    
     return limite
 
 
 @router.post("/", response_model=LimiteGeograficoResponse, status_code=status.HTTP_201_CREATED)
 def crear_limite(
     limite_data: LimiteGeograficoCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
 ):
-    """Crea un nuevo límite geográfico"""
+    """
+    Crea un nuevo límite geográfico.
+    Si no hay límites activos, el nuevo se crea activo.
+    Si ya existe uno activo, el nuevo se crea inactivo.
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "configuracion", "crear")
+    
+    # Normalizar el nombre para verificar duplicados
+    nombre_normalizado = normalize_text(limite_data.nombre)
+    
+    # Verificar si ya existe un límite con nombre similar
+    limites_existentes = db.query(LimiteGeografico).all()
+    for limite in limites_existentes:
+        if normalize_text(limite.nombre) == nombre_normalizado:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ya existe un límite con un nombre similar a '{limite_data.nombre}'"
+            )
+    
     try:
-        nuevo_limite = LimiteGeografico(**limite_data.model_dump())
+        # Verificar si existe algún límite activo
+        limite_activo_existe = db.query(LimiteGeografico).filter(
+            LimiteGeografico.activo == True
+        ).first()
+        
+        # Crear el nuevo límite
+        datos_limite = limite_data.model_dump()
+        
+        # Limpiar espacios del nombre original (mantener capitalización)
+        datos_limite['nombre'] = limite_data.nombre.strip()
+        
+        # Si no hay límites activos, activar este automáticamente
+        if not limite_activo_existe:
+            datos_limite['activo'] = True
+        else:
+            # Si ya existe uno activo, crear este desactivado
+            datos_limite['activo'] = False
+        
+        nuevo_limite = LimiteGeografico(**datos_limite)
         db.add(nuevo_limite)
         db.commit()
         db.refresh(nuevo_limite)
+        
         return nuevo_limite
+        
     except IntegrityError:
         db.rollback()
         raise HTTPException(
@@ -87,9 +241,16 @@ def crear_limite(
 def actualizar_limite(
     limite_id: int,
     limite_data: LimiteGeograficoUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
 ):
-    """Actualiza un límite geográfico existente"""
+    """
+    Actualiza un límite geográfico existente.
+    Si se intenta activar, desactiva automáticamente los demás.
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "configuracion", "actualizar")
+    
     limite = db.query(LimiteGeografico).filter(
         LimiteGeografico.id == limite_id
     ).first()
@@ -99,30 +260,76 @@ def actualizar_limite(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Límite geográfico no encontrado"
         )
-
-    # Actualizar solo los campos proporcionados
+    
+    # Obtener los datos a actualizar
     datos_actualizacion = limite_data.model_dump(exclude_unset=True)
+    
+    # Verificar nombre duplicado si se está actualizando el nombre
+    if 'nombre' in datos_actualizacion:
+        nombre_nuevo = datos_actualizacion['nombre'].strip()
+        nombre_normalizado = normalize_text(nombre_nuevo)
+        
+        # Verificar contra todos los límites excepto el actual
+        limites_existentes = db.query(LimiteGeografico).filter(
+            LimiteGeografico.id != limite_id
+        ).all()
+        
+        for lim in limites_existentes:
+            if normalize_text(lim.nombre) == nombre_normalizado:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Ya existe un límite con un nombre similar a '{nombre_nuevo}'"
+                )
+        
+        # Actualizar con nombre limpio
+        datos_actualizacion['nombre'] = nombre_nuevo
+    
+    # Si se está intentando activar este límite
+    if datos_actualizacion.get('activo') == True:
+        # Desactivar todos los demás límites
+        db.query(LimiteGeografico).filter(
+            LimiteGeografico.id != limite_id
+        ).update({LimiteGeografico.activo: False})
+    
+    # Actualizar los campos del límite
     for campo, valor in datos_actualizacion.items():
         setattr(limite, campo, valor)
-
+    
     try:
         db.commit()
         db.refresh(limite)
         return limite
-    except IntegrityError:
+        
+    except IntegrityError as e:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Error al actualizar: nombre duplicado o datos inválidos"
-        )
-
+        # Identificar si es error de nombre duplicado
+        if 'nombre' in str(e.orig):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ya existe un límite con el nombre '{datos_actualizacion.get('nombre', '')}'"
+            )
+        # Error de altitudes
+        elif 'altitud' in str(e.orig):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La altitud mínima debe ser menor o igual a la altitud máxima"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Error al actualizar: datos inválidos"
+            )
 
 @router.delete("/{limite_id}", status_code=status.HTTP_204_NO_CONTENT)
 def eliminar_limite(
     limite_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
 ):
     """Elimina un límite geográfico"""
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "configuracion", "eliminar")
+    
     limite = db.query(LimiteGeografico).filter(
         LimiteGeografico.id == limite_id
     ).first()
@@ -132,7 +339,7 @@ def eliminar_limite(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Límite geográfico no encontrado"
         )
-
+    
     db.delete(limite)
     db.commit()
     return None
@@ -141,12 +348,16 @@ def eliminar_limite(
 @router.post("/{limite_id}/activar", response_model=LimiteGeograficoResponse)
 def activar_limite(
     limite_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
 ):
     """
     Activa un límite geográfico y desactiva todos los demás.
     Solo puede haber un límite activo a la vez.
     """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "configuracion", "actualizar")
+    
     # Desactivar todos los límites
     db.query(LimiteGeografico).update({LimiteGeografico.activo: False})
     
@@ -171,12 +382,16 @@ def activar_limite(
 @router.post("/validar-coordenadas", response_model=CoordenadaValidacionResponse)
 def validar_coordenadas(
     coordenada: CoordenadaValidacion,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
 ):
     """
     Valida si unas coordenadas están dentro del límite geográfico activo.
-    Si no hay límite activo, todas las coordenadas son válidas.
+    Incluye validación de altitud si se proporciona.
     """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "configuracion", "lectura")
+    
     # Obtener límite activo
     limite_activo = db.query(LimiteGeografico).filter(
         LimiteGeografico.activo == True
@@ -188,25 +403,36 @@ def validar_coordenadas(
             valida=True,
             latitud=coordenada.latitud,
             longitud=coordenada.longitud,
+            altitud=coordenada.altitud,
             limite_aplicado=None,
             mensaje="Coordenadas válidas (no hay límite geográfico configurado)"
         )
     
-    # Validar coordenadas contra el límite activo
+    # Validar coordenadas geográficas
     es_valida = limite_activo.contiene_coordenada(
         float(coordenada.latitud),
         float(coordenada.longitud)
     )
     
-    if es_valida:
-        mensaje = f"Coordenadas válidas dentro del límite '{limite_activo.nombre}'"
+    # Validar altitud si se proporciona
+    if es_valida and coordenada.altitud is not None:
+        es_valida = limite_activo.contiene_altitud(float(coordenada.altitud))
+        if not es_valida:
+            mensaje = f"Coordenadas fuera del rango de altitud del límite '{limite_activo.nombre}'"
+        else:
+            mensaje = f"Coordenadas válidas (incluida altitud) dentro del límite '{limite_activo.nombre}'"
     else:
-        mensaje = f"Coordenadas fuera del límite geográfico '{limite_activo.nombre}'"
+        mensaje = (
+            f"Coordenadas válidas dentro del límite '{limite_activo.nombre}'" 
+            if es_valida 
+            else f"Coordenadas fuera del límite geográfico '{limite_activo.nombre}'"
+        )
     
     return CoordenadaValidacionResponse(
         valida=es_valida,
         latitud=coordenada.latitud,
         longitud=coordenada.longitud,
+        altitud=coordenada.altitud,
         limite_aplicado=limite_activo.nombre,
         mensaje=mensaje
     )

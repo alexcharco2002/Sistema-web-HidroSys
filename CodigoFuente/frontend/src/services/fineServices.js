@@ -7,12 +7,15 @@ import authService from './authServices';
 const API_CONFIG = {
   baseURL: 'https://localhost:8000',
   endpoints: {
-    tiposMulta: '/multas/tipos',
+    tiposMulta: '/multas/tipos/', // ✅ CON /
     stats: '/multas/tipos/stats/count',
-    historial: (nombre) => `/multas/tipos/historial/${encodeURIComponent(nombre)}`,
-    toggleStatus: (id) => `/multas/tipos/${id}/toggle-status`,
+    historial: (nombre) =>
+      `/multas/tipos/historial/${encodeURIComponent(nombre)}`,
+    toggleStatus: (id) =>
+      `/multas/tipos/${id}/toggle-status`,
   },
 };
+
 
 class MultasService {
   constructor() {
@@ -30,7 +33,7 @@ class MultasService {
         Accept: 'application/json',
         Authorization: `Bearer ${authService.getToken()}`,
       },
-      timeout: 10000,
+      timeout: 30000,
     };
 
     const finalOptions = {

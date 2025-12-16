@@ -17,7 +17,8 @@ const API_CONFIG = {
     exportExcel: '/lecturas/export/excel',
     medidoresCompletos: '/lecturas/medidores/lista/completa',
     stats: '/lecturas/stats/count',
-    periodosDisponibles: '/lecturas/periodos/disponibles'  
+    periodosDisponibles: '/lecturas/periodos/disponibles'  ,
+     misLecturas: '/lecturas/mis-lecturas',
   }
 };
 
@@ -823,7 +824,57 @@ class ReadingsServices {
           };
       }
   }
-    
+  
+  /**
+ * 🆕 Obtener SOLO las lecturas del usuario autenticado (afiliado)
+ * Ahora con soporte para filtros opcionales
+ */
+  async getMisLecturas(filtros = {}) {
+    try {
+      const endpoint = API_CONFIG.endpoints.misLecturas;
+
+      // Construir query params si hay filtros
+      const params = new URLSearchParams();
+      
+      if (filtros.fecha_desde) {
+        params.append('fecha_desde', filtros.fecha_desde);
+      }
+      if (filtros.fecha_hasta) {
+        params.append('fecha_hasta', filtros.fecha_hasta);
+      }
+      if (filtros.tipo_lectura && filtros.tipo_lectura !== 'todas') {
+        params.append('tipo_lectura', filtros.tipo_lectura);
+      }
+      if (filtros.consumo_min) {
+        params.append('consumo_min', filtros.consumo_min);
+      }
+      if (filtros.consumo_max) {
+        params.append('consumo_max', filtros.consumo_max);
+      }
+      if (filtros.id_medidor) {
+        params.append('id_medidor', filtros.id_medidor);
+      }
+
+      const queryString = params.toString();
+      const url = queryString ? `${endpoint}?${queryString}` : endpoint;
+
+      const data = await this.makeRequest(url);
+
+      return {
+        success: true,
+        data
+      };
+
+    } catch (error) {
+      console.error('❌ Error obteniendo mis lecturas:', error);
+
+      return {
+        success: false,
+        message: error.message || 'Error al obtener tus lecturas'
+      };
+    }
+  }
+
 
 }
 

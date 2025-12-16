@@ -11,10 +11,7 @@ import rolesService from '../services/rolesServices';
 import authService from '../services/authServices'; // 🔑 Importar authService
 
 import {
-  ShieldCheck,
-  Plus,
-  Search,
-  Edit,
+  ShieldCheck, Plus, Search, Edit,
   Trash2,
   Eye,
   Save,
@@ -92,6 +89,8 @@ const RolesSection = () => {
     { value: 'Configuracion', label: 'Configuración' },
     { value: 'Notificaciones', label: 'Notificaciones' },
     { value: 'Notificaciones', label: 'Notificaciones' },
+    { value: 'Estadisticas', label: 'Estadísticas' },
+    { value: 'HistorialConsumo', label: 'HistorialConsumo' }
 
   ];
 

@@ -33,8 +33,9 @@ import ServiciosSection from '../components/ServiciosSection';
 import ReadingsSection from '../components/ReadingsSection';
 import FinesSection from '../components/FinesSection';
 import FinesAffiliatesSection from '../components/FinesAffiliatesSection';  
+import HistorialConsumos from '../components/HistorialConsumos';
 
-import MiniMapaBurbuja from '../components/MiniMapaBurbuja'; // ✅ AGREGAR AQUÍ
+import MiniMapaBurbuja from '../components/MiniMapaBurbuja'; 
 
 // Iconos
 import { 
@@ -68,7 +69,8 @@ const COMPONENT_MAP = {
   ServiciosSection,
   ReadingsSection,
   FinesSection,
-  FinesAffiliatesSection  
+  FinesAffiliatesSection ,
+  HistorialConsumos
 };
 
 // ============================================================================

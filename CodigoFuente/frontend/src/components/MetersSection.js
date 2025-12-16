@@ -529,8 +529,13 @@ const MetersSection = () => {
               <div className="user-card-header">
                 <div className="user-info">
                   <div className="user-avatar user-avatar-empty">
-                    <Gauge className="w-6 h-6" />
+                    <img
+                      src="/img/water-meter.png"
+                      alt="Medidor de agua"
+                      className="w-6 h-6"
+                    />
                   </div>
+
                   <div>
                     <h3 className="user-name">
                       {meter.num_medidor}
@@ -716,17 +721,26 @@ const MetersSection = () => {
               {/* MODAL DE VISTA */}
               {modalType === 'view' && selectedMeter && (
                 <div className="user-details">
-                  <div className="detail-group">
-                    <label>ID Medidor:</label>
-                    <p>{selectedMeter.id_medidor}</p>
-                  </div>
+                 
                   <div className="detail-group">
                     <label>Número de Medidor:</label>
                     <p>{selectedMeter.num_medidor}</p>
                   </div>
+                 <div className="detail-group">
+                    <label>Afiliado:</label>
+                    <p>
+                      {selectedMeter.usuario_afiliado ? (
+                        <>
+                          {selectedMeter.usuario_afiliado.nombre_afiliado}
+                        </>
+                      ) : (
+                        'No asignado'
+                      )}
+                    </p>
+                  </div>
                   {selectedMeter.id_usuario_afi && (
                     <div className="detail-group">
-                      <label>Afiliado Asignado:</label>
+                      <label>Código del afiliado:</label>
                       <p>Código: {selectedMeter.usuario_afiliado?.cod_usuario_afi || 'N/A'}</p>
                     </div>
                   )}

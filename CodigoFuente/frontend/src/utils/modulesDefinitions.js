@@ -1,11 +1,12 @@
 // src/utils/modulesDefinitions.js
 /**
- * Definiciones de módulos del sistema con soporte para rutas URL
+ * Definiciones de módulos SEGUN LOS PERMISOS DE ROLE-SECTION
+ * del sistema con soporte para rutas URL
  */
 import {
   BarChart3, Users, FileText, DollarSign, Gauge, UserCircle,
-  Calendar, Settings, Package, Clock, Bell, BookOpen, UserX,
-  TrendingUp, Database, Home, Briefcase, PieChart, Cog, AlertTriangle, MapPin, Layers, ShieldCheck, Handshake, UserCheck
+  Calendar, Settings, Package, Bell, BookOpen, UserX,
+  TrendingUp, Home, Briefcase, PieChart, Cog, AlertTriangle, MapPin, Layers, ShieldCheck, Handshake, UserCheck
 } from "lucide-react";
 
 // ============================================================================
@@ -235,7 +236,7 @@ export const MODULE_DEFINITIONS = {
     id: "fines_affiliates",
     path: "fines-affiliates",
     label: "MultasAfiliados",
-    icon: UserX,              // 🔧 Puedes cambiarlo si quieres otro
+    icon: UserX,              
     color: "orange",
     category: "FINANCIAL",
     order: 4,
@@ -299,6 +300,16 @@ export const MODULE_DEFINITIONS = {
     componentName: "ReportsSection",
     description: "Generación de reportes administrativos."
   },
+  historialconsumo: {
+    id: "historials",
+    path: "historials",
+    label: "Historial Consumo", 
+    icon: TrendingUp,
+    color: "blue",
+    category: "REPORTS_ANALYSIS",
+    order: 3,
+    componentName: "HistorialConsumos",
+  },
   estadisticas: {
     id: "statistics",
     path: "statistics",
@@ -306,22 +317,10 @@ export const MODULE_DEFINITIONS = {
     icon: TrendingUp,
     color: "fuchsia",
     category: "REPORTS_ANALYSIS",
-    order: 2,
+    order: 9,
     componentName: "StatisticsSection",
     description: "Análisis visual de datos y rendimiento."
   },
-  auditoria: {
-    id: "audit",
-    path: "audit",
-    label: "Auditoría",
-    icon: Clock,
-    color: "slate",
-    category: "REPORTS_ANALYSIS",
-    order: 3,
-    componentName: "AuditSection",
-    description: "Registro de cambios y acciones del sistema."
-  },
-
   // ⚙️ SISTEMA
   configuracion: {
     id: "settings",
@@ -344,18 +343,8 @@ export const MODULE_DEFINITIONS = {
     order: 2,
     componentName: "NotificationsSection",
     description: "Gestión de alertas y mensajes del sistema."
-  },
-  base_datos: {
-    id: "database",
-    path: "database",
-    label: "Base de Datos",
-    icon: Database,
-    color: "zinc",
-    category: "SYSTEM",
-    order: 3,
-    componentName: "DatabaseSection",
-    description: "Mantenimiento y respaldo de la base de datos."
   }
+  
 };
 
 // ============================================================================

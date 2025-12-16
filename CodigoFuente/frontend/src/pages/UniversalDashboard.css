@@ -1002,7 +1002,7 @@
 }
 
 .btn-secondary:hover {
-  background: var(--primary-light); /* #3b82f6 */
+  background: var(--text-light); /* #3b82f6 */
   transform: translateY(-1px);
 }
 

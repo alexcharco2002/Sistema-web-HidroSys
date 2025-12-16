@@ -13,7 +13,7 @@ class Medidor(Base):
     num_medidor = Column(String(50), nullable=False)
     latitud = Column(Float(precision=53), nullable=True)  # equivale a double precision
     longitud = Column(Float(precision=53), nullable=True)
-    altitud = Column(Numeric(10, 2), nullable=True)
+    altitud = Column(Numeric(10, 2), nullable=True, default=3374)
     activo = Column(Boolean, default=True)
 
     # 🔗 Relaciones foráneas

@@ -1,5 +1,4 @@
 # routes/multas_afiliados.py
-
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
@@ -13,7 +12,7 @@ from models.meter import Medidor
 from models.multa_afiliado import MultaAfiliado
 from models.multa import TipoMulta
 from models.user import UsuarioSistema
-from models.affiliate import UsuarioAfiliado  # ⭐ IMPORTAR DESDE affiliate.py
+from models.affiliate import UsuarioAfiliado  
 from models.role import RolAccion
 
 from schemas.multa_afiliado import (
@@ -26,7 +25,6 @@ from utils.audit_logger import registrar_auditoria
 from db.session import SessionLocal
 from security.jwt import verify_token
 
-from utils.facturacion import crear_detalle_factura_multa, obtener_o_crear_factura_activa # Para generar deatlle de factura multas 
 
 router = APIRouter(prefix="/multas/afiliados", tags=["multas-afiliados"])
 
@@ -96,7 +94,7 @@ def listar_afiliados_para_multas(
     payload: dict = Depends(verify_token)
 ):
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "multas", "lectura")
+    require_permission(current_user, db, "multasafiliados", "lectura")
 
     medidores = (
         db.query(Medidor)
@@ -149,7 +147,7 @@ def listar_multas_afiliados(
     Requiere permiso: multas.lectura o multas.crud
     """
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "multas", "lectura")
+    require_permission(current_user, db, "multasafiliados", "lectura")
     
     # ⭐ Cargar relaciones con joinedload
     query = db.query(MultaAfiliado).options(
@@ -218,7 +216,7 @@ def obtener_estadisticas_multas(
     payload: dict = Depends(verify_token)
 ):
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "multas", "lectura")
+    require_permission(current_user, db, "multasafiliados", "lectura")
     
     total = db.query(MultaAfiliado).filter(MultaAfiliado.activo == True).count()
     pendientes = db.query(MultaAfiliado).filter(
@@ -258,7 +256,7 @@ def obtener_multa_afiliado(
     payload: dict = Depends(verify_token)
 ):
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "multas", "lectura")
+    require_permission(current_user, db, "multasafiliados", "lectura")
     
     multa = db.query(MultaAfiliado).filter(
         MultaAfiliado.id_multa_afi == id_multa_afi
@@ -282,7 +280,7 @@ def crear_multa_afiliado(
     payload: dict = Depends(verify_token)
 ):
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "multas", "crear")
+    require_permission(current_user, db, "multasafiliados", "crear")
 
     tipo_multa = db.query(TipoMulta).filter(
         TipoMulta.id_tipo_multa == multa.id_tipo_multa,
@@ -309,20 +307,6 @@ def crear_multa_afiliado(
     try:
         db.add(nueva_multa)
         db.flush()  # 🔥 NECESARIO para obtener el ID antes del commit
-
-        # ⚠️ SOLO si la multa queda pendiente se factura
-        if nueva_multa.estado == "pendiente":
-            factura_activa = obtener_o_crear_factura_activa(
-                db=db,
-                id_usuario_afi=nueva_multa.id_usuario_afi
-            )
-
-            crear_detalle_factura_multa(
-                db=db,
-                id_factura=factura_activa.id_factura,
-                multa=nueva_multa
-            )
-
         db.commit()
         db.refresh(nueva_multa)
 
@@ -354,7 +338,7 @@ def actualizar_multa_afiliado(
     payload: dict = Depends(verify_token)
 ):
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "multas", "actualizar")
+    require_permission(current_user, db, "multasafiliados", "actualizar")
     
     multa = db.query(MultaAfiliado).filter(
         MultaAfiliado.id_multa_afi == id_multa_afi
@@ -411,7 +395,7 @@ def registrar_pago_multa(
     payload: dict = Depends(verify_token)
 ):
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "multas", "actualizar")
+    require_permission(current_user, db, "multasafiliados", "actualizar")
     
     multa = db.query(MultaAfiliado).filter(
         MultaAfiliado.id_multa_afi == id_multa_afi
@@ -479,7 +463,7 @@ def anular_multa(
     payload: dict = Depends(verify_token)
 ):
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "multas", "eliminar")
+    require_permission(current_user, db, "multasafiliados", "eliminar")
     
     multa = db.query(MultaAfiliado).filter(
         MultaAfiliado.id_multa_afi == id_multa_afi

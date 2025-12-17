@@ -1,10 +1,12 @@
 # utils/facturacion.py
 
 import re
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from models.factura import Factura
 from models.detalle_factura import DetalleFactura
+from models.multa import TipoMulta
 from models.tarifa import Tarifa
 from models.lectura import Lectura
 from models.meter import Medidor
@@ -14,26 +16,6 @@ from decimal import Decimal
 from datetime import date
 from typing import Dict, Optional, Tuple, List
 
-def crear_detalle_factura_multa(
-    db: Session,
-    id_factura: int,
-    multa: MultaAfiliado
-):
-    """
-    Crea un detalle de factura para una multa
-    """
-
-    detalle = DetalleFactura(
-        id_factura=id_factura,
-        id_servicio=None,                     
-        id_multa_afiliados=multa.id_multa_afi,
-        subtotal_detalle=multa.monto,
-        descripcion=f"Multa: {multa.tipo_multa.nombre_multa}",
-        tipo_detalle="MULTA"
-    )
-
-    db.add(detalle)
-    return detalle
 
 
 def calcular_tarifa_cargo_fijo(
@@ -150,14 +132,19 @@ def calcular_tarifa_consumo(
 def generar_factura_desde_lectura(
     db: Session,
     lectura: Lectura,
+    id_tarifa_seleccionada: int,
+    tipo_descuento: str = 'ninguno',  # 🆕 NUEVO
+    valor_descuento: float = 0.0,  # 🆕 NUEVO
     aplicar_servicios: bool = True,
     aplicar_multas: bool = True
 ) -> Tuple[bool, str, Optional[Factura]]:
     """
-    Genera automáticamente una factura desde una lectura
+    Genera factura con LA TARIFA SELECCIONADA + exceso si aplica
     """
     try:
-        # 1-3. [Tu código existente hasta aquí]
+        # ============================================
+        # 1. VALIDACIONES BÁSICAS
+        # ============================================
         medidor = db.query(Medidor).filter(
             Medidor.id_medidor == lectura.id_medidor
         ).first()
@@ -168,6 +155,7 @@ def generar_factura_desde_lectura(
         id_usuario_afi = medidor.id_usuario_afi
         periodo = f"{lectura.fecha_lectura.year}-{str(lectura.fecha_lectura.month).zfill(2)}"
         
+        # Verificar factura duplicada
         factura_existente = db.query(Factura).filter(
             Factura.id_usuario_afi == id_usuario_afi,
             Factura.periodo == periodo
@@ -177,31 +165,129 @@ def generar_factura_desde_lectura(
             return False, f"Ya existe factura para el periodo {periodo}", None
         
         # ============================================
-        # 🆕 4. CALCULAR CON CARGO FIJO + EXCESO
+        # 2. OBTENER LA TARIFA SELECCIONADA
         # ============================================
-        tarifa_basica, tarifa_exceso, valor_consumo, valor_exceso, exceso_m3 = calcular_tarifa_cargo_fijo(
-            db,
-            lectura.consumo_m3,
-            fecha_referencia=lectura.fecha_lectura
+        tarifa = db.query(Tarifa).filter(
+            Tarifa.id_tarifa == id_tarifa_seleccionada,
+            Tarifa.activo == True
+        ).first()
+        
+        if not tarifa:
+            return False, "Tarifa no encontrada", None
+        
+        consumo_total = Decimal(str(lectura.consumo_m3))
+        
+        print(f"\n{'='*60}")
+        print(f"💰 CALCULANDO FACTURA")
+        print(f"{'='*60}")
+        print(f"📊 Consumo total: {consumo_total} m³")
+        print(f"📅 Periodo: {periodo}")
+        print(f"👤 Afiliado ID: {id_usuario_afi}")
+        print(f"🎯 Tarifa aplicada: {tarifa.nombre} (ID: {tarifa.id_tarifa})")
+        print(f"   Rango: {tarifa.limite_min_m3}-{tarifa.limite_max_m3} m³")
+        print(f"   Precio: ${tarifa.precio_por_m3}/m³")
+        
+        # ============================================
+        # 3. CALCULAR CONSUMO BÁSICO + EXCESO
+        # ============================================
+        limite_max = Decimal(str(tarifa.limite_max_m3)) if tarifa.limite_max_m3 else None
+        precio_base = Decimal(str(tarifa.precio_por_m3))
+        
+        # Inicializar variables
+        valor_consumo_basico = Decimal('0.00')
+        valor_exceso = Decimal('0.00')
+        exceso_m3 = Decimal('0.00')
+        consumo_basico_m3 = Decimal('0.00')
+        
+        if limite_max is None:
+            # Sin límite (tarifa abierta) - multiplicar todo
+            valor_consumo_basico = consumo_total * precio_base
+            consumo_basico_m3 = consumo_total
+            
+            print(f"\n💵 TARIFA SIN LÍMITE:")
+            print(f"   {consumo_total} m³ × ${precio_base}/m³ = ${valor_consumo_basico}")
+        
+        elif consumo_total <= limite_max:
+            # Consumo dentro del rango básico - PRECIO FIJO
+            valor_consumo_basico = precio_base  # ✅ NO MULTIPLICAR
+            consumo_basico_m3 = consumo_total
+            
+            print(f"\n💵 CONSUMO BÁSICO (0-{limite_max} m³):")
+            print(f"   Precio FIJO: ${precio_base}")
+            print(f"   Consumo: {consumo_total} m³ (dentro del rango)")
+            print(f"   ✅ Valor: ${valor_consumo_basico}")
+        
+        else:
+            # Consumo SUPERA el límite básico
+            valor_consumo_basico = precio_base  # ✅ FIJO hasta el límite
+            consumo_basico_m3 = limite_max
+            exceso_m3 = consumo_total - limite_max
+            
+            # Buscar tarifa de exceso
+            tarifa_exceso = db.query(Tarifa).filter(
+                Tarifa.tipo_tarifa == 'exceso',
+                Tarifa.activo == True,
+                Tarifa.es_vigente == True
+            ).first()
+            
+            if tarifa_exceso:
+                precio_exceso = Decimal(str(tarifa_exceso.precio_por_m3))
+                valor_exceso = exceso_m3 * precio_exceso  # ✅ AQUÍ SÍ MULTIPLICAR
+                
+                print(f"\n💵 CONSUMO BÁSICO (0-{limite_max} m³):")
+                print(f"   Precio FIJO: ${precio_base}")
+                print(f"   ✅ Valor: ${valor_consumo_basico}")
+                print(f"\n💵 EXCESO (>{limite_max} m³):")
+                print(f"   m³ de exceso: {exceso_m3}")
+                print(f"   Precio: ${precio_exceso}/m³")
+                print(f"   ✅ Valor: ${valor_exceso}")
+            else:
+                print(f"\n⚠️ No se encontró tarifa de exceso, solo se cobrará consumo básico")
+        
+        print(f"\n📊 TOTALES:")
+        print(f"   Valor consumo básico: ${valor_consumo_basico}")
+        print(f"   Valor exceso: ${valor_exceso}")
+        print(f"   Exceso m³: {exceso_m3}")
+        
+        # ============================================
+        # 4. CALCULAR TOTALES DE FACTURA
+        # ============================================
+        subtotal_inicial = valor_consumo_basico + valor_exceso
+        
+        # 🆕 CALCULAR DESCUENTO DINÁMICAMENTE
+        valor_descuento_decimal = Decimal(str(valor_descuento))
+        descuento, subtotal_con_descuento = calcular_descuento(
+            subtotal=subtotal_inicial,
+            tipo_descuento=tipo_descuento,
+            valor_descuento=valor_descuento_decimal
         )
         
-        if not tarifa_basica:
-            return False, "No se encontró tarifa básica configurada", None
+        # IVA fijo al 12% (por ahora)
+        impuesto = subtotal_con_descuento * Decimal('0.12')
+        total_final = subtotal_con_descuento + impuesto
+        
+        print(f"\n{'='*60}")
+        print(f"💰 RESUMEN DE CÁLCULO")
+        print(f"{'='*60}")
+        print(f"   Consumo básico: ${valor_consumo_basico}")
+        print(f"   Exceso: ${valor_exceso}")
+        print(f"   Subtotal: ${subtotal_inicial}")
+        
+        if tipo_descuento != 'ninguno' and descuento > 0:
+            if tipo_descuento == 'porcentaje':
+                print(f"   Descuento ({valor_descuento}%): -${descuento}")
+            else:
+                print(f"   Descuento (valor fijo): -${descuento}")
+        else:
+            print(f"   Descuento: $0.00 (sin descuento)")
+        
+        print(f"   Subtotal con descuento: ${subtotal_con_descuento}")
+        print(f"   IVA (12%): ${impuesto}")
+        print(f"   ✅ TOTAL FINAL: ${total_final}")
+        print(f"{'='*60}\n")
         
         # ============================================
-        # 5. CALCULAR TOTALES
-        # ============================================
-        descuento = Decimal('0.00')
-        
-        totales = calcular_totales_factura(
-            valor_consumo=valor_consumo,
-            valor_exceso=valor_exceso,
-            descuento=descuento,
-            tasa_impuesto=Decimal('0.12')  # IVA 12%
-        )
-        
-        # ============================================
-        # 6-7. GENERAR FACTURA
+        # 5. GENERAR FACTURA
         # ============================================
         num_factura = generar_numero_factura(db, periodo)
         
@@ -209,15 +295,15 @@ def generar_factura_desde_lectura(
             num_factura=num_factura,
             id_usuario_afi=id_usuario_afi,
             id_lectura=lectura.id_lectura,
-            id_tarifa=tarifa_basica.id_tarifa,
+            id_tarifa=tarifa.id_tarifa,
             consumo_m3=lectura.consumo_m3,
-            exceso_m3=exceso_m3,
-            valor_consumo=valor_consumo,
+            exceso_m3=float(exceso_m3),
+            valor_consumo=valor_consumo_basico,
             valor_exceso=valor_exceso,
-            descuento=descuento,
-            subtotal=totales['subtotal'],
-            impuesto=totales['impuesto'],
-            total=totales['total'],
+            descuento=descuento,  # ✅ Dinámico
+            subtotal=subtotal_con_descuento,  # ✅ Ya con descuento aplicado
+            impuesto=impuesto,
+            total=total_final,  # ✅ Total correcto
             fecha_emision=date.today(),
             periodo=periodo,
             estado_factura='pendiente'
@@ -226,56 +312,73 @@ def generar_factura_desde_lectura(
         db.add(nueva_factura)
         db.flush()
         
-        # ============================================
-        # 🆕 8. CREAR DETALLE DE CONSUMO BÁSICO
-        # ============================================
-        # ✅ SOLUCIÓN - CAMBIA 'servicio' POR 'consumo':
-        detalle_basico = DetalleFactura(
-            id_factura=nueva_factura.id_factura,
-            tipo_detalle='consumo',  # ✅ CAMBIAR AQUÍ
-            id_servicio=None,
-            subtotal_detalle=valor_consumo,
-            descripcion=f"Consumo básico (hasta 15 m³): {min(lectura.consumo_m3, 15):.2f} m³"
-        )
-
+        print(f"\n✅ Factura creada: {num_factura}")
         
         # ============================================
-        # 🆕 9. CREAR DETALLE DE EXCESO SI APLICA
+        # 6. CREAR DETALLES
         # ============================================
-        # ✅ SOLUCIÓN:
+        
+        # Detalle 1: Consumo básico
+        detalle_basico = DetalleFactura(
+            id_factura=nueva_factura.id_factura,
+            tipo_detalle='consumo',
+            id_servicio=None,
+            subtotal_detalle=valor_consumo_basico,
+            descripcion=f"{tarifa.nombre}: 0-{tarifa.limite_max_m3} m³ = ${float(valor_consumo_basico):.2f} (consumo: {float(consumo_basico_m3):.2f} m³)"
+        )
+        db.add(detalle_basico)
+        print(f"   📝 Detalle 1: {detalle_basico.descripcion}")
+        
+        # Detalle 2: Exceso (si aplica)
         if exceso_m3 > 0 and tarifa_exceso:
             detalle_exceso = DetalleFactura(
                 id_factura=nueva_factura.id_factura,
-                tipo_detalle='consumo',  # ✅ CAMBIAR AQUÍ
+                tipo_detalle='consumo',
                 id_servicio=None,
                 subtotal_detalle=valor_exceso,
-                descripcion=f"Exceso sobre 15 m³: {exceso_m3:.2f} m³ × ${float(tarifa_exceso.precio_por_m3):.2f}/m³"
+                descripcion=f"EXCESO: {float(exceso_m3):.2f} m³ × ${float(precio_exceso):.2f}/m³ = ${float(valor_exceso):.2f}"
             )
-
+            db.add(detalle_exceso)
+            print(f"   📝 Detalle 2: {detalle_exceso.descripcion}")
         
         # ============================================
-        # 10-11. SERVICIOS Y MULTAS (tu código existente)
+        # 7. AGREGAR MULTAS PENDIENTES
         # ============================================
-  
-        
         if aplicar_multas:
+            print(f"\n{'='*60}")
+            print(f"💸 BUSCANDO MULTAS PENDIENTES")
+            print(f"{'='*60}")
+            
             multas_agregadas = agregar_multas_a_factura(
-                db,
-                nueva_factura.id_factura,
-                id_usuario_afi
+                db=db,
+                id_factura=nueva_factura.id_factura,
+                id_usuario_afi=id_usuario_afi
             )
             
             if multas_agregadas > 0:
+                print(f"   ✅ {multas_agregadas} multa(s) agregada(s)")
+                # Recalcular totales con multas
                 recalcular_totales_factura(db, nueva_factura)
         
+        # ============================================
+        # 8. COMMIT FINAL
+        # ============================================
         db.commit()
         db.refresh(nueva_factura)
+        
+        print(f"\n{'='*60}")
+        print(f"✅ FACTURA GENERADA EXITOSAMENTE")
+        print(f"   Número: {num_factura}")
+        print(f"   Total: ${nueva_factura.total}")
+        print(f"{'='*60}\n")
         
         return True, f"Factura {num_factura} generada exitosamente", nueva_factura
     
     except Exception as e:
         db.rollback()
-        print(f"❌ Error generando factura automática: {e}")
+        print(f"❌ Error generando factura: {e}")
+        import traceback
+        traceback.print_exc()
         return False, f"Error al generar factura: {str(e)}", None
 
 
@@ -285,78 +388,145 @@ def agregar_multas_a_factura(
     id_usuario_afi: int
 ) -> int:
     """
-    Agrega multas pendientes a una factura
+    Agrega multas pendientes del afiliado como detalles de factura
+    
+    Condiciones:
+    - activo = True
+    - estado = 'pendiente'
+    - facturado = False
     
     Returns:
-        Cantidad de multas agregadas
+        int: Cantidad de multas agregadas
     """
     try:
-        # 🆕 Buscar multas pendientes que no han sido facturadas
+        print(f"\n{'='*60}")
+        print(f"💸 BUSCANDO MULTAS PENDIENTES")
+        print(f"{'='*60}")
+        
+        # 🆕 BUSCAR MULTAS PENDIENTES
         multas_pendientes = db.query(MultaAfiliado).filter(
             MultaAfiliado.id_usuario_afi == id_usuario_afi,
+            MultaAfiliado.activo == True,
             MultaAfiliado.estado == 'pendiente',
-            MultaAfiliado.facturado == False,  # ✅ Usar el campo facturado
-            MultaAfiliado.activo == True
+            MultaAfiliado.facturado == False
         ).all()
         
-        contador = 0
+        if not multas_pendientes:
+            print(f"   ℹ️  No hay multas pendientes para el afiliado {id_usuario_afi}")
+            return 0
+        
+        print(f"   📋 Se encontraron {len(multas_pendientes)} multa(s) pendiente(s)")
+        
+        multas_agregadas = 0
         
         for multa in multas_pendientes:
-            # Crear detalle de multa
+            # Obtener tipo de multa para descripción
+            tipo_multa = db.query(TipoMulta).filter(
+                TipoMulta.id_tipo_multa == multa.id_tipo_multa
+            ).first()
+            
+            nombre_multa = tipo_multa.nombre_multa if tipo_multa else "Multa"
+            
+            # Crear detalle de factura
             detalle_multa = DetalleFactura(
                 id_factura=id_factura,
-                tipo_detalle='multa',  # ✅ Tipo correcto
-                id_servicio=None,
-                id_multa_afiliados=multa.id_multa_afiliado,
+                tipo_detalle='multa',
+                id_multa_afiliados=multa.id_multa_afi,
+                id_servicio=None,  # Las multas no son servicios
                 subtotal_detalle=multa.monto,
-                descripcion=f"Multa: {multa.motivo or 'Sin especificar'}"
+                descripcion=f"{nombre_multa} - {multa.observaciones or 'Sin observaciones'}"
             )
+            
             db.add(detalle_multa)
             
-            # 🆕 Marcar multa como facturada
+            # 🆕 MARCAR MULTA COMO FACTURADA
             multa.facturado = True
+            multa.estado = 'facturado'
             
-            contador += 1
+            multas_agregadas += 1
+            
+            print(f"   ✅ Multa #{multa.id_multa_afi}: {nombre_multa} - ${multa.monto}")
         
         db.flush()
-        return contador
         
+        print(f"\n   💰 Total multas agregadas: {multas_agregadas}")
+        print(f"{'='*60}\n")
+        
+        return multas_agregadas
+    
     except Exception as e:
-        print(f"⚠️ Error agregando multas: {e}")
+        print(f"❌ Error agregando multas: {e}")
         return 0
-
+    
+def calcular_descuento(
+    subtotal: Decimal,
+    tipo_descuento: str,
+    valor_descuento: Decimal
+) -> Tuple[Decimal, Decimal]:
+    """
+    Calcula el descuento según el tipo
+    
+    Returns:
+        (monto_descuento, total_con_descuento)
+    """
+    descuento = Decimal('0.00')
+    
+    if tipo_descuento == 'porcentaje' and valor_descuento > 0:
+        # Calcular porcentaje: subtotal * (porcentaje / 100)
+        descuento = subtotal * (valor_descuento / Decimal('100'))
+        
+    elif tipo_descuento == 'valor' and valor_descuento > 0:
+        # Aplicar valor fijo, pero no puede ser mayor al subtotal
+        descuento = min(valor_descuento, subtotal)
+    
+    # Total después del descuento
+    total_con_descuento = subtotal - descuento
+    
+    return descuento, total_con_descuento
 
 def recalcular_totales_factura(db: Session, factura: Factura):
     """
-    Recalcula los totales de una factura según sus detalles
+    Recalcula subtotal, impuesto y total de la factura
+    sumando todos los detalles (consumo + multas + servicios)
     """
     try:
+        print(f"\n🔄 RECALCULANDO TOTALES DE FACTURA {factura.num_factura}")
+        
         # Sumar todos los detalles
         detalles = db.query(DetalleFactura).filter(
             DetalleFactura.id_factura == factura.id_factura
         ).all()
         
-        nuevo_subtotal = sum(d.subtotal_detalle for d in detalles)
+        subtotal_nuevo = Decimal('0.00')
         
-        # Aplicar descuento si existe
-        subtotal_con_descuento = nuevo_subtotal - (factura.descuento or Decimal('0.00'))
+        for detalle in detalles:
+            subtotal_nuevo += detalle.subtotal_detalle
+            print(f"   + {detalle.tipo_detalle}: ${detalle.subtotal_detalle}")
         
-        # Calcular impuesto (12% IVA)
-        nuevo_impuesto = subtotal_con_descuento * Decimal('0.12')
+        # Aplicar descuento
+        subtotal_final = subtotal_nuevo - factura.descuento
+        
+        # Calcular impuesto (12%)
+        impuesto_nuevo = subtotal_final * Decimal('0.12')
         
         # Total
-        nuevo_total = subtotal_con_descuento + nuevo_impuesto
+        total_nuevo = subtotal_final + impuesto_nuevo
         
         # Actualizar factura
-        factura.subtotal = nuevo_subtotal
-        factura.impuesto = nuevo_impuesto
-        factura.total = nuevo_total
+        factura.subtotal = subtotal_final
+        factura.impuesto = impuesto_nuevo
+        factura.total = total_nuevo
         
         db.flush()
         
+        print(f"\n   📊 NUEVOS TOTALES:")
+        print(f"      Subtotal: ${subtotal_final}")
+        print(f"      Impuesto: ${impuesto_nuevo}")
+        print(f"      Total: ${total_nuevo}")
+        print(f"{'='*60}\n")
+        
     except Exception as e:
         print(f"❌ Error recalculando totales: {e}")
-        raise
 
 
 def generar_numero_factura(db: Session, periodo: str) -> str:
@@ -651,3 +821,21 @@ def obtener_o_crear_factura_activa(
 
     return nueva_factura
 
+# squemas para agregar servicos masivo a datelles 
+class AplicarServiciosMasivoRequest(BaseModel):
+    id_servicios: List[int] = Field(
+        ..., 
+        description="IDs de servicios a aplicar"
+    )
+    periodo: str = Field(
+        ..., 
+        description="Período de facturas (YYYY-MM)"
+    )
+    aplicar_a_todos: bool = Field(
+        False, 
+        description="True para aplicar a todos los usuarios del período"
+    )
+    id_usuarios: Optional[List[int]] = Field(
+        None, 
+        description="IDs de usuarios específicos (si aplicar_a_todos=False)"
+    )

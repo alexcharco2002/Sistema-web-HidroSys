@@ -9,14 +9,15 @@ import authService from './authServices';
 const API_CONFIG = {
   baseURL: 'https://localhost:8000',
   endpoints: {
-    facturas: '/facturas',
-    stats: '/facturas/stats/resumen',
-    cambiarEstado: (id) => `/facturas/${id}/estado`,
-    anular: (id) => `/facturas/${id}/anular`,
-    detalles: (id) => `/facturas/${id}/detalles`,
+    facturas: '/facturas',                         
+    stats: '/facturas/stats/resumen',             
+    cambiarEstado: id => `/facturas/${id}/estado`,
+    anular: id => `/facturas/${id}/anular`,       
+    detalles: id => `/facturas/${id}/detalles`,   
     marcarVencidas: '/facturas/jobs/marcar-vencidas'
   }
 };
+
 
 class InvoicesServices {
   constructor() {
@@ -167,6 +168,35 @@ class InvoicesServices {
       };
     }
   }
+
+  /**
+   * Aplicar descuento a una factura y opcionalmente marcarla como pagada
+   */
+
+  async aplicarDescuento(facturaId, descuentoData) {
+  try {
+    const data = await this.makeRequest(
+      `${API_CONFIG.endpoints.facturas}/${facturaId}/aplicar-descuento`,
+      {
+        method: 'PATCH',
+        body: descuentoData  // ✅ Pasar el objeto directamente, NO JSON.stringify
+      }
+    );
+    
+    return {
+      success: true,
+      data: data,
+      message: data.message || 'Descuento aplicado correctamente'
+    };
+    
+  } catch (error) {
+    console.error('❌ Error aplicando descuento:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al aplicar descuento'
+    };
+  }
+}
 
   /**
    * Obtener estadísticas de facturación
@@ -603,6 +633,24 @@ class InvoicesServices {
     this.cachedFacturas = null;
     this.cachedStats = null;
   }
+
+  async getServiciosActivos() {
+    return await this.makeRequest(
+      `${API_CONFIG.baseURL}/servicios/activos-facturacion`,
+      { method: 'GET' }
+    );
+  }
+
+  async aplicarServiciosMasivo(data) {
+    return await this.makeRequest(
+      `${API_CONFIG.endpoints.facturas}/aplicar-servicios-masivo`,
+      {
+        method: 'POST',
+        body: data
+      }
+    );
+  }
+
 }
 
 const invoicesServices = new InvoicesServices();

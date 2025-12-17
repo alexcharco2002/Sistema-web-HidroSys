@@ -72,12 +72,23 @@ class Factura(Base):
     )
     
     # Relaciones
+    # Relaciones
+    usuario_afiliado = relationship(
+        "UsuarioAfiliado",
+        foreign_keys=[id_usuario_afi],  # ✅ Agregar esto
+        backref="facturas",
+        lazy="joined"
+    )
+
+
     detalles = relationship(
         "DetalleFactura",
         back_populates="factura",
         cascade="all, delete-orphan",
         lazy="select"
     )
+
+   
 
     def __repr__(self):
         return f"<Factura(id={self.id_factura}, num='{self.num_factura}', periodo='{self.periodo}', total={self.total}, estado='{self.estado_factura}')>"

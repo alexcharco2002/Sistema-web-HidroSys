@@ -12,7 +12,7 @@ class AffiliateBase(BaseModel):
 
 class UserInfoSimple(BaseModel):
     """Información básica del usuario"""
-    id: int
+    id_usuario_sistema: int  # Era 'id'
     usuario: str
     nombres: str
     apellidos: str
@@ -21,7 +21,7 @@ class UserInfoSimple(BaseModel):
     telefono: Optional[str]
     direccion: Optional[str]
     activo: bool
-    foto: Optional[str]
+
 
 class SectorInfoSimple(BaseModel):
     """Información básica del sector"""
@@ -48,7 +48,7 @@ class AffiliateWithUserInfo(BaseModel):
     id_sector: int
     id_usuario_sistema: int
     activo: bool
-    usuario: Optional[UserInfoSimple]
+    usuario_sistema: Optional[UserInfoSimple] 
     sector: Optional[SectorInfoSimple]
     medidores:  List[MeterInfoSimple] = [] 
     

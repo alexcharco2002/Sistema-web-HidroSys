@@ -235,7 +235,7 @@ export const MODULE_DEFINITIONS = {
   multasafiliados: {
     id: "fines_affiliates",
     path: "fines-affiliates",
-    label: "MultasAfiliados",
+    label: "Multas Afiliados",
     icon: UserX,              
     color: "orange",
     category: "FINANCIAL",

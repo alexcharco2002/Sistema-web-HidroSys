@@ -39,7 +39,7 @@ class ReadingsServices {
         'Accept': 'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 20000,
+      timeout: 40000,
     };
 
     const finalOptions = {
@@ -166,7 +166,7 @@ class ReadingsServices {
    * @param {number} mes - Mes (1-12)
    * @param {number} anio - Año (ej: 2025)
    */
-  async importarExcelConPeriodo(file, mes, anio) {
+  async importarExcelConPeriodo(file, mes, anio, id_tarifa) {
     try {
       // Validaciones
       if (!file) {
@@ -181,15 +181,25 @@ class ReadingsServices {
         throw new Error('Año inválido');
       }
 
+      // 🆕 VALIDAR TARIFA
+      if (!id_tarifa) {
+        throw new Error('Debe seleccionar una tarifa');
+      }
+
+      // 🆕 TODO VA EN FORMDATA (no mezclar con query params)
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('mes', mes.toString());
+      formData.append('anio', anio.toString());
+      formData.append('id_tarifa', id_tarifa.toString());
 
-      // Endpoint con parámetros de periodo
-      const endpoint = `${API_CONFIG.endpoints.importExcelPeriodo}?mes=${mes}&anio=${anio}`;
+      // 🆕 Endpoint SIN query params (todo va en FormData)
+      const endpoint = `${API_CONFIG.endpoints.importExcelPeriodo}`;
 
       const data = await this.makeRequest(endpoint, {
         method: 'POST',
         body: formData
+        // ✅ NO incluir headers, FormData maneja los suyos
       });
 
       // Limpiar cachés
@@ -382,7 +392,18 @@ class ReadingsServices {
    */
   async createLectura(lecturaData) {
     try {
-      const data = await this.makeRequest(API_CONFIG.endpoints.lecturas, {
+      // 🆕 Extraer id_tarifa para enviarlo como query param
+      const { id_tarifa } = lecturaData;
+      
+      // 🆕 VALIDAR que id_tarifa exista
+      if (!id_tarifa) {
+        throw new Error('Debe seleccionar una tarifa');
+      }
+
+      // 🆕 Construir endpoint con id_tarifa y generar_factura como query params
+      const endpoint = `${API_CONFIG.endpoints.lecturas}?id_tarifa=${id_tarifa}&generar_factura=true`;
+
+      const data = await this.makeRequest(endpoint, {
         method: 'POST',
         body: {
           id_medidor: parseInt(lecturaData.id_medidor),
@@ -392,6 +413,7 @@ class ReadingsServices {
           fecha_lectura: lecturaData.fecha_lectura,
           observacion: lecturaData.observacion?.trim() || null,
           activo: lecturaData.activo !== undefined ? lecturaData.activo : true
+          // ✅ SIN id_tarifa en el body
         }
       });
 
@@ -413,7 +435,6 @@ class ReadingsServices {
       };
     }
   }
-
   /**
    * Actualizar una lectura existente
    */
@@ -875,7 +896,34 @@ class ReadingsServices {
     }
   }
 
+  /**
+   * para listar tarifas 
+ */
 
+  async getTarifasVigentes({ skip = 0, limit = 100 } = {}) {
+    try {
+      const params = new URLSearchParams();
+
+      if (skip) params.append('skip', skip);
+      if (limit) params.append('limit', limit);
+
+      const query = params.toString();
+      const endpoint = query
+        ? `${API_CONFIG.endpoints.lecturas}/tarifas-vigentes?${query}`
+        : `${API_CONFIG.endpoints.lecturas}/tarifas-vigentes`;
+
+      const data = await this.makeRequest(endpoint);
+
+      return { success: true, data };
+
+    } catch (error) {
+      console.error('❌ Error obteniendo tarifas vigentes:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener tarifas vigentes'
+      };
+    }
+  }
 }
 
 const readingsServices = new ReadingsServices();

@@ -1,11 +1,11 @@
 # schemas/factura.py
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Optional, List
+from typing import Literal, Optional, List
 from datetime import date
 from decimal import Decimal
 import re
-
+from schemas.detalle_factura import DetalleFacturaResponse
 
 class FacturaBase(BaseModel):
     """Schema base para Factura"""
@@ -23,6 +23,8 @@ class FacturaBase(BaseModel):
     total: Decimal = Field(..., ge=0, decimal_places=2)
     periodo: str = Field(..., min_length=7, max_length=7)
     estado_factura: str = Field('pendiente', min_length=1, max_length=20)
+
+    detalles: List[DetalleFacturaResponse] = []
 
     @field_validator('num_factura')
     @classmethod
@@ -59,7 +61,7 @@ class FacturaBase(BaseModel):
     def validar_coherencia_valores(self):
         """Valida que los cálculos sean coherentes"""
         if self.subtotal and self.impuesto and self.total:
-            calculado = self.subtotal + self.impuesto - (self.descuento or 0)
+            calculado = self.subtotal + self.impuesto
             if abs(calculado - self.total) > Decimal('0.01'):
                 raise ValueError(
                     f'Total incoherente: subtotal ({self.subtotal}) + impuesto ({self.impuesto}) '
@@ -119,6 +121,49 @@ class FacturaStats(BaseModel):
     monto_total_cobrado: Decimal
 
 
+class AplicarDescuentoRequest(BaseModel):
+    tipo_descuento: Literal['ninguno', 'porcentaje', 'valor'] = Field(
+        ..., 
+        description="Tipo de descuento a aplicar"
+    )
+    valor_descuento: float = Field(
+        0.0, 
+        ge=0, 
+        description="Valor del descuento (porcentaje o monto fijo)"
+    )
+    marcar_como_pagada: bool = Field(
+        False, 
+        description="Marcar la factura como pagada después de aplicar descuento"
+    )
+    
+# ========================================
+# SCHEMAS CON INFORMACIÓN DE USUARIO
+# ========================================
+
+# Importar DESPUÉS de definir los schemas básicos
+from schemas.affiliate import AffiliateWithUserInfo
+
+
+class FacturaConUsuarioCompleto(FacturaResponse):
+    """
+    Schema para factura con datos completos del usuario afiliado.
+    Incluye información del usuario_sistema, sector y medidores.
+    """
+    usuario_afiliado: AffiliateWithUserInfo
+    
+    class Config:
+        from_attributes = True
+
+
+class FacturaConTodo(FacturaConUsuarioCompleto):
+    """Schema para factura con usuario y detalles"""
+    detalles: List['DetalleFacturaResponse'] = []
+    
+    class Config:
+        from_attributes = True
+
+
 # Para evitar errores de referencia circular
 from schemas.detalle_factura import DetalleFacturaResponse
 FacturaConDetalles.model_rebuild()
+FacturaConTodo.model_rebuild()

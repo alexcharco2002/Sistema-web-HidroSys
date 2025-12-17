@@ -1,6 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from decimal import Decimal
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
+from models.factura import Factura
+from models.tarifa import Tarifa
+from schemas.tarifa import TarifaResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
@@ -34,9 +38,11 @@ from utils.audit_logger import registrar_auditoria
 from db.session import SessionLocal
 from security.jwt import verify_token
 
-from utils.facturacion import generar_factura_desde_lectura # para generar facturas automaticas 
+from utils.facturacion import calcular_descuento, generar_factura_desde_lectura # para generar facturas automaticas 
 router = APIRouter(prefix="/lecturas", tags=["lecturas"])
 
+from typing import Optional
+from datetime import date
 
 def get_db():
     """Dependencia para obtener la sesión de base de datos"""
@@ -166,8 +172,7 @@ def lectura_to_response(lectura: Lectura) -> dict:
     }
 
 
-from typing import Optional
-from datetime import date
+
 
 @router.get("/mis-lecturas", response_model=List[dict])
 def listar_mis_lecturas(
@@ -291,7 +296,40 @@ def listar_mis_lecturas(
         })
 
     return resultado
- 
+
+# ========================================
+# LISTAR TARIFAS ACTIVAS Y VIGENTES
+# ========================================
+@router.get("/tarifas-vigentes", response_model=List[TarifaResponse])
+def listar_tarifas_vigentes(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Lista únicamente tarifas ACTIVAS y VIGENTES
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "lecturas", "lectura")
+
+    return (
+        db.query(Tarifa)
+        .filter(
+            Tarifa.es_vigente.is_(True),
+            Tarifa.activo.is_(True)
+        )
+        .order_by(
+            Tarifa.vigencia_desde.desc(),
+            Tarifa.nombre
+        )
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+
+
 @router.get("", response_model=List[dict])
 def listar_lecturas(
     search: Optional[str] = Query(None),
@@ -460,7 +498,11 @@ def obtener_lectura(
 @router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
 def crear_lectura(
     lectura_data: LecturaCreate,
+    id_tarifa: int = Query(..., description="ID de tarifa a aplicar"), 
+
     generar_factura: bool = Query(True, description="Generar factura automáticamente"),
+    tipo_descuento: str = Query('ninguno', description="Tipo: ninguno/porcentaje/valor"),  # 🆕
+    valor_descuento: float = Query(0.0, ge=0, description="Valor del descuento"),  # 🆕
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
@@ -480,9 +522,20 @@ def crear_lectura(
     if not medidor:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Medidor no encontrado"
+            detail="Medidor no encontrado o inactiva"
         )
     
+     # 🆕 VERIFICAR TARIFA (pero no la guardamos en lectura)
+    tarifa = db.query(Tarifa).filter(
+        Tarifa.id_tarifa == id_tarifa,
+        Tarifa.activo == True
+    ).first()
+    
+    if not tarifa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tarifa no encontrada o inactiva"
+        )
     # Validación: evitar doble lectura en el mismo mes
     lectura_mes_existente = db.query(Lectura).filter(
         Lectura.id_medidor == lectura_data.id_medidor,
@@ -541,6 +594,9 @@ def crear_lectura(
             exito, mensaje, factura_generada = generar_factura_desde_lectura(
                 db=db,
                 lectura=nueva_lectura,
+                id_tarifa_seleccionada=id_tarifa,  # 🆕 PARÁMETRO TEMPORAL
+                tipo_descuento=tipo_descuento,  # 🆕
+                valor_descuento=valor_descuento,  # 🆕
                 aplicar_servicios=True,
                 aplicar_multas=True
             )
@@ -588,12 +644,13 @@ def crear_lectura(
         
         # Preparar respuesta
         response_data = lectura_to_response(nueva_lectura)
-        
+
         if factura_generada:
             response_data['factura_generada'] = {
                 'id_factura': factura_generada.id_factura,
                 'num_factura': factura_generada.num_factura,
                 'total': float(factura_generada.total),
+                'tarifa_aplicada': tarifa.tipo_tarifa,  
                 'periodo': factura_generada.periodo,
                 'mensaje': mensaje_factura
             }
@@ -609,6 +666,105 @@ def crear_lectura(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear la lectura: {str(e)}"
+        )
+@router.patch("/{factura_id}/aplicar-descuento", response_model=dict)
+def aplicar_descuento_factura(
+    factura_id: int,
+    tipo_descuento: str = Body(..., description="Tipo: ninguno/porcentaje/valor"),
+    valor_descuento: float = Body(0.0, ge=0, description="Valor del descuento"),
+    marcar_como_pagada: bool = Body(False, description="Marcar como pagada después del descuento"),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Aplica descuento a una factura existente y opcionalmente la marca como pagada
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "facturas", "actualizar")
+    
+    # Obtener factura
+    factura = db.query(Factura).filter(
+        Factura.id_factura == factura_id
+    ).first()
+    
+    if not factura:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Factura no encontrada"
+        )
+    
+    # Solo se puede aplicar descuento a facturas pendientes o vencidas
+    if factura.estado_factura not in ['pendiente', 'vencida']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No se puede aplicar descuento a factura con estado '{factura.estado_factura}'"
+        )
+    
+    try:
+        # Recalcular desde el inicio (sin descuento previo)
+        subtotal_base = factura.valor_consumo + factura.valor_exceso
+        
+        # Calcular nuevo descuento
+        valor_descuento_decimal = Decimal(str(valor_descuento))
+        nuevo_descuento, subtotal_con_descuento = calcular_descuento(
+            subtotal=subtotal_base,
+            tipo_descuento=tipo_descuento,
+            valor_descuento=valor_descuento_decimal
+        )
+        
+        # Recalcular IVA y total
+        nuevo_impuesto = subtotal_con_descuento * Decimal('0.12')
+        nuevo_total = subtotal_con_descuento + nuevo_impuesto
+        
+        # Actualizar factura
+        factura.descuento = nuevo_descuento
+        factura.subtotal = subtotal_con_descuento
+        factura.impuesto = nuevo_impuesto
+        factura.total = nuevo_total
+        
+        mensaje_descuento = ""
+        if tipo_descuento == 'porcentaje':
+            mensaje_descuento = f"Descuento del {valor_descuento}% aplicado (-${nuevo_descuento})"
+        elif tipo_descuento == 'valor':
+            mensaje_descuento = f"Descuento de ${valor_descuento} aplicado"
+        else:
+            mensaje_descuento = "Descuento removido"
+        
+        # Marcar como pagada si se solicitó
+        if marcar_como_pagada:
+            factura.estado_factura = 'pagada'
+            mensaje_descuento += " - Factura marcada como PAGADA"
+        
+        db.commit()
+        db.refresh(factura)
+        
+        # Auditoría
+        registrar_auditoria(
+            db=db,
+            accion="UPDATE",
+            descripcion=f"Factura {factura.num_factura}: {mensaje_descuento}. Nuevo total: ${nuevo_total}",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
+        return {
+            "success": True,
+            "message": mensaje_descuento,
+            "factura": {
+                "id_factura": factura.id_factura,
+                "num_factura": factura.num_factura,
+                "descuento_aplicado": float(nuevo_descuento),
+                "subtotal": float(subtotal_con_descuento),
+                "impuesto": float(nuevo_impuesto),
+                "total": float(nuevo_total),
+                "estado": factura.estado_factura
+            }
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al aplicar descuento: {str(e)}"
         )
 
 
@@ -1464,26 +1620,40 @@ def obtener_periodos_disponibles(
 
 
 # ========================================
-# 🆕 ACTUALIZAR: IMPORTAR CON PERIODO
+# 🆕 IMPORTAR LECTURAS CON PERIODO
 # ========================================
 
 @router.post("/import/excel/periodo", response_model=LecturaBulkResponse, status_code=status.HTTP_201_CREATED)
 async def importar_lecturas_excel_con_periodo(
     mes: int = Query(..., ge=1, le=12, description="Mes de las lecturas"),
     anio: int = Query(..., ge=2020, description="Año de las lecturas"),
+    id_tarifa: int = Query(..., description="ID de tarifa a aplicar"),  # 🆕 AGREGAR
     file: UploadFile = File(...),
     payload: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
     """
-    Importa lecturas desde Excel con periodo específico (mes/año).
-    Valida que no existan lecturas duplicadas para ese periodo.
+    Importa lecturas desde Excel con periodo específico y aplica tarifa.
+    Genera facturas automáticamente para cada lectura exitosa.
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "crear")
     
+    # 🆕 VERIFICAR TARIFA AL INICIO
+    tarifa = db.query(Tarifa).filter(
+        Tarifa.id_tarifa == id_tarifa,
+        Tarifa.activo == True
+    ).first()
+    
+    if not tarifa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tarifa no encontrada o inactiva"
+        )
+    
     exitosos = []
     fallidos = []
+    facturas_generadas = 0  # 🆕 Contador
     
     try:
         # Crear fecha del periodo (primer día del mes)
@@ -1491,6 +1661,7 @@ async def importar_lecturas_excel_con_periodo(
         
         print(f"\n{'='*60}")
         print(f"🚀 IMPORTACIÓN PARA PERIODO: {MESES_ES.get(mes, mes)}/{anio}")
+        print(f"💰 TARIFA: {tarifa.tipo_tarifa} - ${tarifa.precio_por_m3}/m³")
         print(f"{'='*60}\n")
         
         # Leer Excel
@@ -1536,7 +1707,7 @@ async def importar_lecturas_excel_con_periodo(
                 if lectura_existente:
                     raise ValueError(f"Ya existe lectura para {MESES_ES.get(mes, mes)}/{anio}")
                 
-                # Crear lectura
+                # ✅ Crear lectura (SIN id_tarifa en tabla)
                 nueva_lectura = Lectura(
                     id_medidor=medidor.id_medidor,
                     lectura_actual=lectura_actual,
@@ -1549,7 +1720,22 @@ async def importar_lecturas_excel_con_periodo(
                 )
                 
                 db.add(nueva_lectura)
-                db.flush()
+                db.flush()  # Obtener ID antes de generar factura
+                
+                # 🆕 GENERAR FACTURA AUTOMÁTICAMENTE
+                exito_factura, mensaje_factura, factura = generar_factura_desde_lectura(
+                    db=db,
+                    lectura=nueva_lectura,
+                    id_tarifa_seleccionada=id_tarifa,
+                    aplicar_servicios=True,
+                    aplicar_multas=True
+                )
+                
+                if exito_factura:
+                    facturas_generadas += 1
+                    print(f"✅ Fila {row_num}: {medidor.num_medidor} - {consumo_m3}m³ | Factura: {factura.num_factura}")
+                else:
+                    print(f"⚠️  Fila {row_num}: Lectura OK pero factura falló: {mensaje_factura}")
                 
                 exitosos.append(LecturaBulkResult(
                     fila=row_num,
@@ -1560,8 +1746,6 @@ async def importar_lecturas_excel_con_periodo(
                     consumo_m3=consumo_m3,
                     id_lectura=nueva_lectura.id_lectura
                 ))
-                
-                print(f"✅ Fila {row_num}: {medidor.num_medidor} - {consumo_m3}m³")
                 
             except Exception as e:
                 fallidos.append(LecturaBulkError(
@@ -1579,7 +1763,7 @@ async def importar_lecturas_excel_con_periodo(
             registrar_auditoria(
                 db=db,
                 accion="IMPORT_EXCEL",
-                descripcion=f"Importación {MESES_ES.get(mes, mes)}/{anio}: {len(exitosos)} exitosos, {len(fallidos)} fallidos",
+                descripcion=f"Importación {MESES_ES.get(mes, mes)}/{anio}: {len(exitosos)} lecturas, {facturas_generadas} facturas generadas",
                 id_usuario=current_user.id_usuario_sistema
             )
             
@@ -1587,12 +1771,15 @@ async def importar_lecturas_excel_con_periodo(
                 db=db,
                 id_usuario=current_user.id_usuario_sistema,
                 titulo=f"Lecturas {MESES_ES.get(mes, mes)}/{anio} importadas",
-                mensaje=f"{len(exitosos)} lecturas registradas correctamente",
+                mensaje=f"{len(exitosos)} lecturas y {facturas_generadas} facturas generadas correctamente",
                 tipo="exito"
             )
         
         print(f"\n{'='*60}")
-        print(f"✅ COMPLETADO - Exitosos: {len(exitosos)} | Fallidos: {len(fallidos)}")
+        print(f"✅ COMPLETADO")
+        print(f"   Lecturas exitosas: {len(exitosos)}")
+        print(f"   Facturas generadas: {facturas_generadas}")
+        print(f"   Fallidos: {len(fallidos)}")
         print(f"{'='*60}\n")
         
         return LecturaBulkResponse(
@@ -1612,7 +1799,7 @@ async def importar_lecturas_excel_con_periodo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al importar: {str(e)}"
         )
-    
+
 # ========================================
 # ENDPOINT: GENERAR LECTURAS ESTIMADA
 # ========================================

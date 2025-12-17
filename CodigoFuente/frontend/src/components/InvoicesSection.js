@@ -2,9 +2,12 @@
 // MÓDULO DE FACTURAS - Con sistema de periodos mensuales mejorado
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import './ReadingsList.css'; // Reutilizar estilos de lecturas
+
+import './InvoicesSection.css'; // Reutilizar estilos de lecturas
+
 import invoicesServices from '../services/invoicesServices';
 import authService from '../services/authServices';
+
 import {
   FileText,
   Search,
@@ -21,7 +24,7 @@ import {
   TrendingUp,
   Ban,
   CalendarDays,
-  Gauge,
+  Gauge, User, IdCard  ,Tag, Percent, Info, Package, ChevronDown, Check
 } from 'lucide-react';
 
 const InvoicesSection = () => {
@@ -36,9 +39,10 @@ const InvoicesSection = () => {
   // ESTADOS DE PERIODOS
   // ============================================================
   const [periodos, setPeriodos] = useState([]);
-  const [periodoActual, setPeriodoActual] = useState(null);
+  const [, setPeriodoActual] = useState(null);
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState(null);
   const [loadingPeriodos, setLoadingPeriodos] = useState(false);
+  const [periodosInicializados, setPeriodosInicializados] = useState(false); // 🔥 NUEVO FLAG
 
   // ============================================================
   // ESTADOS DE BÚSQUEDA Y FILTROS
@@ -79,7 +83,24 @@ const InvoicesSection = () => {
     canDelete: false
   });
 
-
+  // ============================================================
+  // ESTADOS PARA IVA Y DESCUENTOS
+  // ============================================================
+  const [ivaHabilitado, setIvaHabilitado] = useState(false);
+  const [porcentajeIva, setPorcentajeIva] = useState(15);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentData, setPaymentData] = useState({
+    factura: null,
+    descuentoTipo: 'ninguno', // 'ninguno' | 'porcentaje' | 'valor'
+    descuentoValor: 0
+  });
+ // ============================================================
+  // ESTADOS  MANEJAR SERVICOS ADICIONALES 
+  // ============================================================
+  const [showServicios, setShowServicios] = useState(false);
+  const [serviciosDisponibles, setServiciosDisponibles] = useState([]);
+  const [serviciosSeleccionados, setServiciosSeleccionados] = useState([]);
+  const [aplicarATodos, setAplicarATodos] = useState(false);
 
   // ============================================================
   // FUNCIONES DE PERMISOS
@@ -102,126 +123,178 @@ const InvoicesSection = () => {
   // FUNCIONES DE PERIODOS
   // ============================================================
   const fetchPeriodosDisponibles = useCallback(async () => {
-  setLoadingPeriodos(true);
-  try {
-    const periodosData = await invoicesServices.getPeriodosDisponibles();
-
-    const periodosConInfo = periodosData.map(p => {
-      const [anio, mes] = p.valor.split('-');
-      return {
-        mes: parseInt(mes),
-        anio: parseInt(anio),
-        nombre_mes: p.texto.split(' ')[0],
-        valor: p.valor,
-        tiene_facturas: false,
-        total_facturas: 0,
-        porcentaje_completado: 0
-      };
-    });
-
-    setPeriodos(periodosConInfo);
-
-    if (periodosConInfo.length > 0) {
-      const actual = periodosConInfo[0];
-      setPeriodoActual({
-        mes: actual.mes,
-        anio: actual.anio,
-        nombre_mes: actual.nombre_mes
-      });
+    // ✅ Si ya se cargaron, no volver a cargar
+    if (periodosInicializados) {
+      console.log('⏭️ Períodos ya cargados, omitiendo...');
+      return;
     }
-
-    await fetchPeriodosInfo(periodosConInfo);
-
-  } catch (error) {
-    console.error('Error al cargar periodos:', error);
-    setError('Error al cargar periodos disponibles');
-  } finally {
-    setLoadingPeriodos(false);
-  }
-}, [setLoadingPeriodos]); // ✅ AQUÍ VA EL ARRAY
-
-
-  const fetchPeriodosInfo = async (periodosBase) => {
+    
+    setLoadingPeriodos(true);
     try {
-      // Obtener todas las facturas para contar por periodo
-      const result = await invoicesServices.getFacturas({ limit: 10000 });
+      console.log('🔄 Cargando períodos...');
       
-      if (result.success) {
-        const todasFacturas = result.data;
-        
-        const periodosActualizados = periodosBase.map(periodo => {
-          const facturasDelPeriodo = todasFacturas.filter(f => 
-            f.periodo === `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}`
-          );
-          
-          return {
-            ...periodo,
-            tiene_facturas: facturasDelPeriodo.length > 0,
-            total_facturas: facturasDelPeriodo.length,
-            porcentaje_completado: facturasDelPeriodo.length > 0 ? 100 : 0
-          };
+      const periodosData = await invoicesServices.getPeriodosDisponibles();
+
+      const periodosBase = periodosData.map(p => {
+        const [anio, mes] = p.valor.split('-');
+        return {
+          mes: parseInt(mes),
+          anio: parseInt(anio),
+          nombre_mes: p.texto.split(' ')[0],
+          valor: p.valor,
+          tiene_facturas: false,
+          total_facturas: 0,
+          monto_total: 0,
+          monto_cobrado: 0,
+          monto_pendiente: 0,
+          porcentaje_completado: 0
+        };
+      });
+
+      const periodosConStats = await Promise.all(
+        periodosBase.map(async (periodo) => {
+          try {
+            const periodoStr = `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}`;
+            const statsResult = await invoicesServices.getStats(periodoStr);
+            
+            if (statsResult.success && statsResult.data) {
+              const stats = statsResult.data;
+              return {
+                ...periodo,
+                tiene_facturas: stats.total_facturas > 0,
+                total_facturas: stats.total_facturas,
+                monto_total: stats.monto_total,
+                monto_cobrado: stats.monto_total_cobrado,
+                monto_pendiente: stats.monto_total_pendiente,
+                porcentaje_completado: stats.total_facturas > 0 ? 100 : 0
+              };
+            }
+            return periodo;
+          } catch (error) {
+            console.error(`Error stats ${periodo.nombre_mes}:`, error);
+            return periodo;
+          }
+        })
+      );
+
+      console.log('✅ Períodos cargados:', periodosConStats.length);
+      setPeriodos(periodosConStats);
+      setPeriodosInicializados(true); // 🔥 MARCAR COMO INICIALIZADO
+
+      if (periodosConStats.length > 0) {
+        const actual = periodosConStats[0];
+        setPeriodoActual({
+          mes: actual.mes,
+          anio: actual.anio,
+          nombre_mes: actual.nombre_mes
         });
-        
-        setPeriodos(periodosActualizados);
       }
+
     } catch (error) {
-      console.error('Error al obtener info de periodos:', error);
+      console.error('❌ Error:', error);
+      setError('Error al cargar periodos disponibles');
+    } finally {
+      setLoadingPeriodos(false);
     }
-  };
+  }, [periodosInicializados]); // 🔥 Depende del flag
 
   const fetchFacturasByPeriodo = useCallback(async () => {
     if (!periodoSeleccionado) return;
-
     setLoading(true);
     setError(null);
-
+    
     try {
       const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
       
       const result = await invoicesServices.getFacturas({
         periodo: periodoStr,
-        limit: 1000
+        limit: 1000,
+        incluir_detalles: true
       });
 
-      if (result.success) {
+      if (result.success && result.data) {
+        console.log('📦 Facturas cargadas:', result.data.length);
         setFacturas(result.data);
+        
+        // 🔥 ACTUALIZAR EL PERIODO CON LOS DATOS REALES
+        const montoTotal = result.data.reduce((sum, f) => 
+          sum + parseFloat(f.total || 0), 0
+        );
+        
+        const montoCobrado = result.data
+          .filter(f => f.estado_factura === 'pagada')
+          .reduce((sum, f) => sum + parseFloat(f.total || 0), 0);
+        
+        const montoPendiente = result.data
+          .filter(f => f.estado_factura === 'pendiente' || f.estado_factura === 'vencida')
+          .reduce((sum, f) => sum + parseFloat(f.total || 0), 0);
+        
+        setPeriodos(prevPeriodos => 
+          prevPeriodos.map(p => 
+            p.mes === periodoSeleccionado.mes && p.anio === periodoSeleccionado.anio 
+              ? {
+                  ...p,
+                  total_facturas: result.data.length,
+                  monto_total: montoTotal,
+                  monto_cobrado: montoCobrado,
+                  monto_pendiente: montoPendiente,
+                  tiene_facturas: result.data.length > 0
+                }
+              : p
+          )
+        );
       } else {
-        setError(result.message);
+        setError('No se pudieron cargar las facturas');
+        setFacturas([]);
       }
+      
     } catch (err) {
       setError('Error al cargar facturas del periodo');
       console.error(err);
+      setFacturas([]);
     } finally {
       setLoading(false);
     }
   }, [periodoSeleccionado]);
 
-const fetchStats = useCallback(async () => {
-  if (!periodoSeleccionado) return;
+    
 
-  try {
-    const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
-    const result = await invoicesServices.getStats(periodoStr);
+  const fetchStats = useCallback(async () => {
+    if (!periodoSeleccionado) return;
 
-    if (result.success) {
-      setStats(result.data);
+    try {
+      const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
+      const result = await invoicesServices.getStats(periodoStr);
+
+      if (result.success) {
+        setStats(result.data);
+      }
+    } catch (err) {
+      console.error('Error al cargar estadísticas:', err);
     }
-  } catch (err) {
-    console.error('Error al cargar estadísticas:', err);
-  }
-}, [periodoSeleccionado]);
+  }, [periodoSeleccionado]);
 
 
   const handlePeriodoChange = (mes, anio) => {
     setPeriodoSeleccionado({ mes, anio });
   };
 
-  const getPorcentajeCompletado = (periodo) => {
-    if (!periodo) return 0;
-    return periodo.porcentaje_completado || 0;
+    // Calcular porcentaje cobrado
+  const getPorcentajeCobrado = (periodo) => {
+    if (!periodo || !periodo.monto_total || periodo.monto_total === 0) return 0;
+    return Math.round((periodo.monto_cobrado / periodo.monto_total) * 100);
   };
 
-    // ============================================================
+  // Calcular porcentaje pendiente
+  const getPorcentajePendiente = (periodo) => {
+    if (!periodo || !periodo.monto_total || periodo.monto_total === 0) return 0;
+    return Math.round((periodo.monto_pendiente / periodo.monto_total) * 100);
+  };
+
+
+
+
+  // ============================================================
   // EFECTOS
   // ============================================================
   useEffect(() => {
@@ -234,23 +307,48 @@ const fetchStats = useCallback(async () => {
       fetchFacturasByPeriodo();
       fetchStats();
     }
-  }, [periodoSeleccionado, permissions.canRead, fetchFacturasByPeriodo, fetchStats]);
+  }, [
+    periodoSeleccionado,
+    permissions.canRead,
+    fetchFacturasByPeriodo,
+    fetchStats
+  ]);
+  // Cargar servicios activos
+  useEffect(() => {
+    const fetchServicios = async () => {
+      try {
+        const response = await invoicesServices.getServiciosActivos();
+        setServiciosDisponibles(response.data);
+      } catch (error) {
+        console.error('Error cargando servicios:', error);
+      }
+    };
+    
+    fetchServicios();
+  }, []);
+
 
   // ============================================================
   // FUNCIONES DE FILTRADO Y ORDENAMIENTO
   // ============================================================
   const filteredFacturas = facturas.filter(factura => {
     const searchLower = searchTerm.toLowerCase();
-    const matchesSearch = 
+    
+    // Buscar en múltiples campos
+    const matchesSearch =
       factura.num_factura?.toLowerCase().includes(searchLower) ||
-      factura.id_factura?.toString().includes(searchTerm);
-
-    const matchesStatus = 
-      filterStatus === 'all' || 
+      factura.id_factura?.toString().includes(searchTerm) ||
+      factura.usuario_afiliado?.usuario_sistema?.nombres?.toLowerCase().includes(searchLower) ||
+      factura.usuario_afiliado?.usuario_sistema?.apellidos?.toLowerCase().includes(searchLower) ||
+      factura.usuario_afiliado?.usuario_sistema?.cedula?.includes(searchTerm);
+    
+    const matchesStatus =
+      filterStatus === 'all' ||
       factura.estado_factura === filterStatus;
-
+    
     return matchesSearch && matchesStatus;
   });
+
 
   const sortedFacturas = useMemo(() => {
     return [...filteredFacturas].sort((a, b) => {
@@ -274,39 +372,32 @@ const fetchStats = useCallback(async () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
   };
 
-  // ============================================================
+ // ============================================================
   // FUNCIONES DE MODAL
   // ============================================================
   const openModal = async (type, factura = null) => {
     if (type === 'view' && !factura) return;
+    
     if (type === 'edit' && !permissions.canUpdate) {
       alert('❌ No tienes permiso para editar facturas');
       return;
     }
 
     setModalType(type);
-    setSelectedFactura(factura);
     setError(null);
-
-    if (type === 'view' && factura) {
-      try {
-        const result = await invoicesServices.getFacturaById(factura.id_factura);
-        if (result.success) {
-          setSelectedFactura(result.data);
-        }
-      } catch (err) {
-        console.error('Error cargando detalles:', err);
-      }
-    }
-
+    setSelectedFactura(factura);
     setShowModal(true);
+    
   };
+
 
   const closeModal = () => {
     setShowModal(false);
-    setSelectedFactura(null);
+    setModalType('');
     setError(null);
+    
   };
+
 
   // ============================================================
   // FUNCIONES DE ACCIONES
@@ -402,27 +493,160 @@ const fetchStats = useCallback(async () => {
     }
   };
 
+  // Aplicar servicios
+  const handleAplicarServicios = async () => {
+    if (serviciosSeleccionados.length === 0) {
+      alert('Selecciona al menos un servicio');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      
+      const data = {
+        id_servicios: serviciosSeleccionados,
+        periodo: periodoSeleccionado,
+        aplicar_a_todos: aplicarATodos
+        //id_usuarios: aplicarATodos ? null : [usuarioSeleccionado.id_usuario_afi]
+      };
+      
+      const result = await invoicesServices.aplicarServiciosMasivo(data);
+      
+      if (result.success) {
+        alert(`✅ ${result.message}\nFacturas afectadas: ${result.data.facturas_afectadas}`);
+        fetchFacturasByPeriodo(); // Recargar lista
+        setServiciosSeleccionados([]); // Limpiar selección
+      }
+    } catch (error) {
+      console.error('Error aplicando servicios:', error);
+      alert('❌ Error al aplicar servicios');
+    } finally {
+      setLoading(false);
+    }
+  };
+  // ============================================================
+  // FUNCIONES DE MODAL DE PAGO
+  // ============================================================
+  const openPaymentModal = (factura) => {
+    setPaymentData({
+      factura: factura,
+      descuentoTipo: 'ninguno',
+      descuentoValor: 0
+    });
+    setShowPaymentModal(true);
+  };
+
+  const closePaymentModal = () => {
+    setShowPaymentModal(false);
+    setPaymentData({
+      factura: null,
+      descuentoTipo: 'ninguno',
+      descuentoValor: 0
+    });
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!paymentData.factura) return;
+
+    // Validación: si hay descuento, debe tener valor
+    if (paymentData.descuentoTipo !== 'ninguno' && paymentData.descuentoValor <= 0) {
+      alert('⚠️ Debes ingresar un valor de descuento mayor a 0');
+      return;
+    }
+
+    // Validación: porcentaje no puede ser mayor a 100
+    if (paymentData.descuentoTipo === 'porcentaje' && paymentData.descuentoValor > 100) {
+      alert('⚠️ El porcentaje de descuento no puede ser mayor a 100%');
+      return;
+    }
+
+    // Confirmación
+    let mensajeConfirmacion = `¿Confirmar pago de la factura ${paymentData.factura.num_factura}?`;
+    
+    if (paymentData.descuentoTipo === 'porcentaje' && paymentData.descuentoValor > 0) {
+      mensajeConfirmacion += `\n\nDescuento: ${paymentData.descuentoValor}%`;
+    } else if (paymentData.descuentoTipo === 'valor' && paymentData.descuentoValor > 0) {
+      mensajeConfirmacion += `\n\nDescuento: $${paymentData.descuentoValor.toFixed(2)}`;
+    }
+
+    const confirmado = window.confirm(mensajeConfirmacion);
+    if (!confirmado) return;
+
+    setLoading(true);
+
+    try {
+      const descuentoData = {
+        tipo_descuento: paymentData.descuentoTipo,
+        valor_descuento: paymentData.descuentoTipo !== 'ninguno' ? paymentData.descuentoValor : 0,
+        marcar_como_pagada: true  // ✅ Siempre marcar como pagada al procesar pago
+      };
+
+      console.log('📤 Enviando datos de descuento:', descuentoData);
+
+      const result = await invoicesServices.aplicarDescuento(
+        paymentData.factura.id_factura,
+        descuentoData
+      );
+
+      if (result.success) {
+        // Mostrar mensaje de éxito con el nuevo total
+        const nuevoTotal = result.data?.factura?.total || 0;
+        const descuentoAplicado = result.data?.factura?.descuento_aplicado || 0;
+        
+        let mensaje = `✅ Factura ${paymentData.factura.num_factura} marcada como PAGADA`;
+        
+        if (descuentoAplicado > 0) {
+          mensaje += `\n\n💰 Descuento aplicado: $${descuentoAplicado.toFixed(2)}`;
+        }
+        
+        mensaje += `\n💵 Total final: $${nuevoTotal.toFixed(2)}`;
+        
+        alert(mensaje);
+        
+        // Cerrar modal y recargar datos
+        closePaymentModal();
+        await fetchFacturasByPeriodo();
+        await fetchStats();
+        
+      } else {
+        setError(result.message || 'Error al procesar el pago');
+        alert(`❌ ${result.message || 'Error al procesar el pago'}`);
+      }
+
+    } catch (error) {
+      console.error('❌ Error al confirmar pago:', error);
+      setError('Error al procesar el pago');
+      alert('❌ Error al procesar el pago. Intenta nuevamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+
+
   // ============================================================
   // HELPER FUNCTIONS
   // ============================================================
   const getStatusBadge = (estado) => {
     const configs = {
-      pendiente: { color: 'bg-yellow-100 text-yellow-800', icon: Clock, texto: 'Pendiente' },
-      pagada: { color: 'bg-green-100 text-green-800', icon: CheckCircle, texto: 'Pagada' },
-      vencida: { color: 'bg-red-100 text-red-800', icon: XCircle, texto: 'Vencida' },
-      anulada: { color: 'bg-gray-100 text-gray-800', icon: Ban, texto: 'Anulada' }
+      pendiente: { icon: Clock, texto: 'Pendiente' },
+      pagada: { icon: CheckCircle, texto: 'Pagada' },
+      vencida: { icon: XCircle, texto: 'Vencida' },
+      anulada: { icon: Ban, texto: 'Anulada' }
     };
 
     const config = configs[estado] || configs.pendiente;
     const IconComponent = config.icon;
 
     return (
-      <span className={`status-badge ${estado === 'pagada' ? 'active' : estado === 'anulada' ? 'inactive' : ''}`}>
-        <IconComponent className="w-3 h-3" />
+      <span className={`status-badge ${estado}`}>
+        <IconComponent />
         {config.texto}
       </span>
     );
   };
+
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-EC', {
@@ -454,6 +678,38 @@ const fetchStats = useCallback(async () => {
                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     return `${meses[mes - 1]} ${anio}`;
   };
+
+  // ============================================================
+// HELPER FUNCTIONS PARA DETALLES
+// ============================================================
+
+// 🔥 Función para agrupar detalles por tipo
+const agruparDetallesPorTipo = (detalles) => {
+  if (!detalles || detalles.length === 0) return null;
+  
+  const grupos = {
+    consumo: [],
+    multas: [],
+    servicios: [],
+    otros: []
+  };
+  
+  detalles.forEach(detalle => {
+    const tipo = detalle.tipo_detalle?.toLowerCase() || 'otros';
+    
+    if (tipo === 'consumo') {
+      grupos.consumo.push(detalle);
+    } else if (tipo === 'multa') {
+      grupos.multas.push(detalle);
+    } else if (tipo === 'servicio') {
+      grupos.servicios.push(detalle);
+    } else {
+      grupos.otros.push(detalle);
+    }
+  });
+  
+  return grupos;
+};
 
   // ============================================================
   // RENDERIZADO - VERIFICACIÓN DE PERMISOS
@@ -532,11 +788,8 @@ const fetchStats = useCallback(async () => {
                   });
 
                 return periodosRecientes.map(periodo => {
-                  const porcentaje = getPorcentajeCompletado(periodo);
                   const tieneFacturas = periodo.tiene_facturas;
-                  // REEMPLÁZALA CON:
-const esMesActual = (periodo.mes === mesActual && periodo.anio === anioActual) || 
-                    (periodoActual && periodo.mes === periodoActual.mes && periodo.anio === periodoActual.anio);
+                  const esMesActual = periodo.mes === mesActual && periodo.anio === anioActual;
 
                   return (
                     <button
@@ -557,21 +810,49 @@ const esMesActual = (periodo.mes === mesActual && periodo.anio === anioActual) |
                         {periodo.total_facturas} facturas
                       </div>
 
-                      <div className={`periodo-percentage ${tieneFacturas ? 'complete' : ''}`}>
-                        {tieneFacturas 
-                          ? `${periodo.total_facturas} factura${periodo.total_facturas !== 1 ? 's' : ''} registrada${periodo.total_facturas !== 1 ? 's' : ''}`
-                          : 'Sin facturas registradas'
-                        }
-                      </div>
+                      {/* Indicador de Cobrado */}
+                      {tieneFacturas && (
+                        <div className="periodo-progress-section">
+                          <div className="periodo-progress-label">
+                            <CheckCircle className="w-3 h-3 text-green-600" />
+                            <span>Cobrado</span>
+                            <span className="periodo-progress-value">
+                              {getPorcentajeCobrado(periodo)}%
+                            </span>
+                          </div>
+                          <div className="periodo-progress-bar">
+                            <div
+                              className="periodo-progress-fill cobrado"
+                              style={{ width: `${getPorcentajeCobrado(periodo)}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
 
-                      <div className={`periodo-percentage ${tieneFacturas ? 'complete' : ''}`}>
-                        {tieneFacturas ? 'Con facturas' : 'Sin facturas'}
-                      </div>
+                      {/* Indicador de Pendiente */}
+                      {tieneFacturas && (
+                        <div className="periodo-progress-section">
+                          <div className="periodo-progress-label">
+                            <Clock className="w-3 h-3 text-yellow-600" />
+                            <span>Pendiente</span>
+                            <span className="periodo-progress-value">
+                              {getPorcentajePendiente(periodo)}%
+                            </span>
+                          </div>
+                          <div className="periodo-progress-bar">
+                            <div
+                              className="periodo-progress-fill pendiente"
+                              style={{ width: `${getPorcentajePendiente(periodo)}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
 
                       <div className="periodo-card-action">
                         <span>{tieneFacturas ? 'Ver facturas' : 'Periodo vacío'}</span>
                       </div>
                     </button>
+
                   );
                 });
               })()}
@@ -732,6 +1013,15 @@ const esMesActual = (periodo.mes === mesActual && periodo.anio === anioActual) |
                   <p className="stat-detail">facturas</p>
                 </div>
               </div>
+              <div className="stat-item">
+                <Ban className="stat-icon text-red-600" />
+                <div>
+                  <p className="stat-label">Anuladas</p>
+                  <p className="stat-value">{stats.facturas_anuladas}</p>
+                  <p className="stat-detail">facturas</p>
+                </div>
+              </div>
+
             </div>
           </div>
 
@@ -793,6 +1083,111 @@ const esMesActual = (periodo.mes === mesActual && periodo.anio === anioActual) |
               </button>
             </div>
           </div>
+          
+          <div className="filters-section">
+            <div className="iva-controls">
+              <div className="iva-toggle">
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={ivaHabilitado}
+                    onChange={(e) => setIvaHabilitado(e.target.checked)}
+                  />
+                  <span className="slider"></span>
+                </label>
+                <span className="iva-label">
+                  {ivaHabilitado ? '✓ IVA Habilitado' : 'IVA Deshabilitado'}
+                </span>
+              </div>
+              
+              {ivaHabilitado && (
+                <div className="iva-input-group">
+                  <label>Porcentaje IVA:</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={porcentajeIva}
+                    onChange={(e) => setPorcentajeIva(parseFloat(e.target.value) || 0)}
+                    className="iva-input"
+                  />
+                  <span className="iva-suffix">%</span>
+                </div>
+              )}
+              
+              {ivaHabilitado && (
+                <div className="iva-info">
+                  <Info className="w-4 h-4" />
+                  <span>El IVA se aplicará al momento de marcar la factura como pagada</span>
+                </div>
+              )}
+            </div>
+
+ <div className="filter-header" onClick={() => setShowServicios(!showServicios)}>
+    <Package className="w-5 h-5" />
+    <span>Servicios Adicionales</span>
+    <ChevronDown className={`w-4 h-4 transition-transform ${showServicios ? 'rotate-180' : ''}`} />
+  </div>
+  
+  {showServicios && (
+    <div className="filter-content">
+      {/* Lista de servicios disponibles */}
+      <div className="servicios-list">
+        {serviciosDisponibles.map(servicio => (
+          <label key={servicio.id_servicio} className="checkbox-item">
+            <input
+              type="checkbox"
+              checked={serviciosSeleccionados.includes(servicio.id_servicio)}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setServiciosSeleccionados([...serviciosSeleccionados, servicio.id_servicio]);
+                } else {
+                  setServiciosSeleccionados(serviciosSeleccionados.filter(id => id !== servicio.id_servicio));
+                }
+              }}
+            />
+            <span>{servicio.nombre} - ${parseFloat(servicio.precio_base).toFixed(2)}</span>
+          </label>
+        ))}
+      </div>
+      
+      {/* Opciones de aplicación */}
+      <div className="aplicacion-opciones">
+        <label className="radio-item">
+          <input
+            type="radio"
+            name="aplicacion"
+            checked={aplicarATodos}
+            onChange={() => setAplicarATodos(true)}
+          />
+          <span>Aplicar a todos los usuarios</span>
+        </label>
+        
+        <label className="radio-item">
+          <input
+            type="radio"
+            name="aplicacion"
+            checked={!aplicarATodos}
+            onChange={() => setAplicarATodos(false)}
+          />
+          <span>Aplicar a usuario específico</span>
+        </label>
+      </div>
+      
+      <button
+        className="btn-aplicar-servicios"
+        onClick={handleAplicarServicios}
+        disabled={serviciosSeleccionados.length === 0}
+      >
+        <Check className="w-4 h-4 mr-2" />
+        Aplicar Servicios
+      </button>
+    </div>
+  )}
+
+          </div>
+
 
           {/* MENSAJE DE ERROR */}
           {error && (
@@ -812,55 +1207,142 @@ const esMesActual = (periodo.mes === mesActual && periodo.anio === anioActual) |
 
           {/* LISTA DE FACTURAS */}
           {!loading && (
-            <div className="readings-list-container">
-              <div className="readings-list-header">
+            <div className="invoices-list-container">
+             {/* HEADER */}
+              <div className="invoices-list-header">
                 <span>#</span>
                 <span><FileText className="w-4 h-4" /> Número</span>
                 <span><Calendar className="w-4 h-4" /> Fecha</span>
+                <span><IdCard  className="w-4 h-4" /> Código Afi</span>
+                <span><User className="w-4 h-4" /> Usuario</span>
                 <span><Gauge className="w-4 h-4" /> Consumo</span>
+                <span><FileText className="w-4 h-4" /> Detalles</span>
                 <span><DollarSign className="w-4 h-4" /> Total</span>
                 <span>Estado</span>
                 <span>Acciones</span>
               </div>
 
-              <div className="readings-list-body">
+
+              {/* BODY */}
+              <div className="invoices-list-body">
                 {sortedFacturas.length > 0 ? (
                   sortedFacturas.map((factura, index) => (
                     <div 
                       key={factura.id_factura} 
-                      className={`readings-list-item ${factura.estado_factura === 'anulada' ? 'inactive' : ''}`}
+                      className={`invoices-list-item ${factura.estado_factura === 'anulada' ? 'inv-anulada' : ''}`}
                     >
-                      <div className="list-col-id">{index + 1}</div>
+                      {/* Columna 1: # */}
+                      <div className="inv-col-index">
+                        <span className="inv-index-badge">{index + 1}</span>
+                      </div>
 
-                      <div className="list-col-medidor">
-                        <div className="medidor-icon">
+                      {/* Columna 2: Número */}
+                      <div className="inv-col-numero">
+                        <div className="inv-numero-icon">
                           <FileText className="w-4 h-4" />
                         </div>
-                        <span className="medidor-numero font-mono">
+                        <span className="inv-numero-text">
                           {factura.num_factura}
                         </span>
                       </div>
 
-                      <div className="list-col-fecha">
+                      {/* Columna 3: Fecha */}
+                      <div className="inv-col-fecha">
                         <Calendar className="w-3 h-3" />
-                        {formatDateShort(factura.fecha_emision)}
+                        <span>{formatDateShort(factura.fecha_emision)}</span>
                       </div>
 
-                      <div className="list-col-consumo">
-                        {factura.consumo_m3 || 0} m³
+                      {/* Columna 4: Código Afiliado */}
+                      <div className="inv-col-codigo">
+                        {factura.usuario_afiliado?.cod_usuario_afi ?? '—'}
                       </div>
 
-                      <div className="list-col-lectura font-bold text-lg">
-                        {formatCurrency(factura.total)}
+                      {/* Columna 5: Usuario */}
+                      <div className="inv-col-usuario">
+                        {factura.usuario_afiliado?.usuario_sistema ? (
+                          <div className="inv-usuario-info">
+                            <span className="inv-usuario-nombre">
+                              {factura.usuario_afiliado.usuario_sistema.nombres} {factura.usuario_afiliado.usuario_sistema.apellidos}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="inv-sin-dato">-</span>
+                        )}
                       </div>
 
-                      <div className="status-wrapper">
+                      {/* Columna 6: Consumo */}
+                      <div className="inv-col-consumo">
+                        <span className="inv-consumo-badge">{factura.consumo_m3 || 0} m³</span>
+                      </div>
+
+                      {/* Columna 7: Detalles */}
+                      <div className="inv-col-detalles">
+                        {factura.detalles && factura.detalles.length > 0 ? (
+                          <div className="inv-detalles-container">
+                            {(() => {
+                              const grupos = agruparDetallesPorTipo(factura.detalles);
+                              const totalDetalles = factura.detalles.length;
+                              
+                              return (
+                                <>
+                                  {grupos.consumo.length > 0 && (
+                                    <span 
+                                      className="inv-badge inv-badge-consumo" 
+                                      title={grupos.consumo.map(d => d.descripcion).join('\n')}
+                                    >
+                                      💧 {grupos.consumo.length}
+                                    </span>
+                                  )}
+                                  {grupos.multas.length > 0 && (
+                                    <span 
+                                      className="inv-badge inv-badge-multa" 
+                                      title={grupos.multas.map(d => d.descripcion).join('\n')}
+                                    >
+                                      ⚠️ {grupos.multas.length}
+                                    </span>
+                                  )}
+                                  {grupos.servicios.length > 0 && (
+                                    <span 
+                                      className="inv-badge inv-badge-servicio" 
+                                      title={grupos.servicios.map(d => d.descripcion).join('\n')}
+                                    >
+                                      🔧 {grupos.servicios.length}
+                                    </span>
+                                  )}
+                                  {grupos.otros.length > 0 && (
+                                    <span 
+                                      className="inv-badge inv-badge-otro" 
+                                      title={grupos.otros.map(d => d.descripcion).join('\n')}
+                                    >
+                                      📄 {grupos.otros.length}
+                                    </span>
+                                  )}
+                                  <span className="inv-detalles-count">
+                                    ({totalDetalles})
+                                  </span>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        ) : (
+                          <span className="inv-sin-dato">Sin detalles</span>
+                        )}
+                      </div>
+
+                      {/* Columna 8: Total */}
+                      <div className="inv-col-total">
+                        <span className="inv-monto">{formatCurrency(factura.total)}</span>
+                      </div>
+
+                      {/* Columna 9: Estado */}
+                      <div className="inv-col-estado">
                         {getStatusBadge(factura.estado_factura)}
                       </div>
 
-                      <div className="list-actions">
+                      {/* Columna 10: Acciones */}
+                      <div className="inv-col-acciones">
                         <button 
-                          className="list-action-btn view" 
+                          className="inv-btn inv-btn-view" 
                           onClick={() => openModal('view', factura)} 
                           title="Ver detalles"
                         >
@@ -869,17 +1351,18 @@ const esMesActual = (periodo.mes === mesActual && periodo.anio === anioActual) |
 
                         {permissions.canUpdate && factura.estado_factura === 'pendiente' && (
                           <button
-                            className="list-action-btn edit"
-                            onClick={() => handleCambiarEstado(factura.id_factura, 'pagada')}
-                            title="Marcar como pagada"
+                            className="inv-btn inv-btn-edit"
+                            onClick={() => openPaymentModal(factura)}
+                            title="Procesar pago"
                           >
-                            <CheckCircle className="w-4 h-4" />
+                            <DollarSign className="w-4 h-4" />
                           </button>
                         )}
 
+
                         {permissions.canDelete && ['pendiente', 'vencida'].includes(factura.estado_factura) && (
                           <button
-                            className="list-action-btn delete"
+                            className="inv-btn inv-btn-delete"
                             onClick={() => handleAnularFactura(factura.id_factura)}
                             title="Anular factura"
                           >
@@ -890,8 +1373,8 @@ const esMesActual = (periodo.mes === mesActual && periodo.anio === anioActual) |
                     </div>
                   ))
                 ) : (
-                  <div className="readings-list-empty">
-                    <FileText />
+                  <div className="invoices-list-empty">
+                    <FileText className="inv-empty-icon" />
                     <h3>No hay facturas en este periodo</h3>
                     <p>
                       {searchTerm || filterStatus !== 'all'
@@ -903,8 +1386,9 @@ const esMesActual = (periodo.mes === mesActual && periodo.anio === anioActual) |
                 )}
               </div>
 
+              {/* FOOTER */}
               {sortedFacturas.length > 0 && (
-                <div className="readings-list-footer">
+                <div className="invoices-list-footer">
                   <button 
                     className="btn-secondary"
                     onClick={() => setPeriodoSeleccionado(null)}
@@ -913,7 +1397,7 @@ const esMesActual = (periodo.mes === mesActual && periodo.anio === anioActual) |
                     Cambiar periodo
                   </button>
                   
-                  <div className="readings-list-footer-stats">
+                  <div className="invoices-footer-stats">
                     <span>
                       Mostrando <strong>{sortedFacturas.length}</strong> facturas
                     </span>
@@ -925,142 +1409,488 @@ const esMesActual = (periodo.mes === mesActual && periodo.anio === anioActual) |
               )}
             </div>
           )}
+
+            
+          
         </div>
       )}
-
-      {/* ==================== MODAL DE DETALLES ==================== */}
+      {/* MODAL DETALLE FACTURA */}
+      {/* ==================== MODAL DETALLE FACTURA ==================== */}
       {showModal && modalType === 'view' && selectedFactura && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className="modal modal-factura">
             <div className="modal-header">
               <h3>
                 <FileText className="w-5 h-5 inline mr-2" />
-                Detalle de Factura
+                Detalle de Factura #{selectedFactura.num_factura}
               </h3>
               <button className="modal-close" onClick={closeModal}>
                 <X className="w-5 h-5" />
               </button>
             </div>
+          <div className="modal-body" >
+          {/* SECCIÓN DE DATOS DEL CLIENTE */}
+          <div className="factura-section">
+            <h4 className="section-title">
+              <User className="w-4 h-4" />
+              Datos del Cliente
+            </h4>
+            <div className="user-details">
+              <div className="detail-group">
+                <label>Afiliado:</label>
+                <p>
+                  {selectedFactura.usuario_afiliado?.usuario_sistema?.nombres || 'N/A'}{' '}
+                  {selectedFactura.usuario_afiliado?.usuario_sistema?.apellidos || ''}
+                </p>
+              </div>
+              <div className="detail-group">
+                <label>Código Afiliado:</label>
+                <p className="font-mono">
+                  {selectedFactura.usuario_afiliado?.cod_usuario_afi ?? 'N/A'}
+                </p>
+              </div>
+              <div className="detail-group">
+                <label>Número de Medidor:</label>
+                <p className="font-mono">
+                  {selectedFactura.usuario_afiliado?.medidores?.[0]?.num_medidor ?? 'N/A'}
+                </p>
+              </div>
+
+              <div className="detail-group">
+                <label>Cédula:</label>
+                <p className="font-mono">
+                  {selectedFactura.usuario_afiliado?.usuario_sistema?.cedula || 'N/A'}
+                </p>
+              </div>
+
+              <div className="detail-group form-group-full">
+                <label>Dirección:</label>
+                <p>{selectedFactura.usuario_afiliado?.usuario_sistema?.direccion || 'N/A'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* SECCIÓN DE INFORMACIÓN DE LA FACTURA */}
+          <div className="factura-section">
+            <h4 className="section-title">
+              <FileText className="w-4 h-4" />
+              Información de la Factura
+            </h4>
+            <div className="user-details">
+              <div className="detail-group">
+                <label>N° Factura:</label>
+                <p className="font-mono font-semibold text-blue-600">
+                  {selectedFactura.num_factura}
+                </p>
+              </div>
+
+              <div className="detail-group">
+                <label>Periodo:</label>
+                <p>{invoicesServices.formatearPeriodo(selectedFactura.periodo)}</p>
+              </div>
+
+              <div className="detail-group">
+                <label>Fecha de Emisión:</label>
+                <p>{formatDate(selectedFactura.fecha_emision)}</p>
+              </div>
+
+              <div className="detail-group">
+                <label>Estado:</label>
+                {getStatusBadge(selectedFactura.estado_factura)}
+              </div>
+            </div>
+          </div>
+
+          {/* SECCIÓN DE CONSUMO */}
+          <div className="factura-section">
+            <h4 className="section-title">
+              <Gauge className="w-4 h-4" />
+              Detalles de Consumo
+            </h4>
+            <div className="user-details">
+              <div className="detail-group">
+                <label>Consumo (m³):</label>
+                <p className="font-bold text-blue-600">{selectedFactura.consumo_m3 || 0} m³</p>
+              </div>
+
+              <div className="detail-group">
+                <label>Exceso (m³):</label>
+                <p className="font-bold text-orange-600">{selectedFactura.exceso_m3 || 0} m³</p>
+              </div>
+
+              <div className="detail-group">
+                <label>Valor Consumo:</label>
+                <p>{formatCurrency(selectedFactura.valor_consumo)}</p>
+              </div>
+
+              <div className="detail-group">
+                <label>Valor Exceso:</label>
+                <p>{formatCurrency(selectedFactura.valor_exceso)}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* SECCIÓN DE CÁLCULO */}
+          <div className="factura-section">
+            <h4 className="section-title">
+              <DollarSign className="w-4 h-4" />
+              Resumen de Cobro
+            </h4>
+            <div className="user-details">
+              <div className="detail-group">
+                <label>Subtotal:</label>
+                <p>{formatCurrency(selectedFactura.subtotal)}</p>
+              </div>
+
+              <div className="detail-group">
+                <label>Descuento:</label>
+                <p className="text-green-600 font-semibold">
+                  -{formatCurrency(selectedFactura.descuento || 0)}
+                </p>
+              </div>
+
+              <div className="detail-group">
+                <label>Impuesto (IVA):</label>
+                <p>{formatCurrency(selectedFactura.impuesto)}</p>
+              </div>
+
+              <div className="detail-group highlight-total">
+                <label>Total a Pagar:</label>
+                <p className="font-bold text-xl text-blue-600">
+                  {formatCurrency(selectedFactura.total)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* DETALLES ADICIONALES */}
+        {selectedFactura.detalles && selectedFactura.detalles.length > 0 && (
+          <div className="factura-section">
+            <h4 className="section-title">
+              <FileText className="w-4 h-4" />
+              Conceptos de Facturación ({selectedFactura.detalles.length})
+            </h4>
+            
+            {(() => {
+              const grupos = agruparDetallesPorTipo(selectedFactura.detalles);
+              
+              return (
+                <div className="detalles-agrupados">
+                  {/* CONSUMOS */}
+                  {grupos.consumo.length > 0 && (
+                    <div className="detalle-grupo">
+                      <div className="detalle-grupo-header">
+                        <span className="detalle-grupo-icon">💧</span>
+                        <h5>Consumo de Agua ({grupos.consumo.length})</h5>
+                      </div>
+                      <div className="detalles-lista">
+                        {grupos.consumo.map((detalle, idx) => (
+                          <div key={idx} className="detalle-item">
+                            <span className="detalle-desc">{detalle.descripcion}</span>
+                            <span className="detalle-precio">
+                              {formatCurrency(detalle.subtotal_detalle)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MULTAS */}
+                  {grupos.multas.length > 0 && (
+                    <div className="detalle-grupo">
+                      <div className="detalle-grupo-header multa">
+                        <span className="detalle-grupo-icon">⚠️</span>
+                        <h5>Multas ({grupos.multas.length})</h5>
+                      </div>
+                      <div className="detalles-lista">
+                        {grupos.multas.map((detalle, idx) => (
+                          <div key={idx} className="detalle-item">
+                            <span className="detalle-desc">{detalle.descripcion}</span>
+                            <span className="detalle-precio text-red-600">
+                              {formatCurrency(detalle.subtotal_detalle)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SERVICIOS */}
+                  {grupos.servicios.length > 0 && (
+                    <div className="detalle-grupo">
+                      <div className="detalle-grupo-header servicio">
+                        <span className="detalle-grupo-icon">🔧</span>
+                        <h5>Servicios Adicionales ({grupos.servicios.length})</h5>
+                      </div>
+                      <div className="detalles-lista">
+                        {grupos.servicios.map((detalle, idx) => (
+                          <div key={idx} className="detalle-item">
+                            <span className="detalle-desc">{detalle.descripcion}</span>
+                            <span className="detalle-precio">
+                              {formatCurrency(detalle.subtotal_detalle)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* OTROS */}
+                  {grupos.otros.length > 0 && (
+                    <div className="detalle-grupo">
+                      <div className="detalle-grupo-header">
+                        <span className="detalle-grupo-icon">📄</span>
+                        <h5>Otros Conceptos ({grupos.otros.length})</h5>
+                      </div>
+                      <div className="detalles-lista">
+                        {grupos.otros.map((detalle, idx) => (
+                          <div key={idx} className="detalle-item">
+                            <span className="detalle-desc">{detalle.descripcion}</span>
+                            <span className="detalle-precio">
+                              {formatCurrency(detalle.subtotal_detalle)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+        </div>
+
+    </div>
+  </div>
+      )}
+
+      {/* MODAL DE PAGO CON DESCUENTO */}
+      {showPaymentModal && paymentData.factura && (
+        <div className="modal-overlay">
+          <div className="modal modal-payment">
+            <div className="modal-header">
+              <h3>
+                <DollarSign className="w-5 h-5 inline mr-2" />
+                Procesar Pago - {paymentData.factura.num_factura}
+              </h3>
+              <button className="modal-close" onClick={closePaymentModal}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
             <div className="modal-body">
-              <div className="user-details">
-                {/* Información General */}
-                <div className="detail-group">
-                  <label>Número de Factura:</label>
-                  <p className="font-mono font-bold">{selectedFactura.num_factura}</p>
+              {/* INFORMACIÓN DEL CLIENTE */}
+              <div className="payment-info-section">
+                <div className="payment-client">
+                  <User className="w-5 h-5 text-blue-600" />
+                  <div>
+                    <p className="client-name">
+                      {paymentData.factura.usuario_afiliado?.usuario_sistema?.nombres}{' '}
+                      {paymentData.factura.usuario_afiliado?.usuario_sistema?.apellidos}
+                    </p>
+                    <p className="client-code">
+                      Código: {paymentData.factura.usuario_afiliado?.cod_usuario_afi}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* RESUMEN SIMPLE */}
+              <div className="payment-summary">
+                <div className="summary-row">
+                  <span>Total Factura:</span>
+                  <span className="amount">{formatCurrency(paymentData.factura.total)}</span>
                 </div>
 
-                <div className="detail-group">
-                  <label>Periodo:</label>
-                  <p>{invoicesServices.formatearPeriodo(selectedFactura.periodo)}</p>
+                {ivaHabilitado && (
+                  <div className="summary-row iva-row">
+                    <Info className="w-4 h-4" />
+                    <span>Se aplicará IVA del {porcentajeIva}% al confirmar</span>
+                  </div>
+                )}
+              </div>
+
+              {/* SECCIÓN DE DESCUENTO */}
+              <div className="discount-section">
+                <h4 className="discount-title">
+                  <Tag className="w-4 h-4" />
+                  Descuento (Opcional)
+                </h4>
+
+                <div className="discount-type-selector">
+                  <label className="discount-option">
+                    <input
+                      type="radio"
+                      name="descuentoTipo"
+                      value="ninguno"
+                      checked={paymentData.descuentoTipo === 'ninguno'}
+                      onChange={(e) => setPaymentData({
+                        ...paymentData,
+                        descuentoTipo: e.target.value,
+                        descuentoValor: 0
+                      })}
+                    />
+                    <div className="option-content">
+                      <X className="w-5 h-5" />
+                      <span>Sin descuento</span>
+                    </div>
+                  </label>
+
+                  <label className="discount-option">
+                    <input
+                      type="radio"
+                      name="descuentoTipo"
+                      value="porcentaje"
+                      checked={paymentData.descuentoTipo === 'porcentaje'}
+                      onChange={(e) => setPaymentData({
+                        ...paymentData,
+                        descuentoTipo: e.target.value,
+                        descuentoValor: 0
+                      })}
+                    />
+                    <div className="option-content">
+                      <Percent className="w-5 h-5" />
+                      <span>Porcentaje (%)</span>
+                    </div>
+                  </label>
+
+                  <label className="discount-option">
+                    <input
+                      type="radio"
+                      name="descuentoTipo"
+                      value="valor"
+                      checked={paymentData.descuentoTipo === 'valor'}
+                      onChange={(e) => setPaymentData({
+                        ...paymentData,
+                        descuentoTipo: e.target.value,
+                        descuentoValor: 0
+                      })}
+                    />
+                    <div className="option-content">
+                      <DollarSign className="w-5 h-5" />
+                      <span>Valor Fijo ($)</span>
+                    </div>
+                  </label>
                 </div>
 
-                <div className="detail-group">
-                  <label>Fecha de Emisión:</label>
-                  <p>{formatDate(selectedFactura.fecha_emision)}</p>
-                </div>
-
-                <div className="detail-group">
-                  <label>Estado:</label>
-                  {getStatusBadge(selectedFactura.estado_factura)}
-                </div>
-
-                {/* Consumo */}
-                <div className="detail-group">
-                  <label>Consumo:</label>
-                  <p className="font-semibold">{selectedFactura.consumo_m3 || 0} m³</p>
-                </div>
-
-                <div className="detail-group">
-                  <label>Exceso:</label>
-                  <p>{selectedFactura.exceso_m3 || 0} m³</p>
-                </div>
-
-                <div className="detail-group">
-                  <label>Valor Consumo:</label>
-                  <p>{formatCurrency(selectedFactura.valor_consumo)}</p>
-                </div>
-
-                <div className="detail-group">
-                  <label>Valor Exceso:</label>
-                  <p>{formatCurrency(selectedFactura.valor_exceso)}</p>
-                </div>
-
-                {/* Totales */}
-                <div className="detail-group">
-                  <label>Subtotal:</label>
-                  <p>{formatCurrency(selectedFactura.subtotal)}</p>
-                </div>
-
-                <div className="detail-group">
-                  <label>Descuento:</label>
-                  <p className="text-green-600">
-                    -{formatCurrency(selectedFactura.descuento || 0)}
-                  </p>
-                </div>
-
-                <div className="detail-group">
-                  <label>Impuesto (IVA):</label>
-                  <p>{formatCurrency(selectedFactura.impuesto)}</p>
-                </div>
-
-                <div className="detail-group">
-                  <label>TOTAL:</label>
-                  <p className="font-bold text-2xl text-blue-600">
-                    {formatCurrency(selectedFactura.total)}
-                  </p>
-                </div>
-
-                {/* Detalles adicionales */}
-                {selectedFactura.detalles && selectedFactura.detalles.length > 0 && (
-                  <div className="detail-group form-group-full">
-                    <label>Detalles de la Factura:</label>
-                    <div className="bg-gray-50 p-3 rounded border border-gray-200">
-                      {selectedFactura.detalles.map((detalle, idx) => (
-                        <div key={idx} className="flex justify-between items-center py-2 border-b last:border-b-0">
-                          <span className="text-sm">{detalle.descripcion || detalle.tipo_detalle}</span>
-                          <span className="font-semibold">{formatCurrency(detalle.subtotal_detalle)}</span>
-                        </div>
-                      ))}
+                {paymentData.descuentoTipo !== 'ninguno' && (
+                  <div className="discount-input-container">
+                    <label>
+                      {paymentData.descuentoTipo === 'porcentaje' 
+                        ? 'Porcentaje de descuento:' 
+                        : 'Monto del descuento:'}
+                    </label>
+                    <div className="discount-input-group">
+                      <input
+                        type="number"
+                        min="0"
+                        max={paymentData.descuentoTipo === 'porcentaje' ? 100 : undefined}
+                        step={paymentData.descuentoTipo === 'porcentaje' ? 1 : 0.01}
+                        value={paymentData.descuentoValor}
+                        onChange={(e) => setPaymentData({
+                          ...paymentData,
+                          descuentoValor: parseFloat(e.target.value) || 0
+                        })}
+                        className="discount-input"
+                        placeholder={paymentData.descuentoTipo === 'porcentaje' ? '0-100' : '0.00'}
+                      />
+                      <span className="discount-suffix">
+                        {paymentData.descuentoTipo === 'porcentaje' ? '%' : '$'}
+                      </span>
                     </div>
                   </div>
                 )}
               </div>
+              {/* VISTA PREVIA DEL CÁLCULO */}
+              {paymentData.descuentoTipo !== 'ninguno' && paymentData.descuentoValor > 0 && (
+                <div className="payment-preview">
+                  <h4 className="preview-title">📊 Vista Previa</h4>
+                  <div className="preview-calculation">
+                    <div className="preview-row">
+                      <span>Subtotal original:</span>
+                      <span>{formatCurrency(paymentData.factura.total / 1.12)}</span>
+                    </div>
+                    
+                    <div className="preview-row highlight">
+                      <span>Descuento ({paymentData.descuentoTipo === 'porcentaje' 
+                        ? `${paymentData.descuentoValor}%` 
+                        : 'Fijo'}):</span>
+                      <span className="text-green-600">
+                        -{formatCurrency(
+                          paymentData.descuentoTipo === 'porcentaje'
+                            ? (paymentData.factura.total / 1.12) * (paymentData.descuentoValor / 100)
+                            : paymentData.descuentoValor
+                        )}
+                      </span>
+                    </div>
+                    
+                    <div className="preview-row">
+                      <span>Subtotal con descuento:</span>
+                      <span>
+                        {formatCurrency(
+                          (paymentData.factura.total / 1.12) - (
+                            paymentData.descuentoTipo === 'porcentaje'
+                              ? (paymentData.factura.total / 1.12) * (paymentData.descuentoValor / 100)
+                              : paymentData.descuentoValor
+                          )
+                        )}
+                      </span>
+                    </div>
+                    
+                    <div className="preview-row">
+                      <span>IVA (12%):</span>
+                      <span>
+                        {formatCurrency(
+                          ((paymentData.factura.total / 1.12) - (
+                            paymentData.descuentoTipo === 'porcentaje'
+                              ? (paymentData.factura.total / 1.12) * (paymentData.descuentoValor / 100)
+                              : paymentData.descuentoValor
+                          )) * 0.12
+                        )}
+                      </span>
+                    </div>
+                    
+                    <div className="preview-row total">
+                      <span>Total a pagar:</span>
+                      <span className="total-amount">
+                        {formatCurrency(
+                          ((paymentData.factura.total / 1.12) - (
+                            paymentData.descuentoTipo === 'porcentaje'
+                              ? (paymentData.factura.total / 1.12) * (paymentData.descuentoValor / 100)
+                              : paymentData.descuentoValor
+                          )) * 1.12
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+           
+
+              {/* NOTA INFORMATIVA */}
+              <div className="payment-note">
+                <AlertCircle className="w-4 h-4" />
+                <p>El sistema calculará automáticamente el total final con IVA y descuento aplicados.</p>
+              </div>
             </div>
 
-            <div className="form-actions">
-              {permissions.canUpdate && selectedFactura.estado_factura === 'pendiente' && (
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => {
-                    closeModal();
-                    handleCambiarEstado(selectedFactura.id_factura, 'pagada');
-                  }}
-                >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Marcar como Pagada
-                </button>
-              )}
-
-              {permissions.canDelete && ['pendiente', 'vencida'].includes(selectedFactura.estado_factura) && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => handleAnularFactura(selectedFactura.id_factura)}
-                >
-                  <Ban className="w-4 h-4 mr-2" />
-                  Anular Factura
-                </button>
-              )}
-
-              <button type="button" className="btn-primary" onClick={closeModal}>
-                Cerrar
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={closePaymentModal}>
+                <X className="w-4 h-4 mr-2" />
+                Cancelar
+              </button>
+              <button className="btn-primary" onClick={handleConfirmPayment}>
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Confirmar Pago
               </button>
             </div>
           </div>
         </div>
       )}
+
+
     </div>
   );
 };

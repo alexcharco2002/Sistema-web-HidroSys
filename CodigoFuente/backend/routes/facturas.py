@@ -1,6 +1,6 @@
 # routes/facturas.py
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
@@ -9,18 +9,22 @@ from decimal import Decimal
 
 from models.factura import Factura
 from models.detalle_factura import DetalleFactura
+from models.servicio import Servicio
 from models.user import UsuarioSistema
 from models.role import RolAccion
 
 from schemas.factura import (
-    FacturaCreate, FacturaUpdate, FacturaResponse,
+    AplicarDescuentoRequest, FacturaCreate, FacturaUpdate, FacturaResponse,
     FacturaConDetalles, FacturaStats
 )
 from schemas.detalle_factura import (
     DetalleFacturaCreate, DetalleFacturaUpdate, DetalleFacturaResponse
 )
 
+from schemas.servicio import ServicioResponse
 from utils.facturacion import (
+    AplicarServiciosMasivoRequest,
+    calcular_descuento,
     generar_numero_factura,
     validar_periodo_factura,
     calcular_tarifa_consumo,
@@ -36,6 +40,13 @@ from utils.audit_logger import registrar_auditoria
 
 from db.session import SessionLocal
 from security.jwt import verify_token
+
+# routes/facturas.py
+
+from schemas.factura import FacturaResponse, FacturaConUsuarioCompleto  # Agregar aquí
+from sqlalchemy.orm import joinedload  # Agregar esta importación
+from models.affiliate import UsuarioAfiliado  # Agregar para joinedload
+
 
 router = APIRouter(prefix="/facturas", tags=["facturas"])
 
@@ -110,10 +121,11 @@ def require_permission(user: UsuarioSistema, db: Session, module: str, action: s
         )
 
 
+
 # ========================================
 # LISTAR FACTURAS
 # ========================================
-@router.get("/", response_model=List[FacturaResponse])
+@router.get("/", response_model=List[FacturaConUsuarioCompleto])  # ✅ Cambio 1
 def listar_facturas(
     search: Optional[str] = Query(None, description="Buscar por número de factura"),
     id_usuario_afi: Optional[int] = Query(None, description="Filtrar por usuario afiliado"),
@@ -127,14 +139,22 @@ def listar_facturas(
     payload: dict = Depends(verify_token)
 ):
     """
-    Lista facturas con múltiples filtros
+    Lista facturas con múltiples filtros e información completa del usuario
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "facturas", "lectura")
     
-    query = db.query(Factura)
+    # ✅ Cambio 2: Agregar joinedload
+    query = db.query(Factura).options(
+        joinedload(Factura.usuario_afiliado)
+            .joinedload(UsuarioAfiliado.usuario_sistema),
+        joinedload(Factura.usuario_afiliado)
+            .joinedload(UsuarioAfiliado.sector),
+        joinedload(Factura.usuario_afiliado)
+            .joinedload(UsuarioAfiliado.medidores)
+    )
     
-    # Filtros
+    # Filtros (todo igual)
     if search:
         query = query.filter(Factura.num_factura.ilike(f"%{search}%"))
     
@@ -690,6 +710,103 @@ def crear_detalle_factura(
             detail=f"Error al crear detalle: {str(e)}"
         )
 
+@router.patch("/{factura_id}/aplicar-descuento", response_model=dict)
+def aplicar_descuento_factura(
+    factura_id: int,
+    descuento_data: AplicarDescuentoRequest,  # ✅ Usar el schema
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Aplica descuento a una factura existente y opcionalmente la marca como pagada
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "facturas", "actualizar")
+    
+    # Obtener factura
+    factura = db.query(Factura).filter(
+        Factura.id_factura == factura_id
+    ).first()
+    
+    if not factura:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Factura no encontrada"
+        )
+    
+    # Solo se puede aplicar descuento a facturas pendientes o vencidas
+    if factura.estado_factura not in ['pendiente', 'vencida']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No se puede aplicar descuento a factura con estado '{factura.estado_factura}'"
+        )
+    
+    try:
+        # Recalcular desde el inicio (sin descuento previo)
+        subtotal_base = factura.valor_consumo + factura.valor_exceso
+        
+        # Calcular nuevo descuento
+        valor_descuento_decimal = Decimal(str(descuento_data.valor_descuento))
+        nuevo_descuento, subtotal_con_descuento = calcular_descuento(
+            subtotal=subtotal_base,
+            tipo_descuento=descuento_data.tipo_descuento,
+            valor_descuento=valor_descuento_decimal
+        )
+        
+        # Recalcular IVA y total
+        nuevo_impuesto = subtotal_con_descuento * Decimal('0.12')
+        nuevo_total = subtotal_con_descuento + nuevo_impuesto
+        
+        # Actualizar factura
+        factura.descuento = nuevo_descuento
+        factura.subtotal = subtotal_con_descuento
+        factura.impuesto = nuevo_impuesto
+        factura.total = nuevo_total
+        
+        mensaje_descuento = ""
+        if descuento_data.tipo_descuento == 'porcentaje':
+            mensaje_descuento = f"Descuento del {descuento_data.valor_descuento}% aplicado (-${nuevo_descuento})"
+        elif descuento_data.tipo_descuento == 'valor':
+            mensaje_descuento = f"Descuento de ${descuento_data.valor_descuento} aplicado"
+        else:
+            mensaje_descuento = "Descuento removido"
+        
+        # Marcar como pagada si se solicitó
+        if descuento_data.marcar_como_pagada:
+            factura.estado_factura = 'pagada'
+            mensaje_descuento += " - Factura marcada como PAGADA"
+        
+        db.commit()
+        db.refresh(factura)
+        
+        # Auditoría
+        registrar_auditoria(
+            db=db,
+            accion="UPDATE",
+            descripcion=f"Factura {factura.num_factura}: {mensaje_descuento}. Nuevo total: ${nuevo_total}",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
+        return {
+            "success": True,
+            "message": mensaje_descuento,
+            "factura": {
+                "id_factura": factura.id_factura,
+                "num_factura": factura.num_factura,
+                "descuento_aplicado": float(nuevo_descuento),
+                "subtotal": float(subtotal_con_descuento),
+                "impuesto": float(nuevo_impuesto),
+                "total": float(nuevo_total),
+                "estado": factura.estado_factura
+            }
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al aplicar descuento: {str(e)}"
+        )
 
 @router.put("/{id_factura}/detalles/{id_detalle}", response_model=DetalleFacturaResponse)
 def actualizar_detalle_factura(
@@ -817,4 +934,122 @@ def eliminar_detalle_factura(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al eliminar detalle"
+        )
+    
+# ========================================
+# LISTAR servicios para aplicar a afiliados opcional 
+# ========================================
+@router.get("/activos-facturacion", response_model=List[ServicioResponse])
+def listar_servicios_para_facturacion(
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Lista SOLO servicios activos y vigentes para facturación
+    Requiere permiso: servicios.lectura
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "servicios", "lectura")
+    
+    # Solo servicios activos y vigentes
+    servicios = db.query(Servicio).filter(
+        Servicio.activo == True,
+        Servicio.es_vigente == True
+    ).order_by(Servicio.nombre).all()
+    
+    return servicios
+
+# ========================================
+# LISTAR servicios para aplicar a afiliados opcional 
+# ========================================
+@router.post("/aplicar-servicios-masivo", response_model=dict)
+def aplicar_servicios_a_usuarios(
+    data: AplicarServiciosMasivoRequest,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Aplica servicios adicionales a usuarios específicos o todos
+    Crea detalles de factura para servicios seleccionados
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "facturas", "crud")
+    
+    try:
+        # Validar servicios existen
+        servicios = db.query(Servicio).filter(
+            Servicio.id_servicio.in_(data.id_servicios),
+            Servicio.activo == True
+        ).all()
+        
+        if len(servicios) != len(data.id_servicios):
+            raise HTTPException(
+                status_code=400,
+                detail="Algunos servicios no existen o están inactivos"
+            )
+        
+        # Determinar usuarios a aplicar
+        if data.aplicar_a_todos:
+            # Aplicar a todas las facturas del período
+            facturas = db.query(Factura).filter(
+                Factura.periodo == data.periodo,
+                Factura.estado_factura != 'anulada'
+            ).all()
+        else:
+            # Aplicar solo a usuarios específicos
+            facturas = db.query(Factura).filter(
+                Factura.id_usuario_afi.in_(data.id_usuarios),
+                Factura.periodo == data.periodo,
+                Factura.estado_factura != 'anulada'
+            ).all()
+        
+        if not facturas:
+            raise HTTPException(
+                status_code=404,
+                detail="No se encontraron facturas para aplicar servicios"
+            )
+        
+        # Crear detalles de servicios
+        detalles_creados = 0
+        for factura in facturas:
+            for servicio in servicios:
+                # Verificar que no exista ya este servicio
+                existe = db.query(DetalleFactura).filter(
+                    DetalleFactura.id_factura == factura.id_factura,
+                    DetalleFactura.tipo_detalle == 'servicio',
+                    DetalleFactura.id_servicio == servicio.id_servicio
+                ).first()
+                
+                if not existe:
+                    detalle = DetalleFactura(
+                        id_factura=factura.id_factura,
+                        tipo_detalle='servicio',
+                        id_servicio=servicio.id_servicio,
+                        subtotal_detalle=servicio.precio_base,
+                        descripcion=f"{servicio.nombre}: ${float(servicio.precio_base):.2f}"
+                    )
+                    db.add(detalle)
+                    detalles_creados += 1
+                    
+                    # Actualizar totales de la factura
+                    factura.subtotal += servicio.precio_base
+                    factura.total = factura.subtotal + (factura.impuesto or Decimal('0.00')) - (factura.descuento or Decimal('0.00'))
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Servicios aplicados correctamente",
+            "facturas_afectadas": len(facturas),
+            "detalles_creados": detalles_creados
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error aplicando servicios: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al aplicar servicios: {str(e)}"
         )

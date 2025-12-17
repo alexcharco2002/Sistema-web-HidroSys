@@ -84,6 +84,32 @@ const ReadingsSection = () => {
   const [, setShowConfirmacionModal] = useState(false);
   const [, setConfirmacionResult] = useState(null);
 
+  // 🆕 Agregar estos estados para tarifas
+  const [tarifas, setTarifas] = useState([]);
+  const [loadingTarifas, setLoadingTarifas] = useState(false);
+
+  // 🆕 AGREGAR ESTADO PARA TARIFA EN EXCEL
+  const [excelTarifaSeleccionada, setExcelTarifaSeleccionada] = useState('');
+
+
+    // 🆕 FUNCIÓN PARA CARGAR TARIFAS VIGENTES
+  const loadTarifas = async () => {
+    setLoadingTarifas(true);
+    try {
+      const response = await readingsServices.getTarifasVigentes({ skip: 0, limit: 100 });
+      if (response.success) {
+        setTarifas(response.data || []);
+      } else {
+        console.error('Error al cargar tarifas:', response.message);
+        setTarifas([]);
+      }
+    } catch (error) {
+      console.error('Error cargando tarifas:', error);
+      setTarifas([]);
+    } finally {
+      setLoadingTarifas(false);
+    }
+  };
 
   // FUNCIÓN PARA GENERAR LECTURAS ESTIMADAS
   const handleGenerarEstimadas = async () => {
@@ -237,7 +263,8 @@ const ReadingsSection = () => {
     consumo_m3: '',
     fecha_lectura: new Date().toISOString().split('T')[0],
     observacion: '',
-    activo: true
+    activo: true,
+    id_tarifa: ''
   });
 
   // ============================================================
@@ -445,12 +472,10 @@ const ReadingsSection = () => {
       alert('❌ No tienes permiso para crear lecturas');
       return;
     }
-
     if (type === 'edit' && !permissions.canUpdate) {
       alert('❌ No tienes permiso para editar lecturas');
       return;
     }
-
     if (type === 'excel' && !permissions.canCreate) {
       alert('❌ No tienes permiso para crear lecturas');
       return;
@@ -461,6 +486,9 @@ const ReadingsSection = () => {
     setError(null);
     setMeterSearchTerm('');
 
+    // 🆕 CARGAR TARIFAS AL ABRIR CUALQUIER MODAL
+    await loadTarifas();
+
     if (type === 'create') {
       setFormData({
         id_medidor: null,
@@ -469,21 +497,22 @@ const ReadingsSection = () => {
         consumo_m3: '',
         fecha_lectura: new Date().toISOString().split('T')[0],
         observacion: '',
-        activo: true
+        activo: true,
+        id_tarifa: '' // 🆕 AGREGAR
       });
       setSelectedMeterInfo(null);
     } else if (type === 'edit' && reading) {
       setFormData({
-        id_lectura: reading.id_lectura, 
+        id_lectura: reading.id_lectura,
         id_medidor: reading.id_medidor,
         lectura_actual: reading.lectura_actual,
         lectura_anterior: reading.lectura_anterior,
         consumo_m3: reading.consumo_m3,
         fecha_lectura: reading.fecha_lectura,
         observacion: reading.observacion || '',
-        activo: reading.activo
+        activo: reading.activo,
+        id_tarifa: reading.id_tarifa || '' // 🆕 AGREGAR
       });
-
       const medidor = meters.find(m => m.id_medidor === reading.id_medidor);
       if (medidor) {
         setSelectedMeterInfo(medidor);
@@ -492,8 +521,8 @@ const ReadingsSection = () => {
       setExcelPreview([]);
       setSelectedExcel(null);
       setLoadingExcel(false);
-      
-      // Usar periodo seleccionado o periodo actual
+      setExcelTarifaSeleccionada(''); // 🆕 RESET TARIFA
+
       if (periodoSeleccionado) {
         setExcelMesSeleccionado(periodoSeleccionado.mes.toString());
         setExcelAnioSeleccionado(periodoSeleccionado.anio.toString());
@@ -505,6 +534,7 @@ const ReadingsSection = () => {
 
     setShowModal(true);
   };
+
 
   const closeModal = () => {
     setExcelPreview([]);
@@ -575,6 +605,12 @@ const ReadingsSection = () => {
       return;
     }
 
+    // 🆕 VALIDAR TARIFA
+    if (!formData.id_tarifa) {
+      setError('Debe seleccionar una tarifa');
+      return;
+    }
+
     if (parseInt(formData.lectura_actual) < parseInt(formData.lectura_anterior)) {
       setError('La lectura actual no puede ser menor que la lectura anterior');
       return;
@@ -582,10 +618,15 @@ const ReadingsSection = () => {
 
     try {
       let result;
-
       if (modalType === 'create') {
-        result = await readingsServices.createLectura(formData);
-
+        // 🆕 INCLUIR id_tarifa en los datos
+        const dataToSend = {
+          ...formData,
+          id_tarifa: parseInt(formData.id_tarifa)
+        };
+        
+        result = await readingsServices.createLectura(dataToSend);
+        
         if (result.success) {
           alert(`✅ Lectura creada exitosamente.\n\nMedidor: ${selectedMeterInfo?.num_medidor}\nConsumo: ${formData.consumo_m3} m³`);
           await fetchReadingsByPeriodo();
@@ -595,8 +636,14 @@ const ReadingsSection = () => {
           setError(result.message || 'Error al crear la lectura');
         }
       } else if (modalType === 'edit') {
-        result = await readingsServices.updateLectura(selectedReading.id_lectura, formData);
-
+        // 🆕 INCLUIR id_tarifa en la actualización
+        const dataToSend = {
+          ...formData,
+          id_tarifa: parseInt(formData.id_tarifa)
+        };
+        
+        result = await readingsServices.updateLectura(selectedReading.id_lectura, dataToSend);
+        
         if (result.success) {
           alert('✅ Cambios guardados correctamente');
           await fetchReadingsByPeriodo();
@@ -726,10 +773,18 @@ const ReadingsSection = () => {
       setError("Máximo 500 lecturas por carga");
       return;
     }
+    
+   // 🆕 VALIDAR TARIFA SELECCIONADA
+    if (!excelTarifaSeleccionada) {
+      setError("Debe seleccionar una tarifa para aplicar a las lecturas");
+      return;
+    }
+
 
     // ⛔ VALIDACIÓN MEJORADA — ADVERTENCIA SI EL PERIODO NO COINCIDE
     const mesExcel = parseInt(excelMesSeleccionado);
     const anioExcel = parseInt(excelAnioSeleccionado);
+    const idTarifa = parseInt(excelTarifaSeleccionada);
     
     // Obtener mes/año actual del sistema
     const hoy = new Date();
@@ -793,7 +848,8 @@ const ReadingsSection = () => {
       const result = await readingsServices.importarExcelConPeriodo(
         selectedExcel,
         mesExcel,
-        anioExcel
+        anioExcel,
+        idTarifa 
       );
 
       if (result.success) {
@@ -1613,6 +1669,44 @@ return (
                     </small>
                   </div>
                 </div>
+                
+                {/* 🆕 SELECTOR DE TARIFA PARA EXCEL */}
+                <div className="form-group">
+                  <label>
+                    Tarifa para todas las lecturas * 
+                    {loadingTarifas && <span className="text-sm text-gray-500 ml-2">(Cargando...)</span>}
+                  </label>
+                  <select
+                    required
+                    value={excelTarifaSeleccionada}
+                    onChange={(e) => setExcelTarifaSeleccionada(e.target.value)}
+                    disabled={loadingTarifas}
+                    className="excel-tarifa-select"
+                  >
+                    <option value="">Seleccione tarifa a aplicar</option>
+                    {tarifas.map(tarifa => (
+                      <option key={tarifa.id_tarifa} value={tarifa.id_tarifa}>
+                        {tarifa.tipo_tarifa === 'basica' ? '💧 ' : '📈 '}
+                        {tarifa.tipo_tarifa.toUpperCase()} - ${tarifa.precio_por_m3}/m³
+                        {tarifa.cargo_fijo && ` (Cargo fijo: $${tarifa.cargo_fijo})`}
+                      </option>
+                    ))}
+                  </select>
+                  
+                  {excelTarifaSeleccionada && (
+                    <div className="excel-tarifa-info" style={{ 
+                      marginTop: '10px', 
+                      padding: '12px', 
+                      background: '#f0f9ff', 
+                      borderRadius: '6px',
+                      border: '1px solid #3b82f6'
+                    }}>
+                      <p style={{ margin: 0, fontSize: '14px', color: '#1e40af' }}>
+                        <strong>💡 Nota:</strong> Esta tarifa se aplicará a TODAS las lecturas del archivo Excel
+                      </p>
+                    </div>
+                  )}
+                </div>
 
                 {/* Descargar Plantilla */}
                 <div className="form-group form-group-full">
@@ -2024,6 +2118,55 @@ return (
                     onChange={(e) => setFormData({ ...formData, observacion: e.target.value })}
                     placeholder="Observaciones opcionales..."
                   />
+                </div>
+                {/* 🆕 COMBOBOX DE TARIFAS */}
+                <div className="form-group form-group-full">
+                  <label>
+                    Tarifa * 
+                    {loadingTarifas && <span className="text-sm text-gray-500 ml-2">(Cargando...)</span>}
+                  </label>
+                  <select
+                    required
+                    value={formData.id_tarifa || ''}
+                    onChange={(e) => setFormData({ ...formData, id_tarifa: e.target.value })}
+                    disabled={loadingTarifas}
+                  >
+                    <option value="">Seleccione una tarifa</option>
+                    {tarifas.map(tarifa => (
+                      <option key={tarifa.id_tarifa} value={tarifa.id_tarifa}>
+                        {tarifa.tipo_tarifa === 'basica' ? '💧 ' : '📈 '}
+                        {tarifa.tipo_tarifa.toUpperCase()} - ${tarifa.precio_por_m3}/m³
+                        {tarifa.cargo_fijo && ` (Cargo fijo: $${tarifa.cargo_fijo})`}
+                        {tarifa.limite_m3 && ` (Límite: ${tarifa.limite_m3}m³)`}
+                      </option>
+                    ))}
+                  </select>
+                  
+                  {formData.id_tarifa && (
+                    <div className="meter-info-card" style={{ marginTop: '10px' }}>
+                      <h4 className="meter-info-title">
+                        💰 Tarifa Seleccionada
+                      </h4>
+                      <div className="meter-info-content">
+                        {(() => {
+                          const tarifaSeleccionada = tarifas.find(t => t.id_tarifa === parseInt(formData.id_tarifa));
+                          if (!tarifaSeleccionada) return null;
+                          return (
+                            <>
+                              <p><strong>Tipo:</strong> {tarifaSeleccionada.tipo_tarifa.toUpperCase()}</p>
+                              <p><strong>Precio/m³:</strong> ${tarifaSeleccionada.precio_por_m3}</p>
+                              {tarifaSeleccionada.cargo_fijo && (
+                                <p><strong>Cargo fijo:</strong> ${tarifaSeleccionada.cargo_fijo}</p>
+                              )}
+                              {tarifaSeleccionada.limite_m3 && (
+                                <p><strong>Límite:</strong> {tarifaSeleccionada.limite_m3} m³</p>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {modalType === 'edit' && (

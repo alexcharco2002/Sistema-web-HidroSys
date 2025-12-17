@@ -82,23 +82,31 @@ const FinesAffiliatesSection = () => {
     canDelete: false
   });
 
-  // ============================================================
-  // EFECTOS DE INICIALIZACIÓN
-  // ============================================================
-  useEffect(() => {
-    loadUserPermissions();
-    loadInitialData();
-    fetchStats();
-  }, []);
+  // Función separada para tipos de multa
+  const loadTiposMulta = async () => {
+    try {
+      const tiposResult = await fineService.getTiposMulta({ 
+        activo: true, 
+        esvigente: true 
+      });
+      if (tiposResult.success) {
+        setTiposMulta(tiposResult.data);
+      }
+    } catch (error) {
+      console.error('Error cargando tipos de multa', error);
+    }
+  };
+
+  
 
   // ============================================================
   // FUNCIONES DE PERMISOS
   // ============================================================
   const loadUserPermissions = () => {
-    const canCreate = authService.hasPermission('multas', 'crear') || authService.hasPermission('multas', 'crud');
-    const canUpdate = authService.hasPermission('multas', 'actualizar') || authService.hasPermission('multas', 'crud');
-    const canDelete = authService.hasPermission('multas', 'eliminar') || authService.hasPermission('multas', 'crud');
-    const canRead = authService.hasPermission('multas', 'lectura') || canCreate || canUpdate || canDelete || authService.hasPermission('multas', 'crud');
+    const canCreate = authService.hasPermission('multasafiliados', 'crear') || authService.hasPermission('multasafiliados', 'crud');
+    const canUpdate = authService.hasPermission('multasafiliados', 'actualizar') || authService.hasPermission('multasafiliados', 'crud');
+    const canDelete = authService.hasPermission('multasafiliados', 'eliminar') || authService.hasPermission('multasafiliados', 'crud');
+    const canRead = authService.hasPermission('multasafiliados', 'lectura') || canCreate || canUpdate || canDelete || authService.hasPermission('multas', 'crud');
 
     setPermissions({ canCreate, canRead, canUpdate, canDelete });
   };
@@ -106,23 +114,14 @@ const FinesAffiliatesSection = () => {
   // ============================================================
   // FUNCIONES DE CARGA DE DATOS
   // ============================================================
-  const loadInitialData = async () => {
+  const loadAffiliates = async () => {
     try {
-      const [affiliatesResult, tiposResult] = await Promise.all([
-        finesAffiliatesServices.getAvailableAffiliates(),
-        fineService.getTiposMulta({ activo: true, es_vigente: true }),
-      ]);
-
-      if (affiliatesResult.success) {
-        setAffiliates(affiliatesResult.data);
+      const result = await finesAffiliatesServices.getAvailableAffiliates();
+      if (result.success) {
+        setAffiliates(result.data);
       }
-
-      if (tiposResult.success) {
-        setTiposMulta(tiposResult.data);
-      }
-
     } catch (error) {
-      console.error('❌ Error cargando datos iniciales:', error);
+      console.error('❌ Error cargando afiliados:', error);
     }
   };
 
@@ -172,6 +171,14 @@ const FinesAffiliatesSection = () => {
       console.error('Error cargando estadísticas:', error);
     }
   };
+  // ============================================================
+  // EFECTOS DE INICIALIZACIÓN
+  // ============================================================
+  useEffect(() => {
+    loadUserPermissions();
+    loadTiposMulta();
+    fetchStats();
+  }, []);
 
   useEffect(() => {
     if (permissions.canRead) {
@@ -355,7 +362,7 @@ const FinesAffiliatesSection = () => {
     setSelectedAffiliateInfo(affiliate);
   };
 
-  const openModal = (type, multa = null) => {
+  const openModal = async (type, multa = null) => {
     if (type === 'create' && !permissions.canCreate) {
       alert('❌ No tienes permiso para crear multas');
       return;
@@ -376,6 +383,10 @@ const FinesAffiliatesSection = () => {
     setError(null);
 
     if (type === 'create') {
+      // Cargar afiliados AQUÍ
+     
+      await loadAffiliates();
+
       setFormData({
         id_usuario_afi: affiliates.length > 0 ? affiliates[0].id_usuario_afi : null,
         id_tipo_multa: tiposMulta.length > 0 ? tiposMulta[0].id_tipo_multa : null,

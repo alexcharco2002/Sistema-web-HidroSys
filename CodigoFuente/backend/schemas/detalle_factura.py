@@ -17,7 +17,7 @@ class DetalleFacturaBase(BaseModel):
     @field_validator('tipo_detalle')
     @classmethod
     def validar_tipo_detalle(cls, v: str) -> str:
-        tipos_validos = ['servicio', 'multa']
+        tipos_validos = ['servicio', 'multa', 'consumo' ]
         v_lower = v.lower().strip()
         if v_lower not in tipos_validos:
             raise ValueError(f'Tipo inválido. Debe ser: {", ".join(tipos_validos)}')

@@ -9,12 +9,13 @@ from decimal import Decimal
 
 from models.factura import Factura
 from models.detalle_factura import DetalleFactura
+from models.iva import IVA
 from models.servicio import Servicio
 from models.user import UsuarioSistema
 from models.role import RolAccion
 
 from schemas.factura import (
-    AplicarDescuentoRequest, FacturaCreate, FacturaUpdate, FacturaResponse,
+    AplicarDescuentoRequest, AplicarServiciosMasivoRequest, FacturaCreate, FacturaUpdate, FacturaResponse,
     FacturaConDetalles, FacturaStats
 )
 from schemas.detalle_factura import (
@@ -23,7 +24,7 @@ from schemas.detalle_factura import (
 
 from schemas.servicio import ServicioResponse
 from utils.facturacion import (
-    AplicarServiciosMasivoRequest,
+    agregar_servicios_a_factura,
     calcular_descuento,
     generar_numero_factura,
     validar_periodo_factura,
@@ -119,6 +120,29 @@ def require_permission(user: UsuarioSistema, db: Session, module: str, action: s
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"No tienes permisos para {action or 'acceder a'} {module}"
         )
+
+# ========================================
+# LISTAR servicios para aplicar a afiliados opcional 
+# ========================================
+@router.get("/activos-facturacion", response_model=List[ServicioResponse])
+def listar_servicios_para_facturacion(
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Lista SOLO servicios activos y vigentes para facturación
+    Requiere permiso: servicios.lectura
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "facturas", "lectura")
+    
+    # Solo servicios activos y vigentes
+    servicios = db.query(Servicio).filter(
+        Servicio.activo == True,
+        Servicio.es_vigente == True
+    ).order_by(Servicio.nombre).all()
+    
+    return servicios
 
 
 
@@ -713,12 +737,13 @@ def crear_detalle_factura(
 @router.patch("/{factura_id}/aplicar-descuento", response_model=dict)
 def aplicar_descuento_factura(
     factura_id: int,
-    descuento_data: AplicarDescuentoRequest,  # ✅ Usar el schema
+    descuento_data: AplicarDescuentoRequest, 
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
     Aplica descuento a una factura existente y opcionalmente la marca como pagada
+    RECALCULA: subtotal desde detalles + descuento + IVA dinámico
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "facturas", "actualizar")
@@ -742,10 +767,29 @@ def aplicar_descuento_factura(
         )
     
     try:
-        # Recalcular desde el inicio (sin descuento previo)
-        subtotal_base = factura.valor_consumo + factura.valor_exceso
+        print(f"\n{'='*60}")
+        print(f"💸 APLICANDO DESCUENTO A FACTURA {factura.num_factura}")
+        print(f"{'='*60}")
         
-        # Calcular nuevo descuento
+        # ============================================
+        # 1. ✅ SUMAR TODOS LOS DETALLES (NO SOLO CONSUMO)
+        # ============================================
+        detalles = db.query(DetalleFactura).filter(
+            DetalleFactura.id_factura == factura_id
+        ).all()
+        
+        subtotal_base = Decimal('0.00')
+        
+        print(f"\n📋 DETALLES DE LA FACTURA:")
+        for detalle in detalles:
+            subtotal_base += detalle.subtotal_detalle
+            print(f"   {detalle.tipo_detalle}: ${detalle.subtotal_detalle} - {detalle.descripcion}")
+        
+        print(f"\n💰 SUBTOTAL BASE (sin descuento): ${subtotal_base}")
+        
+        # ============================================
+        # 2. ✅ CALCULAR NUEVO DESCUENTO
+        # ============================================
         valor_descuento_decimal = Decimal(str(descuento_data.valor_descuento))
         nuevo_descuento, subtotal_con_descuento = calcular_descuento(
             subtotal=subtotal_base,
@@ -753,11 +797,48 @@ def aplicar_descuento_factura(
             valor_descuento=valor_descuento_decimal
         )
         
-        # Recalcular IVA y total
-        nuevo_impuesto = subtotal_con_descuento * Decimal('0.12')
+        if descuento_data.tipo_descuento == 'porcentaje':
+            print(f"💸 Descuento ({descuento_data.valor_descuento}%): -${nuevo_descuento}")
+        elif descuento_data.tipo_descuento == 'valor':
+            print(f"💸 Descuento (fijo): -${nuevo_descuento}")
+        else:
+            print(f"💸 Sin descuento")
+        
+        print(f"💰 SUBTOTAL CON DESCUENTO: ${subtotal_con_descuento}")
+        
+        # ============================================
+        # 3. ✅ CALCULAR IVA DINÁMICAMENTE DESDE T_IVA
+        # ============================================
+        iva_config = db.query(IVA).filter(
+            IVA.activo == True,
+            IVA.es_aplicable == True
+        ).first()
+        
+        if iva_config:
+            porcentaje_iva = Decimal(str(iva_config.porcentaje)) / Decimal('100')
+            nuevo_impuesto = subtotal_con_descuento * porcentaje_iva
+            print(f"💰 IVA ({iva_config.porcentaje}%): ${nuevo_impuesto}")
+        else:
+            nuevo_impuesto = Decimal('0.00')
+            print(f"💰 IVA: $0.00 (no hay config activa y aplicable)")
+        
+        # ============================================
+        # 4. ✅ CALCULAR TOTAL FINAL
+        # ============================================
         nuevo_total = subtotal_con_descuento + nuevo_impuesto
         
-        # Actualizar factura
+        print(f"\n{'='*60}")
+        print(f"📊 RESUMEN FINAL:")
+        print(f"   Subtotal base: ${subtotal_base}")
+        print(f"   Descuento: -${nuevo_descuento}")
+        print(f"   Subtotal con descuento: ${subtotal_con_descuento}")
+        print(f"   IVA: ${nuevo_impuesto}")
+        print(f"   ✅ TOTAL: ${nuevo_total}")
+        print(f"{'='*60}\n")
+        
+        # ============================================
+        # 5. ✅ ACTUALIZAR FACTURA
+        # ============================================
         factura.descuento = nuevo_descuento
         factura.subtotal = subtotal_con_descuento
         factura.impuesto = nuevo_impuesto
@@ -775,9 +856,20 @@ def aplicar_descuento_factura(
         if descuento_data.marcar_como_pagada:
             factura.estado_factura = 'pagada'
             mensaje_descuento += " - Factura marcada como PAGADA"
+            print(f"✅ Estado cambiado a: PAGADA")
         
+        # ============================================
+        # 6. ✅ COMMIT A LA BASE DE DATOS
+        # ============================================
         db.commit()
         db.refresh(factura)
+        
+        print(f"✅ Factura actualizada en BD: {factura.num_factura}")
+        print(f"   Descuento: ${factura.descuento}")
+        print(f"   Subtotal: ${factura.subtotal}")
+        print(f"   Impuesto: ${factura.impuesto}")
+        print(f"   Total: ${factura.total}")
+        print(f"   Estado: {factura.estado_factura}\n")
         
         # Auditoría
         registrar_auditoria(
@@ -803,10 +895,14 @@ def aplicar_descuento_factura(
         
     except Exception as e:
         db.rollback()
+        print(f"❌ Error al aplicar descuento: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al aplicar descuento: {str(e)}"
         )
+
 
 @router.put("/{id_factura}/detalles/{id_detalle}", response_model=DetalleFacturaResponse)
 def actualizar_detalle_factura(
@@ -937,30 +1033,7 @@ def eliminar_detalle_factura(
         )
     
 # ========================================
-# LISTAR servicios para aplicar a afiliados opcional 
-# ========================================
-@router.get("/activos-facturacion", response_model=List[ServicioResponse])
-def listar_servicios_para_facturacion(
-    db: Session = Depends(get_db),
-    payload: dict = Depends(verify_token)
-):
-    """
-    Lista SOLO servicios activos y vigentes para facturación
-    Requiere permiso: servicios.lectura
-    """
-    current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "servicios", "lectura")
-    
-    # Solo servicios activos y vigentes
-    servicios = db.query(Servicio).filter(
-        Servicio.activo == True,
-        Servicio.es_vigente == True
-    ).order_by(Servicio.nombre).all()
-    
-    return servicios
-
-# ========================================
-# LISTAR servicios para aplicar a afiliados opcional 
+# ENDPOINT: APLICAR SERVICIOS A TODAS LAS FACTURA 
 # ========================================
 @router.post("/aplicar-servicios-masivo", response_model=dict)
 def aplicar_servicios_a_usuarios(
@@ -969,7 +1042,7 @@ def aplicar_servicios_a_usuarios(
     payload: dict = Depends(verify_token)
 ):
     """
-    Aplica servicios adicionales a usuarios específicos o todos
+    Aplica servicios adicionales a TODAS las facturas del período
     Crea detalles de factura para servicios seleccionados
     """
     current_user = get_current_user(payload, db)
@@ -979,7 +1052,8 @@ def aplicar_servicios_a_usuarios(
         # Validar servicios existen
         servicios = db.query(Servicio).filter(
             Servicio.id_servicio.in_(data.id_servicios),
-            Servicio.activo == True
+            Servicio.activo == True,
+            Servicio.es_vigente == True
         ).all()
         
         if len(servicios) != len(data.id_servicios):
@@ -988,32 +1062,42 @@ def aplicar_servicios_a_usuarios(
                 detail="Algunos servicios no existen o están inactivos"
             )
         
-        # Determinar usuarios a aplicar
-        if data.aplicar_a_todos:
-            # Aplicar a todas las facturas del período
-            facturas = db.query(Factura).filter(
-                Factura.periodo == data.periodo,
-                Factura.estado_factura != 'anulada'
-            ).all()
-        else:
-            # Aplicar solo a usuarios específicos
-            facturas = db.query(Factura).filter(
-                Factura.id_usuario_afi.in_(data.id_usuarios),
-                Factura.periodo == data.periodo,
-                Factura.estado_factura != 'anulada'
-            ).all()
+        print(f"\n{'='*60}")
+        print(f"💼 APLICANDO SERVICIOS MASIVO - PERIODO: {data.periodo}")
+        print(f"{'='*60}")
+        
+        # 🔥 APLICAR A TODAS LAS FACTURAS DEL PERÍODO
+        facturas = db.query(Factura).filter(
+            Factura.periodo == data.periodo,
+            Factura.estado_factura.in_(['pendiente', 'vencida'])  # Solo pendientes/vencidas
+        ).all()
         
         if not facturas:
             raise HTTPException(
                 status_code=404,
-                detail="No se encontraron facturas para aplicar servicios"
+                detail=f"No se encontraron facturas pendientes o vencidas para el período {data.periodo}"
             )
         
-        # Crear detalles de servicios
+        print(f"📋 Facturas a procesar: {len(facturas)}")
+        
+        # Obtener IVA config
+        iva_config = db.query(IVA).filter(
+            IVA.activo == True,
+            IVA.es_aplicable == True
+        ).first()
+        
+        porcentaje_iva = Decimal('0.00')
+        if iva_config:
+            porcentaje_iva = Decimal(str(iva_config.porcentaje)) / Decimal('100')
+        
         detalles_creados = 0
+        facturas_afectadas = 0
+        
         for factura in facturas:
+            servicios_agregados_factura = 0
+            
             for servicio in servicios:
-                # Verificar que no exista ya este servicio
+                # 🔥 VERIFICAR QUE NO EXISTA YA ESTE SERVICIO
                 existe = db.query(DetalleFactura).filter(
                     DetalleFactura.id_factura == factura.id_factura,
                     DetalleFactura.tipo_detalle == 'servicio',
@@ -1026,24 +1110,169 @@ def aplicar_servicios_a_usuarios(
                         tipo_detalle='servicio',
                         id_servicio=servicio.id_servicio,
                         subtotal_detalle=servicio.precio_base,
-                        descripcion=f"{servicio.nombre}: ${float(servicio.precio_base):.2f}"
+                        descripcion=f"{servicio.nombre} - ${float(servicio.precio_base):.2f}"
                     )
+                    
                     db.add(detalle)
                     detalles_creados += 1
+                    servicios_agregados_factura += 1
                     
-                    # Actualizar totales de la factura
-                    factura.subtotal += servicio.precio_base
-                    factura.total = factura.subtotal + (factura.impuesto or Decimal('0.00')) - (factura.descuento or Decimal('0.00'))
+                    print(f"   ✅ Factura {factura.num_factura}: {servicio.nombre}")
+            
+            # 🔥 RECALCULAR TOTALES SI SE AGREGARON SERVICIOS
+            if servicios_agregados_factura > 0:
+                # Sumar todos los detalles
+                detalles = db.query(DetalleFactura).filter(
+                    DetalleFactura.id_factura == factura.id_factura
+                ).all()
+                
+                nuevo_subtotal = sum(d.subtotal_detalle for d in detalles)
+                subtotal_con_descuento = nuevo_subtotal - (factura.descuento or Decimal('0.00'))
+                nuevo_impuesto = subtotal_con_descuento * porcentaje_iva
+                nuevo_total = subtotal_con_descuento + nuevo_impuesto
+                
+                # Actualizar factura
+                factura.subtotal = nuevo_subtotal
+                factura.impuesto = nuevo_impuesto
+                factura.total = nuevo_total
+                
+                facturas_afectadas += 1
         
         db.commit()
         
+        print(f"\n{'='*60}")
+        print(f"✅ RESUMEN:")
+        print(f"   Facturas afectadas: {facturas_afectadas}")
+        print(f"   Detalles creados: {detalles_creados}")
+        print(f"{'='*60}\n")
+        
+        # Auditoría
+        registrar_auditoria(
+            db=db,
+            accion="UPDATE",
+            descripcion=f"Servicios masivos aplicados - Período: {data.periodo} - Facturas: {facturas_afectadas}",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
         return {
             "success": True,
-            "message": f"Servicios aplicados correctamente",
-            "facturas_afectadas": len(facturas),
+            "message": f"Servicios aplicados correctamente a {facturas_afectadas} facturas",
+            "facturas_afectadas": facturas_afectadas,
             "detalles_creados": detalles_creados
         }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error aplicando servicios: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al aplicar servicios: {str(e)}"
+        )
+
+
+# ========================================
+# ENDPOINT: APLICAR SERVICIOS A FACTURA ESPECÍFICA
+# ========================================
+
+@router.post("/{id_factura}/aplicar-servicios", response_model=dict)
+def aplicar_servicios_a_factura_individual(
+    id_factura: int,
+    servicios: List[int] = Body(..., description="Lista de IDs de servicios"),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Aplica servicios adicionales a UNA factura específica
+    Recalcula totales automáticamente
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "facturas", "actualizar")
+    
+    try:
+        # Verificar factura
+        factura = db.query(Factura).filter(
+            Factura.id_factura == id_factura
+        ).first()
         
+        if not factura:
+            raise HTTPException(
+                status_code=404,
+                detail="Factura no encontrada"
+            )
+        
+        if factura.estado_factura not in ['pendiente', 'vencida']:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No se pueden agregar servicios a factura en estado '{factura.estado_factura}'"
+            )
+        
+        # Agregar servicios
+        cantidad = agregar_servicios_a_factura(db, id_factura, servicios)
+        
+        if cantidad == 0:
+            return {
+                "success": False,
+                "message": "No se agregaron servicios (ya existen o no son válidos)",
+                "servicios_agregados": 0
+            }
+        
+        # RECALCULAR TOTALES DE LA FACTURA
+        detalles = db.query(DetalleFactura).filter(
+            DetalleFactura.id_factura == id_factura
+        ).all()
+        
+        nuevo_subtotal = sum(d.subtotal_detalle for d in detalles)
+        
+        # Aplicar descuento si existe
+        subtotal_con_descuento = nuevo_subtotal - (factura.descuento or Decimal('0.00'))
+        
+        # Calcular IVA
+        iva_config = db.query(IVA).filter(
+            IVA.activo == True,
+            IVA.es_aplicable == True
+        ).first()
+        
+        if iva_config:
+            porcentaje_iva = Decimal(str(iva_config.porcentaje)) / Decimal('100')
+            nuevo_impuesto = subtotal_con_descuento * porcentaje_iva
+        else:
+            nuevo_impuesto = Decimal('0.00')
+        
+        nuevo_total = subtotal_con_descuento + nuevo_impuesto
+        
+        # Actualizar factura
+        factura.subtotal = nuevo_subtotal
+        factura.impuesto = nuevo_impuesto
+        factura.total = nuevo_total
+        
+        db.commit()
+        db.refresh(factura)
+        
+        # Auditoría
+        registrar_auditoria(
+            db=db,
+            accion="UPDATE",
+            descripcion=f"Servicios agregados a factura {factura.num_factura} - Cantidad: {cantidad}",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
+        return {
+            "success": True,
+            "message": f"Se agregaron {cantidad} servicio(s) correctamente",
+            "servicios_agregados": cantidad,
+            "factura": {
+                "id_factura": factura.id_factura,
+                "num_factura": factura.num_factura,
+                "subtotal": float(factura.subtotal),
+                "impuesto": float(factura.impuesto),
+                "total": float(factura.total)
+            }
+        }
+    
     except HTTPException:
         raise
     except Exception as e:

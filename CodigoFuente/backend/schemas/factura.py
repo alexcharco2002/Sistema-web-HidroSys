@@ -167,3 +167,15 @@ class FacturaConTodo(FacturaConUsuarioCompleto):
 from schemas.detalle_factura import DetalleFacturaResponse
 FacturaConDetalles.model_rebuild()
 FacturaConTodo.model_rebuild()
+
+class AplicarServiciosMasivoRequest(BaseModel):
+    id_servicios: List[int]
+    periodo: str  # Formato: "YYYY-MM"
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id_servicios": [1, 2, 3],
+                "periodo": "2024-12"
+            }
+        }

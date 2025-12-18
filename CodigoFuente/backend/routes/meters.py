@@ -145,6 +145,38 @@ def validar_ubicacion_medidor(
 # ========================================
 # CRUD MEDIDORES
 # ========================================
+
+# lista los sectores disponibles:
+@router.get("/sectores-disponibles", response_model=List[dict])
+def listar_sectores_para_medidores(
+    activo: Optional[bool] = Query(True, description="Solo sectores activos"),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Lista sectores disponibles para asignar a medidores.
+    Requiere solo permiso de medidores (no requiere permiso de sectores).
+    Endpoint optimizado para formularios de medidores.
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "medidores", "lectura")
+    
+    query = db.query(Sector.id_sector, Sector.nombre_sector, Sector.descripcion)
+    
+    if activo is not None:
+        query = query.filter(Sector.activo == activo)
+    
+    sectores = query.order_by(Sector.nombre_sector).all()
+    
+    return [
+        {
+            "id_sector": s.id_sector,
+            "nombre_sector": s.nombre_sector,
+            "descripcion": s.descripcion
+        }
+        for s in sectores
+    ]
+
 @router.get("/", response_model=List[MedidorCompleto])
 def listar_medidores(
     search: Optional[str] = Query(None, description="Búsqueda por número de medidor"),

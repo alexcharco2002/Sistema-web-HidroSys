@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
  
 import metersService from '../services/metersServices';
-import sectorsService from '../services/sectorServices';
 import authService from '../services/authServices';
 
 import './MetersSection.css';
@@ -91,9 +90,9 @@ const MetersSection = () => {
 
   const loadSectors = async () => {
     try {
-      const result = await sectorsService.getSectors();
+      const result = await  metersService.getSectoresDisponibles();
       if (result.success) {
-        setSectors(result.data.filter(s => s.activo));
+        setSectors(result.data);
       }
     } catch (error) {
       console.error('Error al cargar sectores:', error);

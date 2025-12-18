@@ -20,6 +20,10 @@ from security.jwt import verify_token
 import unicodedata
 import re
 
+# Después de los imports, agregar constantes
+TIPOS_TARIFA_PERMITIDOS = ['basico', 'exceso', 'especial', 'otro']
+TIPOS_TARIFA_OBLIGATORIOS = ['basico', 'exceso']
+
 router = APIRouter(prefix="/tarifas", tags=["tarifas"])
 
 def get_db():
@@ -97,6 +101,28 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"\s+", " ", text)
     return text
 
+# Función auxiliar para validar tipo de tarifa
+def validar_tipo_tarifa(tipo: str) -> str:
+    """Valida y normaliza el tipo de tarifa"""
+    tipo_normalizado = normalize_text(tipo)
+    if tipo_normalizado not in TIPOS_TARIFA_PERMITIDOS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Tipo de tarifa inválido. Solo se permiten: {', '.join(TIPOS_TARIFA_PERMITIDOS)}"
+        )
+    return tipo_normalizado
+
+# Función para verificar si existe tarifa vigente del mismo tipo
+def verificar_tarifa_vigente_tipo(db: Session, tipo_tarifa: str, excluir_id: int = None) -> Optional[Tarifa]:
+    """Verifica si existe una tarifa activa y vigente del mismo tipo"""
+    query = db.query(Tarifa).filter(
+        Tarifa.tipo_tarifa == tipo_tarifa,
+        Tarifa.activo == True,
+        Tarifa.es_vigente == True
+    )
+    if excluir_id:
+        query = query.filter(Tarifa.id_tarifa != excluir_id)
+    return query.first()
 
 # ========================================
 # LISTAR TARIFAS VIGENTES
@@ -303,6 +329,20 @@ def crear_tarifa(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "tarifas", "crear")
 
+    # ✅ VALIDAR TIPO DE TARIFA
+    tipo_normalizado = validar_tipo_tarifa(tarifa.tipo_tarifa)
+    
+    # ✅ VERIFICAR SI EXISTE TARIFA VIGENTE DEL MISMO TIPO
+    tarifa_vigente_tipo = verificar_tarifa_vigente_tipo(db, tipo_normalizado)
+    
+    if tarifa_vigente_tipo and tipo_normalizado in TIPOS_TARIFA_OBLIGATORIOS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Ya existe una tarifa de tipo '{tipo_normalizado}' activa y vigente. "
+                   f"Solo puede existir una tarifa de tipo 'basico' y una de tipo 'exceso' activa. "
+                   f"Puedes crear una nueva versión con estado inactivo o desactivar la vigente primero."
+        )
+    
     # Verificar si ya existe una tarifa vigente con el mismo nombre
     tarifa_vigente = db.query(Tarifa).filter(
         Tarifa.nombre == tarifa.nombre.strip(),
@@ -312,13 +352,14 @@ def crear_tarifa(
     if tarifa_vigente:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ya existe una tarifa vigente con el nombre '{tarifa.nombre}'. Use la opción de actualización para crear una nueva versión."
+            detail=f"Ya existe una tarifa vigente con el nombre '{tarifa.nombre}'. "
+                   "Use la opción de actualización para crear una nueva versión."
         )
 
     # Validar solapamiento de rangos
     if tarifa.limite_max_m3:
         rangos_existentes = db.query(Tarifa).filter(
-            Tarifa.tipo_tarifa == tarifa.tipo_tarifa,
+            Tarifa.tipo_tarifa == tipo_normalizado,
             Tarifa.es_vigente == True
         ).all()
 
@@ -330,7 +371,8 @@ def crear_tarifa(
                         detail=f"El rango se cruza con la tarifa '{t.nombre}'"
                     )
             else:
-                if not (tarifa.limite_max_m3 <= t.limite_min_m3 or tarifa.limite_min_m3 >= t.limite_max_m3):
+                if not (tarifa.limite_max_m3 <= t.limite_min_m3 or 
+                       tarifa.limite_min_m3 >= t.limite_max_m3):
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"El rango se cruza con la tarifa '{t.nombre}'"
@@ -343,9 +385,9 @@ def crear_tarifa(
         precio_por_m3=tarifa.precio_por_m3,
         limite_min_m3=tarifa.limite_min_m3,
         limite_max_m3=tarifa.limite_max_m3,
-        tipo_tarifa=tarifa.tipo_tarifa.strip(),
-        activo=True,
-        es_vigente=True,
+        tipo_tarifa=tipo_normalizado,
+        activo=tarifa.activo if hasattr(tarifa, 'activo') else True,
+        es_vigente=tarifa.activo if hasattr(tarifa, 'activo') else True,
         vigencia_desde=tarifa.vigencia_desde or datetime.now()
     )
 
@@ -475,16 +517,28 @@ def eliminar_tarifa(
     payload: dict = Depends(verify_token)
 ):
     """
-    Elimina físicamente la tarifa SOLO si no está asociada a ninguna factura
+    Elimina físicamente la tarifa SOLO si:
+    - No está asociada a ninguna factura
+    - NO es de tipo 'basico' o 'exceso' activa y vigente
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "tarifas", "eliminar")
 
     tarifa = db.query(Tarifa).filter(Tarifa.id_tarifa == id_tarifa).first()
+
     if not tarifa:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Tarifa no encontrada"
+        )
+
+    # ✅ VALIDAR QUE NO SEA TARIFA OBLIGATORIA VIGENTE
+    if tarifa.tipo_tarifa in TIPOS_TARIFA_OBLIGATORIOS and tarifa.es_vigente and tarifa.activo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"No se puede eliminar la tarifa de tipo '{tarifa.tipo_tarifa}' porque es "
+                   f"obligatoria para la facturación. Las tarifas de tipo 'basico' y 'exceso' "
+                   f"activas y vigentes no pueden ser eliminadas."
         )
 
     try:
@@ -519,11 +573,9 @@ def eliminar_tarifa(
             "accion": "no_eliminado",
             "message": (
                 f"⚠️ No se puede eliminar la tarifa '{tarifa.nombre}' porque está "
-                "relacionada con facturas u otros elementos. Por integridad histórica, "
-                "las tarifas con facturas asociadas no deben eliminarse."
+                "relacionada con facturas u otros elementos."
             )
         }
-
     except Exception as e:
         db.rollback()
         raise HTTPException(
@@ -542,31 +594,57 @@ def toggle_tarifa_status(
     payload: dict = Depends(verify_token)
 ):
     """
-    Activa/Desactiva una tarifa (cambia el campo activo)
-    NOTA: Esto NO afecta la vigencia, solo el estado activo/inactivo
+    Activa/Desactiva una tarifa
+    - Si DESACTIVA: también finaliza vigencia (es_vigente=False, vigencia_hasta=ahora)
+    - Si ACTIVA: solo cambia activo=True (NO afecta vigencia)
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "tarifas", "actualizar")
 
     tarifa = db.query(Tarifa).filter(Tarifa.id_tarifa == id_tarifa).first()
+
     if not tarifa:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Tarifa no encontrada"
         )
 
+    # ✅ VALIDAR: Si quiere DESACTIVAR una tarifa obligatoria
+    if tarifa.activo and tarifa.tipo_tarifa in TIPOS_TARIFA_OBLIGATORIOS:
+        tarifas_activas_tipo = db.query(Tarifa).filter(
+            Tarifa.tipo_tarifa == tarifa.tipo_tarifa,
+            Tarifa.activo == True,
+            Tarifa.es_vigente == True,
+            Tarifa.id_tarifa != id_tarifa
+        ).count()
+
+        if tarifas_activas_tipo == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"❌ No se puede desactivar la tarifa '{tarifa.nombre}' porque es de tipo "
+                       f"'{tarifa.tipo_tarifa}' y es la única activa. Siempre debe existir al menos "
+                       f"una tarifa activa de tipo 'basico' y una de tipo 'exceso' para realizar "
+                       f"los cálculos de facturación."
+            )
+
     # Cambiar estado activo
-    tarifa.activo = not tarifa.activo
-    estado_texto = "activada" if tarifa.activo else "desactivada"
+    nuevo_estado = not tarifa.activo
+    tarifa.activo = nuevo_estado
+    
+    # ⚠️ Si se DESACTIVA, también finalizar vigencia
+    if not nuevo_estado:
+        tarifa.es_vigente = False
+        tarifa.vigencia_hasta = datetime.now()
+    
+    estado_texto = "activada" if nuevo_estado else "desactivada"
 
     try:
         db.commit()
         db.refresh(tarifa)
 
-        # Registrar auditoría
         registrar_auditoria(
             db=db,
-            accion="UPDATE",
+            accion="TOGGLE_STATUS",
             descripcion=f"Tarifa '{tarifa.nombre}' fue {estado_texto} por '{payload['sub']}'",
             id_usuario=current_user.id_usuario_sistema
         )
@@ -575,11 +653,11 @@ def toggle_tarifa_status(
 
     except Exception as e:
         db.rollback()
-        print(f"❌ Error al cambiar estado de la tarifa: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al cambiar el estado de la tarifa"
         )
+
 
 
 # ========================================
@@ -593,12 +671,13 @@ def finalizar_vigencia_tarifa(
 ):
     """
     Finaliza manualmente la vigencia de una tarifa sin crear una nueva versión
-    Marca: es_vigente=False, activo=False, vigencia_hasta=ahora
+    NOTA: NO se puede finalizar vigencia de tarifas tipo 'basico' o 'exceso' si es la única vigente
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "tarifas", "actualizar")
 
     tarifa = db.query(Tarifa).filter(Tarifa.id_tarifa == id_tarifa).first()
+
     if not tarifa:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -610,6 +689,24 @@ def finalizar_vigencia_tarifa(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Esta tarifa ya no está vigente"
         )
+
+    # ✅ VALIDAR: Si es tarifa obligatoria, verificar que haya otra activa
+    if tarifa.tipo_tarifa in TIPOS_TARIFA_OBLIGATORIOS:
+        tarifas_vigentes_tipo = db.query(Tarifa).filter(
+            Tarifa.tipo_tarifa == tarifa.tipo_tarifa,
+            Tarifa.es_vigente == True,
+            Tarifa.activo == True,
+            Tarifa.id_tarifa != id_tarifa
+        ).count()
+
+        if tarifas_vigentes_tipo == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"❌ No se puede finalizar la vigencia de '{tarifa.nombre}' porque es de tipo "
+                       f"'{tarifa.tipo_tarifa}' y es la única vigente. Siempre debe existir al menos "
+                       f"una tarifa vigente de tipo 'basico' y una de tipo 'exceso' para realizar "
+                       f"los cálculos de facturación. Debes activar otra tarifa de este tipo primero."
+            )
 
     try:
         tarifa.es_vigente = False
@@ -641,4 +738,145 @@ def finalizar_vigencia_tarifa(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al finalizar vigencia"
+        )
+
+
+@router.patch("/{id_tarifa}/activar-vigente", response_model=TarifaResponse)
+def activar_tarifa_vigente(
+    id_tarifa: int,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Activa una tarifa y desactiva la anterior del mismo tipo si existe.
+    Solo para tipos 'basico' y 'exceso': solo puede haber una activa.
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "tarifas", "actualizar")
+
+    tarifa = db.query(Tarifa).filter(Tarifa.id_tarifa == id_tarifa).first()
+
+    if not tarifa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tarifa no encontrada"
+        )
+
+    # Verificar si ya está activa
+    if tarifa.activo and tarifa.es_vigente:
+        return tarifa
+
+    # Buscar tarifa vigente del mismo tipo
+    tarifa_vigente_anterior = verificar_tarifa_vigente_tipo(db, tarifa.tipo_tarifa, id_tarifa)
+
+    try:
+        # Si existe una tarifa vigente del mismo tipo, desactivarla
+        if tarifa_vigente_anterior:
+            tarifa_vigente_anterior.activo = False
+            tarifa_vigente_anterior.es_vigente = False
+            tarifa_vigente_anterior.vigencia_hasta = datetime.now()
+
+        # Activar la nueva tarifa
+        tarifa.activo = True
+        tarifa.es_vigente = True
+        tarifa.vigencia_desde = datetime.now()
+        tarifa.vigencia_hasta = None
+
+        db.commit()
+        db.refresh(tarifa)
+
+        registrar_auditoria(
+            db=db,
+            accion="ACTIVAR_VIGENTE",
+            descripcion=f"Tarifa '{tarifa.nombre}' activada. "
+                       f"{'Tarifa anterior desactivada: ' + tarifa_vigente_anterior.nombre if tarifa_vigente_anterior else ''}",
+            id_usuario=current_user.id_usuario_sistema
+        )
+
+        return tarifa
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al activar tarifa: {str(e)}"
+        )
+
+@router.patch("/{id_tarifa}/activar-vigencia", response_model=TarifaResponse)
+def activar_vigencia_tarifa(
+    id_tarifa: int,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Activa la vigencia de una tarifa (es_vigente=True, vigencia_desde=ahora, vigencia_hasta=None)
+    También activa la tarifa (activo=True)
+    
+    Para tipos 'basico' y 'exceso': desactiva automáticamente la anterior del mismo tipo
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "tarifas", "actualizar")
+
+    tarifa = db.query(Tarifa).filter(Tarifa.id_tarifa == id_tarifa).first()
+
+    if not tarifa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tarifa no encontrada"
+        )
+
+    # Si ya está vigente, retornar sin cambios
+    if tarifa.es_vigente and tarifa.activo:
+        return tarifa
+
+    # Buscar tarifa vigente del mismo tipo (para tipos obligatorios)
+    tarifa_vigente_anterior = None
+    if tarifa.tipo_tarifa in TIPOS_TARIFA_OBLIGATORIOS:
+        tarifa_vigente_anterior = db.query(Tarifa).filter(
+            Tarifa.tipo_tarifa == tarifa.tipo_tarifa,
+            Tarifa.es_vigente == True,
+            Tarifa.activo == True,
+            Tarifa.id_tarifa != id_tarifa
+        ).first()
+
+    try:
+        # Si existe tarifa vigente anterior del mismo tipo, desactivarla automáticamente
+        if tarifa_vigente_anterior:
+            tarifa_vigente_anterior.activo = False
+            tarifa_vigente_anterior.es_vigente = False
+            tarifa_vigente_anterior.vigencia_hasta = datetime.now()
+
+        # Activar la nueva tarifa
+        tarifa.activo = True
+        tarifa.es_vigente = True
+        tarifa.vigencia_desde = datetime.now()
+        tarifa.vigencia_hasta = None
+
+        db.commit()
+        db.refresh(tarifa)
+
+        registrar_auditoria(
+            db=db,
+            accion="ACTIVAR_VIGENCIA",
+            descripcion=f"Vigencia activada para tarifa '{tarifa.nombre}'. " +
+                       (f"Tarifa anterior '{tarifa_vigente_anterior.nombre}' desactivada." if tarifa_vigente_anterior else ""),
+            id_usuario=current_user.id_usuario_sistema
+        )
+
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Vigencia activada",
+            mensaje=f"La tarifa '{tarifa.nombre}' ahora está activa y vigente." +
+                   (f" Se desactivó '{tarifa_vigente_anterior.nombre}'." if tarifa_vigente_anterior else ""),
+            tipo="exito"
+        )
+
+        return tarifa
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al activar vigencia: {str(e)}"
         )

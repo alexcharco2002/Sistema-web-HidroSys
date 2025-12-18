@@ -9,7 +9,7 @@ import authService from './authServices';
 const API_CONFIG = {
   baseURL: 'https://localhost:8000',
   endpoints: {
-    tarifas: '/tarifas',
+    tarifas: '/tarifas',  // Agregar /
     toggleStatus: (id) => `/tarifas/${id}/toggle-status`,
     historial: (nombre) => `/tarifas/historial/${nombre}`,
     finalizarVigencia: (id) => `/tarifas/${id}/finalizar-vigencia`,
@@ -18,6 +18,7 @@ const API_CONFIG = {
     porTipo: (tipo) => `/tarifas/tipo/${tipo}`
   }
 };
+
 
 class TarifasService {
   constructor() {

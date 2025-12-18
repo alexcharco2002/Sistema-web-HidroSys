@@ -13,7 +13,12 @@ class TarifaBase(BaseModel):
     detalle: Optional[str] = Field(None, max_length=500)
     precio_por_m3: Decimal = Field(..., ge=0)
     limite_min_m3: Decimal = Field(..., ge=0)
-    limite_max_m3: Decimal = Field(..., ge=0)  
+    limite_max_m3: Optional[Decimal] = Field(
+        None,
+        ge=0,
+        description="Límite máximo de consumo en m³. NULL = sin límite (exceso)"
+    )
+
     tipo_tarifa: str = Field(..., min_length=2, max_length=50)
 
     # ---------------------------
@@ -54,12 +59,18 @@ class TarifaBase(BaseModel):
     # Validador de límites
     # ---------------------------
     @model_validator(mode='after')
-    def validar_limites(cls, self):
+    def validar_limites(self):
+        # 👉 Caso exceso / sin límite
+        if self.limite_max_m3 is None:
+            return self
+
         if self.limite_max_m3 <= self.limite_min_m3:
             raise ValueError(
                 f'El límite máximo ({self.limite_max_m3} m³) debe ser mayor que el límite mínimo ({self.limite_min_m3} m³)'
             )
+
         return self
+
 
 
 # ===========================
@@ -101,7 +112,7 @@ class TarifaHistorialResponse(BaseModel):
     nombre: str
     precio_por_m3: Decimal
     limite_min_m3: Decimal
-    limite_max_m3: Decimal
+    limite_max_m3: Optional[Decimal]
     tipo_tarifa: str
     vigencia_desde: datetime
     vigencia_hasta: Optional[datetime]

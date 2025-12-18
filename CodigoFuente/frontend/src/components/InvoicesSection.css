@@ -817,3 +817,302 @@ input:checked + .slider:before {
   font-size: 18px;
   color: #0d6efd;
 }
+.discount-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.discount-input {
+  width: 100px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  border: 1px solid #d1d5db; /* gris suave */
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.discount-input:focus {
+  border-color: #2563eb; /* azul */
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.discount-input::placeholder {
+  color: #9ca3af;
+}
+
+.discount-suffix {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+/* Vista previa del cálculo */
+.payment-preview {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 2px solid #3b82f6;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.preview-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e40af;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-calculation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.preview-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 14px;
+}
+
+.preview-row.highlight {
+  background: #dcfce7;
+  padding: 10px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.preview-row.total {
+  background: #1e40af;
+  color: white;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 8px;
+}
+
+.preview-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, #3b82f6, transparent);
+  margin: 8px 0;
+}
+
+.total-amount {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+/* Comparación */
+.preview-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #3b82f6;
+}
+
+.comparison-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comparison-item .label {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.comparison-item .value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.comparison-item .value.old {
+  color: #94a3b8;
+  text-decoration: line-through;
+}
+
+.comparison-item .value.savings {
+  color: #16a34a;
+}
+
+.text-green-600 {
+  color: #16a34a;
+}
+
+.payment-note {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #fef3c7;
+  border: 1px solid #fbbf24;
+  border-radius: 8px;
+  margin-top: 15px;
+  font-size: 13px;
+  color: #92400e;
+}
+
+/* Modal de servicios */
+.modal-wide {
+  max-width: 800px;
+}
+
+.invoice-info-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.invoice-info-card .info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+}
+
+.invoice-info-card .label {
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+.invoice-info-card .value {
+  font-weight: 600;
+}
+
+/* Grid de servicios */
+.servicios-selection h3 {
+  margin-bottom: 1rem;
+  color: #2d3748;
+}
+
+.servicios-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.servicio-card {
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.servicio-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+  transform: translateY(-2px);
+}
+
+.servicio-card.selected {
+  border-color: #667eea;
+  background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.servicio-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.servicio-checkbox {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #cbd5e0;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.servicio-card.selected .servicio-checkbox {
+  background: #667eea;
+  border-color: #667eea;
+  color: white;
+}
+
+.servicio-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: #2d3748;
+  font-weight: 600;
+}
+
+.servicio-descripcion {
+  font-size: 0.875rem;
+  color: #718096;
+  margin: 0.5rem 0;
+  line-height: 1.4;
+}
+
+.servicio-precio {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #667eea;
+  margin-top: 0.75rem;
+}
+
+/* Resumen de selección */
+.selection-summary {
+  background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: space-around;
+  gap: 1rem;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  color: #4a5568;
+}
+
+.summary-item svg {
+  color: #667eea;
+}
+
+.summary-item strong {
+  color: #2d3748;
+  font-weight: 700;
+}
+
+/* Botón de acción de servicios */
+.action-btn-service {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  color: white;
+}
+
+.action-btn-service:hover {
+  background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
+}
+

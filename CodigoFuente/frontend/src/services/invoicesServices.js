@@ -14,7 +14,8 @@ const API_CONFIG = {
     cambiarEstado: id => `/facturas/${id}/estado`,
     anular: id => `/facturas/${id}/anular`,       
     detalles: id => `/facturas/${id}/detalles`,   
-    marcarVencidas: '/facturas/jobs/marcar-vencidas'
+    marcarVencidas: '/facturas/jobs/marcar-vencidas',
+    serviciosActivos: '/facturas/activos-facturacion'
   }
 };
 
@@ -174,29 +175,29 @@ class InvoicesServices {
    */
 
   async aplicarDescuento(facturaId, descuentoData) {
-  try {
-    const data = await this.makeRequest(
-      `${API_CONFIG.endpoints.facturas}/${facturaId}/aplicar-descuento`,
-      {
-        method: 'PATCH',
-        body: descuentoData  // ✅ Pasar el objeto directamente, NO JSON.stringify
-      }
-    );
-    
-    return {
-      success: true,
-      data: data,
-      message: data.message || 'Descuento aplicado correctamente'
-    };
-    
-  } catch (error) {
-    console.error('❌ Error aplicando descuento:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al aplicar descuento'
-    };
+    try {
+      const data = await this.makeRequest(
+        `${API_CONFIG.endpoints.facturas}/${facturaId}/aplicar-descuento`,
+        {
+          method: 'PATCH',
+          body: descuentoData  // ✅ Pasar el objeto directamente, NO JSON.stringify
+        }
+      );
+      
+      return {
+        success: true,
+        data: data,
+        message: data.message || 'Descuento aplicado correctamente'
+      };
+      
+    } catch (error) {
+      console.error('❌ Error aplicando descuento:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al aplicar descuento'
+      };
+    }
   }
-}
 
   /**
    * Obtener estadísticas de facturación
@@ -611,6 +612,94 @@ class InvoicesServices {
     
     return periodos;
   }
+   /**
+   * Listr los servicos adicionales 
+   */
+  async getServiciosActivos() {
+    try {
+      // ✅ USAR EL ENDPOINT CORRECTO DEFINIDO EN API_CONFIG
+      const data = await this.makeRequest(
+        API_CONFIG.endpoints.serviciosActivos,  // ← Cambiar esta línea
+        { method: 'GET' }
+      );
+      
+      console.log('✅ Servicios activos cargados:', data);
+      return {
+        success: true,
+        data: data
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo servicios activos:', error);
+      return {
+        success: false,
+        data: [],
+        message: error.message || 'Error al obtener servicios'
+      };
+    }
+  }
+
+  /**
+   * Aplicar servicios a una factura individual
+   */
+  async aplicarServiciosIndividual(facturaId, servicios) {
+    try {
+      const data = await this.makeRequest(
+        `${API_CONFIG.endpoints.facturas}/${facturaId}/aplicar-servicios`,
+        {
+          method: 'POST',
+          body: servicios // Array de IDs
+        }
+      );
+
+      // Limpiar cachés
+      this.cachedFacturas = null;
+      this.cachedStats = null;
+
+      return {
+        success: true,
+        data: data,
+        message: data.message || 'Servicios aplicados correctamente'
+      };
+    } catch (error) {
+      console.error('❌ Error aplicando servicios:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al aplicar servicios'
+      };
+    }
+  }
+   /**
+   * Aplicar servicios a TODAS LAS  factura
+   */
+  async aplicarServiciosMasivo(data) {
+    try {
+      const result = await this.makeRequest(
+        `${API_CONFIG.endpoints.facturas}/aplicar-servicios-masivo`,
+        {
+          method: 'POST',
+          body: data  // { id_servicios: [...], periodo: "2024-12" }
+        }
+      );
+      
+      // Limpiar cachés
+      this.cachedFacturas = null;
+      this.cachedStats = null;
+      
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      console.error('❌ Error aplicando servicios masivo:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al aplicar servicios'
+      };
+    }
+  }
+
+
+
 
   /**
    * Obtener caché de facturas
@@ -633,23 +722,7 @@ class InvoicesServices {
     this.cachedFacturas = null;
     this.cachedStats = null;
   }
-
-  async getServiciosActivos() {
-    return await this.makeRequest(
-      `${API_CONFIG.baseURL}/servicios/activos-facturacion`,
-      { method: 'GET' }
-    );
-  }
-
-  async aplicarServiciosMasivo(data) {
-    return await this.makeRequest(
-      `${API_CONFIG.endpoints.facturas}/aplicar-servicios-masivo`,
-      {
-        method: 'POST',
-        body: data
-      }
-    );
-  }
+ 
 
 }
 

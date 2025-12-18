@@ -8,8 +8,19 @@ import authService from '../services/authServices';
 import { 
   DollarSign, Plus, Search, Edit, Trash2, Eye, CheckCircle, XCircle,
   X, Save, RefreshCw, AlertCircle, Receipt, ArrowUpDown, FileText, Tag,
-  Calendar, Clock, History, AlertTriangle, Ban
+  Calendar, Clock, History, AlertTriangle, Ban, Star
 } from 'lucide-react';
+
+// Tipos de tarifas permitidios 
+const TIPOS_TARIFA_PERMITIDOS = [
+  { value: 'basico', label: 'Básico' },
+  { value: 'exceso', label: 'Exceso' },
+  { value: 'especial', label: 'Especial' },
+  { value: 'otro', label: 'Otro' }
+];
+
+const TIPOS_TARIFA_OBLIGATORIOS = ['basico', 'exceso'];
+
 
 const TarifasSection = () => {
   const [tarifas, setTarifas] = useState([]);
@@ -220,28 +231,69 @@ const TarifasSection = () => {
   };
 
   // Finalizar vigencia de una tarifa 
-  const finalizarVigencia = async (tarifaId, nombreTarifa) => {
+  const finalizarVigencia = async (tarifaId, nombreTarifa, tipoTarifa) => {
     if (!permissions.canUpdate) {
       alert("❌ No tienes permiso para finalizar vigencia.");
       return;
     }
 
-    const confirmado = window.confirm(
-      `¿Estás seguro de finalizar la vigencia de "${nombreTarifa}"? Esta acción no se puede deshacer.`
-    );
-    if (!confirmado) return;
+    const tarifa = tarifas.find(t => t.id_tarifa === tarifaId);
+    
+    if (!tarifa) {
+      alert('❌ Tarifa no encontrada');
+      return;
+    }
+
+    // ✅ VALIDAR: Si intenta finalizar vigencia de una tarifa obligatoria
+    if (tarifa.es_vigente && 
+        tarifa.activo && 
+        TIPOS_TARIFA_OBLIGATORIOS.includes(tarifa.tipo_tarifa)) {
+      
+      // Contar cuántas tarifas vigentes hay del mismo tipo
+      const tarifasVigentesMismoTipo = tarifas.filter(
+        t => t.tipo_tarifa === tarifa.tipo_tarifa &&
+            t.es_vigente === true &&
+            t.activo === true &&
+            t.id_tarifa !== tarifaId
+      ).length;
+
+      if (tarifasVigentesMismoTipo === 0) {
+        alert(
+          `❌ NO SE PUEDE FINALIZAR VIGENCIA\n\n` +
+          `La tarifa "${nombreTarifa}" es de tipo "${tipoTarifa}" y es la única vigente.\n\n` +
+          `Siempre debe existir al menos UNA tarifa vigente de tipo "básico" y UNA de tipo "exceso" ` +
+          `para realizar los cálculos de facturación.\n\n` +
+          `💡 Solución: Crea una nueva versión de "${tipoTarifa}"`
+        );
+        return;
+      }
+
+      // Si hay otra vigente, advertir antes de continuar
+      const confirmar = window.confirm(
+        `⚠️ ADVERTENCIA\n\n` +
+        `Estás a punto de finalizar la vigencia de "${nombreTarifa}" de tipo "${tipoTarifa}".\n\n` +
+        `Existe ${tarifasVigentesMismoTipo} tarifa(s) vigente(s) más de este tipo.\n\n` +
+        `Esta acción no se puede deshacer. ¿Deseas continuar?`
+      );
+
+      if (!confirmar) return;
+    } else {
+      const confirmado = window.confirm(
+        `¿Estás seguro de finalizar la vigencia de "${nombreTarifa}"?\n\nEsta acción no se puede deshacer.`
+      );
+      if (!confirmado) return;
+    }
 
     try {
       const result = await tarifasService.finalizarVigenciaTarifa(tarifaId);
-
+      
       if (result.success) {
-        alert("✅ Vigencia finalizada: La vigencia se finalizó correctamente.");
+        alert("✅ Vigencia finalizada correctamente.");
         await fetchTarifas();
         await fetchStats();
       } else {
         alert("❌ Error: " + result.message);
       }
-
     } catch (error) {
       alert("❌ Error al finalizar vigencia: " + error.message);
     }
@@ -269,7 +321,7 @@ const TarifasSection = () => {
         precio_por_m3: '',
         limite_min_m3: '',
         limite_max_m3: '',
-        tipo_tarifa: '',
+        tipo_tarifa: 'basico',
         vigencia_desde: new Date().toISOString().split('T')[0],
         activo: true
       });
@@ -349,7 +401,21 @@ const TarifasSection = () => {
       return;
     }
 
-    const confirmado = window.confirm("¿Estás seguro de que deseas eliminar esta tarifa?");
+    const tarifa = tarifas.find(t => t.id_tarifa === tarifaId);
+    
+    // ✅ Validar si es tarifa obligatoria
+    if (tarifa && 
+        TIPOS_TARIFA_OBLIGATORIOS.includes(tarifa.tipo_tarifa) && 
+        tarifa.es_vigente && 
+        tarifa.activo) {
+      alert(`❌ No puedes eliminar la tarifa "${tarifa.nombre}" porque es de tipo "${tarifa.tipo_tarifa}" ` +
+            `y está activa y vigente. Las tarifas de tipo "básico" y "exceso" son obligatorias para la facturación.`);
+      return;
+    }
+
+    const confirmado = window.confirm(
+      `¿Estás seguro de que deseas eliminar la tarifa "${tarifa?.nombre}"?`
+    );
     if (!confirmado) return;
 
     try {
@@ -362,13 +428,10 @@ const TarifasSection = () => {
       } else {
         alert("❌ Advertencia: " + result.message);
       }
-
     } catch (error) {
       alert("❌ Error al eliminar tarifa: " + error.message);
     }
   };
-
-
 
   const toggleTarifaStatus = async (tarifaId) => {
     if (!permissions.canToggleStatus) {
@@ -376,18 +439,80 @@ const TarifasSection = () => {
       return;
     }
 
+    const tarifa = tarifas.find(t => t.id_tarifa === tarifaId);
+    
+    if (!tarifa) {
+      alert('❌ Tarifa no encontrada');
+      return;
+    }
+
+    // ✅ CASO 1: Intentando DESACTIVAR
+    if (tarifa.activo) {
+      // Validar si es tarifa obligatoria
+      if (tarifa.es_vigente && TIPOS_TARIFA_OBLIGATORIOS.includes(tarifa.tipo_tarifa)) {
+        const tarifasActivasMismoTipo = tarifas.filter(
+          t => t.tipo_tarifa === tarifa.tipo_tarifa &&
+              t.activo === true &&
+              t.es_vigente === true &&
+              t.id_tarifa !== tarifaId
+        ).length;
+
+        if (tarifasActivasMismoTipo === 0) {
+          alert(
+            `❌ NO SE PUEDE DESACTIVAR\n\n` +
+            `La tarifa "${tarifa.nombre}" es de tipo "${tarifa.tipo_tarifa}" y es la única activa.\n\n` +
+            `Siempre debe existir al menos UNA tarifa activa de tipo "básico" y UNA de tipo "exceso" ` +
+            `para realizar los cálculos de facturación.\n\n` +
+            `💡 Solución: Activa otra tarifa de tipo "${tarifa.tipo_tarifa}" primero.`
+          );
+          return;
+        }
+      }
+
+      // ⚠️ ADVERTENCIA: Desactivar también finaliza vigencia
+      const confirmar = window.confirm(
+        `⚠️ DESACTIVAR TARIFA\n\n` +
+        `Tarifa: "${tarifa.nombre}"\n` +
+        `Tipo: "${tarifa.tipo_tarifa}"\n\n` +
+        `⚠️ IMPORTANTE: Al desactivar esta tarifa, también se FINALIZARÁ SU VIGENCIA.\n\n` +
+        `Esto significa que:\n` +
+        `• Se marcará como inactiva (activo = No)\n` +
+        `• Se finalizará su vigencia (es_vigente = No)\n` +
+        `• Se registrará la fecha de finalización\n\n` +
+        `¿Deseas continuar con la desactivación?`
+      );
+
+      if (!confirmar) return;
+    } 
+    // ✅ CASO 2: Intentando ACTIVAR
+    else {
+      const confirmar = window.confirm(
+        `✅ ACTIVAR TARIFA\n\n` +
+        `Tarifa: "${tarifa.nombre}"\n\n` +
+        `Esto cambiará el estado a activo, pero NO activará automáticamente la vigencia.\n\n` +
+        `Si deseas que sea la tarifa vigente actual, usa la opción "Activar Vigencia" después.\n\n` +
+        `¿Deseas activar esta tarifa?`
+      );
+
+      if (!confirmar) return;
+    }
+
     try {
       const result = await tarifasService.toggleTarifaStatus(tarifaId);
       
       if (result.success) {
+        const nuevoEstado = result.data.activo ? 'activada' : 'desactivada';
+        alert(`✅ Tarifa ${nuevoEstado} correctamente`);
         await fetchTarifas();
+        await fetchStats();
       } else {
-        alert('Error: ' + result.message);
+        alert('❌ Error: ' + result.message);
       }
     } catch (error) {
-      alert('Error al cambiar estado de la tarifa');
+      alert('❌ Error: ' + error.message);
     }
   };
+
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('es-EC', {
@@ -404,6 +529,86 @@ const TarifasSection = () => {
       day: 'numeric'
     });
   };
+
+  // función para activar tarifa con confirmación:
+  const activarVigencia = async (tarifaId, nombreTarifa, tipoTarifa) => {
+    if (!permissions.canUpdate) {
+      alert("❌ No tienes permiso para activar vigencia.");
+      return;
+    }
+
+    const tarifa = tarifas.find(t => t.id_tarifa === tarifaId);
+    
+    if (!tarifa) {
+      alert('❌ Tarifa no encontrada');
+      return;
+    }
+
+    // Si ya está vigente, no hacer nada
+    if (tarifa.es_vigente && tarifa.activo) {
+      alert(`ℹ️ La tarifa "${nombreTarifa}" ya está activa y vigente.`);
+      return;
+    }
+
+    // ✅ Verificar si hay otra tarifa vigente del mismo tipo
+    const tarifaVigenteExistente = tarifas.find(
+      t => t.tipo_tarifa === tipoTarifa &&
+          t.es_vigente === true &&
+          t.activo === true &&
+          t.id_tarifa !== tarifaId
+    );
+
+    let mensaje = `✅ ACTIVAR VIGENCIA\n\nTarifa: "${nombreTarifa}"\nTipo: "${tipoTarifa}"\n\n`;
+
+    // ⚠️ Si existe tarifa vigente del mismo tipo, mostrar advertencia
+    if (tarifaVigenteExistente && TIPOS_TARIFA_OBLIGATORIOS.includes(tipoTarifa)) {
+      mensaje = 
+        `⚠️ ATENCIÓN: YA EXISTE UNA TARIFA VIGENTE\n\n` +
+        `Tipo: "${tipoTarifa}"\n\n` +
+        `TARIFA ACTUAL VIGENTE:\n` +
+        `"${tarifaVigenteExistente.nombre}"\n\n ` +
+        `NUEVA TARIFA A ACTIVAR:\n` +
+        `"${nombreTarifa}"\n\n ` +
+        `Si continúas:\n` +
+        `• "${nombreTarifa}" se activará y será la vigente\n` +
+        `• "${tarifaVigenteExistente.nombre}" se DESACTIVARÁ automáticamente\n` +
+        `• Los cálculos de facturación usarán la nueva tarifa\n\n` +
+        `¿Estás seguro de que deseas continuar?`;
+    } else {
+      mensaje += 
+        `Esta tarifa se activará y será la vigente para los cálculos de facturación.\n\n` +
+        `¿Deseas continuar?`;
+    }
+
+    const confirmado = window.confirm(mensaje);
+    if (!confirmado) return;
+
+    try {
+      await tarifasService.makeRequest(
+        `/tarifas/${tarifaId}/activar-vigencia`,
+        { method: 'PATCH' }
+      );
+
+      if (tarifaVigenteExistente && TIPOS_TARIFA_OBLIGATORIOS.includes(tipoTarifa)) {
+        alert(
+          `✅ VIGENCIA ACTIVADA\n\n` +
+          `✓ "${nombreTarifa}" está ahora ACTIVA y VIGENTE\n` +
+          `✗ "${tarifaVigenteExistente.nombre}" fue DESACTIVADA\n\n` +
+          `Los cálculos de facturación usarán la nueva tarifa.`
+        );
+      } else {
+        alert(`✅ Vigencia activada correctamente para "${nombreTarifa}".`);
+      }
+
+      await fetchTarifas();
+      await fetchStats();
+    } catch (error) {
+      alert("❌ Error al activar vigencia: " + error.message);
+    }
+  };
+
+
+
 
   if (!permissions.canRead) {
     return (
@@ -649,7 +854,7 @@ const TarifasSection = () => {
                 {permissions.canUpdate && tarifa.es_vigente && (
                   <button 
                     className="action-btn warning"
-                    onClick={() => finalizarVigencia(tarifa.id_tarifa, tarifa.nombre)}
+                    onClick={() => finalizarVigencia(tarifa.id_tarifa, tarifa.nombre, tarifa.tipo_tarifa)}
                     title="Finalizar vigencia"
                   >
                     <Ban className="w-4 h-4" />
@@ -665,6 +870,23 @@ const TarifasSection = () => {
                     {tarifa.activo ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                   </button>
                 )}
+
+                {permissions.canUpdate && !tarifa.es_vigente && (
+                  <button
+                    className="action-btn success"
+                    onClick={() =>
+                      activarVigencia(
+                        tarifa.id_tarifa,
+                        tarifa.nombre,
+                        tarifa.tipo_tarifa
+                      )
+                    }
+                    title="Activar vigencia (establecer como tarifa actual)"
+                  >
+                    <Star className="w-4 h-4" />
+                  </button>
+                )}
+
 
                 {permissions.canDelete && (
                   <button 
@@ -816,35 +1038,52 @@ const TarifasSection = () => {
                       />
                     </div>
 
-                    <div className="form-group">
-                      <label>Tipo de Tarifa *</label>
-                      {modalType === 'create' ? (
-                        <input
-                          type="text"
-                          required
-                          value={formData.tipo_tarifa}
-                          onChange={(e) => setFormData({ ...formData, tipo_tarifa: e.target.value })}
-                          placeholder="Ej: Residencial, Comercial"
-                          list="tipos-tarifa"
-                        />
-                      ) : (
-                        <select
-                          required
-                          value={formData.tipo_tarifa}
-                          onChange={(e) => setFormData({ ...formData, tipo_tarifa: e.target.value })}
-                        >
-                          <option value="">Seleccionar tipo</option>
-                          {tiposTarifa.map(tipo => (
-                            <option key={tipo} value={tipo}>{tipo}</option>
-                          ))}
-                        </select>
-                      )}
-                      <datalist id="tipos-tarifa">
-                        {tiposTarifa.map(tipo => (
-                          <option key={tipo} value={tipo} />
-                        ))}
-                      </datalist>
-                    </div>
+                   <div className="form-group">
+  <label>Tipo de Tarifa *</label>
+  {modalType === 'create' ? (
+    <select
+      required
+      value={formData.tipo_tarifa}
+      onChange={(e) => setFormData({ ...formData, tipo_tarifa: e.target.value })}
+      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+    >
+      <option value="">Seleccionar tipo</option>
+      {TIPOS_TARIFA_PERMITIDOS.map(tipo => (
+        <option key={tipo.value} value={tipo.value}>
+          {tipo.label}
+          {TIPOS_TARIFA_OBLIGATORIOS.includes(tipo.value) ? ' ⭐ (Obligatorio)' : ''}
+        </option>
+      ))}
+    </select>
+  ) : (
+    <input
+      type="text"
+      value={formData.tipo_tarifa}
+      disabled
+      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+      title="El tipo de tarifa no se puede cambiar al editar"
+    />
+  )}
+  
+  {/* Advertencia para tipos obligatorios */}
+  {TIPOS_TARIFA_OBLIGATORIOS.includes(formData.tipo_tarifa) && (
+    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+      <AlertTriangle size={14} />
+      Solo puede existir una tarifa activa de tipo "{formData.tipo_tarifa}". 
+      Si creas una nueva, deberás activarla manualmente.
+    </p>
+  )}
+  
+  {/* Información adicional */}
+  {formData.tipo_tarifa && (
+    <p className="text-xs text-gray-500 mt-1">
+      {TIPOS_TARIFA_OBLIGATORIOS.includes(formData.tipo_tarifa) 
+        ? '💡 Esta tarifa es necesaria para la facturación y no se puede eliminar cuando está activa.'
+        : '💡 Este tipo de tarifa es opcional y puede tener múltiples versiones activas.'}
+    </p>
+  )}
+</div>
+
 
                     <div className="form-group form-group-full">
                       <label>Detalle</label>
@@ -886,7 +1125,6 @@ const TarifasSection = () => {
                       <label>Límite Máximo (m³)</label>
                       <input
                         type="number"
-                        required
                         step="0.01"
                         min="0"
                         value={formData.limite_max_m3}

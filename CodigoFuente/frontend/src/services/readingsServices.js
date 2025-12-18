@@ -18,7 +18,7 @@ const API_CONFIG = {
     medidoresCompletos: '/lecturas/medidores/lista/completa',
     stats: '/lecturas/stats/count',
     periodosDisponibles: '/lecturas/periodos/disponibles'  ,
-     misLecturas: '/lecturas/mis-lecturas',
+    misLecturas: '/lecturas/mis-lecturas',
   }
 };
 
@@ -166,7 +166,7 @@ class ReadingsServices {
    * @param {number} mes - Mes (1-12)
    * @param {number} anio - Año (ej: 2025)
    */
-  async importarExcelConPeriodo(file, mes, anio, id_tarifa) {
+  async importarExcelConPeriodo(file, mes, anio) {
     try {
       // Validaciones
       if (!file) {
@@ -181,17 +181,11 @@ class ReadingsServices {
         throw new Error('Año inválido');
       }
 
-      // 🆕 VALIDAR TARIFA
-      if (!id_tarifa) {
-        throw new Error('Debe seleccionar una tarifa');
-      }
-
       // 🆕 TODO VA EN FORMDATA (no mezclar con query params)
       const formData = new FormData();
       formData.append('file', file);
       formData.append('mes', mes.toString());
       formData.append('anio', anio.toString());
-      formData.append('id_tarifa', id_tarifa.toString());
 
       // 🆕 Endpoint SIN query params (todo va en FormData)
       const endpoint = `${API_CONFIG.endpoints.importExcelPeriodo}`;
@@ -392,16 +386,8 @@ class ReadingsServices {
    */
   async createLectura(lecturaData) {
     try {
-      // 🆕 Extraer id_tarifa para enviarlo como query param
-      const { id_tarifa } = lecturaData;
-      
-      // 🆕 VALIDAR que id_tarifa exista
-      if (!id_tarifa) {
-        throw new Error('Debe seleccionar una tarifa');
-      }
 
-      // 🆕 Construir endpoint con id_tarifa y generar_factura como query params
-      const endpoint = `${API_CONFIG.endpoints.lecturas}?id_tarifa=${id_tarifa}&generar_factura=true`;
+      const endpoint = `${API_CONFIG.endpoints.lecturas}?generarfactura=true`;
 
       const data = await this.makeRequest(endpoint, {
         method: 'POST',
@@ -413,7 +399,6 @@ class ReadingsServices {
           fecha_lectura: lecturaData.fecha_lectura,
           observacion: lecturaData.observacion?.trim() || null,
           activo: lecturaData.activo !== undefined ? lecturaData.activo : true
-          // ✅ SIN id_tarifa en el body
         }
       });
 
@@ -892,35 +877,6 @@ class ReadingsServices {
       return {
         success: false,
         message: error.message || 'Error al obtener tus lecturas'
-      };
-    }
-  }
-
-  /**
-   * para listar tarifas 
- */
-
-  async getTarifasVigentes({ skip = 0, limit = 100 } = {}) {
-    try {
-      const params = new URLSearchParams();
-
-      if (skip) params.append('skip', skip);
-      if (limit) params.append('limit', limit);
-
-      const query = params.toString();
-      const endpoint = query
-        ? `${API_CONFIG.endpoints.lecturas}/tarifas-vigentes?${query}`
-        : `${API_CONFIG.endpoints.lecturas}/tarifas-vigentes`;
-
-      const data = await this.makeRequest(endpoint);
-
-      return { success: true, data };
-
-    } catch (error) {
-      console.error('❌ Error obteniendo tarifas vigentes:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener tarifas vigentes'
       };
     }
   }

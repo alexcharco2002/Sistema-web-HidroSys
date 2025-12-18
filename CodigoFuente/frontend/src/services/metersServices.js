@@ -9,6 +9,7 @@ const API_CONFIG = {
   baseURL: 'https://localhost:8000',
   endpoints: {
     meters: '/meters',
+    sectoresDisponibles: '/meters/sectores-disponibles',
     availableAffiliates: '/meters/available/affiliates',
     toggleStatus: (id) => `/meters/${id}/toggle-status`,
     stats: '/meters/stats/count',
@@ -176,6 +177,28 @@ class MetersService {
       };
     }
   }
+  /**
+   * Obtener sectores disponibles para medidores
+   * Requiere solo permiso de medidores (no requiere permiso de sectores)
+   */
+  async getSectoresDisponibles() {
+    try {
+      const data = await this.makeRequest('/meters/sectores-disponibles');
+
+      return {
+        success: true,
+        data: data
+      };
+
+    } catch (error) {
+      console.error('❌ Error obteniendo sectores disponibles:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener sectores disponibles'
+      };
+    }
+  }
+
 
   /**
    * Obtener lista de medidores con filtros opcionales

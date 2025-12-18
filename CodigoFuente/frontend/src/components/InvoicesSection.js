@@ -24,7 +24,7 @@ import {
   TrendingUp,
   Ban,
   CalendarDays,
-  Gauge, User, IdCard  ,Tag, Percent, Info, Package, ChevronDown, Check
+  Gauge, User, IdCard  ,Tag, Percent, Package, ChevronDown, Check
 } from 'lucide-react';
 
 const InvoicesSection = () => {
@@ -86,21 +86,23 @@ const InvoicesSection = () => {
   // ============================================================
   // ESTADOS PARA IVA Y DESCUENTOS
   // ============================================================
-  const [ivaHabilitado, setIvaHabilitado] = useState(false);
-  const [porcentajeIva, setPorcentajeIva] = useState(15);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentData, setPaymentData] = useState({
     factura: null,
     descuentoTipo: 'ninguno', // 'ninguno' | 'porcentaje' | 'valor'
     descuentoValor: 0
   });
- // ============================================================
+  // ============================================================
   // ESTADOS  MANEJAR SERVICOS ADICIONALES 
   // ============================================================
   const [showServicios, setShowServicios] = useState(false);
   const [serviciosDisponibles, setServiciosDisponibles] = useState([]);
   const [serviciosSeleccionados, setServiciosSeleccionados] = useState([]);
-  const [aplicarATodos, setAplicarATodos] = useState(false);
+
+    // Después de los estados existentes de servicios
+  const [showServiciosModal, setShowServiciosModal] = useState(false);
+  const [facturaSeleccionadaServicios, setFacturaSeleccionadaServicios] = useState(null);
+  const [serviciosSeleccionadosModal, setServiciosSeleccionadosModal] = useState([]);
 
   // ============================================================
   // FUNCIONES DE PERMISOS
@@ -302,10 +304,39 @@ const InvoicesSection = () => {
     fetchPeriodosDisponibles();
   }, [fetchPeriodosDisponibles]);
 
+  // Cargar servicios activos
+useEffect(() => {
+  const fetchServicios = async () => {
+    try {
+      console.log('🔄 Cargando servicios activos...');
+      const response = await invoicesServices.getServiciosActivos();
+      console.log('📦 Respuesta servicios:', response);
+      
+      if (response.success && response.data) {
+        console.log(`✅ ${response.data.length} servicios cargados`);
+        setServiciosDisponibles(response.data);
+      } else {
+        console.warn('⚠️ No se cargaron servicios:', response.message);
+        setServiciosDisponibles([]);
+      }
+    } catch (error) {
+      console.error('❌ Error cargando servicios:', error);
+      setServiciosDisponibles([]);
+    }
+  };
+
+  // Solo ejecutar si ya se cargaron los permisos
+  if (permissions.canRead) {
+    fetchServicios();
+  }
+}, [permissions]); // ← Cambiar a [permissions] completo
+
+
   useEffect(() => {
     if (permissions.canRead && periodoSeleccionado) {
       fetchFacturasByPeriodo();
       fetchStats();
+
     }
   }, [
     periodoSeleccionado,
@@ -313,19 +344,9 @@ const InvoicesSection = () => {
     fetchFacturasByPeriodo,
     fetchStats
   ]);
-  // Cargar servicios activos
-  useEffect(() => {
-    const fetchServicios = async () => {
-      try {
-        const response = await invoicesServices.getServiciosActivos();
-        setServiciosDisponibles(response.data);
-      } catch (error) {
-        console.error('Error cargando servicios:', error);
-      }
-    };
-    
-    fetchServicios();
-  }, []);
+  
+
+
 
 
   // ============================================================
@@ -390,6 +411,28 @@ const InvoicesSection = () => {
     
   };
 
+  // Agregar junto a las otras funciones de modal
+  const openServiciosModal = (factura) => {
+    if (!permissions.canUpdate) {
+      alert('❌ No tienes permiso para agregar servicios');
+      return;
+    }
+    
+    if (factura.estado_factura !== 'pendiente' && factura.estado_factura !== 'vencida') {
+      alert('⚠️ Solo se pueden agregar servicios a facturas pendientes o vencidas');
+      return;
+    }
+    
+    setFacturaSeleccionadaServicios(factura);
+    setServiciosSeleccionadosModal([]);
+    setShowServiciosModal(true);
+  };
+
+  const closeServiciosModal = () => {
+    setShowServiciosModal(false);
+    setFacturaSeleccionadaServicios(null);
+    setServiciosSeleccionadosModal([]);
+  };
 
   const closeModal = () => {
     setShowModal(false);
@@ -492,30 +535,38 @@ const InvoicesSection = () => {
       setLoading(false);
     }
   };
+  // ============================================================
+  // FUNCIONES DE servicos 
+  // ============================================================
 
-  // Aplicar servicios
-  const handleAplicarServicios = async () => {
-    if (serviciosSeleccionados.length === 0) {
-      alert('Selecciona al menos un servicio');
+  const handleAplicarServiciosIndividual = async () => {
+    if (serviciosSeleccionadosModal.length === 0) {
+      alert('⚠️ Selecciona al menos un servicio');
       return;
     }
     
+    if (!facturaSeleccionadaServicios) return;
+    
+    const confirmado = window.confirm(
+      `¿Agregar ${serviciosSeleccionadosModal.length} servicio(s) a la factura ${facturaSeleccionadaServicios.num_factura}?`
+    );
+    
+    if (!confirmado) return;
+    
+    setLoading(true);
     try {
-      setLoading(true);
-      
-      const data = {
-        id_servicios: serviciosSeleccionados,
-        periodo: periodoSeleccionado,
-        aplicar_a_todos: aplicarATodos
-        //id_usuarios: aplicarATodos ? null : [usuarioSeleccionado.id_usuario_afi]
-      };
-      
-      const result = await invoicesServices.aplicarServiciosMasivo(data);
+      const result = await invoicesServices.aplicarServiciosIndividual(
+        facturaSeleccionadaServicios.id_factura,
+        serviciosSeleccionadosModal
+      );
       
       if (result.success) {
-        alert(`✅ ${result.message}\nFacturas afectadas: ${result.data.facturas_afectadas}`);
-        fetchFacturasByPeriodo(); // Recargar lista
-        setServiciosSeleccionados([]); // Limpiar selección
+        alert(`✅ ${result.message}\n\nNuevo total: $${result.data.factura.total.toFixed(2)}`);
+        closeServiciosModal();
+        await fetchFacturasByPeriodo();
+        await fetchStats();
+      } else {
+        alert(`❌ ${result.message}`);
       }
     } catch (error) {
       console.error('Error aplicando servicios:', error);
@@ -524,6 +575,74 @@ const InvoicesSection = () => {
       setLoading(false);
     }
   };
+
+  const toggleServicioSeleccion = (idServicio) => {
+    setServiciosSeleccionadosModal(prev => {
+      if (prev.includes(idServicio)) {
+        return prev.filter(id => id !== idServicio);
+      } else {
+        return [...prev, idServicio];
+      }
+    });
+  };
+
+  const handleAplicarServiciosMasivo = async () => {
+    if (serviciosSeleccionados.length === 0) {
+      alert('⚠️ Selecciona al menos un servicio');
+      return;
+    }
+    
+    if (!periodoSeleccionado) {
+      alert('⚠️ No hay período seleccionado');
+      return;
+    }
+    
+    const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
+    
+    const confirmado = window.confirm(
+      `¿Aplicar ${serviciosSeleccionados.length} servicio(s) a TODAS las facturas pendientes del período ${formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}?\n\n` +
+      `Esto afectará todas las facturas pendientes y vencidas.`
+    );
+    
+    if (!confirmado) return;
+    
+    setLoading(true);
+    try {
+      const data = {
+        id_servicios: serviciosSeleccionados,
+        periodo: periodoStr
+      };
+      
+      console.log('📤 Enviando:', data);
+      
+      const result = await invoicesServices.aplicarServiciosMasivo(data);
+      
+      if (result.success) {
+        alert(
+          `✅ Servicios aplicados correctamente\n\n` +
+          `Facturas afectadas: ${result.facturas_afectadas}\n` +
+          `Detalles creados: ${result.detalles_creados}`
+        );
+        
+        // Limpiar selección
+        setServiciosSeleccionados([]);
+        setShowServicios(false);
+        
+        // Recargar datos
+        await fetchFacturasByPeriodo();
+        await fetchStats();
+      } else {
+        alert(`❌ ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error aplicando servicios:', error);
+      alert('❌ Error al aplicar servicios masivamente');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
   // ============================================================
   // FUNCIONES DE MODAL DE PAGO
   // ============================================================
@@ -1084,108 +1203,86 @@ const agruparDetallesPorTipo = (detalles) => {
             </div>
           </div>
           
+          {/* SECCIÓN DE SERVICIOS MASIVOS */}
           <div className="filters-section">
-            <div className="iva-controls">
-              <div className="iva-toggle">
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={ivaHabilitado}
-                    onChange={(e) => setIvaHabilitado(e.target.checked)}
-                  />
-                  <span className="slider"></span>
-                </label>
-                <span className="iva-label">
-                  {ivaHabilitado ? '✓ IVA Habilitado' : 'IVA Deshabilitado'}
-                </span>
+            <div 
+              className="filter-header" 
+              onClick={() => setShowServicios(!showServicios)}
+            >
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                <span>Aplicar Servicios a Todas las Facturas</span>
+                {serviciosSeleccionados.length > 0 && (
+                  <span className="badge badge-primary">
+                    {serviciosSeleccionados.length} seleccionados
+                  </span>
+                )}
               </div>
-              
-              {ivaHabilitado && (
-                <div className="iva-input-group">
-                  <label>Porcentaje IVA:</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={porcentajeIva}
-                    onChange={(e) => setPorcentajeIva(parseFloat(e.target.value) || 0)}
-                    className="iva-input"
-                  />
-                  <span className="iva-suffix">%</span>
-                </div>
-              )}
-              
-              {ivaHabilitado && (
-                <div className="iva-info">
-                  <Info className="w-4 h-4" />
-                  <span>El IVA se aplicará al momento de marcar la factura como pagada</span>
-                </div>
-              )}
+              <ChevronDown 
+                className={`w-4 h-4 transition-transform ${showServicios ? 'rotate-180' : ''}`} 
+              />
             </div>
+            
+            {showServicios && (
+              <div className="filter-content">
+                {/* Lista de servicios disponibles */}
+                <div className="bulk-services-list">
 
- <div className="filter-header" onClick={() => setShowServicios(!showServicios)}>
-    <Package className="w-5 h-5" />
-    <span>Servicios Adicionales</span>
-    <ChevronDown className={`w-4 h-4 transition-transform ${showServicios ? 'rotate-180' : ''}`} />
-  </div>
-  
-  {showServicios && (
-    <div className="filter-content">
-      {/* Lista de servicios disponibles */}
-      <div className="servicios-list">
-        {serviciosDisponibles.map(servicio => (
-          <label key={servicio.id_servicio} className="checkbox-item">
-            <input
-              type="checkbox"
-              checked={serviciosSeleccionados.includes(servicio.id_servicio)}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setServiciosSeleccionados([...serviciosSeleccionados, servicio.id_servicio]);
-                } else {
-                  setServiciosSeleccionados(serviciosSeleccionados.filter(id => id !== servicio.id_servicio));
-                }
-              }}
-            />
-            <span>{servicio.nombre} - ${parseFloat(servicio.precio_base).toFixed(2)}</span>
-          </label>
-        ))}
-      </div>
-      
-      {/* Opciones de aplicación */}
-      <div className="aplicacion-opciones">
-        <label className="radio-item">
-          <input
-            type="radio"
-            name="aplicacion"
-            checked={aplicarATodos}
-            onChange={() => setAplicarATodos(true)}
-          />
-          <span>Aplicar a todos los usuarios</span>
-        </label>
-        
-        <label className="radio-item">
-          <input
-            type="radio"
-            name="aplicacion"
-            checked={!aplicarATodos}
-            onChange={() => setAplicarATodos(false)}
-          />
-          <span>Aplicar a usuario específico</span>
-        </label>
-      </div>
-      
-      <button
-        className="btn-aplicar-servicios"
-        onClick={handleAplicarServicios}
-        disabled={serviciosSeleccionados.length === 0}
-      >
-        <Check className="w-4 h-4 mr-2" />
-        Aplicar Servicios
-      </button>
-    </div>
-  )}
+                  {serviciosDisponibles.length === 0 ? (
+                    <div className="bulk-services-empty">
 
+                      <Package className="w-8 h-8 text-gray-300 mb-2" />
+                      <p className="text-sm text-gray-500">No hay servicios disponibles</p>
+                    </div>
+                  ) : (
+                    serviciosDisponibles.map((servicio) => (
+                      <label key={servicio.id_servicio} className="bulk-service-item">
+                        <input
+                          type="checkbox"
+                          checked={serviciosSeleccionados.includes(servicio.id_servicio)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setServiciosSeleccionados([...serviciosSeleccionados, servicio.id_servicio]);
+                            } else {
+                              setServiciosSeleccionados(
+                                serviciosSeleccionados.filter(id => id !== servicio.id_servicio)
+                              );
+                            }
+                          }}
+                        />
+                        <div className="flex-1">
+                          <span className="font-semibold">{servicio.nombre}</span>
+                          <span className="text-sm text-gray-500 ml-2">
+                            ${parseFloat(servicio.precio_base).toFixed(2)}
+                          </span>
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+                
+                {/* Botón de aplicar */}
+                {serviciosSeleccionados.length > 0 && (
+                  <div className="mt-4">
+                    <button
+                      onClick={handleAplicarServiciosMasivo}
+                      className="btn btn-primary w-full"
+                      disabled={loading}
+                    >
+                      <Package className="w-4 h-4 mr-2" />
+                      {loading 
+                        ? 'Aplicando...' 
+                        : `Aplicar ${serviciosSeleccionados.length} servicio(s) a todas las facturas pendientes`
+                      }
+                    </button>
+                    
+                    <p className="text-xs text-gray-500 mt-2 text-center">
+                      Se aplicarán solo a facturas pendientes o vencidas del período
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
 
@@ -1357,8 +1454,7 @@ const agruparDetallesPorTipo = (detalles) => {
                           >
                             <DollarSign className="w-4 h-4" />
                           </button>
-                        )}
-
+                        )}                   
 
                         {permissions.canDelete && ['pendiente', 'vencida'].includes(factura.estado_factura) && (
                           <button
@@ -1369,6 +1465,19 @@ const agruparDetallesPorTipo = (detalles) => {
                             <Ban className="w-4 h-4" />
                           </button>
                         )}
+
+                        {/* Botón Agregar Servicios */}
+                        {permissions.canUpdate && 
+                        (factura.estado_factura === 'pendiente' || factura.estado_factura === 'vencida') && (
+                          <button
+                            onClick={() => openServiciosModal(factura)}
+                            className="inv-btn inv-btn-service"
+                            title="Agregar servicios"
+                          >
+                            <Package className="w-4 h-4"  />
+                          </button>
+                        )}
+
                       </div>
                     </div>
                   ))
@@ -1684,38 +1793,41 @@ const agruparDetallesPorTipo = (detalles) => {
               {/* INFORMACIÓN DEL CLIENTE */}
               <div className="payment-info-section">
                 <div className="payment-client">
-                  <User className="w-5 h-5 text-blue-600" />
-                  <div>
-                    <p className="client-name">
-                      {paymentData.factura.usuario_afiliado?.usuario_sistema?.nombres}{' '}
-                      {paymentData.factura.usuario_afiliado?.usuario_sistema?.apellidos}
-                    </p>
-                    <p className="client-code">
-                      Código: {paymentData.factura.usuario_afiliado?.cod_usuario_afi}
-                    </p>
-                  </div>
+                 
+                  <h4 className="discount-title">
+                    <User className="w-4 h-4 text-blue-600" />
+                     Detalles de usuario
+                  </h4>
+                    <div>
+                      <p className="client-name">
+                        <strong>Nombre Afiliado:</strong>{' '}
+                        {paymentData.factura.usuario_afiliado?.usuario_sistema?.nombres}{' '}
+                        {paymentData.factura.usuario_afiliado?.usuario_sistema?.apellidos}
+                      </p>
+
+                      <p className="client-code">
+                        <strong>Código:</strong>{' '}
+                        {paymentData.factura.usuario_afiliado?.cod_usuario_afi}
+                      </p>
+                    </div>
+
                 </div>
               </div>
 
               {/* RESUMEN SIMPLE */}
               <div className="payment-summary">
                 <div className="summary-row">
-                  <span>Total Factura:</span>
-                  <span className="amount">{formatCurrency(paymentData.factura.total)}</span>
+                  <span><strong>Total Factura:</strong></span>
+                  <span className="amount">
+                    {formatCurrency(paymentData.factura.total)}
+                  </span>
                 </div>
-
-                {ivaHabilitado && (
-                  <div className="summary-row iva-row">
-                    <Info className="w-4 h-4" />
-                    <span>Se aplicará IVA del {porcentajeIva}% al confirmar</span>
-                  </div>
-                )}
               </div>
 
               {/* SECCIÓN DE DESCUENTO */}
               <div className="discount-section">
                 <h4 className="discount-title">
-                  <Tag className="w-4 h-4" />
+                  <Tag className="w-4 h-4 text-blue-600" />
                   Descuento (Opcional)
                 </h4>
 
@@ -1786,7 +1898,7 @@ const agruparDetallesPorTipo = (detalles) => {
                       <input
                         type="number"
                         min="0"
-                        max={paymentData.descuentoTipo === 'porcentaje' ? 100 : undefined}
+                        max={paymentData.descuentoTipo === 'porcentaje' ? 100 : paymentData.factura.subtotal}
                         step={paymentData.descuentoTipo === 'porcentaje' ? 1 : 0.01}
                         value={paymentData.descuentoValor}
                         onChange={(e) => setPaymentData({
@@ -1803,79 +1915,95 @@ const agruparDetallesPorTipo = (detalles) => {
                   </div>
                 )}
               </div>
-              {/* VISTA PREVIA DEL CÁLCULO */}
-              {paymentData.descuentoTipo !== 'ninguno' && paymentData.descuentoValor > 0 && (
-                <div className="payment-preview">
-                  <h4 className="preview-title">📊 Vista Previa</h4>
-                  <div className="preview-calculation">
-                    <div className="preview-row">
-                      <span>Subtotal original:</span>
-                      <span>{formatCurrency(paymentData.factura.total / 1.12)}</span>
-                    </div>
-                    
-                    <div className="preview-row highlight">
-                      <span>Descuento ({paymentData.descuentoTipo === 'porcentaje' 
-                        ? `${paymentData.descuentoValor}%` 
-                        : 'Fijo'}):</span>
-                      <span className="text-green-600">
-                        -{formatCurrency(
-                          paymentData.descuentoTipo === 'porcentaje'
-                            ? (paymentData.factura.total / 1.12) * (paymentData.descuentoValor / 100)
-                            : paymentData.descuentoValor
-                        )}
-                      </span>
-                    </div>
-                    
-                    <div className="preview-row">
-                      <span>Subtotal con descuento:</span>
-                      <span>
-                        {formatCurrency(
-                          (paymentData.factura.total / 1.12) - (
-                            paymentData.descuentoTipo === 'porcentaje'
-                              ? (paymentData.factura.total / 1.12) * (paymentData.descuentoValor / 100)
-                              : paymentData.descuentoValor
-                          )
-                        )}
-                      </span>
-                    </div>
-                    
-                    <div className="preview-row">
-                      <span>IVA (12%):</span>
-                      <span>
-                        {formatCurrency(
-                          ((paymentData.factura.total / 1.12) - (
-                            paymentData.descuentoTipo === 'porcentaje'
-                              ? (paymentData.factura.total / 1.12) * (paymentData.descuentoValor / 100)
-                              : paymentData.descuentoValor
-                          )) * 0.12
-                        )}
-                      </span>
-                    </div>
-                    
-                    <div className="preview-row total">
-                      <span>Total a pagar:</span>
-                      <span className="total-amount">
-                        {formatCurrency(
-                          ((paymentData.factura.total / 1.12) - (
-                            paymentData.descuentoTipo === 'porcentaje'
-                              ? (paymentData.factura.total / 1.12) * (paymentData.descuentoValor / 100)
-                              : paymentData.descuentoValor
-                          )) * 1.12
-                        )}
-                      </span>
+
+              {/* VISTA PREVIA DEL CÁLCULO - ✅ LÓGICA CORRECTA */}
+              {paymentData.descuentoTipo !== 'ninguno' && paymentData.descuentoValor > 0 && (() => {
+                // 1️⃣ Subtotal SIN IVA (base imponible original)
+                const subtotalOriginal = paymentData.factura.subtotal || 0;
+                
+                // 2️⃣ Calcular descuento sobre el subtotal
+                const montoDescuento = paymentData.descuentoTipo === 'porcentaje'
+                  ? subtotalOriginal * (paymentData.descuentoValor / 100)
+                  : Math.min(paymentData.descuentoValor, subtotalOriginal); // No puede ser mayor al subtotal
+                
+                // 3️⃣ Subtotal CON descuento (nueva base imponible)
+                const subtotalConDescuento = subtotalOriginal - montoDescuento;
+                
+                // 4️⃣ Calcular IVA sobre el subtotal CON descuento
+                const porcentajeIVA = paymentData.factura.impuesto > 0 
+                  ? (paymentData.factura.impuesto / paymentData.factura.subtotal) * 100
+                  : 0;
+                const nuevoIVA = subtotalConDescuento * (porcentajeIVA / 100);
+                
+                // 5️⃣ Total final
+                const totalFinal = subtotalConDescuento + nuevoIVA;
+
+                return (
+                  <div className="payment-preview">
+                    <h4 className="preview-title">📊 Vista Previa del Cálculo</h4>
+                    <div className="preview-calculation">
+                      <div className="preview-row">
+                        <span>Subtotal original (sin IVA):</span>
+                        <span>{formatCurrency(subtotalOriginal)}</span>
+                      </div>
+                      
+                      <div className="preview-row highlight">
+                        <span>
+                          Descuento ({paymentData.descuentoTipo === 'porcentaje' 
+                            ? `${paymentData.descuentoValor}%` 
+                            : 'Fijo'}):
+                        </span>
+                        <span className="text-green-600">
+                          -{formatCurrency(montoDescuento)}
+                        </span>
+                      </div>
+                      
+                      <div className="preview-row">
+                        <span>Subtotal con descuento:</span>
+                        <span>{formatCurrency(subtotalConDescuento)}</span>
+                      </div>
+                      
+                      <div className="preview-row">
+                        <span>IVA ({porcentajeIVA.toFixed(0)}% sobre ${formatCurrency(subtotalConDescuento)}):</span>
+                        <span>{formatCurrency(nuevoIVA)}</span>
+                      </div>
+                      
+                      <div className="preview-divider"></div>
+                      
+                      <div className="preview-row total">
+                        <span><strong>Total a pagar:</strong></span>
+                        <span className="total-amount">
+                          {formatCurrency(totalFinal)}
+                        </span>
+                      </div>
+                      
+                      {/* Comparación con el total original */}
+                      <div className="preview-comparison">
+                        <div className="comparison-item">
+                          <span className="label">Total original:</span>
+                          <span className="value old">{formatCurrency(paymentData.factura.total)}</span>
+                        </div>
+                        <div className="comparison-item">
+                          <span className="label">Ahorro:</span>
+                          <span className="value savings">
+                            {formatCurrency(paymentData.factura.total - totalFinal)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-           
+                );
+              })()}
 
               {/* NOTA INFORMATIVA */}
               <div className="payment-note">
                 <AlertCircle className="w-4 h-4" />
-                <p>El sistema calculará automáticamente el total final con IVA y descuento aplicados.</p>
+                <p>
+                  El descuento se aplica sobre el subtotal (sin IVA). 
+                  Luego se calcula el IVA sobre el nuevo subtotal con descuento.
+                </p>
               </div>
             </div>
-
             <div className="modal-footer">
               <button className="btn-secondary" onClick={closePaymentModal}>
                 <X className="w-4 h-4 mr-2" />
@@ -1884,6 +2012,140 @@ const agruparDetallesPorTipo = (detalles) => {
               <button className="btn-primary" onClick={handleConfirmPayment}>
                 <CheckCircle className="w-4 h-4 mr-2" />
                 Confirmar Pago
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================
+      MODAL: AGREGAR SERVICIOS A FACTURA
+      ======================================== */}
+      {showServiciosModal && facturaSeleccionadaServicios && (
+        <div className="modal-overlay">
+          <div className="modal modal-payment">
+            <div className="modal-header">
+              <h3>
+                <Package  className="w-5 h-5 inline mr-2" />
+                Agregar Servicios a Factura
+              </h3>
+              <button onClick={closeServiciosModal} className="modal-close">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {/* Información de la factura */}
+              <div className="payment-info-section">
+                <div className="payment-client">
+
+                  <h4 className="discount-title">
+                    <FileText className="w-4 h-4 text-blue-600" />
+                    Detalles de la factura
+                  </h4>
+
+                  <div>
+                    <p className="client-name">
+                      <strong>Factura:</strong>{' '}
+                      {facturaSeleccionadaServicios.num_factura}
+                    </p>
+
+                    <p className="client-name">
+                      <strong>Nombre Afiliado:</strong>{' '}
+                      {facturaSeleccionadaServicios.usuario_afiliado?.usuario_sistema?.nombres}{' '}
+                      {facturaSeleccionadaServicios.usuario_afiliado?.usuario_sistema?.apellidos}
+                    </p>
+
+                    <p className="client-code">
+                      <strong>Total actual:</strong>{' '}
+                      {formatCurrency(facturaSeleccionadaServicios.total)}
+                    </p>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Lista de servicios disponibles */}
+              <div className="servicios-selection">
+                <h4>Selecciona los servicios a aplicar:</h4>
+                
+                {serviciosDisponibles.length === 0 ? (
+                  <div className="empty-state">
+                    <Package size={48} />
+                    <p>No hay servicios disponibles</p>
+                  </div>
+                ) : (
+                  <div className="servicios-grid">
+                    {serviciosDisponibles.map(servicio => (
+                      <div
+                        key={servicio.id_servicio}
+                        className={`servicio-card ${
+                          serviciosSeleccionadosModal.includes(servicio.id_servicio) 
+                            ? 'selected' 
+                            : ''
+                        }`}
+                        onClick={() => toggleServicioSeleccion(servicio.id_servicio)}
+                      >
+                        <div className="servicio-header">
+                          <div className="servicio-checkbox">
+                            {serviciosSeleccionadosModal.includes(servicio.id_servicio) && (
+                              <Check size={16} />
+                            )}
+                          </div>
+                          <h4>{servicio.nombre}</h4>
+                        </div>
+                        
+                        <p className="servicio-descripcion">
+                          {servicio.descripcion || 'Sin descripción'}
+                        </p>
+                        
+                        <div className="servicio-precio">
+                          <Tag size={16} />
+                          <span>{formatCurrency(servicio.precio_base)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Resumen de selección */}
+              {serviciosSeleccionadosModal.length > 0 && (
+                <div className="selection-summary">
+                  <div className="summary-item">
+                    <Package size={20} />
+                    <span>Servicios seleccionados: <strong>{serviciosSeleccionadosModal.length}</strong></span>
+                  </div>
+                  <div className="summary-item">
+                    <DollarSign size={20} />
+                    <span>
+                      Monto adicional: <strong>
+                        {formatCurrency(
+                          serviciosDisponibles
+                            .filter(s => serviciosSeleccionadosModal.includes(s.id_servicio))
+                            .reduce((sum, s) => sum + parseFloat(s.precio_base || 0), 0)
+                        )}
+                      </strong>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button
+                onClick={closeServiciosModal}
+                className="btn btn-secondary"
+                disabled={loading}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAplicarServiciosIndividual}
+                className="btn btn-primary"
+                disabled={loading || serviciosSeleccionadosModal.length === 0}
+              >
+                {loading ? 'Aplicando...' : `Aplicar ${serviciosSeleccionadosModal.length} Servicio(s)`}
               </button>
             </div>
           </div>

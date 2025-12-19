@@ -472,49 +472,48 @@ const ServiciosSection = () => {
         </div>
 
         {/* DERECHA — Filtros y acciones */}
-        {/* DERECHA: Filtros y acciones */}
-<div className="filters-right">
-  {/* Vigencia */}
-  <select 
-    className="filter-select" 
-    value={filterVigencia} 
-    onChange={(e) => setFilterVigencia(e.target.value)}
-  >
-    <option value="all">Todas las vigencias</option>
-    <option value="vigentes">Solo vigentes</option>
-    <option value="vencidas">Solo vencidas</option>
-  </select>
+        <div className="filters-right">
+          {/* Vigencia */}
+          <select 
+            className="filter-select" 
+            value={filterVigencia} 
+            onChange={(e) => setFilterVigencia(e.target.value)}
+          >
+            <option value="all">Todas las vigencias</option>
+            <option value="vigentes">Solo vigentes</option>
+            <option value="vencidas">Solo vencidas</option>
+          </select>
 
-  {/* Estado */}
-  <select 
-    className="filter-select" 
-    value={filterStatus} 
-    onChange={(e) => setFilterStatus(e.target.value)}
-  >
-    <option value="all">Todos los estados</option>
-    <option value="active">Activos</option>
-    <option value="inactive">Inactivos</option>
-  </select>
+          {/* Estado */}
+          <select 
+            className="filter-select" 
+            value={filterStatus} 
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
+            <option value="all">Todos los estados</option>
+            <option value="active">Activos</option>
+            <option value="inactive">Inactivos</option>
+          </select>
 
-  {/* Ordenamiento */}
-  <button 
-    className="btn-secondary" 
-    onClick={toggleSortOrder}
-    title={`Ordenar ${sortOrder === 'asc' ? 'descendente' : 'ascendente'}`}
-  >
-    <ArrowUpDown className="w-4 h-4" />
-    <span className="ml-1 text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-  </button>
+          {/* Ordenamiento */}
+          <button 
+            className="btn-secondary" 
+            onClick={toggleSortOrder}
+            title={`Ordenar ${sortOrder === 'asc' ? 'descendente' : 'ascendente'}`}
+          >
+            <ArrowUpDown className="w-4 h-4" />
+            <span className="ml-1 text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+          </button>
 
-  {/* Recargar */}
-  <button 
-    className="btn-secondary" 
-    onClick={() => { fetchServicios(); fetchStats(); }}
-    title="Recargar lista"
-  >
-    <RefreshCw className="w-4 h-4" />
-  </button>
-</div>
+          {/* Recargar */}
+          <button 
+            className="btn-secondary" 
+            onClick={() => { fetchServicios(); fetchStats(); }}
+            title="Recargar lista"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
 
       </div>
 

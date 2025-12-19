@@ -159,22 +159,106 @@ const ReadingsSection = () => {
   };
 
 
-  /*FUNCIÓN PARA CONFIRMAR LECTURA ESTIMADA
-  const handleConfirmarEstimada = async (readingId) => {
-      try {
-          const result = await readingsServices.confirmarLecturaEstimada(readingId);
-          if (result.success) {
-              alert('✅ Lectura estimada confirmada correctamente');
-              await fetchReadingsByPeriodo(); 
-              await fetchPeriodosDisponibles();
-          } else {  
-              alert('❌ Error: ' + result.message);
-          }
-      } catch (error) {
-          alert('❌ Error al confirmar lectura estimada');
+  //FUNCIÓN PARA CONFIRMAR LECTURA ESTIMADA
+  /**
+ * FUNCIÓN PARA CONFIRMAR LECTURA ESTIMADA
+ */
+const handleConfirmarEstimada = async (reading) => {
+  try {
+    // Validar que sea estimada
+    if (!reading.es_estimada) {
+      alert('⚠️ Esta lectura no es estimada');
+      return;
+    }
+
+    // Mostrar información y solicitar lectura real
+    const mensaje = `📊 CONFIRMAR LECTURA ESTIMADA\n\n` +
+      `Medidor: ${reading.num_medidor || 'N/A'}\n` +
+      `Afiliado: ${reading.nombre_afiliado || 'N/A'}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `Lectura anterior: ${reading.lectura_anterior} m³\n` +
+      `Lectura estimada: ${reading.lectura_actual} m³\n` +
+      `Consumo estimado: ${reading.consumo_m3} m³\n\n` +
+      `Ingresa la LECTURA REAL:`;
+    
+    const lecturaRealStr = prompt(mensaje, reading.lectura_actual);
+
+    // Usuario canceló
+    if (lecturaRealStr === null) return;
+
+    // Validar que sea un número
+    const lecturaReal = parseInt(lecturaRealStr.trim());
+    
+    if (isNaN(lecturaReal)) {
+      alert('❌ Debes ingresar un número válido');
+      return;
+    }
+
+    // Validar que no sea menor a la lectura anterior
+    if (lecturaReal < reading.lectura_anterior) {
+      alert(`❌ La lectura real (${lecturaReal}m³) no puede ser menor que la lectura anterior (${reading.lectura_anterior}m³)`);
+      return;
+    }
+
+    // Calcular nuevo consumo para mostrar
+    const nuevoConsumo = lecturaReal - reading.lectura_anterior;
+
+    // Confirmación final
+    const confirmado = window.confirm(
+      `✅ CONFIRMAR CAMBIOS\n\n` +
+      `Lectura anterior: ${reading.lectura_anterior} m³\n` +
+      `Lectura real: ${lecturaReal} m³\n` +
+      `Nuevo consumo: ${nuevoConsumo} m³\n\n` +
+      `Se generará la factura automáticamente.\n\n` +
+      `¿Confirmar?`
+    );
+
+    if (!confirmado) return;
+
+
+    // Ejecutar confirmación
+    const result = await readingsServices.confirmarLecturaEstimada(
+      reading.id_lectura,
+      lecturaReal,
+      null  // observación opcional
+    );
+    
+    if (result.success) {
+      const data = result.data;
+      
+      // Construir mensaje de éxito
+      let mensajeExito = `✅ Lectura confirmada exitosamente\n\n`;
+      mensajeExito += `📊 Lectura real: ${lecturaReal} m³\n`;
+      mensajeExito += `💧 Consumo real: ${nuevoConsumo} m³\n`;
+      
+      // Si se generó factura
+      if (data.factura_generada) {
+        mensajeExito += `\n📄 FACTURA GENERADA\n`;
+        mensajeExito += `Número: ${data.factura_generada.num_factura}\n`;
+        mensajeExito += `Total: $${data.factura_generada.total.toFixed(2)}\n`;
+        mensajeExito += `Tarifa: ${data.factura_generada.tarifa_aplicada}`;
+      } else if (data.mensaje_factura) {
+        mensajeExito += `\n⚠️ ${data.mensaje_factura}`;
       }
-  };
-  */
+      
+      alert(mensajeExito);
+      
+      // Recargar datos
+      await fetchReadingsByPeriodo(); 
+      await fetchPeriodosDisponibles();
+      
+    } else {
+      alert(`❌ Error: ${result.message || 'No se pudo confirmar la lectura'}`);
+    }
+    
+  } catch (error) {
+    console.error('Error al confirmar lectura estimada:', error);
+    alert(`❌ Error al confirmar lectura estimada\n\n${error.message || 'Error desconocido'}`);
+  }
+};
+
+  
+  
 
   // FUNCIÓN PARA CONFIRMAR TODAS LAS LECTURAS ESTIMADAS
   const handleConfirmarTodas = async () => {
@@ -1472,7 +1556,7 @@ return (
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        {permissions.canUpdate && (
+                        {permissions.canUpdate && !reading.es_estimada &&  (
                           <button 
                             className="list-action-btn edit" 
                             onClick={() => openModal('edit', reading)} 
@@ -1481,7 +1565,18 @@ return (
                             <Edit className="w-4 h-4" />
                           </button>
                         )}
-                        
+
+                        {/* Botón para confirmar lectura estimada */}
+                        {permissions.canUpdate && reading.es_estimada && (
+                          <button 
+                            className="list-action-btn confirm" 
+                            onClick={() => handleConfirmarEstimada(reading)} 
+                            title="Confirmar lectura estimada"
+                            disabled={loading}
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                          </button>
+                        )}
                         
                       </div>
                     </div>

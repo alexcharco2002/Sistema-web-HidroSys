@@ -24,7 +24,7 @@ import {
   TrendingUp,
   Ban,
   CalendarDays,
-  Gauge, User, IdCard  ,Tag, Percent, Package, ChevronDown, Check
+  Gauge, User, IdCard  ,Tag, Percent, Package, Briefcase
 } from 'lucide-react';
 
 const InvoicesSection = () => {
@@ -42,7 +42,7 @@ const InvoicesSection = () => {
   const [, setPeriodoActual] = useState(null);
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState(null);
   const [loadingPeriodos, setLoadingPeriodos] = useState(false);
-  const [periodosInicializados, setPeriodosInicializados] = useState(false); // 🔥 NUEVO FLAG
+  const [periodosInicializados, ] = useState(false); // 🔥 NUEVO FLAG
 
   // ============================================================
   // ESTADOS DE BÚSQUEDA Y FILTROS
@@ -125,80 +125,28 @@ const InvoicesSection = () => {
   // FUNCIONES DE PERIODOS
   // ============================================================
   const fetchPeriodosDisponibles = useCallback(async () => {
-    // ✅ Si ya se cargaron, no volver a cargar
-    if (periodosInicializados) {
-      console.log('⏭️ Períodos ya cargados, omitiendo...');
-      return;
-    }
-    
+    if (periodosInicializados) return;
+
     setLoadingPeriodos(true);
     try {
-      console.log('🔄 Cargando períodos...');
-      
-      const periodosData = await invoicesServices.getPeriodosDisponibles();
+      const result = await invoicesServices.getPeriodosDisponibles();
+      if (result.success && result.data) {
+        setPeriodos(result.data.periodos_disponibles || []);
+        setPeriodoActual(result.data.periodo_actual || null);
 
-      const periodosBase = periodosData.map(p => {
-        const [anio, mes] = p.valor.split('-');
-        return {
-          mes: parseInt(mes),
-          anio: parseInt(anio),
-          nombre_mes: p.texto.split(' ')[0],
-          valor: p.valor,
-          tiene_facturas: false,
-          total_facturas: 0,
-          monto_total: 0,
-          monto_cobrado: 0,
-          monto_pendiente: 0,
-          porcentaje_completado: 0
-        };
-      });
-
-      const periodosConStats = await Promise.all(
-        periodosBase.map(async (periodo) => {
-          try {
-            const periodoStr = `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}`;
-            const statsResult = await invoicesServices.getStats(periodoStr);
-            
-            if (statsResult.success && statsResult.data) {
-              const stats = statsResult.data;
-              return {
-                ...periodo,
-                tiene_facturas: stats.total_facturas > 0,
-                total_facturas: stats.total_facturas,
-                monto_total: stats.monto_total,
-                monto_cobrado: stats.monto_total_cobrado,
-                monto_pendiente: stats.monto_total_pendiente,
-                porcentaje_completado: stats.total_facturas > 0 ? 100 : 0
-              };
-            }
-            return periodo;
-          } catch (error) {
-            console.error(`Error stats ${periodo.nombre_mes}:`, error);
-            return periodo;
-          }
-        })
-      );
-
-      console.log('✅ Períodos cargados:', periodosConStats.length);
-      setPeriodos(periodosConStats);
-      setPeriodosInicializados(true); // 🔥 MARCAR COMO INICIALIZADO
-
-      if (periodosConStats.length > 0) {
-        const actual = periodosConStats[0];
-        setPeriodoActual({
-          mes: actual.mes,
-          anio: actual.anio,
-          nombre_mes: actual.nombre_mes
-        });
+        
+      } else {
+        setError(result.message || 'Error al cargar periodos disponibles');
       }
-
-    } catch (error) {
-      console.error('❌ Error:', error);
+    } catch (err) {
+      console.error('Error al cargar periodos disponibles:', err);
       setError('Error al cargar periodos disponibles');
     } finally {
       setLoadingPeriodos(false);
     }
-  }, [periodosInicializados]); // 🔥 Depende del flag
+  }, [periodosInicializados]);
+
+
 
   const fetchFacturasByPeriodo = useCallback(async () => {
     if (!periodoSeleccionado) return;
@@ -305,31 +253,31 @@ const InvoicesSection = () => {
   }, [fetchPeriodosDisponibles]);
 
   // Cargar servicios activos
-useEffect(() => {
-  const fetchServicios = async () => {
-    try {
-      console.log('🔄 Cargando servicios activos...');
-      const response = await invoicesServices.getServiciosActivos();
-      console.log('📦 Respuesta servicios:', response);
-      
-      if (response.success && response.data) {
-        console.log(`✅ ${response.data.length} servicios cargados`);
-        setServiciosDisponibles(response.data);
-      } else {
-        console.warn('⚠️ No se cargaron servicios:', response.message);
+  useEffect(() => {
+    const fetchServicios = async () => {
+      try {
+        console.log('🔄 Cargando servicios activos...');
+        const response = await invoicesServices.getServiciosActivos();
+        console.log('📦 Respuesta servicios:', response);
+        
+        if (response.success && response.data) {
+          console.log(`✅ ${response.data.length} servicios cargados`);
+          setServiciosDisponibles(response.data);
+        } else {
+          console.warn('⚠️ No se cargaron servicios:', response.message);
+          setServiciosDisponibles([]);
+        }
+      } catch (error) {
+        console.error('❌ Error cargando servicios:', error);
         setServiciosDisponibles([]);
       }
-    } catch (error) {
-      console.error('❌ Error cargando servicios:', error);
-      setServiciosDisponibles([]);
-    }
-  };
+    };
 
-  // Solo ejecutar si ya se cargaron los permisos
-  if (permissions.canRead) {
-    fetchServicios();
-  }
-}, [permissions]); // ← Cambiar a [permissions] completo
+    // Solo ejecutar si ya se cargaron los permisos
+    if (permissions.canRead) {
+      fetchServicios();
+    }
+  }, [permissions]); // ← Cambiar a [permissions] completo
 
 
   useEffect(() => {
@@ -344,10 +292,6 @@ useEffect(() => {
     fetchFacturasByPeriodo,
     fetchStats
   ]);
-  
-
-
-
 
   // ============================================================
   // FUNCIONES DE FILTRADO Y ORDENAMIENTO
@@ -443,37 +387,8 @@ useEffect(() => {
 
 
   // ============================================================
-  // FUNCIONES DE ACCIONES
+  // FUNCIONES DE ACCIONES facturas 
   // ============================================================
-  const handleCambiarEstado = async (facturaId, nuevoEstado) => {
-    if (!permissions.canUpdate) {
-      alert('❌ No tienes permiso para cambiar estados');
-      return;
-    }
-
-    const confirmado = window.confirm(
-      `¿Marcar factura como ${nuevoEstado}?`
-    );
-    
-    if (!confirmado) return;
-
-    setLoading(true);
-    try {
-      const result = await invoicesServices.cambiarEstado(facturaId, nuevoEstado);
-      
-      if (result.success) {
-        alert(`✅ Factura marcada como ${nuevoEstado}`);
-        await fetchFacturasByPeriodo();
-        await fetchStats();
-      } else {
-        alert(`❌ Error: ${result.message}`);
-      }
-    } catch (error) {
-      alert('❌ Error al cambiar estado de factura');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleAnularFactura = async (facturaId) => {
     if (!permissions.canDelete) {
@@ -503,38 +418,7 @@ useEffect(() => {
     }
   };
 
-  const handleEliminarFactura = async (facturaId) => {
-    if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para eliminar facturas');
-      return;
-    }
-
-    const confirmado = window.confirm(
-      '¿Eliminar esta factura?\n\n' +
-      'Solo se pueden eliminar facturas pendientes sin detalles.\n' +
-      'Esta acción no se puede deshacer.'
-    );
-    
-    if (!confirmado) return;
-
-    setLoading(true);
-    try {
-      const result = await invoicesServices.deleteFactura(facturaId);
-      
-      if (result.success) {
-        alert('✅ Factura eliminada correctamente');
-        closeModal();
-        await fetchFacturasByPeriodo();
-        await fetchStats();
-      } else {
-        alert(`❌ Error: ${result.message}`);
-      }
-    } catch (error) {
-      alert('❌ Error al eliminar factura');
-    } finally {
-      setLoading(false);
-    }
-  };
+  
   // ============================================================
   // FUNCIONES DE servicos 
   // ============================================================
@@ -586,6 +470,7 @@ useEffect(() => {
     });
   };
 
+  // funcion para aplicar servicos masivo
   const handleAplicarServiciosMasivo = async () => {
     if (serviciosSeleccionados.length === 0) {
       alert('⚠️ Selecciona al menos un servicio');
@@ -664,11 +549,18 @@ useEffect(() => {
     });
   };
 
-  const handleConfirmPayment = async () => {
+  // funcion para aplicar descuento 
+  const handleAplicarDescuento = async () => {
     if (!paymentData.factura) return;
 
+    // Validación: debe haber un tipo de descuento
+    if (paymentData.descuentoTipo === 'ninguno') {
+      alert('⚠️ Selecciona un tipo de descuento');
+      return;
+    }
+
     // Validación: si hay descuento, debe tener valor
-    if (paymentData.descuentoTipo !== 'ninguno' && paymentData.descuentoValor <= 0) {
+    if (paymentData.descuentoValor <= 0) {
       alert('⚠️ Debes ingresar un valor de descuento mayor a 0');
       return;
     }
@@ -680,13 +572,22 @@ useEffect(() => {
     }
 
     // Confirmación
-    let mensajeConfirmacion = `¿Confirmar pago de la factura ${paymentData.factura.num_factura}?`;
+    let mensajeConfirmacion = `¿Aplicar descuento a la factura ${paymentData.factura.num_factura}?`;
     
-    if (paymentData.descuentoTipo === 'porcentaje' && paymentData.descuentoValor > 0) {
-      mensajeConfirmacion += `\n\nDescuento: ${paymentData.descuentoValor}%`;
-    } else if (paymentData.descuentoTipo === 'valor' && paymentData.descuentoValor > 0) {
-      mensajeConfirmacion += `\n\nDescuento: $${paymentData.descuentoValor.toFixed(2)}`;
+    if (paymentData.descuentoTipo === 'porcentaje') {
+      mensajeConfirmacion += `\n\n💰 Descuento: ${paymentData.descuentoValor}%`;
+      const montoDescuento = (paymentData.factura.total * paymentData.descuentoValor) / 100;
+      mensajeConfirmacion += `\n💵 Monto: $${montoDescuento.toFixed(2)}`;
+    } else if (paymentData.descuentoTipo === 'valor') {
+      mensajeConfirmacion += `\n\n💰 Descuento: $${paymentData.descuentoValor.toFixed(2)}`;
     }
+
+    const nuevoTotal = paymentData.descuentoTipo === 'porcentaje' 
+      ? paymentData.factura.total - ((paymentData.factura.total * paymentData.descuentoValor) / 100)
+      : paymentData.factura.total - paymentData.descuentoValor;
+
+    mensajeConfirmacion += `\n\n📊 Total actual: $${paymentData.factura.total.toFixed(2)}`;
+    mensajeConfirmacion += `\n✨ Nuevo total: $${nuevoTotal.toFixed(2)}`;
 
     const confirmado = window.confirm(mensajeConfirmacion);
     if (!confirmado) return;
@@ -696,11 +597,11 @@ useEffect(() => {
     try {
       const descuentoData = {
         tipo_descuento: paymentData.descuentoTipo,
-        valor_descuento: paymentData.descuentoTipo !== 'ninguno' ? paymentData.descuentoValor : 0,
-        marcar_como_pagada: true  // ✅ Siempre marcar como pagada al procesar pago
+        valor_descuento: paymentData.descuentoValor,
+        marcar_como_pagada: false  // ❌ NO marcar como pagada
       };
 
-      console.log('📤 Enviando datos de descuento:', descuentoData);
+      console.log('📤 Aplicando descuento:', descuentoData);
 
       const result = await invoicesServices.aplicarDescuento(
         paymentData.factura.id_factura,
@@ -708,17 +609,13 @@ useEffect(() => {
       );
 
       if (result.success) {
-        // Mostrar mensaje de éxito con el nuevo total
         const nuevoTotal = result.data?.factura?.total || 0;
         const descuentoAplicado = result.data?.factura?.descuento_aplicado || 0;
         
-        let mensaje = `✅ Factura ${paymentData.factura.num_factura} marcada como PAGADA`;
-        
-        if (descuentoAplicado > 0) {
-          mensaje += `\n\n💰 Descuento aplicado: $${descuentoAplicado.toFixed(2)}`;
-        }
-        
-        mensaje += `\n💵 Total final: $${nuevoTotal.toFixed(2)}`;
+        let mensaje = `✅ Descuento aplicado exitosamente`;
+        mensaje += `\n\n💰 Descuento: $${descuentoAplicado.toFixed(2)}`;
+        mensaje += `\n💵 Nuevo total: $${nuevoTotal.toFixed(2)}`;
+        mensaje += `\n\n⚠️ La factura permanece PENDIENTE`;
         
         alert(mensaje);
         
@@ -728,20 +625,18 @@ useEffect(() => {
         await fetchStats();
         
       } else {
-        setError(result.message || 'Error al procesar el pago');
-        alert(`❌ ${result.message || 'Error al procesar el pago'}`);
+        setError(result.message || 'Error al aplicar descuento');
+        alert(`❌ ${result.message || 'Error al aplicar descuento'}`);
       }
 
     } catch (error) {
-      console.error('❌ Error al confirmar pago:', error);
-      setError('Error al procesar el pago');
-      alert('❌ Error al procesar el pago. Intenta nuevamente.');
+      console.error('❌ Error al aplicar descuento:', error);
+      setError('Error al aplicar descuento');
+      alert('❌ Error al aplicar descuento. Intenta nuevamente.');
     } finally {
       setLoading(false);
     }
   };
-
-
 
 
   // ============================================================
@@ -802,7 +697,7 @@ useEffect(() => {
 // HELPER FUNCTIONS PARA DETALLES
 // ============================================================
 
-// 🔥 Función para agrupar detalles por tipo
+// Función para agrupar detalles por tipo
 const agruparDetallesPorTipo = (detalles) => {
   if (!detalles || detalles.length === 0) return null;
   
@@ -1203,83 +1098,113 @@ const agruparDetallesPorTipo = (detalles) => {
             </div>
           </div>
           
-          {/* SECCIÓN DE SERVICIOS MASIVOS */}
-          <div className="filters-section">
-            <div 
-              className="filter-header" 
-              onClick={() => setShowServicios(!showServicios)}
-            >
-              <div className="flex items-center gap-2">
-                <Package className="w-5 h-5" />
-                <span>Aplicar Servicios a Todas las Facturas</span>
+          {/* SECCIÓN DE SERVICIOS MASIVOS CON TOGGLE */}
+
+          <div className="services-bulk-section">
+            <div className="services-toggle-header">
+              <div className="toggle-left">
+                <Package className="w-5 h-5 text-indigo-600" />
+                <span className="toggle-title">Servicios Masivos</span>
                 {serviciosSeleccionados.length > 0 && (
-                  <span className="badge badge-primary">
-                    {serviciosSeleccionados.length} seleccionados
+                  <span className="counter-badge animate-pop">
+                    {serviciosSeleccionados.length}
                   </span>
                 )}
               </div>
-              <ChevronDown 
-                className={`w-4 h-4 transition-transform ${showServicios ? 'rotate-180' : ''}`} 
-              />
+              
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={showServicios}
+                  onChange={(e) => setShowServicios(e.target.checked)}
+                  disabled={loading}
+                />
+                <span className="toggle-slider"></span>
+              </label>
             </div>
-            
+
+            {/* CONTENIDO EXPANDIBLE */}
             {showServicios && (
-              <div className="filter-content">
-                {/* Lista de servicios disponibles */}
-                <div className="bulk-services-list">
-
-                  {serviciosDisponibles.length === 0 ? (
-                    <div className="bulk-services-empty">
-
-                      <Package className="w-8 h-8 text-gray-300 mb-2" />
-                      <p className="text-sm text-gray-500">No hay servicios disponibles</p>
-                    </div>
-                  ) : (
-                    serviciosDisponibles.map((servicio) => (
-                      <label key={servicio.id_servicio} className="bulk-service-item">
-                        <input
-                          type="checkbox"
-                          checked={serviciosSeleccionados.includes(servicio.id_servicio)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setServiciosSeleccionados([...serviciosSeleccionados, servicio.id_servicio]);
-                            } else {
+              <div className="services-content">
+                {serviciosDisponibles.length === 0 ? (
+                  <div className="services-empty">
+                    <Package className="w-12 h-12 text-gray-300" />
+                    <p className="text-gray-500">No hay servicios disponibles</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* PILLS DE SERVICIOS */}
+                    <div className="services-pills-container">
+                      {serviciosDisponibles.map((servicio) => (
+                        <button
+                          key={servicio.id_servicio}
+                          className={`service-pill ${
+                            serviciosSeleccionados.includes(servicio.id_servicio) ? 'active' : ''
+                          }`}
+                          onClick={() => {
+                            if (loading) return; // Prevenir cambios durante carga
+                            
+                            if (serviciosSeleccionados.includes(servicio.id_servicio)) {
                               setServiciosSeleccionados(
                                 serviciosSeleccionados.filter(id => id !== servicio.id_servicio)
                               );
+                            } else {
+                              setServiciosSeleccionados([...serviciosSeleccionados, servicio.id_servicio]);
                             }
                           }}
-                        />
-                        <div className="flex-1">
-                          <span className="font-semibold">{servicio.nombre}</span>
-                          <span className="text-sm text-gray-500 ml-2">
-                            ${parseFloat(servicio.precio_base).toFixed(2)}
+                          disabled={loading}
+                        >
+                          <span className="pill-name">{servicio.nombre}</span>
+                          <span className="pill-price">${parseFloat(servicio.precio_base).toFixed(2)}</span>
+                          {serviciosSeleccionados.includes(servicio.id_servicio) && (
+                            <span className="pill-check">✓</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* BARRA DE ACCIONES */}
+                    {serviciosSeleccionados.length > 0 && (
+                      <div className="services-action-bar">
+                        <div className="action-info">
+                          <span className="action-text">
+                            <strong>{serviciosSeleccionados.length}</strong> servicio{serviciosSeleccionados.length !== 1 ? 's' : ''} seleccionado{serviciosSeleccionados.length !== 1 ? 's' : ''}
                           </span>
+                          {periodoSeleccionado && (
+                            <span className="period-badge">
+                              📅 {formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}
+                            </span>
+                          )}
                         </div>
-                      </label>
-                    ))
-                  )}
-                </div>
-                
-                {/* Botón de aplicar */}
-                {serviciosSeleccionados.length > 0 && (
-                  <div className="mt-4">
-                    <button
-                      onClick={handleAplicarServiciosMasivo}
-                      className="btn btn-primary w-full"
-                      disabled={loading}
-                    >
-                      <Package className="w-4 h-4 mr-2" />
-                      {loading 
-                        ? 'Aplicando...' 
-                        : `Aplicar ${serviciosSeleccionados.length} servicio(s) a todas las facturas pendientes`
-                      }
-                    </button>
-                    
-                    <p className="text-xs text-gray-500 mt-2 text-center">
-                      Se aplicarán solo a facturas pendientes o vencidas del período
-                    </p>
-                  </div>
+                        <div className="action-buttons">
+                          <button
+                            className="btn-clear"
+                            onClick={() => setServiciosSeleccionados([])}
+                            disabled={loading}
+                          >
+                            Limpiar
+                          </button>
+                          <button
+                            className="btn-apply"
+                            onClick={handleAplicarServiciosMasivo}
+                            disabled={loading}
+                          >
+                            {loading ? (
+                              <>
+                                <span className="spinner"></span>
+                                <span>Aplicando...</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>Aplicar a Todas</span>
+                                <span className="arrow">→</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -1450,19 +1375,9 @@ const agruparDetallesPorTipo = (detalles) => {
                           <button
                             className="inv-btn inv-btn-edit"
                             onClick={() => openPaymentModal(factura)}
-                            title="Procesar pago"
+                            title="Aplicar descuento"
                           >
-                            <DollarSign className="w-4 h-4" />
-                          </button>
-                        )}                   
-
-                        {permissions.canDelete && ['pendiente', 'vencida'].includes(factura.estado_factura) && (
-                          <button
-                            className="inv-btn inv-btn-delete"
-                            onClick={() => handleAnularFactura(factura.id_factura)}
-                            title="Anular factura"
-                          >
-                            <Ban className="w-4 h-4" />
+                            <Percent className="w-4 h-4" />
                           </button>
                         )}
 
@@ -1474,9 +1389,22 @@ const agruparDetallesPorTipo = (detalles) => {
                             className="inv-btn inv-btn-service"
                             title="Agregar servicios"
                           >
-                            <Package className="w-4 h-4"  />
+                            <Briefcase className="w-4 h-4"  />
                           </button>
                         )}
+           
+
+                        {permissions.canDelete && ['pendiente', 'vencida'].includes(factura.estado_factura) && (
+                          <button
+                            className="inv-btn inv-btn-delete"
+                            onClick={() => handleAnularFactura(factura.id_factura)}
+                            title="Anular factura"
+                          >
+                            <Ban className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        
 
                       </div>
                     </div>
@@ -2009,10 +1937,17 @@ const agruparDetallesPorTipo = (detalles) => {
                 <X className="w-4 h-4 mr-2" />
                 Cancelar
               </button>
-              <button className="btn-primary" onClick={handleConfirmPayment}>
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Confirmar Pago
-              </button>
+              {/* Botón para aplicar descuento solamente */}
+              {paymentData.descuentoTipo !== 'ninguno' && paymentData.descuentoValor > 0 && (
+                <button 
+                  className="btn-primary" 
+                  onClick={handleAplicarDescuento}
+                  disabled={loading}
+                >
+                  <Tag className="w-4 h-4 mr-2" />
+                  {loading ? 'Aplicando...' : 'Aplicar Descuento'}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -2065,49 +2000,59 @@ const agruparDetallesPorTipo = (detalles) => {
                 </div>
               </div>
 
-              {/* Lista de servicios disponibles */}
-              <div className="servicios-selection">
-                <h4>Selecciona los servicios a aplicar:</h4>
-                
-                {serviciosDisponibles.length === 0 ? (
-                  <div className="empty-state">
-                    <Package size={48} />
-                    <p>No hay servicios disponibles</p>
-                  </div>
-                ) : (
-                  <div className="servicios-grid">
-                    {serviciosDisponibles.map(servicio => (
-                      <div
-                        key={servicio.id_servicio}
-                        className={`servicio-card ${
-                          serviciosSeleccionadosModal.includes(servicio.id_servicio) 
-                            ? 'selected' 
-                            : ''
-                        }`}
-                        onClick={() => toggleServicioSeleccion(servicio.id_servicio)}
-                      >
-                        <div className="servicio-header">
-                          <div className="servicio-checkbox">
-                            {serviciosSeleccionadosModal.includes(servicio.id_servicio) && (
-                              <Check size={16} />
-                            )}
-                          </div>
-                          <h4>{servicio.nombre}</h4>
-                        </div>
-                        
-                        <p className="servicio-descripcion">
-                          {servicio.descripcion || 'Sin descripción'}
-                        </p>
-                        
-                        <div className="servicio-precio">
-                          <Tag size={16} />
-                          <span>{formatCurrency(servicio.precio_base)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+             {/* Lista de servicios disponibles */}
+            <div className="servicios-selection">
+              <div className="servicios-header">
+                <h4>
+                  <Briefcase className="w-4 h-4 text-blue-600" />
+                  {" "}Selecciona los servicios a aplicar</h4>
               </div>
+              
+              {serviciosDisponibles.length === 0 ? (
+                <div className="empty-state-modal">
+                  <Briefcase size={48} className="empty-icon" />
+                  <p>No hay servicios disponibles</p>
+                </div>
+              ) : (
+                <>
+                  {/* PILLS DE SERVICIOS */}
+                  <div className="services-pills-container">
+                  {serviciosDisponibles.map((servicio) => (
+                    <button
+                      key={servicio.id_servicio}
+                      className={`service-pill ${
+                        serviciosSeleccionadosModal.includes(servicio.id_servicio)
+                          ? 'active'
+                          : ''
+                      }`}
+                      onClick={() => toggleServicioSeleccion(servicio.id_servicio)}
+                    >
+                      <span className="pill-name">{servicio.nombre}</span>
+
+                      <span className="pill-price">
+                        ${parseFloat(servicio.precio_base).toFixed(2)}
+                      </span>
+
+                      {serviciosSeleccionadosModal.includes(servicio.id_servicio) && (
+                        <span className="pill-check">✓</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                  
+                  {/* INFORMACIÓN DE SELECCIÓN */}
+                  {serviciosSeleccionadosModal.length > 0 && (
+                    <div className="servicios-info-bar">
+                      <p>
+                        <Tag size={16} />
+                        {" "}Se aplicará{serviciosSeleccionadosModal.length !== 1 ? 'n' : ''} <strong>{serviciosSeleccionadosModal.length}</strong> servicio{serviciosSeleccionadosModal.length !== 1 ? 's' : ''} a la factura seleccionada
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
 
               {/* Resumen de selección */}
               {serviciosSeleccionadosModal.length > 0 && (

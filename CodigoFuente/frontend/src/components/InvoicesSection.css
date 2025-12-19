@@ -1116,3 +1116,610 @@ input:checked + .slider:before {
   box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
 }
 
+/* ============================================
+   SECCIÓN PRINCIPAL
+   ============================================ */
+.services-bulk-section {
+  background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+  border: 2px solid #e5e7eb;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s ease;
+  margin-bottom: 1.5rem;
+}
+
+.services-bulk-section:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  border-color: #d1d5db;
+}
+
+/* ============================================
+   HEADER CON TOGGLE
+   ============================================ */
+.services-toggle-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  background: #ffffff;
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.3s ease;
+}
+
+.services-bulk-section:hover .services-toggle-header {
+  border-bottom-color: #f3f4f6;
+}
+
+.toggle-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.toggle-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.01em;
+}
+
+/* ============================================
+   CONTADOR ANIMADO
+   ============================================ */
+.counter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.animate-pop {
+  animation: popIn 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes popIn {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* ============================================
+   TOGGLE SWITCH MODERNO
+   ============================================ */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 56px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #cbd5e1;
+  border-radius: 9999px;
+  transition: all 0.3s ease;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 24px;
+  width: 24px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(26px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-switch:hover .toggle-slider {
+  background: #94a3b8;
+}
+
+.toggle-switch input:checked + .toggle-slider:hover {
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+}
+
+/* ============================================
+   CONTENIDO EXPANDIBLE
+   ============================================ */
+.services-content {
+  padding: 1.5rem;
+  animation: slideDown 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 500px;
+  }
+}
+
+/* ============================================
+   PILLS DE SERVICIOS
+   ============================================ */
+.services-pills-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.service-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem 1.25rem;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 9999px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+}
+
+.service-pill::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  transition: left 0.5s ease;
+}
+
+.service-pill:hover::before {
+  left: 100%;
+}
+
+.service-pill:hover {
+  border-color: #6366f1;
+  background: #eef2ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+}
+
+.service-pill.active {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  border-color: #4338ca;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+}
+
+.pill-name {
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.pill-price {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  padding: 6px 12px;
+  border-radius: 20px; /* 🔥 mismo look tipo badge */
+  
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+
+.service-pill.active .pill-price {
+  color: #fef3c7;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.pill-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 900;
+  animation: checkPop 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes checkPop {
+  0% {
+    transform: scale(0) rotate(-180deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.3) rotate(0deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+/* ============================================
+   BARRA DE ACCIONES
+   ============================================ */
+.services-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 2px dashed #60a5fa;
+  border-radius: 12px;
+  animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.action-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.action-text {
+  font-size: 0.95rem;
+  color: #1e40af;
+}
+
+.action-text strong {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #1e3a8a;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.btn-clear,
+.btn-apply {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-clear {
+  background: #ffffff;
+  color: #64748b;
+  border: 2px solid #e2e8f0;
+}
+
+.btn-clear:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+  transform: translateY(-1px);
+}
+
+.btn-apply {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.btn-apply:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+  transform: translateY(-2px);
+}
+
+.btn-apply:active {
+  transform: translateY(0);
+}
+
+/* ============================================
+   ESTADO VACÍO
+   ============================================ */
+.services-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+  color: #9ca3af;
+}
+
+.services-empty p {
+  margin-top: 1rem;
+  font-size: 0.95rem;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 768px) {
+  .services-toggle-header {
+    padding: 1rem;
+  }
+
+  .toggle-title {
+    font-size: 0.9rem;
+  }
+
+  .services-content {
+    padding: 1rem;
+  }
+
+  .services-pills-container {
+    gap: 0.5rem;
+  }
+
+  .service-pill {
+    padding: 0.625rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .services-action-bar {
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .action-buttons {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .btn-clear,
+  .btn-apply {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .counter-badge {
+    min-width: 24px;
+    height: 24px;
+    font-size: 0.75rem;
+  }
+
+  .toggle-switch {
+    width: 48px;
+    height: 26px;
+  }
+
+  .toggle-slider::before {
+    height: 20px;
+    width: 20px;
+  }
+
+  .toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(22px);
+  }
+}
+
+/* ============================================
+   ESTADOS DISABLED Y LOADING
+   ============================================ */
+
+/* Toggle deshabilitado durante carga */
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Pills deshabilitadas */
+.service-pill:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.service-pill:disabled:hover {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+/* ============================================
+   SPINNER DE CARGA EN BOTÓN
+   ============================================ */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 0.5rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   BOTONES CON ESTADO LOADING
+   ============================================ */
+.btn-apply,
+.btn-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  position: relative;
+}
+
+.btn-apply:disabled,
+.btn-clear:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.btn-apply:disabled:hover,
+.btn-clear:disabled:hover {
+  transform: none !important;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+/* Flecha animada en botón aplicar */
+.arrow {
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+.btn-apply:hover .arrow {
+  transform: translateX(4px);
+}
+
+/* ============================================
+   BADGE DE PERÍODO
+   ============================================ */
+.period-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.75rem;
+  background: white;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1e40af;
+  white-space: nowrap;
+}
+
+/* ============================================
+   RESPONSIVE PARA BADGES
+   ============================================ */
+@media (max-width: 768px) {
+  .action-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .period-badge {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.6rem;
+  }
+}
+
+/* Contenedor general de cada indicador */
+.periodo-progress-section {
+  margin-top: 6px;
+}
+
+/* Línea superior: icono + texto + porcentaje */
+.periodo-progress-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151; /* gris oscuro */
+  margin-bottom: 4px;
+}
+
+/* Valor porcentual alineado a la derecha */
+.periodo-progress-value {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* Barra base */
+.periodo-progress-bar {
+  width: 100%;
+  height: 6px;
+  background-color: #e5e7eb; /* gris claro */
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+/* Relleno animado */
+.periodo-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+/* Cobrado */
+.periodo-progress-fill.cobrado {
+  background: linear-gradient(90deg, #16a34a, #22c55e);
+}
+
+/* Pendiente */
+.periodo-progress-fill.pendiente {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}

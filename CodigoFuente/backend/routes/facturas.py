@@ -1,5 +1,6 @@
 # routes/facturas.py
 
+import locale
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -220,6 +221,115 @@ def obtener_estadisticas(
     
     stats = obtener_estadisticas_facturacion(db, periodo, id_usuario_afi)
     return stats
+#
+# Intentar configurar locale español
+try:
+    locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_TIME, 'Spanish_Spain.1252')
+    except:
+        pass  # Usar nombres de meses en inglés como fallback
+
+# Diccionario de nombres de meses en español (fallback)
+MESES_ES = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+}
+
+# ========================================
+# 🆕 ENDPOINT: OBTENER PERIODOS DISPONIBLES DE FACTURAS
+# ========================================
+@router.get("/periodos/disponibles", response_model=dict)
+def obtener_periodos_facturas_disponibles(
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Obtiene los periodos (mes/año) disponibles para facturación.
+    Muestra:
+    - Periodo actual sugerido
+    - Últimos 6 meses con estadísticas
+    - Próximos 2 meses
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "facturas", "lectura")
+
+    try:
+        # Fecha actual
+        hoy = date.today()
+        mes_actual = hoy.month
+        anio_actual = hoy.year
+
+        periodos = []
+
+        # Generar últimos 6 meses + mes actual + próximos 2 meses
+        for offset in range(-6, 3):
+            # Calcular mes y año base
+            mes_temp = mes_actual + offset
+            anio_temp = anio_actual
+
+            # Normalizar mes/año
+            while mes_temp > 12:
+                mes_temp -= 12
+                anio_temp += 1
+            while mes_temp < 1:
+                mes_temp += 12
+                anio_temp -= 1
+
+            periodo_str = f"{anio_temp}-{mes_temp:02d}"
+
+            # 📌 Estadísticas de facturación del periodo
+            stats = obtener_estadisticas_facturacion(db, periodo_str, None)
+
+            # stats es dict / FacturaStats → acceder por clave
+            total_facturas_periodo = stats.get("total_facturas", 0) if stats else 0
+            monto_total = stats.get("monto_total", 0) if stats else 0
+            monto_cobrado = stats.get("monto_total_cobrado", 0) if stats else 0
+            monto_pendiente = stats.get("monto_total_pendiente", 0) if stats else 0
+
+            porcentaje_cobrado = 0.0
+            if monto_total and monto_total > 0:
+                porcentaje_cobrado = float(monto_cobrado / monto_total * 100)
+
+            # Sugerido: mes actual siempre
+            sugerido = (mes_temp == mes_actual and anio_temp == anio_actual)
+
+            periodos.append({
+                "mes": mes_temp,
+                "anio": anio_temp,
+                "nombre_mes": MESES_ES.get(mes_temp, f"Mes {mes_temp}"),
+                "tiene_facturas": total_facturas_periodo > 0,
+                "total_facturas": total_facturas_periodo,
+                "monto_total": float(monto_total),
+                "monto_cobrado": float(monto_cobrado),
+                "monto_pendiente": float(monto_pendiente),
+                "porcentaje_cobrado": round(porcentaje_cobrado, 1),
+                "sugerido": sugerido,
+                "valor": periodo_str,
+                "texto": f"{MESES_ES.get(mes_temp, f'Mes {mes_temp}')} {anio_temp}",
+            })
+
+        # Ordenar por año y mes descendente (más reciente primero)
+        periodos.sort(key=lambda x: (x["anio"], x["mes"]), reverse=True)
+
+        # Identificar periodo actual sugerido
+        periodo_actual = next((p for p in periodos if p["sugerido"]), periodos[0])
+
+        return {
+            "periodo_actual": periodo_actual,
+            "periodos_disponibles": periodos,
+        }
+
+    except Exception as e:
+        print(f"❌ Error obteniendo periodos de facturas: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener periodos de facturas: {str(e)}"
+        )
 
 
 # ========================================
@@ -336,7 +446,6 @@ def crear_factura(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear factura: {str(e)}"
         )
-
 
 # ========================================
 # ACTUALIZAR FACTURA

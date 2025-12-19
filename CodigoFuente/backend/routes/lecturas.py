@@ -503,16 +503,9 @@ def crear_lectura(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Crea una nueva lectura.
-    La tarifa se determina automáticamente según el consumo.
-    Opcionalmente genera la factura automáticamente.
-    Requiere permiso: lecturas.crear o lecturas.crud
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "crear")
     
-    # Verificar que el medidor existe
     medidor = db.query(Medidor).filter(
         Medidor.id_medidor == lectura_data.id_medidor
     ).first()
@@ -523,8 +516,26 @@ def crear_lectura(
             detail="Medidor no encontrado"
         )
     
+    # 🔍 DEBUG: Ver qué fecha llega
+    print("=" * 60)
+    print(f"📅 FECHA RECIBIDA: {lectura_data.fecha_lectura}")
+    print(f"📅 TIPO: {type(lectura_data.fecha_lectura)}")
+    print(f"📅 MES EXTRAÍDO: {lectura_data.fecha_lectura.month}")
+    print(f"📅 AÑO EXTRAÍDO: {lectura_data.fecha_lectura.year}")
+    print("=" * 60)
     
-    # Validación: evitar doble lectura en el mismo mes
+    # 🔍 DEBUG: Ver qué lecturas existen para este medidor
+    lecturas_existentes = db.query(Lectura).filter(
+        Lectura.id_medidor == lectura_data.id_medidor,
+        Lectura.activo == True
+    ).all()
+    
+    print(f"\n📋 LECTURAS EXISTENTES PARA MEDIDOR {lectura_data.id_medidor}:")
+    for lec in lecturas_existentes:
+        print(f"   - ID: {lec.id_lectura}, Fecha: {lec.fecha_lectura}, Mes: {lec.fecha_lectura.month}, Año: {lec.fecha_lectura.year}")
+    print("=" * 60)
+    
+    # Validación original
     lectura_mes_existente = db.query(Lectura).filter(
         Lectura.id_medidor == lectura_data.id_medidor,
         func.extract('month', Lectura.fecha_lectura) == lectura_data.fecha_lectura.month,
@@ -533,11 +544,17 @@ def crear_lectura(
     ).first()
 
     if lectura_mes_existente:
+        print(f"❌ LECTURA DUPLICADA ENCONTRADA:")
+        print(f"   - Fecha existente: {lectura_mes_existente.fecha_lectura}")
+        print(f"   - Mes: {lectura_mes_existente.fecha_lectura.month}")
+        print(f"   - Año: {lectura_mes_existente.fecha_lectura.year}")
+        print("=" * 60)
+        
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"Ya existe una lectura registrada para este medidor "
-                f"en {lectura_data.fecha_lectura.month}/{lectura_data.fecha_lectura.year}."
+                f"en {lectura_mes_existente.fecha_lectura.month}/{lectura_mes_existente.fecha_lectura.year}."
             )
         )
     
@@ -680,6 +697,24 @@ def actualizar_lectura(
             detail="Lectura no encontrada"
         )
 
+    # ✅ VALIDACIÓN: Verificar si la lectura tiene facturas asociadas
+    factura_relacionada = db.query(Factura).filter(
+        Factura.id_lectura == id_lectura
+    ).first()
+    
+    if factura_relacionada:
+        # ⚠️ NO lanzar HTTPException, retornar directamente con status 200
+        return {
+            "success": False,
+            "accion": "no_actualizado",
+            "message": "⚠️ NO se puede actualizar la lectura porque ya tiene una factura generada.",
+            "info": {
+                "id_factura": factura_relacionada.id_factura,
+                "numero_factura": getattr(factura_relacionada, 'numero_factura', None),
+                "estado": getattr(factura_relacionada, 'estado', None)
+            }
+        }
+
     # Actualizar campos
     update_data = lectura_data.model_dump(exclude_unset=True)
     
@@ -692,15 +727,22 @@ def actualizar_lectura(
             Lectura.id_medidor == nuevo_medidor,
             func.extract('month', Lectura.fecha_lectura) == nueva_fecha.month,
             func.extract('year', Lectura.fecha_lectura) == nueva_fecha.year,
-            Lectura.id_lectura != id_lectura,   # excluirse a sí mismo
+            Lectura.id_lectura != id_lectura,
             Lectura.activo == True
         ).first()
 
         if duplicado:
-            raise HTTPException(
-                status_code=400,
-                detail="Ya existe otra lectura para ese medidor en ese mes."
-            )
+            # ⚠️ NO lanzar HTTPException, retornar directamente
+            return {
+                "success": False,
+                "accion": "no_actualizado",
+                "message": "⚠️ Ya existe otra lectura para ese medidor en ese mes.",
+                "info": {
+                    "id_lectura_existente": duplicado.id_lectura,
+                    "mes": nueva_fecha.month,
+                    "año": nueva_fecha.year
+                }
+            }
         
     for key, value in update_data.items():
         setattr(lectura, key, value)
@@ -726,11 +768,17 @@ def actualizar_lectura(
             tipo="info"
         )
         
-        return lectura_to_response(lectura)
+        return {
+            "success": True,
+            "accion": "actualizado",
+            "data": lectura_to_response(lectura),
+            "message": "✅ Lectura actualizada correctamente"
+        }
     
     except Exception as e:
         db.rollback()
         print(f"❌ Error al actualizar lectura: {e}")
+        # ⚠️ Aquí SÍ puedes lanzar HTTPException porque es error técnico
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al actualizar la lectura"
@@ -1888,11 +1936,15 @@ def confirmar_lectura_estimada(
     id_lectura: int,
     lectura_real: int = Query(..., description="Lectura real tomada"),
     observacion: Optional[str] = Query(None, description="Observación adicional"),
+    generar_factura: bool = Query(True, description="Generar factura automáticamente"),
+    tipo_descuento: str = Query('ninguno', description="Tipo: ninguno/porcentaje/valor"),
+    valor_descuento: float = Query(0.0, ge=0, description="Valor del descuento"),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
     Convierte una lectura estimada en lectura real con el valor correcto.
+    Opcionalmente genera la factura automáticamente.
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "actualizar")
@@ -1921,6 +1973,18 @@ def confirmar_lectura_estimada(
                 detail="La lectura real no puede ser menor que la lectura anterior"
             )
         
+        # Obtener información del medidor y afiliado
+        medidor = lectura.medidor
+        afiliado = medidor.usuario_afiliado if medidor else None
+        usuario_afiliado = afiliado.usuario_sistema if afiliado else None
+        
+        if usuario_afiliado:
+            nombre_afiliado = f"{usuario_afiliado.nombres} {usuario_afiliado.apellidos}"
+            id_usuario_afiliado = usuario_afiliado.id_usuario_sistema
+        else:
+            nombre_afiliado = "Usuario desconocido"
+            id_usuario_afiliado = None
+        
         # Actualizar lectura
         lectura.lectura_actual = lectura_real
         lectura.consumo_m3 = lectura_real - lectura.lectura_anterior
@@ -1932,6 +1996,28 @@ def confirmar_lectura_estimada(
         else:
             lectura.observacion = "Lectura confirmada y corregida"
         
+        db.flush()  # Guardar cambios de lectura antes de generar factura
+        
+        # ✅ GENERAR FACTURA AUTOMÁTICAMENTE
+        factura_generada = None
+        mensaje_factura = ""
+        
+        if generar_factura:
+            exito, mensaje, factura_generada = generar_factura_desde_lectura(
+                db=db,
+                lectura=lectura,
+                tipo_descuento=tipo_descuento,
+                valor_descuento=valor_descuento,
+                aplicar_servicios=True,
+                aplicar_multas=True
+            )
+            
+            if exito:
+                mensaje_factura = f"✅ {mensaje}"
+            else:
+                mensaje_factura = f"⚠️ Lectura confirmada pero: {mensaje}"
+        
+        # Commit final
         db.commit()
         db.refresh(lectura)
         
@@ -1939,21 +2025,69 @@ def confirmar_lectura_estimada(
         registrar_auditoria(
             db=db,
             accion="CONFIRMAR_ESTIMADA",
-            descripcion=f"Lectura {id_lectura} confirmada - Real: {lectura_real}m³",
+            descripcion=f"Lectura {id_lectura} confirmada - Real: {lectura_real}m³ - {mensaje_factura}",
             id_usuario=current_user.id_usuario_sistema
         )
         
-        return lectura_to_response(lectura)
+        # Notificación para el lector
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Lectura estimada confirmada",
+            mensaje=f"Lectura confirmada para medidor {medidor.num_medidor}. Consumo real: {lectura.consumo_m3}m³. {mensaje_factura}",
+            tipo="exito"
+        )
+        
+        # Notificación para el afiliado
+        if id_usuario_afiliado:
+            mensaje_afiliado = f"Se confirmó la lectura de {lectura.consumo_m3}m³ para tu medidor N° {medidor.num_medidor}."
+            
+            if factura_generada:
+                mensaje_afiliado += f" Factura {factura_generada.num_factura} generada por ${factura_generada.total}"
+            
+            registrar_notificacion(
+                db=db,
+                id_usuario=id_usuario_afiliado,
+                titulo="Lectura confirmada y factura generada",
+                mensaje=mensaje_afiliado,
+                tipo="info"
+            )
+        
+        # Preparar respuesta
+        response_data = lectura_to_response(lectura)
+        
+        if factura_generada:
+            # Obtener tarifa aplicada
+            tarifa_aplicada = db.query(Tarifa).filter(
+                Tarifa.id_tarifa == factura_generada.id_tarifa
+            ).first()
+            
+            response_data['factura_generada'] = {
+                'id_factura': factura_generada.id_factura,
+                'num_factura': factura_generada.num_factura,
+                'total': float(factura_generada.total),
+                'tarifa_aplicada': tarifa_aplicada.tipo_tarifa if tarifa_aplicada else "N/A",
+                'periodo': factura_generada.periodo,
+                'mensaje': mensaje_factura
+            }
+        else:
+            response_data['factura_generada'] = None
+            response_data['mensaje_factura'] = mensaje_factura if mensaje_factura else "Factura no generada"
+        
+        return response_data
         
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
         print(f"❌ Error confirmando lectura: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al confirmar lectura: {str(e)}"
         )
+
 
 # ========================================
 # ENDPOINT PARA CONFIRMAR TODAS LAS LECTURAS ESTIMADAS
@@ -1963,12 +2097,15 @@ def confirmar_lectura_estimada(
 def confirmar_todas_lecturas_estimadas(
     mes: int = Query(..., ge=1, le=12, description="Mes del periodo"),
     anio: int = Query(..., ge=2020, le=2100, description="Año del periodo"),
+    generar_facturas: bool = Query(True, description="Generar facturas automáticamente"),
+    tipo_descuento: str = Query('ninguno', description="Tipo: ninguno/porcentaje/valor"),
+    valor_descuento: float = Query(0.0, ge=0, description="Valor del descuento"),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
     Confirma todas las lecturas estimadas de un periodo específico.
-    Convierte las lecturas estimadas en lecturas reales con los valores actuales.
+    Convierte las lecturas estimadas en lecturas reales y genera las facturas.
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "actualizar")
@@ -2001,12 +2138,16 @@ def confirmar_todas_lecturas_estimadas(
                 "periodo": f"{mes:02d}/{anio}",
                 "lecturas_confirmadas": 0,
                 "lecturas_fallidas": 0,
+                "facturas_generadas": 0,
+                "facturas_fallidas": 0,
                 "detalles": [],
                 "fallidas": []
             }
         
         confirmadas = []
         fallidas = []
+        facturas_generadas_count = 0
+        facturas_fallidas_count = 0
         
         # Procesar cada lectura estimada
         for lectura in lecturas_estimadas:
@@ -2022,17 +2163,16 @@ def confirmar_todas_lecturas_estimadas(
                     })
                     continue
                 
-                # =========================
-                # 🔵 INFORMACIÓN DEL AFILIADO (igual que en listar_lecturas)
-                # =========================
+                # Información del afiliado
                 afiliado = medidor.usuario_afiliado if medidor else None
+                usuario_afiliado = afiliado.usuario_sistema if afiliado else None
                 
-                # Nombre afiliado
-                if afiliado and afiliado.usuario_sistema:
-                    usuario_sistema = afiliado.usuario_sistema
-                    nombre_afiliado = f"{usuario_sistema.nombres} {usuario_sistema.apellidos}"
+                if usuario_afiliado:
+                    nombre_afiliado = f"{usuario_afiliado.nombres} {usuario_afiliado.apellidos}"
+                    id_usuario_afiliado = usuario_afiliado.id_usuario_sistema
                 else:
                     nombre_afiliado = "Sin afiliado"
+                    id_usuario_afiliado = None
                 
                 # Convertir a lectura real
                 lectura.es_estimada = False
@@ -2044,16 +2184,50 @@ def confirmar_todas_lecturas_estimadas(
                 else:
                     lectura.observacion = "Lectura estimada confirmada automáticamente"
                 
+                db.flush()  # Guardar cambios de lectura
+                
+                # ✅ GENERAR FACTURA PARA ESTA LECTURA
+                factura_generada = None
+                mensaje_factura = "Sin factura"
+                
+                if generar_facturas:
+                    exito, mensaje, factura_generada = generar_factura_desde_lectura(
+                        db=db,
+                        lectura=lectura,
+                        tipo_descuento=tipo_descuento,
+                        valor_descuento=valor_descuento,
+                        aplicar_servicios=True,
+                        aplicar_multas=True
+                    )
+                    
+                    if exito and factura_generada:
+                        facturas_generadas_count += 1
+                        mensaje_factura = f"Factura {factura_generada.num_factura}: ${factura_generada.total}"
+                        
+                        # Notificar al afiliado sobre la factura
+                        if id_usuario_afiliado:
+                            registrar_notificacion(
+                                db=db,
+                                id_usuario=id_usuario_afiliado,
+                                titulo="Lectura confirmada y factura generada",
+                                mensaje=f"Se confirmó tu lectura de {lectura.consumo_m3}m³ para el medidor N° {medidor.num_medidor}. Factura {factura_generada.num_factura} generada por ${factura_generada.total}",
+                                tipo="info"
+                            )
+                    else:
+                        facturas_fallidas_count += 1
+                        mensaje_factura = f"Error: {mensaje}"
+                
                 confirmadas.append({
                     "id_lectura": lectura.id_lectura,
                     "medidor": medidor.num_medidor,
                     "nombre_afiliado": nombre_afiliado,
                     "lectura_anterior": lectura.lectura_anterior,
                     "lectura_confirmada": lectura.lectura_actual,
-                    "consumo": lectura.consumo_m3
+                    "consumo": lectura.consumo_m3,
+                    "factura": mensaje_factura
                 })
                 
-                print(f"✅ Lectura {lectura.id_lectura} confirmada: {medidor.num_medidor} - {nombre_afiliado}")
+                print(f"✅ Lectura {lectura.id_lectura} confirmada: {medidor.num_medidor} - {nombre_afiliado} - {mensaje_factura}")
                 
             except Exception as e:
                 print(f"❌ Error procesando lectura {lectura.id_lectura}: {e}")
@@ -2078,21 +2252,36 @@ def confirmar_todas_lecturas_estimadas(
         if confirmadas:
             db.commit()
             print(f"💾 Guardadas {len(confirmadas)} lecturas confirmadas")
+            print(f"📄 Generadas {facturas_generadas_count} facturas")
             
             # Auditoría
             registrar_auditoria(
                 db=db,
                 accion="CONFIRMAR_TODAS_ESTIMADAS",
-                descripcion=f"Confirmadas {len(confirmadas)} lecturas estimadas del periodo {mes:02d}/{anio}",
+                descripcion=f"Confirmadas {len(confirmadas)} lecturas estimadas del periodo {mes:02d}/{anio}. Facturas generadas: {facturas_generadas_count}",
                 id_usuario=current_user.id_usuario_sistema
+            )
+            
+            # Notificación al usuario que ejecutó la acción
+            registrar_notificacion(
+                db=db,
+                id_usuario=current_user.id_usuario_sistema,
+                titulo="Confirmación masiva completada",
+                mensaje=f"Se confirmaron {len(confirmadas)} lecturas y se generaron {facturas_generadas_count} facturas para el periodo {mes:02d}/{anio}",
+                tipo="exito"
             )
         else:
             db.rollback()
             print("⚠️ No hay lecturas para confirmar, todas fallaron")
         
+        # Construir mensaje de respuesta
         mensaje = f"Se confirmaron {len(confirmadas)} de {len(lecturas_estimadas)} lecturas"
+        if generar_facturas:
+            mensaje += f" y se generaron {facturas_generadas_count} facturas"
         if fallidas:
-            mensaje += f" ({len(fallidas)} fallidas)"
+            mensaje += f" ({len(fallidas)} lecturas fallidas)"
+        if facturas_fallidas_count > 0:
+            mensaje += f" ({facturas_fallidas_count} facturas fallidas)"
         
         return {
             "success": True,
@@ -2100,8 +2289,10 @@ def confirmar_todas_lecturas_estimadas(
             "periodo": f"{mes:02d}/{anio}",
             "lecturas_confirmadas": len(confirmadas),
             "lecturas_fallidas": len(fallidas),
-            "detalles": confirmadas[:50],
-            "fallidas": fallidas[:10]
+            "facturas_generadas": facturas_generadas_count,
+            "facturas_fallidas": facturas_fallidas_count,
+            "detalles": confirmadas[:50],  # Primeras 50 para no sobrecargar
+            "fallidas": fallidas[:10]  # Primeras 10 fallidas
         }
         
     except HTTPException:
@@ -2115,5 +2306,3 @@ def confirmar_todas_lecturas_estimadas(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al confirmar lecturas: {str(e)}"
         )
-
-

@@ -420,9 +420,9 @@ class ReadingsServices {
       };
     }
   }
-  /**
-   * Actualizar una lectura existente
-   */
+ /**
+ * Actualizar una lectura existente
+ */
   async updateLectura(lecturaId, lecturaData) {
     if (!lecturaId || isNaN(lecturaId)) {
       throw new Error('ID de lectura inválido o no definido');
@@ -438,7 +438,7 @@ class ReadingsServices {
       if (lecturaData.observacion !== undefined) updateData.observacion = lecturaData.observacion?.trim() || null;
       if (lecturaData.activo !== undefined) updateData.activo = lecturaData.activo;
 
-      const data = await this.makeRequest(`${API_CONFIG.endpoints.lecturas}/${lecturaId}`, {
+      const response = await this.makeRequest(`${API_CONFIG.endpoints.lecturas}/${lecturaId}`, {
         method: 'PUT',
         body: updateData,
       });
@@ -447,17 +447,31 @@ class ReadingsServices {
       this.cachedLecturas = null;
       this.cachedPeriodos = null;
 
+    
+      if (response && response.success === false) {
+        return {
+          success: false,
+          message: response.message || 'No se pudo actualizar la lectura.',
+          accion: response.accion || 'no_actualizado',
+          info: response.info || null
+        };
+      }
+
       return {
         success: true,
-        data: data,
-        message: 'Lectura actualizada exitosamente'
+        data: response.data || response,
+        message: response.message || 'Lectura actualizada exitosamente',
+        accion: response.accion || 'actualizado'
       };
 
     } catch (error) {
       console.error('❌ Error actualizando lectura:', error);
+      
+      // Solo llegaremos aquí si hay error de red, 404, 500, etc
       return {
         success: false,
-        message: error.message || 'Error al actualizar lectura'
+        message: error.message || 'Error al actualizar lectura',
+        accion: 'error'
       };
     }
   }

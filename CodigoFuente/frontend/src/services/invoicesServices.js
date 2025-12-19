@@ -15,7 +15,8 @@ const API_CONFIG = {
     anular: id => `/facturas/${id}/anular`,       
     detalles: id => `/facturas/${id}/detalles`,   
     marcarVencidas: '/facturas/jobs/marcar-vencidas',
-    serviciosActivos: '/facturas/activos-facturacion'
+    serviciosActivos: '/facturas/activos-facturacion',
+    facturasPeriodosDisponibles: '/facturas/periodos/disponibles',
   }
 };
 
@@ -38,7 +39,7 @@ class InvoicesServices {
         'Accept': 'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 20000,
+      timeout: 30000,
     };
 
     const finalOptions = {
@@ -321,40 +322,7 @@ class InvoicesServices {
     }
   }
 
-  // ========================================
-  // CAMBIAR ESTADO DE FACTURAS
-  // ========================================
   
-  /**
-   * Cambiar estado de una factura
-   */
-  async cambiarEstado(facturaId, nuevoEstado) {
-    try {
-      const endpoint = `${API_CONFIG.endpoints.cambiarEstado(facturaId)}?nuevo_estado=${nuevoEstado}`;
-      
-      const data = await this.makeRequest(endpoint, {
-        method: 'PATCH'
-      });
-
-      // Limpiar cachés
-      this.cachedFacturas = null;
-      this.cachedStats = null;
-
-      return {
-        success: true,
-        data: data,
-        message: `Factura marcada como ${nuevoEstado}`
-      };
-      
-    } catch (error) {
-      console.error('❌ Error cambiando estado:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al cambiar estado de factura'
-      };
-    }
-  }
-
   /**
    * Anular una factura
    */
@@ -544,34 +512,7 @@ class InvoicesServices {
     }
   }
 
-  /**
-   * Eliminar una factura
-   */
-  async deleteFactura(facturaId) {
-    try {
-      const data = await this.makeRequest(`${API_CONFIG.endpoints.facturas}/${facturaId}`, {
-        method: 'DELETE'
-      });
-
-      // Limpiar cachés
-      this.cachedFacturas = null;
-      this.cachedStats = null;
-
-      return {
-        success: true,
-        data: data,
-        message: 'Factura eliminada exitosamente'
-      };
-      
-    } catch (error) {
-      console.error('❌ Error eliminando factura:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al eliminar factura'
-      };
-    }
-  }
-
+  
   // ========================================
   // UTILIDADES
   // ========================================
@@ -595,23 +536,25 @@ class InvoicesServices {
   /**
    * Obtener periodos disponibles para facturas (últimos 12 meses)
    */
-  getPeriodosDisponibles() {
-    const periodos = [];
-    const hoy = new Date();
-    
-    for (let i = 0; i < 12; i++) {
-      const fecha = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
-      const anio = fecha.getFullYear();
-      const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-      
-      periodos.push({
-        valor: `${anio}-${mes}`,
-        texto: this.formatearPeriodo(`${anio}-${mes}`)
-      });
-    }
-    
-    return periodos;
+async getPeriodosDisponibles() {
+  try {
+    const data = await this.makeRequest(API_CONFIG.endpoints.facturasPeriodosDisponibles);
+    // data = { periodo_actual, periodos_disponibles }
+    this.cachedPeriodos = data;
+    return {
+      success: true,
+      data
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo periodos de facturas:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener periodos disponibles'
+    };
   }
+}
+
+
    /**
    * Listr los servicos adicionales 
    */
@@ -697,9 +640,6 @@ class InvoicesServices {
       };
     }
   }
-
-
-
 
   /**
    * Obtener caché de facturas

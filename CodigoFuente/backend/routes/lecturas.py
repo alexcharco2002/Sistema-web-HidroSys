@@ -1,5 +1,5 @@
 from decimal import Decimal
-from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, status, Query
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from models.factura import Factura
@@ -503,9 +503,16 @@ def crear_lectura(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
+    """
+    Crea una nueva lectura.
+    La tarifa se determina automáticamente según el consumo.
+    Opcionalmente genera la factura automáticamente.
+    Requiere permiso: lecturas.crear o lecturas.crud
+    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "crear")
     
+    # Verificar que el medidor existe
     medidor = db.query(Medidor).filter(
         Medidor.id_medidor == lectura_data.id_medidor
     ).first()
@@ -516,26 +523,7 @@ def crear_lectura(
             detail="Medidor no encontrado"
         )
     
-    # 🔍 DEBUG: Ver qué fecha llega
-    print("=" * 60)
-    print(f"📅 FECHA RECIBIDA: {lectura_data.fecha_lectura}")
-    print(f"📅 TIPO: {type(lectura_data.fecha_lectura)}")
-    print(f"📅 MES EXTRAÍDO: {lectura_data.fecha_lectura.month}")
-    print(f"📅 AÑO EXTRAÍDO: {lectura_data.fecha_lectura.year}")
-    print("=" * 60)
-    
-    # 🔍 DEBUG: Ver qué lecturas existen para este medidor
-    lecturas_existentes = db.query(Lectura).filter(
-        Lectura.id_medidor == lectura_data.id_medidor,
-        Lectura.activo == True
-    ).all()
-    
-    print(f"\n📋 LECTURAS EXISTENTES PARA MEDIDOR {lectura_data.id_medidor}:")
-    for lec in lecturas_existentes:
-        print(f"   - ID: {lec.id_lectura}, Fecha: {lec.fecha_lectura}, Mes: {lec.fecha_lectura.month}, Año: {lec.fecha_lectura.year}")
-    print("=" * 60)
-    
-    # Validación original
+    # Validación: evitar doble lectura en el mismo mes
     lectura_mes_existente = db.query(Lectura).filter(
         Lectura.id_medidor == lectura_data.id_medidor,
         func.extract('month', Lectura.fecha_lectura) == lectura_data.fecha_lectura.month,
@@ -544,17 +532,11 @@ def crear_lectura(
     ).first()
 
     if lectura_mes_existente:
-        print(f"❌ LECTURA DUPLICADA ENCONTRADA:")
-        print(f"   - Fecha existente: {lectura_mes_existente.fecha_lectura}")
-        print(f"   - Mes: {lectura_mes_existente.fecha_lectura.month}")
-        print(f"   - Año: {lectura_mes_existente.fecha_lectura.year}")
-        print("=" * 60)
-        
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"Ya existe una lectura registrada para este medidor "
-                f"en {lectura_mes_existente.fecha_lectura.month}/{lectura_mes_existente.fecha_lectura.year}."
+                f"en {lectura_data.fecha_lectura.month}/{lectura_data.fecha_lectura.year}."
             )
         )
     
@@ -587,7 +569,7 @@ def crear_lectura(
 
         lectura_id = nueva_lectura.id_lectura
 
-        # ✅ GENERAR FACTURA  
+        # Generar factura
         factura_generada = None
         mensaje_factura = ""
         
@@ -667,11 +649,11 @@ def crear_lectura(
     
     except Exception as e:
         db.rollback()
-        print(f"❌ Error al crear lectura: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear la lectura: {str(e)}"
         )
+
 
 
 @router.put("/{id_lectura}", response_model=dict)
@@ -1553,16 +1535,14 @@ def obtener_periodos_disponibles(
         )
 
 
-
 # ========================================
-# 🆕 IMPORTAR LECTURAS CON PERIODO --   CREAR DESDE EXCEÑ
+# 🆕 IMPORTAR LECTURAS CON PERIODO - CREAR DESDE EXCEL
 # ========================================
 @router.post("/import/excel/periodo", response_model=LecturaBulkResponse, status_code=status.HTTP_201_CREATED)
 async def importar_lecturas_excel_con_periodo(
-    mes: int = Query(..., ge=1, le=12, description="Mes de las lecturas"),
-    anio: int = Query(..., ge=2020, description="Año de las lecturas"),
-    # ❌ ELIMINADO: id_tarifa: int = Query(..., description="ID de tarifa a aplicar"),
     file: UploadFile = File(...),
+    mes: int = Form(..., ge=1, le=12, description="Mes de las lecturas"),
+    anio: int = Form(..., ge=2020, description="Año de las lecturas"),
     payload: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
@@ -1573,8 +1553,6 @@ async def importar_lecturas_excel_con_periodo(
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "crear")
-    
-    # ❌ ELIMINADO: Verificación de tarifa al inicio
     
     exitosos = []
     fallidos = []
@@ -1646,7 +1624,7 @@ async def importar_lecturas_excel_con_periodo(
                 db.add(nueva_lectura)
                 db.flush()
                 
-                # ✅ GENERAR FACTURA 
+                # Generar factura
                 exito_factura, mensaje_factura, factura = generar_factura_desde_lectura(
                     db=db,
                     lectura=nueva_lectura,
@@ -1722,6 +1700,7 @@ async def importar_lecturas_excel_con_periodo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al importar: {str(e)}"
         )
+
 
 # ========================================
 # ENDPOINT: GENERAR LECTURAS ESTIMADA

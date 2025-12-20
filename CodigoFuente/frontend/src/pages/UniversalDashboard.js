@@ -12,30 +12,31 @@ import './UniversalDashboard.css';
 import { buildModulesFromPermissions, getModuleByPath } from '../utils/modulesDefinitions';
 
 // Componentes compartidos
-import NotificationDropdown from '../components/NotificationDropdown';
-import UserProfile from '../components/UserProfile';
-import ChangePasswordModal from '../components/ChangePasswordModal';
-import ProfileSection from '../components/ProfileSection';
-import NotificationsSection from '../components/NotificationsSection';
-import HomeSection from '../components/HomeSection'; //  COMPONENTE HOME UNIVERSAL
+import NotificationDropdown from '../Sections/NotificationDropdown';
+import UserProfile from '../Sections/UserProfile';
+import ChangePasswordModal from '../Sections/ChangePasswordModal';
+import ProfileSection from '../Sections/ProfileSection';
+import NotificationsSection from '../Sections/NotificationsSection';
+import HomeSection from '../Sections/HomeSection'; //  COMPONENTE HOME UNIVERSAL
 
 // Componentes de secciones
-import UsersSection from '../components/UsersSection';
-import RolesSection from '../components/RolesSection';
-import SectorsSection from '../components/SectorsSection';
-import AffiliatesSection from '../components/AffiliatesSection';
-import MetersSection from '../components/MetersSection';
-import GeolocationSection from '../components/GeolocationSection';
-import InvoicesSection from '../components/InvoicesSection';
-import TarifasSection from '../components/TarifasSection';
-import ConfigSection from '../components/ConfigSection';
-import ServiciosSection from '../components/ServiciosSection';
-import ReadingsSection from '../components/ReadingsSection';
-import FinesSection from '../components/FinesSection';
-import FinesAffiliatesSection from '../components/FinesAffiliatesSection';  
-import HistorialConsumos from '../components/HistorialConsumos';
+import UsersSection from '../Sections/UsersSection';
+import RolesSection from '../Sections/RolesSection';
+import SectorsSection from '../Sections/SectorsSection';
+import AffiliatesSection from '../Sections/AffiliatesSection';
+import MetersSection from '../Sections/MetersSection';
+import GeolocationSection from '../Sections/GeolocationSection';
+import InvoicesSection from '../Sections/InvoicesSection';
+import TarifasSection from '../Sections/TarifasSection';
+import ConfigSection from '../Sections/ConfigSection';
+import ServiciosSection from '../Sections/ServiciosSection';
+import ReadingsSection from '../Sections/ReadingsSection';
+import FinesSection from '../Sections/FinesSection';
+import FinesAffiliatesSection from '../Sections/FinesAffiliatesSection';  
+import HistorialConsumos from '../Sections/HistorialConsumos';
+import PaymentsSection from '../Sections/PaymentsSection';
 
-import MiniMapaBurbuja from '../components/MiniMapaBurbuja'; 
+import MiniMapaBurbuja from '../Sections/MiniMapaBurbuja'; 
 
 // Iconos
 import { 
@@ -70,8 +71,116 @@ const COMPONENT_MAP = {
   ReadingsSection,
   FinesSection,
   FinesAffiliatesSection ,
-  HistorialConsumos
+  HistorialConsumos,
+  PaymentsSection
 };
+ // ============================================================================
+  // COMPONENTE: RENDERIZADOR DINÁMICO DE MÓDULOS
+  // ============================================================================
+  const DynamicModuleRenderer = ({ 
+    modulePath, 
+    user, 
+    roleBasePath, 
+    organizedModules, 
+    dashboardStats, 
+    dataLoading, 
+    onRefresh, 
+    onUpdateProfile, 
+    notifications, 
+    onMarkAsRead 
+  }) => {
+    const navigate = useNavigate(); // Usar hook aquí dentro
+
+    // CASO ESPECIAL: HOME
+    if (modulePath === 'home') {
+      return (
+        <HomeSection 
+          user={user}
+          stats={dashboardStats}
+          dataLoading={dataLoading}
+          onRefresh={onRefresh}
+        />
+      );
+    }
+
+    // Caso especial: Profile
+    if (modulePath === 'profile') {
+      return <ProfileSection user={user} onUpdateProfile={onUpdateProfile} />;
+    }
+
+    // Caso especial: Notifications
+    if (modulePath === 'notifications') {
+      return (
+        <NotificationsSection 
+          notifications={notifications}
+          onMarkAsRead={onMarkAsRead}
+        />
+      );
+    }
+
+    // Buscar módulo en la configuración
+    const moduleConfig = getModuleByPath(modulePath);
+    
+    if (!moduleConfig) {
+      return (
+        <div className="section-placeholder">
+          <Activity className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+          <h2>Módulo no encontrado</h2>
+          <p>La ruta <code>/{modulePath}</code> no existe.</p>
+          <button 
+            onClick={() => navigate(`${roleBasePath}/home`)}
+            className="btn-link mt-4"
+          >
+            Volver al inicio
+          </button>
+        </div>
+      );
+    }
+
+    // Verificar si el usuario tiene acceso al módulo
+    // Asegúrate de que organizedModules esté definido y sea un array
+    const hasAccess = organizedModules && organizedModules
+      .flatMap(cat => cat.modules)
+      .some(mod => mod.path === modulePath);
+
+    if (!hasAccess && !moduleConfig.alwaysVisible) {
+      return (
+        <div className="section-placeholder">
+          <Shield className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+          <h2>Acceso Denegado</h2>
+          <p>No tienes permisos para acceder a este módulo.</p>
+          <button 
+            onClick={() => navigate(`${roleBasePath}/home`)}
+            className="btn-link mt-4"
+          >
+            Volver al inicio
+          </button>
+        </div>
+      );
+    }
+
+    // Renderizar componente dinámico
+    const Component = COMPONENT_MAP[moduleConfig.componentName];
+    
+    if (Component) {
+      return <Component user={user} />;
+    }
+
+    // Componente no implementado
+    return (
+      <div className="section-placeholder">
+        <Activity className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+        <h2>{moduleConfig.label}</h2>
+        <p>Componente en desarrollo.</p>
+        <button 
+          onClick={() => navigate(`${roleBasePath}/home`)}
+          className="btn-link mt-4"
+        >
+          Volver al inicio
+        </button>
+      </div>
+    );
+  };
 
 // ============================================================================
 // 🎯 COMPONENTE PRINCIPAL
@@ -414,100 +523,7 @@ const toggleSidebar = () => {
     await loadDashboardData();
   };
 
-  // ============================================================================
-  // COMPONENTE: RENDERIZADOR DINÁMICO DE MÓDULOS
-  // ============================================================================
-  const DynamicModuleRenderer = ({ modulePath }) => {
-    //  CASO ESPECIAL: HOME - USA EL NUEVO COMPONENTE HomeSection
-    if (modulePath === 'home') {
-      return (
-        <HomeSection 
-          user={user}
-          stats={dashboardStats}
-          dataLoading={dataLoading}
-          onRefresh={handleRefresh}
-        />
-      );
-    }
-
-    // Caso especial: Profile
-    if (modulePath === 'profile') {
-      return <ProfileSection user={user} onUpdateProfile={handleUpdateProfile} />;
-    }
-
-    // Caso especial: Notifications
-    if (modulePath === 'notifications') {
-      return (
-        <NotificationsSection 
-          notifications={notifications}
-          onMarkAsRead={handleMarkAsRead}
-        />
-      );
-    }
-
-    // Buscar módulo en la configuración
-    const moduleConfig = getModuleByPath(modulePath);
-    
-    if (!moduleConfig) {
-      return (
-        <div className="section-placeholder">
-          <Activity className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-          <h2>Módulo no encontrado</h2>
-          <p>La ruta <code>/{modulePath}</code> no existe.</p>
-          <button 
-            onClick={() => navigate(`${roleBasePath}/home`)}
-            className="btn-link mt-4"
-          >
-            Volver al inicio
-          </button>
-        </div>
-      );
-    }
-
-    // Verificar si el usuario tiene acceso al módulo
-    const hasAccess = organizedModules
-      .flatMap(cat => cat.modules)
-      .some(mod => mod.path === modulePath);
-
-    if (!hasAccess && !moduleConfig.alwaysVisible) {
-      return (
-        <div className="section-placeholder">
-          <Shield className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-          <h2>Acceso Denegado</h2>
-          <p>No tienes permisos para acceder a este módulo.</p>
-          <button 
-            onClick={() => navigate(`${roleBasePath}/home`)}
-            className="btn-link mt-4"
-          >
-            Volver al inicio
-          </button>
-        </div>
-      );
-    }
-
-    // Renderizar componente dinámico
-    const Component = COMPONENT_MAP[moduleConfig.componentName];
-    
-    if (Component) {
-      return <Component user={user} />;
-    }
-
-    // Componente no implementado
-    return (
-      <div className="section-placeholder">
-        <Activity className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-        <h2>{moduleConfig.label}</h2>
-        <p>Componente en desarrollo.</p>
-        <button 
-          onClick={() => navigate(`${roleBasePath}/home`)}
-          className="btn-link mt-4"
-        >
-          Volver al inicio
-        </button>
-      </div>
-    );
-  };
-
+ 
   // ============================================================================
   // RENDER LOADING
   // ============================================================================
@@ -706,26 +722,63 @@ const toggleSidebar = () => {
         </header>
 
         {/* CONTENIDO */}
-        <div className="content">
-          <Routes>
-            <Route path="/" element={<Navigate to="home" replace />} />
+       <div className="content">
+        <Routes>
+          <Route path="/" element={<Navigate to="home" replace />} />
 
-            <Route path="home" element={<DynamicModuleRenderer modulePath="home" />} />
-            <Route path="profile" element={<DynamicModuleRenderer modulePath="profile" />} />
-            <Route path="notifications" element={<DynamicModuleRenderer modulePath="notifications" />} />
+          {/* Pasar todas las props necesarias */}
+          <Route path="home" element={
+            <DynamicModuleRenderer 
+              modulePath="home" 
+              user={user}
+              roleBasePath={roleBasePath}
+              organizedModules={organizedModules}
+              dashboardStats={dashboardStats}
+              dataLoading={dataLoading}
+              onRefresh={handleRefresh}
+            />
+          } />
+          
+          <Route path="profile" element={
+            <DynamicModuleRenderer 
+              modulePath="profile" 
+              user={user}
+              roleBasePath={roleBasePath}
+              onUpdateProfile={handleUpdateProfile}
+            />
+          } />
+          
+          <Route path="notifications" element={
+            <DynamicModuleRenderer 
+              modulePath="notifications" 
+              user={user}
+              roleBasePath={roleBasePath}
+              notifications={notifications}
+              onMarkAsRead={handleMarkAsRead}
+            />
+          } />
 
-            {organizedModules.flatMap(category =>
-              category.modules.map(module => (
-                <Route
-                  key={module.path}
-                  path={module.path}
-                  element={<DynamicModuleRenderer modulePath={module.path} />}
-                />
-              ))
-            )}
+          {/* Rutas dinámicas de módulos */}
+          {organizedModules.flatMap(category =>
+            category.modules.map(module => (
+              <Route
+                key={module.path}
+                path={module.path}
+                element={
+                  <DynamicModuleRenderer 
+                    modulePath={module.path}zz
+                    user={user}
+                    roleBasePath={roleBasePath}
+                    organizedModules={organizedModules}
+                    // Pasa otras props si los componentes internos las necesitan
+                  />
+                }
+              />
+            ))
+          )}
 
-            <Route path="*" element={<Navigate to="home" replace />} />
-          </Routes>
+          <Route path="*" element={<Navigate to="home" replace />} />
+        </Routes>
           
           {/* 🔥 FOOTER  */}
           <footer className="dashboard-footer">

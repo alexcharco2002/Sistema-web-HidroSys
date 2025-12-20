@@ -21,6 +21,7 @@ from routes.test_sqli import router as sqli_router # para la practica de sql iny
 from routes import limite_geografico
 from routes import iva
 from routes import facturas
+from routes import pagos
 
 import os
 
@@ -69,6 +70,7 @@ app.include_router(sqli_router, prefix="/test")
 app.include_router(limite_geografico.router)
 app.include_router(facturas.router)
 app.include_router(iva.router)
+app.include_router(pagos.router)
 
 # Health check general
 @app.get("/health")

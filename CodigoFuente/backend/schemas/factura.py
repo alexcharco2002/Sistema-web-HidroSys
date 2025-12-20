@@ -6,6 +6,7 @@ from datetime import date
 from decimal import Decimal
 import re
 from schemas.detalle_factura import DetalleFacturaResponse
+from schemas.pago import PagoResponse
 
 class FacturaBase(BaseModel):
     """Schema base para Factura"""
@@ -150,6 +151,7 @@ class FacturaConUsuarioCompleto(FacturaResponse):
     Incluye información del usuario_sistema, sector y medidores.
     """
     usuario_afiliado: AffiliateWithUserInfo
+    pagos: List['PagoResponse'] = []
     
     class Config:
         from_attributes = True
@@ -163,8 +165,7 @@ class FacturaConTodo(FacturaConUsuarioCompleto):
         from_attributes = True
 
 
-# Para evitar errores de referencia circular
-from schemas.detalle_factura import DetalleFacturaResponse
+
 FacturaConDetalles.model_rebuild()
 FacturaConTodo.model_rebuild()
 

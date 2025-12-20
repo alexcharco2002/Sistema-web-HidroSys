@@ -1,0 +1,139 @@
+/* src/sections/payments/PaymentsSection.css */
+/* Estilos para el Módulo de Pagos */
+
+/* ========================================
+   ESTILOS ESPECÍFICOS PARA PAGOS
+   ======================================== */
+
+/* Badge de método de pago */
+.metodo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+/* Columna de método en la lista */
+.inv-col-metodo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+/* Estilos para estadísticas de métodos de pago */
+.periodo-payment-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.payment-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.payment-stat svg {
+  flex-shrink: 0;
+  color: #10b981;
+}
+
+/* Badge de estado para pagos */
+.status-badge.registrado {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.status-badge.anulado {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+/* Formulario de crear pago */
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-input::placeholder {
+  color: #9ca3af;
+}
+
+textarea.form-input {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* Highlights para totales en verde (pagos) */
+.highlight-total .stat-value,
+.highlight-total p {
+  color: #059669 !important;
+}
+
+/* Variante verde para cards de periodo actual en pagos */
+.periodo-card.mes-actual {
+  border-color: #10b981;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+}
+
+.periodo-badge-actual {
+  background-color: #10b981;
+}
+
+/* Iconos de método de pago con colores específicos */
+.metodo-badge svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Responsive para columnas de pagos */
+@media (max-width: 1200px) {
+  .inv-col-metodo {
+    min-width: 100px;
+  }
+}
+
+@media (max-width: 768px) {
+  .metodo-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .metodo-badge svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+}

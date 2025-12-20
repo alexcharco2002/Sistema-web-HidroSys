@@ -39,7 +39,7 @@ class InvoicesServices {
         'Accept': 'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 30000,
+      timeout: 50000,
     };
 
     const finalOptions = {

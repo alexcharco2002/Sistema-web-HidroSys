@@ -333,11 +333,6 @@ class NotificationsService {
     const mensaje = (notification.mensaje || '').toLowerCase();
     const texto = `${titulo} ${mensaje}`;
 
-    console.log('🔍 Service - Analizando notificación:', {
-      titulo: notification.titulo,
-      mensaje: notification.mensaje,
-      textoCombinado: texto
-    });
 
     // ========================================
     // MAPEO COMPLETO DE PALABRAS CLAVE → RUTAS ABSOLUTAS

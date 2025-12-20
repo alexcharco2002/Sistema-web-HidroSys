@@ -39,7 +39,7 @@ class ReadingsServices {
         'Accept': 'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 40000,
+      timeout: 50000,
     };
 
     const finalOptions = {

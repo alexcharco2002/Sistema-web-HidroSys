@@ -1,6 +1,6 @@
 /* src/App.css */
 @import 'tailwindcss/base';
-@import 'tailwindcss/components';
+@import 'tailwindcss/sections';
 @import 'tailwindcss/utilities';
 
 /* Estilos personalizados para el sistema de facturación */

@@ -88,6 +88,13 @@ class Factura(Base):
         lazy="select"
     )
 
+    pagos = relationship(
+        "Pago",
+        back_populates="factura",
+        lazy="select",
+        cascade="all, delete-orphan"
+    )
+
    
 
     def __repr__(self):

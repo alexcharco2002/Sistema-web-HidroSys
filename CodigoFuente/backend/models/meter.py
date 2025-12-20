@@ -11,7 +11,7 @@ class Medidor(Base):
     # Campos principales
     id_medidor = Column(Integer, primary_key=True, index=True)
     num_medidor = Column(String(50), nullable=False)
-    latitud = Column(Float(precision=53), nullable=True)  # equivale a double precision
+    latitud = Column(Float(precision=53), nullable=True)   
     longitud = Column(Float(precision=53), nullable=True)
     altitud = Column(Numeric(10, 2), nullable=True, default=3374)
     activo = Column(Boolean, default=True)
@@ -20,7 +20,7 @@ class Medidor(Base):
     id_usuario_afi = Column(Integer, ForeignKey("usuarios.t_usuario_afiliado.id_usuario_afi"), unique=True, nullable=True)
     id_sector = Column(Integer, ForeignKey("medidores.t_sector.id_sector"), nullable=True)
 
-    # Relaciones ORM - IMPORTANTE: eager loading para relaciones anidadas
+    # Relaciones ORM -  
     usuario_afiliado = relationship(
         "UsuarioAfiliado", 
         back_populates="medidores", 

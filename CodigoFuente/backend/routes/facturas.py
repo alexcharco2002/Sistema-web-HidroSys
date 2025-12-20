@@ -1203,10 +1203,10 @@ def aplicar_servicios_a_usuarios(
         facturas_afectadas = 0
         
         for factura in facturas:
-            servicios_agregados_factura = 0
+            detalles_nuevos = []
             
             for servicio in servicios:
-                # 🔥 VERIFICAR QUE NO EXISTA YA ESTE SERVICIO
+                # Verificar que no exista ya este servicio
                 existe = db.query(DetalleFactura).filter(
                     DetalleFactura.id_factura == factura.id_factura,
                     DetalleFactura.tipo_detalle == 'servicio',
@@ -1223,19 +1223,22 @@ def aplicar_servicios_a_usuarios(
                     )
                     
                     db.add(detalle)
+                    detalles_nuevos.append(detalle)
                     detalles_creados += 1
-                    servicios_agregados_factura += 1
                     
                     print(f"   ✅ Factura {factura.num_factura}: {servicio.nombre}")
             
             # 🔥 RECALCULAR TOTALES SI SE AGREGARON SERVICIOS
-            if servicios_agregados_factura > 0:
-                # Sumar todos los detalles
-                detalles = db.query(DetalleFactura).filter(
+            if detalles_nuevos:
+                # Obtener detalles existentes
+                detalles_existentes = db.query(DetalleFactura).filter(
                     DetalleFactura.id_factura == factura.id_factura
                 ).all()
                 
-                nuevo_subtotal = sum(d.subtotal_detalle for d in detalles)
+                # Sumar existentes + nuevos
+                nuevo_subtotal = sum(d.subtotal_detalle for d in detalles_existentes) + \
+                                sum(d.subtotal_detalle for d in detalles_nuevos)
+                
                 subtotal_con_descuento = nuevo_subtotal - (factura.descuento or Decimal('0.00'))
                 nuevo_impuesto = subtotal_con_descuento * porcentaje_iva
                 nuevo_total = subtotal_con_descuento + nuevo_impuesto

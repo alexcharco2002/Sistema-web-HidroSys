@@ -11,10 +11,10 @@ import Forgotpassword from './pages/forgotPassword.js';
 import UniversalDashboard from './pages/UniversalDashboard.js';
 
 // Componente de ruta protegida
-import ProtectedRoute from './components/ProtectedRoute.js';
+import ProtectedRoute from './Sections/ProtectedRoute.js';
 
 // Handler de sesión expirada con modal (si ya no se usa, avísame para eliminarlo también)
-import SessionExpiredHandler from './components/SessionExpiredHandler';
+import SessionExpiredHandler from './Sections/SessionExpiredHandler';
 
 // Servicios
 import authService from './services/authServices.js';

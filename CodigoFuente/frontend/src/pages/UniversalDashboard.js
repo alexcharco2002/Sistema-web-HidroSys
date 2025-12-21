@@ -32,9 +32,11 @@ import ConfigSection from '../Sections/ConfigSection';
 import ServiciosSection from '../Sections/ServiciosSection';
 import ReadingsSection from '../Sections/ReadingsSection';
 import FinesSection from '../Sections/FinesSection';
-import FinesAffiliatesSection from '../Sections/FinesAffiliatesSection';  
-import HistorialConsumos from '../Sections/HistorialConsumos';
+import FinesAffiliatesSection from '../Sections/FinesAffiliatesSection'; 
+
+import HistorialConsumos from '../Sections/Affiliates/HistorialConsumos';
 import PaymentsSection from '../Sections/PaymentsSection';
+import ReportsSection from '../Sections/ReportsSection';  
 
 import MiniMapaBurbuja from '../Sections/MiniMapaBurbuja'; 
 
@@ -72,7 +74,8 @@ const COMPONENT_MAP = {
   FinesSection,
   FinesAffiliatesSection ,
   HistorialConsumos,
-  PaymentsSection
+  PaymentsSection,
+  ReportsSection
 };
  // ============================================================================
   // COMPONENTE: RENDERIZADOR DINÁMICO DE MÓDULOS

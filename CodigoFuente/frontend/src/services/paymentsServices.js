@@ -15,6 +15,7 @@ const API_CONFIG = {
     periodos: '/pagos/periodos/disponibles',
     porFactura: idFactura => `/pagos/factura/${idFactura}`,
     porAfiliado: idAfiliado => `/pagos/afiliado/${idAfiliado}`,
+    statsFacturasPeriodo: '/pagos/stats/facturas-periodo', 
     facturasPeriodo: '/pagos/facturas-periodo'
   }
 };
@@ -287,6 +288,30 @@ class PaymentsServices {
     }
   }
 
+  // En paymentsServices.js
+  async getStatsByPeriodo(periodo) {
+    try {
+      // Usa el endpoint correcto
+      const endpoint = `${API_CONFIG.endpoints.statsFacturasPeriodo}?periodo=${periodo}`;
+      const data = await this.makeRequest(endpoint);
+      
+      this.cachedStats = data;
+      
+      return {
+        success: true,
+        data: data
+      };
+      
+    } catch (error) {
+      console.error('❌ Error obteniendo estadísticas del periodo:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener estadísticas'
+      };
+    }
+  }
+
+
   // ========================================
   // CREAR Y ACTUALIZAR PAGOS
   // ========================================
@@ -441,6 +466,159 @@ class PaymentsServices {
       return {
         success: false,
         message: error.message || 'Error al obtener periodos disponibles'
+      };
+    }
+  }
+
+  /**
+   * Subir comprobante PDF para un pago
+   */
+  async uploadComprobante(idPago, file) {
+    try {
+      // Validar archivo
+      if (!file) {
+        throw new Error('No se proporcionó ningún archivo');
+      }
+
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        throw new Error('Solo se permiten archivos PDF');
+      }
+
+      // Validar tamaño (máximo 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error('El archivo no debe superar 5MB');
+      }
+
+      // Crear FormData
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const url = `${API_CONFIG.baseURL}/pagos/${idPago}/comprobante`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authService.getToken()}`
+          // NO incluir 'Content-Type' - fetch lo establece automáticamente con FormData
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Error al subir comprobante');
+      }
+
+      const data = await response.json();
+      
+      return {
+        success: true,
+        data: data,
+        message: 'Comprobante subido exitosamente'
+      };
+      
+    } catch (error) {
+      console.error('❌ Error subiendo comprobante:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al subir comprobante'
+      };
+    }
+  }
+
+  /**
+   * Descargar comprobante PDF de un pago
+   */
+  async downloadComprobante(idPago) {
+    try {
+      const url = `${API_CONFIG.baseURL}/pagos/${idPago}/comprobante`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${authService.getToken()}`
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('El pago no tiene comprobante');
+        }
+        throw new Error('No se pudo descargar el comprobante');
+      }
+
+      // Obtener el nombre del archivo desde los headers
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `comprobante_pago_${idPago}.pdf`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // Descargar el archivo
+      const blob = await response.blob();
+
+
+      console.log("Blob size:", blob.size);
+      console.log("Blob type:", blob.type);
+
+      if (blob.size === 0) {
+        throw new Error("El PDF llegó vacío");
+      }
+
+
+      const url_blob = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url_blob;
+      a.download = filename;
+
+      document.body.appendChild(a);
+      a.click();
+      
+      document.body.removeChild(a);
+
+      // 🔥 NO revocar inmediatamente
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url_blob);
+      }, 1000);
+
+
+      return {
+        success: true,
+        message: 'Comprobante descargado exitosamente',
+        filename: filename
+      };
+      
+    } catch (error) {
+      console.error('❌ Error descargando comprobante:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al descargar comprobante'
+      };
+    }
+  }
+
+  /**
+   * Eliminar comprobante de un pago
+   */
+  async deleteComprobante(idPago) {
+    try {
+      const data = await this.makeRequest(`/pagos/${idPago}/comprobante`, {
+        method: 'DELETE'
+      });
+
+      return {
+        success: true,
+        data: data,
+        message: 'Comprobante eliminado exitosamente'
+      };
+      
+    } catch (error) {
+      console.error('❌ Error eliminando comprobante:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al eliminar comprobante'
       };
     }
   }

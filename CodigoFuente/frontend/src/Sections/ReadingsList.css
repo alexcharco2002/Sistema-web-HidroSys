@@ -1321,9 +1321,8 @@
 }
 
 .periodo-historial-list-item:hover {
-  background: #f3f4f6;
-  border-color: #3b82f6;
-  transform: translateX(4px);
+  background: #eff6ff;
+  transform: scale(1.001);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
 }
 

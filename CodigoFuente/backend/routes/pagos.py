@@ -1,16 +1,14 @@
 # routes/pagos.py
 
-from io import BytesIO
 import locale
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, extract,case, and_,  or_, select 
-
+from sqlalchemy import func, extract,case, and_,  or_
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 from decimal import Decimal
+
 
 from models.meter import Medidor
 from models.pago import Pago
@@ -19,14 +17,13 @@ from models.affiliate import UsuarioAfiliado
 from models.user import UsuarioSistema
 from models.role import RolAccion
 
-from schemas.factura import FacturaConUsuarioCompleto, FacturaStats
+from schemas.factura import FacturaConUsuarioCompleto
 from schemas.pago import (
     PagoCreate,
     PagoUpdate,
     PagoResponse,
     PagoStats,
-    PagoAnular,
-    FacturasPeriodoStats  
+    PagoAnular
 )
 
 from utils.audit_logger import registrar_auditoria
@@ -122,10 +119,9 @@ MESES_ES = {
     9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
 }
 
-# ========================================
-# FUNCIÓN HELPER PARA ESTADÍSTICAS POR PERIODO
-# ========================================
-def obtener_estadisticas_pagos_por_periodo(db: Session, periodos: list):
+from sqlalchemy import func
+
+def obtener_estadisticas_pagos_por_periodo(db: Session, periodos: list[str]):
     """
     Obtiene estadísticas de pagos para múltiples periodos en una sola consulta
     """
@@ -134,12 +130,16 @@ def obtener_estadisticas_pagos_por_periodo(db: Session, periodos: list):
             Factura.periodo.label("periodo"),
             func.count(Pago.id_pago).label("total_pagos"),
             func.coalesce(func.sum(Pago.monto_pago), 0).label("monto_total"),
+            
+            # ✅ Usar case() directamente, no func.case()
             func.coalesce(func.sum(
                 case((Pago.metodo_pago == 'EFECTIVO', Pago.monto_pago), else_=0)
             ), 0).label("monto_efectivo"),
+            
             func.coalesce(func.sum(
                 case((Pago.metodo_pago == 'TRANSFERENCIA', Pago.monto_pago), else_=0)
             ), 0).label("monto_transferencia"),
+            
             func.coalesce(func.sum(
                 case((Pago.metodo_pago == 'TARJETA', Pago.monto_pago), else_=0)
             ), 0).label("monto_tarjeta"),
@@ -153,7 +153,7 @@ def obtener_estadisticas_pagos_por_periodo(db: Session, periodos: list):
         .group_by(Factura.periodo)
         .all()
     )
-    
+
     return {r.periodo: r for r in resultados}
 
 # ========================================
@@ -229,105 +229,6 @@ def obtener_estadisticas_pagos(
         "monto_otros": float(monto_otros)
     }
 
-# ========================================
-# ESTADÍSTICAS DE FACTURAS POR PERIODO
-# ========================================
-def obtener_estadisticas_facturas_periodo(db: Session, periodo: str) -> dict:
-    """
-    Calcula estadísticas desde las FACTURAS de un periodo específico.
-    """
-    # Query base: facturas del periodo
-    facturas_query = db.query(Factura).filter(Factura.periodo == periodo)
-    
-    # Estadísticas de facturas
-    total_facturas = facturas_query.count()
-    facturas_pagadas = facturas_query.filter(Factura.estado_factura == 'pagada').count()
-    facturas_anuladas = facturas_query.filter(Factura.estado_factura == 'anulada').count()
-    facturas_pendientes = facturas_query.filter(Factura.estado_factura == 'pendiente').count()
-    facturas_vencidas = facturas_query.filter(Factura.estado_factura == 'vencida').count()
-    
-    # ✅ Subquery usando select() explícitamente
-    facturas_ids_subquery = select(Factura.id_factura).where(Factura.periodo == periodo).scalar_subquery()
-    
-    # Total recaudado (solo pagos REGISTRADOS)
-    total_recaudado = db.query(
-        func.coalesce(func.sum(Pago.monto_pago), 0)
-    ).filter(
-        Pago.id_factura.in_(facturas_ids_subquery),  # ✅ Ahora no habrá warning
-        Pago.estado_pago == 'REGISTRADO'
-    ).scalar()
-    
-    # Efectivo
-    total_efectivo = db.query(
-        func.coalesce(func.sum(Pago.monto_pago), 0)
-    ).filter(
-        Pago.id_factura.in_(facturas_ids_subquery),
-        Pago.estado_pago == 'REGISTRADO',
-        Pago.metodo_pago == 'EFECTIVO'
-    ).scalar()
-    
-    # Transferencia
-    total_transferencia = db.query(
-        func.coalesce(func.sum(Pago.monto_pago), 0)
-    ).filter(
-        Pago.id_factura.in_(facturas_ids_subquery),
-        Pago.estado_pago == 'REGISTRADO',
-        Pago.metodo_pago == 'TRANSFERENCIA'
-    ).scalar()
-    
-    # Tarjeta
-    total_tarjeta = db.query(
-        func.coalesce(func.sum(Pago.monto_pago), 0)
-    ).filter(
-        Pago.id_factura.in_(facturas_ids_subquery),
-        Pago.estado_pago == 'REGISTRADO',
-        Pago.metodo_pago == 'TARJETA'
-    ).scalar()
-    
-    # Estadísticas de pagos
-    total_pagos_registrados = db.query(Pago).filter(
-        Pago.id_factura.in_(facturas_ids_subquery),
-        Pago.estado_pago == 'REGISTRADO'
-    ).count()
-    
-    total_pagos_anulados = db.query(Pago).filter(
-        Pago.id_factura.in_(facturas_ids_subquery),
-        Pago.estado_pago == 'ANULADO'
-    ).count()
-    
-    return {
-        "total_facturas": total_facturas,
-        "facturas_pagadas": facturas_pagadas,
-        "facturas_anuladas": facturas_anuladas,
-        "facturas_pendientes": facturas_pendientes,
-        "facturas_vencidas": facturas_vencidas,
-        "total_recaudado": float(total_recaudado),
-        "total_efectivo": float(total_efectivo),
-        "total_transferencia": float(total_transferencia),
-        "total_tarjeta": float(total_tarjeta),
-        "total_pagos_registrados": total_pagos_registrados,
-        "total_pagos_anulados": total_pagos_anulados
-    }
-
-# ========================================
-# OBTENER ESTADÍSTICAS DE FACTURAS POR PERIODO
-# ========================================
-@router.get("/stats/facturas-periodo", response_model=FacturasPeriodoStats)
-def obtener_estadisticas_facturas_endpoint(
-    periodo: str = Query(..., description="Periodo específico (YYYY-MM)"),
-    db: Session = Depends(get_db),
-    payload: dict = Depends(verify_token)
-):
-    """
-    Obtiene estadísticas de facturas de un periodo específico.
-    Endpoint: GET /pagos/stats/facturas-periodo?periodo=2025-12
-    """
-    current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "pagos", "lectura")
-    
-    stats = obtener_estadisticas_facturas_periodo(db, periodo)
-    return stats
-
 
 # ========================================
 # OBTENER PERÍODOS DISPONIBLES DE PAGOS
@@ -339,42 +240,42 @@ def obtener_periodos_pagos_disponibles(
 ):
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "pagos", "lectura")
-    
+
     hoy = date.today()
     mes_actual = hoy.month
     anio_actual = hoy.year
-    
+
     periodos = []
     periodos_str = []
-    
-    # Generar periodos (6 meses atrás, 2 meses adelante)
+
+    # Generar periodos
     for offset in range(-6, 3):
         mes = mes_actual + offset
         anio = anio_actual
-        
+
         while mes > 12:
             mes -= 12
             anio += 1
-        
         while mes < 1:
             mes += 12
             anio -= 1
-        
+
         periodo_str = f"{anio}-{mes:02d}"
         periodos_str.append(periodo_str)
+
         periodos.append({
             "mes": mes,
             "anio": anio,
             "periodo": periodo_str,
             "sugerido": mes == mes_actual and anio == anio_actual
         })
-    
-    # 🔥 Obtener estadísticas en UNA SOLA consulta
+
+    # 🔥 UNA SOLA CONSULTA
     stats_map = obtener_estadisticas_pagos_por_periodo(db, periodos_str)
-    
-    # Agregar estadísticas a cada periodo
+
     for p in periodos:
         stats = stats_map.get(p["periodo"])
+
         p.update({
             "nombre_mes": MESES_ES.get(p["mes"]),
             "tiene_pagos": stats is not None,
@@ -386,13 +287,10 @@ def obtener_periodos_pagos_disponibles(
             "valor": p["periodo"],
             "texto": f"{MESES_ES.get(p['mes'])} {p['anio']}"
         })
-    
-    # Ordenar por año y mes (más reciente primero)
+
     periodos.sort(key=lambda x: (x["anio"], x["mes"]), reverse=True)
-    
-    # Encontrar periodo actual
     periodo_actual = next((p for p in periodos if p["sugerido"]), periodos[0])
-    
+
     return {
         "periodo_actual": periodo_actual,
         "periodos_disponibles": periodos
@@ -1041,121 +939,3 @@ def reporte_pagos_por_fecha(
         "monto_transferencia": monto_transferencia,
         "pagos": pagos
     }
-
-
-# ========================================
-# ENPOINS PARA LA GESTION DE COMPROBANTES
-# ========================================
-
-@router.post("/{id_pago}/comprobante", status_code=200)
-async def subir_comprobante_pago(
-    id_pago: int,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    payload: dict = Depends(verify_token)
-):
-    """Sube un comprobante PDF para un pago"""
-    current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "pagos", "actualizar")
-    
-    # Verificar que el pago existe
-    pago = db.query(Pago).filter(Pago.id_pago == id_pago).first()
-    if not pago:
-        raise HTTPException(status_code=404, detail="Pago no encontrado")
-    
-    # Validar tipo de archivo
-    if not file.filename.endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF")
-    
-    # Validar tamaño (máximo 5MB)
-    content = await file.read()
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="El archivo no debe superar 5MB")
-    
-    try:
-        # Guardar en la base de datos
-        pago.comprobante_pdf = content
-        pago.nombre_archivo = file.filename
-        pago.tipo_mime = file.content_type or 'application/pdf'
-        
-        db.commit()
-        
-        return {
-            "success": True,
-            "message": "Comprobante subido exitosamente",
-            "filename": file.filename,
-            "size_bytes": len(content)
-        }
-        
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error al subir comprobante: {str(e)}")
-
-
-@router.get("/{id_pago}/comprobante")
-def descargar_comprobante_pago(
-    id_pago: int,
-    db: Session = Depends(get_db),
-    payload: dict = Depends(verify_token)
-):
-    current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "pagos", "lectura")
-
-    pago = db.query(Pago).filter(Pago.id_pago == id_pago).first()
-    if not pago:
-        raise HTTPException(status_code=404, detail="Pago no encontrado")
-
-    if not pago.comprobante_pdf:
-        raise HTTPException(status_code=404, detail="El pago no tiene comprobante")
-
-    pdf_content = pago.comprobante_pdf
-    if isinstance(pdf_content, memoryview):
-        pdf_content = pdf_content.tobytes()
-
-    filename = pago.nombre_archivo or f"comprobante_pago_{id_pago}.pdf"
-
-    return StreamingResponse(
-        BytesIO(pdf_content),
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Content-Length": str(len(pdf_content)),
-            "Cache-Control": "no-store",
-            "Pragma": "no-cache"
-        }
-    )
-
-
-@router.delete("/{id_pago}/comprobante", status_code=200)
-def eliminar_comprobante_pago(
-    id_pago: int,
-    db: Session = Depends(get_db),
-    payload: dict = Depends(verify_token)
-):
-    """Elimina el comprobante PDF de un pago"""
-    current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "pagos", "eliminar")
-    
-    pago = db.query(Pago).filter(Pago.id_pago == id_pago).first()
-    if not pago:
-        raise HTTPException(status_code=404, detail="Pago no encontrado")
-    
-    if not pago.comprobante_pdf:
-        raise HTTPException(status_code=404, detail="El pago no tiene comprobante")
-    
-    try:
-        pago.comprobante_pdf = None
-        pago.nombre_archivo = None
-        pago.tipo_mime = None
-        
-        db.commit()
-        
-        return {
-            "success": True,
-            "message": "Comprobante eliminado exitosamente"
-        }
-        
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error al eliminar comprobante: {str(e)}")
-

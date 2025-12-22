@@ -15,10 +15,6 @@ class PagoBase(BaseModel):
     id_usuario_afi: Optional[int] = Field(None, description="ID del usuario afiliado que realiza el pago")
     observaciones: Optional[str] = Field(None, max_length=1000, description="Observaciones del pago")
     
-    nombre_archivo: Optional[str] = Field(None, max_length=255, description="Nombre del archivo PDF")
-    tipo_mime: Optional[str] = Field('application/pdf', max_length=50, description="Tipo MIME del archivo")
-    
-
     @field_validator('metodo_pago')
     @classmethod
     def validar_metodo_pago(cls, v: str) -> str:
@@ -137,10 +133,6 @@ class PagoResponse(BaseModel):
     activo: bool
     estado_pago: str
     
-    nombre_archivo: Optional[str] = None
-    tipo_mime: Optional[str] = None
-    tiene_comprobante: bool = False  
-
     # Relaciones
     factura: Optional[FacturaInfo] = None
     usuario_afiliado: Optional[UsuarioAfiliadoInfo] = None
@@ -164,6 +156,8 @@ class PagoResponse(BaseModel):
                 "estado_pago": "REGISTRADO"
             }
         }
+
+# schemas/pago.py - Solo actualiza esta clase
 
 class PagoStats(BaseModel):
     """Schema para estadísticas de pagos"""
@@ -191,44 +185,7 @@ class PagoStats(BaseModel):
                 "monto_otros": 75.00
             }
         }
-class FacturasPeriodoStats(BaseModel):
-    """
-    Schema para estadísticas de facturas de un periodo específico.
-    Se usa en la vista de pagos para mostrar resumen del periodo.
-    """
-    # Estadísticas de facturas
-    total_facturas: int = Field(..., description="Total de facturas en el periodo")
-    facturas_pagadas: int = Field(..., description="Facturas con estado 'pagada'")
-    facturas_anuladas: int = Field(..., description="Facturas con estado 'anulada'")
-    facturas_pendientes: int = Field(..., description="Facturas con estado 'pendiente'")
-    facturas_vencidas: int = Field(..., description="Facturas con estado 'vencida'")
-    
-    # Estadísticas financieras (calculadas desde pagos)
-    total_recaudado: float = Field(..., description="Total recaudado (solo pagos REGISTRADOS)")
-    total_efectivo: float = Field(..., description="Total recaudado en efectivo")
-    total_transferencia: float = Field(..., description="Total recaudado en transferencias")
-    total_tarjeta: float = Field(..., description="Total recaudado en tarjetas")
-    
-    # Estadísticas de pagos
-    total_pagos_registrados: int = Field(..., description="Cantidad de pagos registrados")
-    total_pagos_anulados: int = Field(..., description="Cantidad de pagos anulados")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "total_facturas": 150,
-                "facturas_pagadas": 120,
-                "facturas_anuladas": 5,
-                "facturas_pendientes": 20,
-                "facturas_vencidas": 5,
-                "total_recaudado": 45000.00,
-                "total_efectivo": 20000.00,
-                "total_transferencia": 15000.00,
-                "total_tarjeta": 10000.00,
-                "total_pagos_registrados": 180,
-                "total_pagos_anulados": 8
-            }
-        }
+
 
 class PagoPorPeriodo(BaseModel):
     """Schema para pagos agrupados por periodo"""
@@ -352,24 +309,3 @@ class PagoBatchResponse(BaseModel):
     total_exitosos: int
     total_fallidos: int
     monto_total_procesado: Decimal
-
-# Schema específico para subir comprobante
-class ComprobanteUpload(BaseModel):
-    """Schema para subir un comprobante PDF"""
-    nombre_archivo: str = Field(..., max_length=255)
-    tipo_mime: str = Field('application/pdf', max_length=50)
-    
-    @field_validator('nombre_archivo')
-    @classmethod
-    def validar_pdf(cls, v: str) -> str:
-        if not v.lower().endswith('.pdf'):
-            raise ValueError('Solo se permiten archivos PDF')
-        return v
-    
-    @field_validator('tipo_mime')
-    @classmethod
-    def validar_mime(cls, v: str) -> str:
-        if v != 'application/pdf':
-            raise ValueError('Solo se permite tipo MIME application/pdf')
-        return v
-    

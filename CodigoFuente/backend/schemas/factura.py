@@ -120,16 +120,6 @@ class FacturaStats(BaseModel):
     facturas_vencidas: int
     monto_total_pendiente: Decimal
     monto_total_cobrado: Decimal
-    
-    # Estadísticas financieras (calculadas desde pagos de facturas del periodo)
-    total_recaudado: float
-    total_efectivo: float
-    total_transferencia: float
-    total_tarjeta: float
-    
-    # Estadísticas de pagos
-    total_pagos_registrados: int
-    total_pagos_anulados: int
 
 
 class AplicarDescuentoRequest(BaseModel):

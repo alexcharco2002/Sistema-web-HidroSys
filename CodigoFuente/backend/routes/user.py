@@ -1,12 +1,10 @@
 # routes/users.py
-from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import or_ , cast, String
 from typing import List, Optional
 from datetime import datetime
 from schemas.notification import NotificacionCreate
-from services.password_service import agregar_al_historial, validar_nueva_password_completa
 from utils.notifications import registrar_notificacion
 from sqlalchemy.exc import IntegrityError
 from psycopg2.errors import ForeignKeyViolation, NotNullViolation
@@ -331,8 +329,12 @@ def create_user(
     ).first()
 
     if existing_user:
-        
-        if existing_user.cedula == user_data.cedula:
+        if existing_user.email == user_data.email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El correo electrónico ya está registrado"
+            )
+        elif existing_user.cedula == user_data.cedula:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La cédula ya está registrada"
@@ -452,7 +454,16 @@ def update_user(
                 detail="El nombre de usuario ya está en uso"
             )
     
- 
+    if user_data.email and user_data.email != user.email:
+        existing = db.query(UsuarioSistema).filter(
+            UsuarioSistema.email == user_data.email,
+            UsuarioSistema.id_usuario_sistema != user_id
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El correo electrónico ya está registrado"
+            )
     
     if user_data.cedula and user_data.cedula != user.cedula:
         existing = db.query(UsuarioSistema).filter(
@@ -645,695 +656,149 @@ def toggle_user_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al cambiar el estado del usuario"
         )
-    
-
-# ========================================
-# SCHEMAS
-# ========================================
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
-
-
-class ChangePasswordFirstLoginRequest(BaseModel):
-    new_password: str
-
-
-class ResetPasswordRequest(BaseModel):
-    user_id: int
-    new_password: str
-
 
 # ========================================
 # CAMBIAR CONTRASEÑA
 # ========================================
-# ========================================
-# CAMBIAR CONTRASEÑA - ISO 27002
-# ========================================
-@router.put("/{user_id}/change-password", response_model=dict)
+@router.put("/{user_id}/change-password")
 def change_user_password(
     user_id: int,
     password_data: ChangePasswordRequest,
-    request: Request,
     payload: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
     """
-    Cambia la contraseña de un usuario con validaciones ISO 27002:
-    - Complejidad estricta (mayúsculas, minúsculas, números, símbolos)
-    - No reutilización de últimas 5 contraseñas
-    - No información personal (usuario, email, nombres)
-    - Auditoría completa con IP y User-Agent
-    - Historial de contraseñas
-    
-    Permisos:
-    - Usuario puede cambiar su propia contraseña
-    - Admin con 'usuarios.actualizar' puede cambiar cualquier contraseña
+    Cambia la contraseña de un usuario
+    El usuario puede cambiar su propia contraseña o admin con usuarios.actualizar
     """
+    current_user = get_current_user(payload, db)
+    
+    # Verificar permisos
+    can_change_all = check_permission(current_user, db, "usuarios", "actualizar")
+    
+    if not can_change_all and current_user.id_usuario_sistema != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para cambiar esta contraseña"
+        )
+    
+    # Obtener usuario a actualizar
+    user = db.query(UsuarioSistema).filter(
+        UsuarioSistema.id_usuario_sistema == user_id
+    ).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+    
+    # Verificar contraseña actual (solo si no es admin cambiando a otro usuario)
+    if not can_change_all or current_user.id_usuario_sistema == user_id:
+        if not verify_password(password_data.current_password, user.clave):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La contraseña actual es incorrecta"
+            )
+    
+    # Validar nueva contraseña
+    if len(password_data.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La nueva contraseña debe tener al menos 8 caracteres"
+        )
+    # Validar que la nueva contraseña no sea igual a la actual
+    if verify_password(password_data.new_password, user.clave):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La nueva contraseña no puede ser igual a la actual"
+        )
+
+    # Actualizar contraseña
+    user.clave = hash_password(password_data.new_password)
+    
     try:
-        # Obtener usuario actual desde token
-        current_user = get_current_user(payload, db)
-        
-        # Verificar permisos
-        can_change_all = check_permission(current_user, db, "usuarios", "actualizar")
-        
-        if not can_change_all and current_user.id_usuario_sistema != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permisos para cambiar esta contraseña"
-            )
-        
-        # Obtener usuario a actualizar
-        user = db.query(UsuarioSistema).filter(
-            UsuarioSistema.id_usuario_sistema == user_id
-        ).first()
-        
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado"
-            )
-        
-        # Verificar que usuario esté activo
-        if not user.activo:
-            # Registrar intento en usuario inactivo
-            descripcion = (
-                "Intento de cambio de contraseña | "
-                "Resultado: RECHAZADO | "
-                "Motivo: Usuario inactivo | "
-                f"Usuario afectado: {user.usuario} | "
-                f"IP: {request.client.host if request.client else 'N/A'} | "
-                f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-            )
-            
-            registrar_auditoria(
-                db=db,
-                accion="CAMBIO_RECHAZADO",
-                descripcion=descripcion,
-                id_usuario=current_user.id_usuario_sistema
-            )
-            
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El usuario está inactivo"
-            )
-        
-        # ✅ Verificar contraseña actual
-        # (Solo si el usuario cambia su propia contraseña o no es admin)
-        if not can_change_all or current_user.id_usuario_sistema == user_id:
-            if not verify_password(password_data.current_password, user.clave):
-                # Registrar intento fallido
-                descripcion = (
-                    "Intento de cambio de contraseña | "
-                    "Resultado: RECHAZADO | "
-                    "Motivo: Contraseña actual incorrecta | "
-                    f"Usuario afectado: {user.usuario} | "
-                    f"Intentado por: {current_user.usuario} | "
-                    f"IP: {request.client.host if request.client else 'N/A'} | "
-                    f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-                )
-                
-                registrar_auditoria(
-                    db=db,
-                    accion="CAMBIO_RECHAZADO",
-                    descripcion=descripcion,
-                    id_usuario=current_user.id_usuario_sistema
-                )
-                
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="La contraseña actual es incorrecta"
-                )
-        
-        # ✅ VALIDACIÓN COMPLETA ISO 27002
-        usuario_info = {
-            'usuario': user.usuario,
-            'email': user.email or '',
-            'nombres': user.nombres or '',
-            'apellidos': user.apellidos or ''
-        }
-        
-        es_valida, mensaje = validar_nueva_password_completa(
-            db=db,
-            user_id=user.id_usuario_sistema,
-            nueva_password=password_data.new_password,
-            password_actual=user.clave,
-            usuario_info=usuario_info
-        )
-        
-        if not es_valida:
-            # Registrar rechazo por validación
-            descripcion = (
-                "Intento de cambio de contraseña | "
-                "Resultado: RECHAZADO | "
-                f"Motivo: {mensaje} | "
-                f"Usuario afectado: {user.usuario} | "
-                f"Intentado por: {current_user.usuario} | "
-                f"IP: {request.client.host if request.client else 'N/A'} | "
-                f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-            )
-            
-            registrar_auditoria(
-                db=db,
-                accion="CAMBIO_RECHAZADO",
-                descripcion=descripcion,
-                id_usuario=current_user.id_usuario_sistema
-            )
-            
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=mensaje
-            )
-        
-        # ✅ GUARDAR CONTRASEÑA ANTERIOR EN HISTORIAL
-        is_admin_change = can_change_all and current_user.id_usuario_sistema != user.id_usuario_sistema
-        
-        agregar_al_historial(
-            db=db,
-            user_id=user.id_usuario_sistema,
-            password_hash=user.clave,  # Hash actual antes de cambiar
-            motivo="cambio_admin" if is_admin_change else "cambio_voluntario",
-            by_admin=is_admin_change,
-            ip=request.client.host if request.client else None
-        )
-        
-        # ✅ ACTUALIZAR CONTRASEÑA
-        user.clave = hash_password(password_data.new_password)
-        user.ultimo_acceso = datetime.now()
-        
         db.commit()
-        
-        # ✅ REGISTRAR AUDITORÍA DE ÉXITO
-        if is_admin_change:
-            descripcion = (
-                "Cambio de contraseña administrativo | "
-                "Resultado: EXITOSO | "
-                f"Usuario afectado: {user.usuario} | "
-                f"Cambiado por admin: {current_user.usuario} | "
-                f"IP: {request.client.host if request.client else 'N/A'} | "
-                f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-            )
+        #✅ Registrar auditoría
+        if current_user.id_usuario_sistema == user.id_usuario_sistema:
+            descripcion = f"El usuario '{user.usuario}' cambió su propia contraseña."
         else:
-            descripcion = (
-                "Cambio de contraseña | "
-                "Resultado: EXITOSO | "
-                f"Usuario: {user.usuario} | "
-                "Cambio realizado por el propio usuario | "
-                f"IP: {request.client.host if request.client else 'N/A'} | "
-                f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-            )
-        
+            descripcion = f"La contraseña del usuario '{user.usuario}' fue cambiada por el '{payload['sub']}'."
+
         registrar_auditoria(
             db=db,
-            accion="CAMBIO_EXITOSO",
+            accion="UPDATE",
             descripcion=descripcion,
             id_usuario=current_user.id_usuario_sistema
         )
-        
+
+
         return {
             "success": True,
-            "message": "Contraseña actualizada exitosamente. La nueva contraseña cumple con las políticas de seguridad ISO 27002."
+            "message": "Contraseña actualizada exitosamente"
         }
-    
-    except HTTPException:
-        # Re-raise HTTP exceptions (ya tienen el formato correcto)
-        raise
     
     except Exception as e:
         db.rollback()
-        print(f"❌ Error al cambiar contraseña: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        # Registrar error en auditoría
-        try:
-            descripcion = (
-                "Error al cambiar contraseña | "
-                f"Usuario afectado ID: {user_id} | "
-                f"Error: {str(e)[:200]} | "
-                f"IP: {request.client.host if request.client else 'N/A'}"
-            )
-            
-            registrar_auditoria(
-                db=db,
-                accion="ERROR",
-                descripcion=descripcion,
-                id_usuario=current_user.id_usuario_sistema if 'current_user' in locals() else None
-            )
-        except:
-            pass
-        
+        print(f"Error al cambiar contraseña: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al cambiar contraseña"
+            detail="Error al actualizar la contraseña"
         )
-
-# ========================================
-# CAMBIAR CONTRASEÑA (Usuario Autenticado)
-# ========================================
-@router.put("/change-password", response_model=dict)
-def change_password(
-    password_data: ChangePasswordRequest,
-    request: Request,
-    payload: dict = Depends(verify_token),
-    db: Session = Depends(get_db)
-):
-    """
-    Cambia la contraseña del usuario autenticado
-    Incluye validaciones ISO 27002:
-    - Complejidad estricta
-    - No reutilización (últimas 5)
-    - No información personal
-    - Auditoría completa
-    """
-    try:
-        # Obtener usuario desde token
-        usuario = payload.get("sub")
-        db_user = db.query(UsuarioSistema).filter(
-            UsuarioSistema.usuario == usuario
-        ).first()
-
-        if not db_user:
-            return {
-                "success": False,
-                "message": "Usuario no encontrado"
-            }
-
-        # Verificar que usuario esté activo
-        if not db_user.activo:
-            return {
-                "success": False,
-                "message": "Usuario inactivo"
-            }
-
-        # Verificar contraseña actual
-        if not verify_password(password_data.current_password, db_user.clave):
-            # Registrar intento fallido en auditoría
-            descripcion = (
-                "Cambio de contraseña | "
-                "Resultado: RECHAZADO | "
-                "Motivo: Contraseña actual incorrecta | "
-                f"IP: {request.client.host if request.client else 'N/A'} | "
-                f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-            )
-
-            registrar_auditoria(
-                db=db,
-                accion="CAMBIO_RECHAZADO",
-                descripcion=descripcion,
-                id_usuario=db_user.id_usuario_sistema
-            )
-
-            return {
-                "success": False,
-                "message": "La contraseña actual es incorrecta"
-            }
-
-        # ✅ VALIDACIÓN COMPLETA ISO 27002
-        usuario_info = {
-            'usuario': db_user.usuario,
-            'email': db_user.email,
-            'nombres': db_user.nombres,
-            'apellidos': db_user.apellidos
-        }
-
-        es_valida, mensaje = validar_nueva_password_completa(
-            db=db,
-            user_id=db_user.id_usuario_sistema,
-            nueva_password=password_data.new_password,
-            password_actual=db_user.clave,
-            usuario_info=usuario_info
-        )
-
-        if not es_valida:
-            # Registrar rechazo
-            # Registrar intento fallido en auditoría
-            descripcion = (
-                "Cambio de contraseña | "
-                "Resultado: RECHAZADO | "
-                f"Motivo: {mensaje} | "
-                f"IP: {request.client.host if request.client else 'N/A'} | "
-                f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-            )
-
-            registrar_auditoria(
-                db=db,
-                accion="CAMBIO_RECHAZADO",
-                descripcion=descripcion,
-                id_usuario=db_user.id_usuario_sistema
-            )
-
-
-            return {
-                "success": False,
-                "message": mensaje
-            }
-
-        # ✅ GUARDAR CONTRASEÑA ANTERIOR EN HISTORIAL
-        agregar_al_historial(
-            db=db,
-            user_id=db_user.id_usuario_sistema,
-            password_hash=db_user.clave,  # Hash actual antes de cambiar
-            motivo="cambio_voluntario",
-            by_admin=False,
-            ip=request.client.host if request.client else None
-        )
-
-        # ✅ ACTUALIZAR CONTRASEÑA (usar tu función de hash existente)
-        db_user.clave = hash_password(password_data.new_password)
-        db_user.ultimo_acceso = datetime.now()
-        db.commit()
-
-        # ✅ REGISTRAR AUDITORÍA DE ÉXITO
-        descripcion = (
-            "Auditoría cambio de contraseña | "
-            "Resultado: EXITOSO | "
-            "Cambio realizado por el usuario | "
-            f"IP: {request.client.host if request.client else 'N/A'} | "
-            f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-        )
-
-        registrar_auditoria(
-            db=db,
-            accion="CAMBIO_EXITOSO",
-            descripcion=descripcion,
-            id_usuario=db_user.id_usuario_sistema
-        )
-
-
-        return {
-            "success": True,
-            "message": "Contraseña actualizada exitosamente. Tu nueva contraseña cumple con las políticas de seguridad ISO 27002."
-        }
-
-    except Exception as e:
-        print(f"❌ Error al cambiar contraseña: {e}")
-        import traceback
-        traceback.print_exc()
-        return {
-            "success": False,
-            "message": "Error interno al cambiar contraseña"
-        }
-
 
 # ========================================
 # CAMBIAR CONTRASEÑA (PRIMER LOGIN)
 # ========================================
-@router.put("/change-password-first-login/{user_id}", response_model=dict)
+@router.put("/{user_id}/change-password-first-login")
 def change_password_first_login(
     user_id: int,
     password_data: ChangePasswordFirstLoginRequest,
-    request: Request,
     db: Session = Depends(get_db)
 ):
     """
-    Permite cambiar contraseña en primer login
-    Sin verificar contraseña actual
-    Con validaciones ISO 27002 completas
+    Permite al usuario cambiar su contraseña en su primer inicio de sesión
+    o después de recuperación, sin verificar la contraseña actual.
     """
+    user = db.query(UsuarioSistema).filter(
+        UsuarioSistema.id_usuario_sistema == user_id
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+
+    # Validar nueva contraseña
+    if len(password_data.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La nueva contraseña debe tener al menos 8 caracteres"
+        )
+
+    # Actualizar contraseña directamente
+    user.clave = hash_password(password_data.new_password)
+
     try:
-        db_user = db.query(UsuarioSistema).filter(
-            UsuarioSistema.id_usuario_sistema == user_id
-        ).first()
-
-        if not db_user:
-            return {
-                "success": False,
-                "message": "Usuario no encontrado"
-            }
-
-        # ✅ VALIDACIÓN COMPLETA ISO 27002
-        usuario_info = {
-            'usuario': db_user.usuario,
-            'email': db_user.email,
-            'nombres': db_user.nombres,
-            'apellidos': db_user.apellidos
-        }
-
-        es_valida, mensaje = validar_nueva_password_completa(
-            db=db,
-            user_id=db_user.id_usuario_sistema,
-            nueva_password=password_data.new_password,
-            password_actual=None,  # No verificar actual en primer login
-            usuario_info=usuario_info
-        )
-
-        if not es_valida:
-            # Registrar rechazo
-            descripcion = (
-                "Primer login | "
-                "Resultado: RECHAZADO | "
-                f"Motivo: {mensaje} | "
-                f"IP: {request.client.host if request.client else 'N/A'} | "
-                f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-            )
-
-            registrar_auditoria(
-                db=db,
-                accion="PRIMER_LOGIN_RECHAZADO",
-                descripcion=descripcion,
-                id_usuario=db_user.id_usuario_sistema
-            )
-
-
-            return {
-                "success": False,
-                "message": mensaje
-            }
-
-        # ✅ GUARDAR CONTRASEÑA TEMPORAL EN HISTORIAL
-        agregar_al_historial(
-            db=db,
-            user_id=db_user.id_usuario_sistema,
-            password_hash=db_user.clave,
-            motivo="primer_login",
-            by_admin=False,
-            ip=request.client.host if request.client else None
-        )
-
-        # ✅ ACTUALIZAR CONTRASEÑA
-        db_user.clave = hash_password(password_data.new_password)
-        db_user.ultimo_acceso = datetime.now()
-
-        # Marcar primer login como completado si existe el campo
-        if hasattr(db_user, 'primer_login'):
-            db_user.primer_login = False
-
         db.commit()
-
-        # ✅ REGISTRAR AUDITORÍA
-        descripcion = (
-            "Primer login | "
-            "Resultado: EXITOSO | "
-            "Cambio de contraseña inicial realizado | "
-            f"IP: {request.client.host if request.client else 'N/A'} | "
-            f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-        )
-
+        # ==========================================
+        # ✅ Registrar auditoría
+        # ==========================================
         registrar_auditoria(
             db=db,
-            accion="PRIMER_LOGIN_EXITOSO",
-            descripcion=descripcion,
-            id_usuario=db_user.id_usuario_sistema
+            accion="UPDATE",
+            descripcion=f"El usuario '{user.usuario}' cambió su contraseña en su primer inicio de sesión.",
+            id_usuario=user.id_usuario_sistema
         )
-
-        return {
-            "success": True,
-            "message": "Contraseña actualizada exitosamente. Ya puedes iniciar sesión con tu nueva contraseña."
-        }
-
+        return {"success": True, "message": "Contraseña actualizada exitosamente"}
     except Exception as e:
-        print(f"❌ Error en primer login: {e}")
-        import traceback
-        traceback.print_exc()
-        return {
-            "success": False,
-            "message": "Error interno al cambiar contraseña"
-        }
-
-
-# ========================================
-# RESETEAR CONTRASEÑA (Admin)
-# ========================================
-@router.put("/admin/reset-password", response_model=dict)
-def admin_reset_password(
-    password_data: ResetPasswordRequest,
-    request: Request,
-    payload: dict = Depends(verify_token),
-    db: Session = Depends(get_db)
-):
-    """
-    Permite a un administrador resetear la contraseña de cualquier usuario
-    Requiere permisos de administrador
-    """
-    try:
-        # Verificar que quien hace el reset es admin
-        admin_user = payload.get("sub")
-        db_admin = db.query(UsuarioSistema).filter(
-            UsuarioSistema.usuario == admin_user
-        ).first()
-
-        if not db_admin:
-            return {
-                "success": False,
-                "message": "Administrador no encontrado"
-            }
-
-        # Verificar rol de admin (ajustar según tu sistema)
-        if not hasattr(db_admin, 'id_rol') or db_admin.id_rol != 1:  # Ajustar ID del rol admin
-            return {
-                "success": False,
-                "message": "No tienes permisos de administrador"
-            }
-
-        # Obtener usuario a resetear
-        db_user = db.query(UsuarioSistema).filter(
-            UsuarioSistema.id_usuario_sistema == password_data.user_id
-        ).first()
-
-        if not db_user:
-            return {
-                "success": False,
-                "message": "Usuario no encontrado"
-            }
-
-        # ✅ VALIDACIÓN ISO 27002
-        usuario_info = {
-            'usuario': db_user.usuario,
-            'email': db_user.email,
-            'nombres': db_user.nombres,
-            'apellidos': db_user.apellidos
-        }
-
-        es_valida, mensaje = validar_nueva_password_completa(
-            db=db,
-            user_id=db_user.id_usuario_sistema,
-            nueva_password=password_data.new_password,
-            password_actual=None,
-            usuario_info=usuario_info
+        db.rollback()
+        print(f"Error al cambiar contraseña (primer login): {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al actualizar la contraseña"
         )
 
-        if not es_valida:
-            descripcion = (
-                "Reset de contraseña por administrador | "
-                "Resultado: RECHAZADO | "
-                f"Admin: {admin_user} | "
-                f"Motivo: {mensaje} | "
-                f"IP: {request.client.host if request.client else 'N/A'} | "
-                f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-            )
-
-            registrar_auditoria(
-                db=db,
-                accion="ADMIN_RESET_RECHAZADO",
-                descripcion=descripcion,
-                id_usuario=db_user.id_usuario_sistema
-            )
-
-
-            return {
-                "success": False,
-                "message": mensaje
-            }
-
-        # ✅ GUARDAR EN HISTORIAL
-        agregar_al_historial(
-            db=db,
-            user_id=db_user.id_usuario_sistema,
-            password_hash=db_user.clave,
-            motivo="admin_reset",
-            by_admin=True,
-            ip=request.client.host if request.client else None
-        )
-
-        # ✅ ACTUALIZAR CONTRASEÑA
-        db_user.clave = hash_password(password_data.new_password)
-
-        # Forzar cambio en próximo login
-        if hasattr(db_user, 'primer_login'):
-            db_user.primer_login = True
-
-        # Desbloquear cuenta si estaba bloqueada
-        if hasattr(db_user, 'intentos_fallidos'):
-            db_user.intentos_fallidos = 0
-        if hasattr(db_user, 'bloqueado_hasta'):
-            db_user.bloqueado_hasta = None
-        if hasattr(db_user, 'bloqueado_permanente'):
-            db_user.bloqueado_permanente = False
-
-        db.commit()
-
-        # ✅ AUDITORÍA
-        descripcion = (
-            "Reset de contraseña por administrador | "
-            "Resultado: EXITOSO | "
-            f"Admin: {admin_user} | "
-            "Contraseña restablecida correctamente | "
-            f"IP: {request.client.host if request.client else 'N/A'} | "
-            f"User-Agent: {request.headers.get('user-agent', 'N/A')}"
-        )
-
-        registrar_auditoria(
-            db=db,
-            accion="ADMIN_RESET_EXITOSO",
-            descripcion=descripcion,
-            id_usuario=db_user.id_usuario_sistema
-        )
-
-
-        return {
-            "success": True,
-            "message": f"Contraseña de {db_user.usuario} reseteada exitosamente. El usuario deberá cambiarla en su próximo login."
-        }
-
-    except Exception as e:
-        print(f"❌ Error en reset de contraseña: {e}")
-        import traceback
-        traceback.print_exc()
-        return {
-            "success": False,
-            "message": "Error interno al resetear contraseña"
-        }
-
-
-# ========================================
-# OBTENER HISTORIAL (Admin)
-# ========================================
-@router.get("/admin/password-history/{user_id}", response_model=dict)
-def get_password_history(
-    user_id: int,
-    payload: dict = Depends(verify_token),
-    db: Session = Depends(get_db)
-):
-    """Obtiene el historial de contraseñas de un usuario (solo admin)"""
-    try:
-        from services.password_service import obtener_historial_usuario
-
-        # Verificar permisos de admin
-        admin_user = payload.get("sub")
-        db_admin = db.query(UsuarioSistema).filter(
-            UsuarioSistema.usuario == admin_user
-        ).first()
-
-        if not db_admin or db_admin.id_rol != 1:
-            return {
-                "success": False,
-                "message": "No tienes permisos"
-            }
-
-        historial = obtener_historial_usuario(db, user_id)
-
-        return {
-            "success": True,
-            "data": historial
-        }
-
-    except Exception as e:
-        print(f"❌ Error obteniendo historial: {e}")
-        return {
-            "success": False,
-            "message": "Error al obtener historial"
-        }
 
 # ========================================
 # SUBIR FOTO DE PERFIL

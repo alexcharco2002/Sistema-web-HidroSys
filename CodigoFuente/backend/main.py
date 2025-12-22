@@ -23,9 +23,6 @@ from routes import iva
 from routes import facturas
 from routes import pagos
 
-from routes import afiliatesGeneral
-from routes import reports
-
 import os
 
 app = FastAPI(
@@ -74,8 +71,6 @@ app.include_router(limite_geografico.router)
 app.include_router(facturas.router)
 app.include_router(iva.router)
 app.include_router(pagos.router)
-app.include_router(afiliatesGeneral.router)
-app.include_router(reports.router)
 
 # Health check general
 @app.get("/health")

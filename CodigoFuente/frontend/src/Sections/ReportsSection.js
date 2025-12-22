@@ -716,7 +716,6 @@ const toggleTodasColumnas = (seleccionar) => {
           </div>
         </div>
       )}
-
       {/* ==================== PASO 2: GESTIÓN DEL REPORTE SELECCIONADO ==================== */}
       {selectedModulo && (
         <div className="periodo-management-page">

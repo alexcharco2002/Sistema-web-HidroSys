@@ -1,6 +1,8 @@
 // src/sections/ProfileSection.js
 // componente para ver y editar el perfil del usuario
 import React, { useState, useEffect, useRef } from 'react';
+
+
 import {
   User,
   Edit,
@@ -294,37 +296,7 @@ const ProfileSection = () => {
     });
   };
 
-  const handlePasswordInputChange = (field, value) => {
-    setPasswordData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-    setPasswordError(null);
-  };
 
-  const validatePasswordData = () => {
-    if (!passwordData.currentPassword.trim()) {
-      return 'La contraseña actual es requerida';
-    }
-    
-    if (!passwordData.newPassword.trim()) {
-      return 'La nueva contraseña es requerida';
-    }
-    
-    if (passwordData.newPassword.length < 8) {
-      return 'La nueva contraseña debe tener al menos 8 caracteres';
-    }
-    
-    if (passwordData.newPassword === passwordData.currentPassword) {
-      return 'La nueva contraseña no puede ser igual a la actual';
-    }
-    
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      return 'Las contraseñas no coinciden';
-    }
-    
-    return null;
-  };
 
   const handleChangePassword = async () => {
     const validationError = validatePasswordData();
@@ -359,6 +331,119 @@ const ProfileSection = () => {
       setChangingPassword(false);
     }
   };
+
+  // ======================================
+// VALIDACIÓN DE CONTRASEÑAS - ISO 27002
+// ======================================
+
+// Calcular fortaleza de contraseña
+const calculatePasswordStrength = (password) => {
+  if (!password) return { score: 0, label: '', color: '' };
+  
+  let score = 0;
+  const checks = {
+    length: password.length >= 8,
+    minLength: password.length >= 12,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    numbers: /[0-9]/.test(password),
+    special: /[!@#$%^&*()_+\-=\]{};:'"\\|,.<>?]/.test(password)
+  };
+
+  // Sistema de puntuación
+  if (checks.length) score += 1;
+  if (checks.minLength) score += 1;
+  if (checks.uppercase) score += 1;
+  if (checks.lowercase) score += 1;
+  if (checks.numbers) score += 1;
+  if (checks.special) score += 1;
+
+  // Determinar nivel
+  if (score <= 2) {
+    return { score, label: 'Débil', color: '#ef4444', percentage: 33 };
+  } else if (score <= 4) {
+    return { score, label: 'Media', color: '#f59e0b', percentage: 66 };
+  } else {
+    return { score, label: 'Fuerte', color: '#10b981', percentage: 100 };
+  }
+};
+
+// Validación completa con regex según ISO 27002
+const validatePasswordComplexity = (password) => {
+  const requirements = {
+    minLength: {
+      test: password.length >= 8,
+      message: 'Mínimo 8 caracteres'
+    },
+    uppercase: {
+      test: /[A-Z]/.test(password),
+      message: 'Al menos una mayúscula (A-Z)'
+    },
+    lowercase: {
+      test: /[a-z]/.test(password),
+      message: 'Al menos una minúscula (a-z)'
+    },
+    numbers: {
+      test: /[0-9]/.test(password),
+      message: 'Al menos un número (0-9)'
+    },
+    special: {
+      test: /[!@#$%^&*()_+\-=\]{};:'"\\|,.<>?]/.test(password),
+      message: 'Al menos un símbolo (!@#$%&*)'
+    }
+
+  };
+
+  return requirements;
+};
+
+// Validación mejorada
+const validatePasswordData = () => {
+  if (!passwordData.currentPassword.trim()) {
+    return 'La contraseña actual es requerida';
+  }
+
+  if (!passwordData.newPassword.trim()) {
+    return 'La nueva contraseña es requerida';
+  }
+
+  // Validar complejidad según ISO 27002
+  const requirements = validatePasswordComplexity(passwordData.newPassword);
+  const failedRequirements = Object.entries(requirements)
+    .filter(([_, req]) => !req.test)
+    .map(([_, req]) => req.message);
+
+  if (failedRequirements.length > 0) {
+    return `La contraseña debe cumplir:\n${failedRequirements.join('\n')}`;
+  }
+
+  if (passwordData.newPassword === passwordData.currentPassword) {
+    return 'La nueva contraseña no puede ser igual a la actual';
+  }
+
+  if (passwordData.newPassword !== passwordData.confirmPassword) {
+    return 'Las contraseñas no coinciden';
+  }
+
+  return null;
+};
+
+// Estado adicional para mostrar requisitos
+const [passwordRequirements, setPasswordRequirements] = useState(null);
+const [passwordStrength, setPasswordStrength] = useState({ score: 0, label: '', color: '' });
+
+// Modificar handlePasswordInputChange para actualizar validaciones en tiempo real
+const handlePasswordInputChange = (field, value) => {
+  setPasswordData(prev => ({ ...prev, [field]: value }));
+  setPasswordError(null);
+  
+  // Actualizar requisitos y fortaleza en tiempo real para nueva contraseña
+  if (field === 'newPassword') {
+    setPasswordRequirements(validatePasswordComplexity(value));
+    setPasswordStrength(calculatePasswordStrength(value));
+  }
+};
+
 
   // Estados de carga
   if (loading) {
@@ -667,118 +752,274 @@ const ProfileSection = () => {
         </div>
       </div>
 
-      {/* Modal de Cambio de Contraseña */}
-      {showPasswordModal && (
-        <div className="modal-overlay" onClick={handleClosePasswordModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="flex items-center gap-2">
-                <Lock className="w-6 h-6 text-blue-600" />
-                <h3 className="text-xl font-bold">Cambiar Contraseña</h3>
-              </div>
-              <button 
-                className="modal-close-btn"
-                onClick={handleClosePasswordModal}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+{/* ==================== MODAL DE CAMBIO DE CONTRASEÑA - ISO 27002 ==================== */}
+{showPasswordModal && (
+  <div className="modal-overlay">
+    <div className="modal">
+      {/* Header */}
+      <div className="modal-header">
+        <h3 className="flex items-center gap-3">
+          <Lock className="w-6 h-6" />
+          Cambiar Contraseña
+        </h3>
+        <button 
+          className="modal-close" 
+          onClick={handleClosePasswordModal}
+          disabled={changingPassword}
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
 
-            <div className="modal-body">
-              {passwordError && (
-                <div className="alert alert-error mb-4">
-                  <AlertCircle className="w-5 h-5 mr-2" />
-                  {passwordError}
-                </div>
-              )}
-
-              <div className="space-y-4">
-                {/* Contraseña Actual */}
-                <div className="form-group">
-                  <label className="form-label">
-                    <Lock className="w-4 h-4" />
-                    Contraseña Actual *
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPasswords.current ? "text" : "password"}
-                      className="form-input pr-10"
-                      value={passwordData.currentPassword}
-                      onChange={(e) => handlePasswordInputChange('currentPassword', e.target.value)}
-                      placeholder="Ingresa tu contraseña actual"
-                      disabled={changingPassword}
-                    />
-                    
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    
-                  </p>
-                </div>
-
-                {/* Nueva Contraseña */}
-                <div className="form-group">
-                  <label className="form-label">
-                    <Lock className="w-4 h-4" />
-                    Nueva Contraseña *
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPasswords.new ? "text" : "password"}
-                      className="form-input pr-10"
-                      value={passwordData.newPassword}
-                      onChange={(e) => handlePasswordInputChange('newPassword', e.target.value)}
-                      placeholder="Mínimo 8 caracteres"
-                      disabled={changingPassword}
-                    />
-                    
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    
-                  </p>
-                </div>
-
-                {/* Confirmar Nueva Contraseña */}
-                <div className="form-group">
-                  <label className="form-label">
-                    <Lock className="w-4 h-4" />
-                    Confirmar Nueva Contraseña *
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPasswords.confirm ? "text" : "password"}
-                      className="form-input pr-10"
-                      value={passwordData.confirmPassword}
-                      onChange={(e) => handlePasswordInputChange('confirmPassword', e.target.value)}
-                      placeholder="Repite la nueva contraseña"
-                      disabled={changingPassword}
-                    />
-                    
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button 
-                className="btn-secondary"
-                onClick={handleClosePasswordModal}
-                disabled={changingPassword}
-              >
-                <X className="w-4 h-4 mr-2" />
-                Cancelar
-              </button>
-              <button 
-                className="btn-success"
-                onClick={handleChangePassword}
-                disabled={changingPassword}
-              >
-                <Save className="w-4 h-4 mr-2" />
-                {changingPassword ? 'Cambiando...' : 'Cambiar Contraseña'}
-              </button>
+      {/* Body */}
+      <div className="modal-body">
+        {/* Política de Contraseñas - ISO 27002 */}
+        <div style={{ 
+          backgroundColor: '#eff6ff', 
+          border: '1px solid #bfdbfe', 
+          borderRadius: '8px', 
+          padding: '16px',
+          marginBottom: '20px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'start', gap: '8px' }}>
+            <Shield className="w-5 h-5" style={{ color: '#2563eb', marginTop: '2px', flexShrink: 0 }} />
+            <div>
+              <h4 style={{ fontWeight: 600, color: '#1e3a8a', fontSize: '14px', marginBottom: '8px' }}>
+                Política de Contraseñas
+              </h4>
+              <p style={{ color: '#1e40af', fontSize: '12px', lineHeight: '1.5' }}>
+                La contraseña debe tener al menos 8 caracteres e incluir: 
+                mayúsculas (A-Z), minúsculas (a-z), números (0-9) y 
+                símbolos especiales (!@#$%&*).
+              </p>
             </div>
           </div>
         </div>
-      )}
+
+        {/* Error general */}
+        {passwordError && (
+          <div className="alert alert-error mb-4">
+            <AlertCircle className="w-5 h-5 mr-2" />
+            <span style={{ whiteSpace: 'pre-line' }}>{passwordError}</span>
+          </div>
+        )}
+
+        {/* Formulario */}
+        <form className="user-form" onSubmit={(e) => { e.preventDefault(); handleChangePassword(); }}>
+          <div className="form-grid">
+            {/* Contraseña actual */}
+            <div className="form-group form-group-full">
+              <label>Contraseña Actual *</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPasswords.current ? 'text' : 'password'}
+                  required
+                  value={passwordData.currentPassword}
+                  onChange={(e) => handlePasswordInputChange('currentPassword', e.target.value)}
+                  placeholder="Ingresa tu contraseña actual"
+                  disabled={changingPassword}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswords(prev => ({ ...prev, current: !prev.current }))}
+                  disabled={changingPassword}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    padding: '4px'
+                  }}
+                >
+                  {showPasswords.current ? '🙈' : '👁️'}
+                </button>
+              </div>
+            </div>
+
+            {/* Nueva contraseña */}
+            <div className="form-group form-group-full">
+              <label>Nueva Contraseña *</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPasswords.new ? 'text' : 'password'}
+                  required
+                  value={passwordData.newPassword}
+                  onChange={(e) => handlePasswordInputChange('newPassword', e.target.value)}
+                  placeholder="Crea una contraseña segura"
+                  disabled={changingPassword}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswords(prev => ({ ...prev, new: !prev.new }))}
+                  disabled={changingPassword}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    padding: '4px'
+                  }}
+                >
+                  {showPasswords.new ? '🙈' : '👁️'}
+                </button>
+              </div>
+
+              {/* Indicador de Fortaleza */}
+              {passwordData.newPassword && (
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 500, color: '#4b5563' }}>
+                      Fortaleza:
+                    </span>
+                    <span 
+                      style={{ 
+                        fontSize: '12px', 
+                        fontWeight: 600,
+                        color: passwordStrength.color 
+                      }}
+                    >
+                      {passwordStrength.label}
+                    </span>
+                  </div>
+                  <div style={{ 
+                    width: '100%', 
+                    height: '8px', 
+                    backgroundColor: '#e5e7eb', 
+                    borderRadius: '9999px',
+                    overflow: 'hidden'
+                  }}>
+                    <div
+                      style={{ 
+                        height: '100%',
+                        width: `${passwordStrength.percentage}%`,
+                        backgroundColor: passwordStrength.color,
+                        transition: 'all 0.3s',
+                        borderRadius: '9999px'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Requisitos de Complejidad */}
+              {passwordRequirements && passwordData.newPassword && (
+                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {Object.entries(passwordRequirements).map(([key, req]) => (
+                    <div 
+                      key={key} 
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}
+                    >
+                      <span style={{ color: req.test ? '#10b981' : '#9ca3af' }}>
+                        {req.test ? '✓' : '○'}
+                      </span>
+                      <span style={{ color: req.test ? '#047857' : '#6b7280' }}>
+                        {req.message}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Confirmar contraseña */}
+            <div className="form-group form-group-full">
+              <label>Confirmar Nueva Contraseña *</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPasswords.confirm ? 'text' : 'password'}
+                  required
+                  value={passwordData.confirmPassword}
+                  onChange={(e) => handlePasswordInputChange('confirmPassword', e.target.value)}
+                  placeholder="Confirma tu nueva contraseña"
+                  disabled={changingPassword}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswords(prev => ({ ...prev, confirm: !prev.confirm }))}
+                  disabled={changingPassword}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    padding: '4px'
+                  }}
+                >
+                  {showPasswords.confirm ? '🙈' : '👁️'}
+                </button>
+              </div>
+
+              {/* Indicador de coincidencia */}
+              {passwordData.confirmPassword && (
+                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {passwordData.newPassword === passwordData.confirmPassword ? (
+                    <>
+                      <span style={{ color: '#10b981', fontSize: '12px' }}>✓</span>
+                      <span style={{ color: '#047857', fontSize: '12px', fontWeight: 500 }}>
+                        Las contraseñas coinciden
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ color: '#ef4444', fontSize: '12px' }}>✗</span>
+                      <span style={{ color: '#dc2626', fontSize: '12px', fontWeight: 500 }}>
+                        Las contraseñas no coinciden
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Botones de acción */}
+          <div className="form-actions">
+            <button 
+              type="button" 
+              className="btn-secondary" 
+              onClick={handleClosePasswordModal}
+              disabled={changingPassword}
+            >
+              Cancelar
+            </button>
+            <button 
+              type="submit" 
+              className="btn-primary"
+              disabled={changingPassword}
+            >
+              {changingPassword ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Cambiando...
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4 mr-2" />
+                  Cambiar Contraseña
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+)}
+
+
+      
     </div>
   );
 };

@@ -14,15 +14,40 @@ const api = axios.create({
 });
 
 // ✅ Interceptor simplificado de axios (opcional, solo si usas axios)
+// authServices.js - MODIFICAR interceptor de axios (línea ~15)
+
 api.interceptors.response.use(
+<<<<<<< HEAD
   response => response,
   error => {
     if (error.response && error.response.status === 401) {
       console.warn("⚠️ 401 detectado en petición axios");
+=======
+    response => response,
+    error => {
+        if (error.response && error.response.status === 401) {
+            console.warn("⚠️ 401 detectado - Sesión inválida");
+            
+            // ✅ NUEVO: Verificar si es un logout forzado
+            const forceLogout = error.response.headers['x-force-logout'];
+            
+            if (forceLogout) {
+                // Limpiar sesión local
+                authService.clearLocalData();
+                
+                // Mostrar mensaje al usuario
+                alert('Tu sesión ha sido cerrada porque iniciaste sesión en otro dispositivo');
+                
+                // Redirigir al login
+                window.location.href = '/login';
+            }
+        }
+        
+        return Promise.reject(error);
+>>>>>>> practica-seguridad
     }
-    return Promise.reject(error);
-  }
 );
+
 
 // ========================================
 // CONFIGURACIÓN DE API
@@ -41,7 +66,11 @@ const API_CONFIG = {
     forgotPassword: '/forgot-password',
     verifyCode: '/verify-code',
     resetPassword: '/reset-password',
-    resendCode: '/resend-code'
+    resendCode: '/resend-code',
+    // API_CONFIG.endpoints
+    verifyOtp: '/verify-otp',
+    resendOtpOtp: '/resend-otp',
+
   }
 };
 
@@ -51,6 +80,7 @@ const API_CONFIG = {
 class AuthService {
   constructor() {
     this.token = this.getStoredToken();
+    this.sessionToken = this.getStoredSessionToken(); 
     this.user = this.getStoredUser();
     this.permissions = this.getStoredPermissions();
   }
@@ -64,6 +94,13 @@ class AuthService {
     } catch {
       return null;
     }
+  }
+  getStoredSessionToken() {
+      try {
+          return sessionStorage.getItem('session_token') || null;
+      } catch {
+          return null;
+      }
   }
 
   /**
@@ -116,6 +153,11 @@ class AuthService {
 
     if (this.token && !options.skipAuth) {
       defaultOptions.headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    // ✅ NUEVO: Incluir session_token si existe
+    if (this.sessionToken && !options.skipAuth) {
+        defaultOptions.headers['X-Session-Token'] = this.sessionToken;
     }
 
     const finalOptions = {
@@ -281,7 +323,6 @@ class AuthService {
   async login(credentials) {
     try {
       this.validateLoginCredentials(credentials);
-
       const response = await this.makeRequest(API_CONFIG.endpoints.login, {
         method: 'POST',
         body: JSON.stringify({
@@ -291,49 +332,104 @@ class AuthService {
         skipAuth: true,
       });
 
+      // Nuevo: flujo 2FA
+      if (response.success && response.requires_otp) {
+        const pending = {
+          email: response.email,
+          username: credentials.username.trim(),
+          expiresAt: Date.now() + (response.expires_in_minutes || 5) * 60 * 1000
+        };
+        sessionStorage.setItem('pending_otp', JSON.stringify(pending));
+        return {
+          success: true,
+          requiresOtp: true,
+          email: response.email,
+          expiresInMinutes: response.expires_in_minutes || 5
+        };
+      }
+
+      // Flujo legacy (sin 2FA)
       if (response.success) {
         this.user = response.data.user;
         this.token = response.data.token;
         this.permissions = response.data.user.permisos || [];
-
         sessionStorage.setItem('auth_token', this.token);
         sessionStorage.setItem('user_data', JSON.stringify(this.user));
         sessionStorage.setItem('user_permissions', JSON.stringify(this.permissions));
         sessionStorage.setItem('login_time', new Date().toISOString());
-
         const redirectRoute = this.getRoleBasedRoute();
-
-        console.log('✅ Login exitoso:', {
-          user: this.user.nombre_completo,
-          rol: this.user.rol?.nombre_rol || 'Sin rol',
-          permisos: this.permissions.length,
-          redirectTo: redirectRoute
-        });
-
-        return {
-          success: true,
-          redirectTo: redirectRoute,
-          data: {
-            user: this.user,
-            token: this.token,
-            permissions: this.permissions
-          }
-        };
-      } else {
-        return {
-          success: false,
-          message: response.message || 'Credenciales inválidas'
-        };
+        return { success: true, redirectTo: redirectRoute, data: { user: this.user, token: this.token, permissions: this.permissions } };
       }
 
+      return { success: false, message: response.message || 'Credenciales inválidas' };
     } catch (error) {
-      console.error('❌ Error en login:', error);
-      return {
-        success: false,
-        message: error.message || 'Error de conexión'
-      };
+      return { success: false, message: error.message || 'Error de conexión' };
     }
   }
+
+  getPendingOtp() {
+  try { return JSON.parse(sessionStorage.getItem('pending_otp') || 'null'); } catch { return null; }
+}
+clearPendingOtp() { sessionStorage.removeItem('pending_otp'); }
+
+// authServices.js - MODIFICAR método verifyOtp (línea ~120)
+
+async verifyOtp(email, code) {
+    const response = await this.makeRequest(API_CONFIG.endpoints.verifyOtp, {
+        method: 'POST',
+        body: JSON.stringify({ email: email.trim().toLowerCase(), code: code.trim() }),
+        skipAuth: true,
+    });
+
+    if (response.success) {
+        // Guardar sesión como en login OK
+        this.user = response.data.user;
+        this.token = response.data.token;
+        this.permissions = response.data.user.permisos || [];
+        
+        // ✅ NUEVO: Guardar session_token
+        this.sessionToken = response.data.session_token;
+
+        sessionStorage.setItem('auth_token', this.token);
+        sessionStorage.setItem('session_token', this.sessionToken); // ✅ NUEVO
+        sessionStorage.setItem('user_data', JSON.stringify(this.user));
+        sessionStorage.setItem('user_permissions', JSON.stringify(this.permissions));
+        sessionStorage.setItem('login_time', new Date().toISOString());
+        
+        this.clearPendingOtp();
+        const redirectRoute = this.getRoleBasedRoute();
+        return { success: true, redirectTo: redirectRoute, data: response.data };
+    }
+
+    return { success: false, message: response.message || 'OTP inválido' };
+}
+
+
+async resendOtp(email) {
+  return this.makeRequest(API_CONFIG.endpoints.resendOtpOtp, {
+    method: 'POST',
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    skipAuth: true,
+  });
+}
+
+// Limpia pending_otp en clearLocalData()
+// authServices.js - MODIFICAR clearLocalData (línea ~140)
+
+clearLocalData() {
+    this.token = null;
+    this.sessionToken = null; // ✅ NUEVO
+    this.user = null;
+    this.permissions = [];
+    sessionStorage.removeItem('auth_token');
+    sessionStorage.removeItem('session_token'); // ✅ NUEVO
+    sessionStorage.removeItem('user_data');
+    sessionStorage.removeItem('user_permissions');
+    sessionStorage.removeItem('login_time');
+    sessionStorage.removeItem('pending_otp');
+}
+
+
 
   /**
    * Cerrar sesión
@@ -386,19 +482,6 @@ class AuthService {
     }
   }
 
-  /**
-   * ✅ Limpiar datos locales (llamado por fetchInterceptor y logout)
-   */
-  clearLocalData() {
-    this.token = null;
-    this.user = null;
-    this.permissions = [];
-    sessionStorage.removeItem('auth_token');
-    sessionStorage.removeItem('user_data');
-    sessionStorage.removeItem('user_permissions');
-    sessionStorage.removeItem('login_time');
-    console.log('🧹 Datos locales limpiados');
-  }
 
   /**
    * Verificar autenticación

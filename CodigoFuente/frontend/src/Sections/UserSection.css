@@ -168,76 +168,51 @@
 }
 
 /* ========================================
-   ESTADÍSTICAS
-   ======================================== */
+   ESTADÍSTICAS MEJORADAS
+======================================== */
 .users-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
 
 .stat-item {
-  background: var(--bg-white);
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: var(--shadow-md);
   display: flex;
   align-items: center;
   gap: 1rem;
-  transition: all 0.25s ease-in-out;
-  cursor: pointer;
-  border: 2px solid transparent;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
 }
 
-/* 💡 Hover: resalta con sombra y leve movimiento */
 .stat-item:hover {
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-color: #3b82f6;
+  transform: translateY(-2px);
 }
 
-/* ✅ Estado activo (seleccionado) */
-.stat-item.active {
-  border-color: var(--primary-color, #2563eb); /* color azul por defecto */
-  box-shadow: 0 0 0 4px rgba(24, 99, 235, 0.15);
-  transform: translateY(-4px);
-}
-
-
-/* Personaliza según tipo (opcional) */
-.stat-item.active.green {
-  border-color: #22c55e;
-  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.15);
-}
-
-.stat-item.active.red {
-  border-color: #ef4444;
-  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.15);
-}
-
-/* Ícono */
 .stat-icon {
-  width: 3rem;
-  height: 3rem;
-  padding: 0.75rem;
-  border-radius: 10px;
-  background-color: #eff6ff;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+  background: #f0f9ff;
   flex-shrink: 0;
 }
 
-/* Texto */
 .stat-label {
-  color: var(--text-secondary);
-  font-weight: 500;
-  font-size: 0.875rem;
-  margin: 0 0 0.25rem 0;
+  font-size: 0.813rem;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
 }
 
 .stat-value {
-  font-size: 1.875rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
+  color: #1f2937;
   line-height: 1;
 }
 

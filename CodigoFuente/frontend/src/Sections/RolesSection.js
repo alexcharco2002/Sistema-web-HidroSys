@@ -90,6 +90,8 @@ const RolesSection = () => {
     { value: 'Notificaciones', label: 'Notificaciones' },
     { value: 'Notificaciones', label: 'Notificaciones' },
     { value: 'Estadisticas', label: 'Estadísticas' },
+    { value: 'reportes', label: 'Reportes' },
+
     { value: 'HistorialConsumo', label: 'HistorialConsumo' }
 
   ];

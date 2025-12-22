@@ -260,56 +260,6 @@
 }
 
 
-
-/* ========================================
-   ESTADÍSTICAS MEJORADAS
-======================================== */
-.users-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  transition: all 0.2s ease;
-}
-
-.stat-item:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  border-color: #3b82f6;
-  transform: translateY(-2px);
-}
-
-.stat-icon {
-  width: 2.5rem;
-  height: 2.5rem;
-  padding: 0.5rem;
-  border-radius: 8px;
-  background: #f0f9ff;
-  flex-shrink: 0;
-}
-
-.stat-label {
-  font-size: 0.813rem;
-  color: #6b7280;
-  margin-bottom: 0.25rem;
-}
-
-.stat-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #1f2937;
-  line-height: 1;
-}
-
 /* ========================================
    ANIMACIONES
 ======================================== */
@@ -349,9 +299,7 @@
     min-height: 400px;
   }
 
-  .users-stats {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  }
+
 
   .map-legend {
     bottom: 15px;
@@ -391,12 +339,6 @@
     width: 12px;
     height: 12px;
   }
-
-  .users-stats {
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-  }
-
   .stat-item {
     padding: 0.75rem;
   }

@@ -19,7 +19,6 @@ api.interceptors.response.use(
   error => {
     if (error.response && error.response.status === 401) {
       console.warn("⚠️ 401 detectado en petición axios");
-      // El fetchInterceptor global ya maneja la sesión expirada
     }
     return Promise.reject(error);
   }

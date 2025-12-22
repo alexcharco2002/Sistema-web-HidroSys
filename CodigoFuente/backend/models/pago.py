@@ -1,6 +1,5 @@
 # models/pago.py
-
-from sqlalchemy import Column, Integer, Numeric, String, Text, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, Numeric, String, Text, Boolean, ForeignKey, DateTime, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from db.session import Base
@@ -13,26 +12,26 @@ class Pago(Base):
     __tablename__ = "t_pagos"
     __table_args__ = {'schema': 'facturacion'}
     
-    # Columnas
+    # Columnas existentes
     id_pago = Column(Integer, primary_key=True, index=True, autoincrement=True)
     id_factura = Column(
-        Integer, 
-        ForeignKey("facturacion.t_factura.id_factura"), 
-        nullable=True, 
+        Integer,
+        ForeignKey("facturacion.t_factura.id_factura"),
+        nullable=True,
         index=True
     )
     monto_pago = Column(Numeric(12, 2), nullable=False)
     fecha_pago = Column(DateTime, nullable=False, default=func.current_timestamp())
     metodo_pago = Column(String(50), nullable=True)
     id_usuario_afi = Column(
-        Integer, 
-        ForeignKey("usuarios.t_usuario_afiliado.id_usuario_afi"), 
+        Integer,
+        ForeignKey("usuarios.t_usuario_afiliado.id_usuario_afi"),
         nullable=True,
         index=True
     )
     id_cajero = Column(
-        Integer, 
-        ForeignKey("usuarios.t_usuario_sistema.id_usuario_sistema"), 
+        Integer,
+        ForeignKey("usuarios.t_usuario_sistema.id_usuario_sistema"),
         nullable=True
     )
     observaciones = Column(Text, nullable=True)
@@ -40,6 +39,11 @@ class Pago(Base):
     fecha_anulacion = Column(DateTime(timezone=True), nullable=True)
     activo = Column(Boolean, default=True, nullable=False)
     estado_pago = Column(String(20), nullable=False, default='REGISTRADO', index=True)
+    
+    # ✅ NUEVAS COLUMNAS PARA COMPROBANTE PDF
+    comprobante_pdf = Column(LargeBinary, nullable=True)  # BYTEA en PostgreSQL
+    nombre_archivo = Column(String(255), nullable=True)
+    tipo_mime = Column(String(50), nullable=True, default='application/pdf')
     
     # Relaciones ORM
     factura = relationship(
@@ -62,10 +66,15 @@ class Pago(Base):
     
     def __repr__(self):
         estado = f"[{self.estado_pago}]"
-        return f"<Pago {self.id_pago}: ${self.monto_pago} {estado} - {self.metodo_pago}>"
+        return f"<Pago {self.id_pago} {estado} - ${self.monto_pago}>"
+    
+    @property
+    def tiene_comprobante(self) -> bool:
+        return self.comprobante_pdf is not None
+
     
     def to_dict(self):
-        """Convierte el objeto a diccionario"""
+        """Convierte el objeto a diccionario (sin incluir el binario completo)"""
         return {
             'id_pago': self.id_pago,
             'id_factura': self.id_factura,
@@ -78,5 +87,8 @@ class Pago(Base):
             'motivo_anulacion': self.motivo_anulacion,
             'fecha_anulacion': self.fecha_anulacion.isoformat() if self.fecha_anulacion else None,
             'activo': self.activo,
-            'estado_pago': self.estado_pago
+            'estado_pago': self.estado_pago,
+            'nombre_archivo': self.nombre_archivo,
+            'tiene_comprobante': self.comprobante_pdf is not None,
+            'tipo_mime': self.tipo_mime
         }

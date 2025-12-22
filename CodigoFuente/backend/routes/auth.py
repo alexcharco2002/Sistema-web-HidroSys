@@ -1,5 +1,5 @@
 # routes/auth.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from schemas.user import UserLogin
@@ -12,6 +12,7 @@ import base64
 from secrets import token_urlsafe
 import secrets
 import string
+from services.session_service import crear_nueva_sesion
 from utils.email import email_service
 
 router = APIRouter(tags=["auth"])
@@ -19,6 +20,8 @@ router = APIRouter(tags=["auth"])
 # ========================================
 # CONFIGURACIÓN DE BLOQUEO
 # ========================================
+
+
 MAX_INTENTOS_TEMPORALES = 5
 TIEMPO_BLOQUEO_TEMPORAL = 15
 MAX_INTENTOS_PERMANENTES = 8
@@ -40,6 +43,56 @@ def process_user_photo(foto_bytes):
             print(f"Error procesando foto: {e}")
             return None
     return None
+
+# ========================================
+# CONFIGURACIÓN OTP (Agregar al inicio con las otras constantes)
+# ========================================
+otp_codes = {}  # Diccionario temporal para OTPs
+OTP_CODE_LENGTH = 6
+OTP_CODE_EXPIRE_MINUTES = 5
+
+def generate_otp_code() -> str:
+    """Genera código OTP de 6 dígitos"""
+    return ''.join(secrets.choice(string.digits) for _ in range(OTP_CODE_LENGTH))
+
+def store_otp_code(email: str, code: str, user_id: int):
+    """Almacena OTP con expiración"""
+    expiration = datetime.now() + timedelta(minutes=OTP_CODE_EXPIRE_MINUTES)
+    otp_codes[email] = {
+        "code": code,
+        "expires_at": expiration,
+        "attempts": 0,
+        "user_id": user_id
+    }
+
+def verify_otp_code(email: str, code: str) -> dict:
+    """Verifica código OTP"""
+    if email not in otp_codes:
+        return {"valid": False, "message": "No se encontró código para este correo"}
+    
+    stored = otp_codes[email]
+    
+    if datetime.now() > stored["expires_at"]:
+        del otp_codes[email]
+        return {"valid": False, "message": "El código ha expirado"}
+    
+    if stored["attempts"] >= 3:
+        del otp_codes[email]
+        return {"valid": False, "message": "Demasiados intentos. Solicita un nuevo código"}
+    
+    if stored["code"] != code:
+        stored["attempts"] += 1
+        intentos_restantes = 3 - stored["attempts"]
+        return {
+            "valid": False, 
+            "message": f"Código incorrecto. Te quedan {intentos_restantes} intentos"
+        }
+    
+    return {
+        "valid": True, 
+        "message": "Código verificado",
+        "user_id": stored["user_id"]
+    }
 
 # ========================================
 # FUNCIONES DE ROLES Y PERMISOS
@@ -183,13 +236,13 @@ def resetear_intentos_fallidos(db: Session, user: UsuarioSistema):
 
 
 # ========================================
-# LOGIN - CON SISTEMA DE ROLES Y PERMISOS
+# LOGIN - FASE 1: VALIDACIÓN Y ENVÍO OTP
 # ========================================
 @router.post("/login", response_model=dict)
 def login(user: UserLogin, db: Session = Depends(get_db)):
     """
-    Inicia sesión con usuario y contraseña.
-    Incluye control de intentos fallidos, bloqueos y sistema de roles/permisos.
+    Fase 1: Valida credenciales y envía OTP.
+    NO crea sesión ni token.
     """
     try:
         db_user = db.query(UsuarioSistema).filter(
@@ -200,7 +253,7 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
             return {"success": False, "message": "El usuario ingresado no existe."}
 
         if hasattr(db_user, 'activo') and not db_user.activo:
-            return {"success": False, "message": "Su usuario está inactivo. Contactese con al administrador."}
+            return {"success": False, "message": "Su usuario está inactivo. Contacte al administrador."}
 
         estado_bloqueo = verificar_activo_bloqueo(db_user)
         if estado_bloqueo["bloqueado"]:
@@ -212,8 +265,7 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
                 "bloqueado_hasta": estado_bloqueo.get("bloqueado_hasta")
             }
 
-        
-        # Verificar contraseña
+        # ✅ Verificar contraseña UNA SOLA VEZ
         if not verify_password(user.password.strip(), db_user.clave):
             resultado = registrar_intento_fallido(db, db_user)
             return {
@@ -222,10 +274,97 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
                 "message": resultado["mensaje"]
             }
 
-        # ⚙️ Detectar si es primer login
+        # ✅ Contraseña correcta - Generar y enviar OTP
+        otp_code = generate_otp_code()
+        store_otp_code(db_user.email, otp_code, db_user.id_usuario_sistema)
+        
+        # Enviar OTP por email
+        email_sent = email_service.send_otp_code(
+            to_email=db_user.email,
+            code=otp_code,
+            username=db_user.usuario
+        )
+        
+        if not email_sent:
+            return {
+                "success": False,
+                "message": "Error al enviar código de autenticación. Intenta nuevamente"
+            }
+
+        return {
+            "success": True,
+            "requires_otp": True,
+            "message": "Credenciales correctas. Código enviado a tu correo",
+            "email": db_user.email,
+            "expires_in_minutes": OTP_CODE_EXPIRE_MINUTES
+        }
+
+    except Exception as e:
+        print(f"❌ Error en login: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "message": "Error interno del servidor"}
+
+
+# ========================================
+# LOGIN - FASE 2: VERIFICACIÓN OTP
+# ========================================
+@router.post("/verify-otp")
+def verify_otp_and_create_session(
+    request: Request,  # ✅ AGREGAR para obtener IP y User-Agent
+    data: dict,  # Cambiar de 'request' a 'data' para evitar conflicto
+    db: Session = Depends(get_db)
+):
+    """
+    Fase 2: Verifica OTP y crea sesión ÚNICA.
+    ISO 27002: Control de sesiones concurrentes
+    """
+    try:
+        email = data.get("email", "").strip().lower()
+        code = data.get("code", "").strip()
+        
+        if not email or not code:
+            return {"success": False, "message": "Email y código son requeridos"}
+        
+        # Verificar OTP
+        result = verify_otp_code(email, code)
+        
+        if not result["valid"]:
+            return {"success": False, "message": result["message"]}
+        
+        # Obtener usuario desde la BD
+        db_user = db.query(UsuarioSistema).filter(
+            UsuarioSistema.id_usuario_sistema == result["user_id"]
+        ).first()
+        
+        if not db_user:
+            return {"success": False, "message": "Usuario no encontrado"}
+        
+        # ✅ OBTENER INFORMACIÓN DE LA REQUEST (IP y User-Agent)
+        client_ip = request.client.host if request.client else "Unknown"
+        user_agent = request.headers.get("user-agent", "Unknown")
+
+        print(f"🔐 Login desde IP: {client_ip}")
+        print(f"🌐 User-Agent: {user_agent[:50]}...")
+
+        # ✅ CREAR SESIÓN ÚNICA (invalida automáticamente sesiones anteriores)
+        session_result = crear_nueva_sesion(
+            db=db,
+            usuario=db_user,
+            ip_address=client_ip,
+            user_agent=user_agent
+        )
+
+        if not session_result.get("success"):
+            return {
+                "success": False,
+                "message": "Error al crear sesión"
+            }
+
+        # Detectar primer login
         primer_login = getattr(db_user, "primer_login", False) or db_user.ultimo_acceso is None
 
-        # Actualizar último acceso y marcar primer login como completado
+        # Actualizar último acceso
         db_user.ultimo_acceso = datetime.now()
         if hasattr(db_user, "primer_login"):
             db_user.primer_login = False
@@ -239,20 +378,27 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
         rol_permisos = get_user_role_and_permissions(db, db_user)
         foto_url = process_user_photo(db_user.foto) if hasattr(db_user, 'foto') and db_user.foto else None
 
-        # Crear token
+        # ✅ CREAR TOKEN JWT (incluir id_usuario_sistema)
         token_data = {
             "sub": db_user.usuario,
+            "id_usuario_sistema": db_user.id_usuario_sistema,  # ✅ IMPORTANTE para middleware
             "id_rol": db_user.id_rol,
             "nombre_rol": rol_permisos["rol"]["nombre_rol"] if rol_permisos["rol"] else None,
             "nombres": db_user.nombres
         }
         access_token = create_access_token(data=token_data)
 
+        # Limpiar OTP usado
+        if email in otp_codes:
+            del otp_codes[email]
+
         return {
             "success": True,
-            "message": "Inicio de sesión exitoso",
+            "message": "✅ Autenticación completada exitosamente",
             "data": {
                 "token": access_token,
+                "session_token": session_result["session_token"],  # ✅ NUEVO
+                "session_expires_at": session_result["expires_at"],  # ✅ NUEVO
                 "user": {
                     "id_usuario_sistema": db_user.id_usuario_sistema,
                     "usuario": db_user.usuario,
@@ -276,11 +422,60 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
         }
 
     except Exception as e:
-        print(f"❌ Error en login: {e}")
+        print(f"❌ Error en verify_otp: {e}")
         import traceback
         traceback.print_exc()
         return {"success": False, "message": "Error interno del servidor"}
 
+# ========================================
+# REENVIAR OTP
+# ========================================
+@router.post("/resend-otp")
+def resend_otp_code(request: dict, db: Session = Depends(get_db)):
+    """Reenvía código OTP"""
+    try:
+        email = request.get("email", "").strip().lower()
+        
+        if not email:
+            return {"success": False, "message": "Email requerido"}
+        
+        # Verificar que existe una solicitud pendiente
+        if email not in otp_codes:
+            return {"success": False, "message": "No hay solicitud pendiente para este correo"}
+        
+        user_id = otp_codes[email]["user_id"]
+        
+        db_user = db.query(UsuarioSistema).filter(
+            UsuarioSistema.id_usuario_sistema == user_id
+        ).first()
+        
+        if not db_user:
+            return {"success": False, "message": "Usuario no encontrado"}
+        
+        # Generar nuevo código
+        new_otp = generate_otp_code()
+        store_otp_code(email, new_otp, user_id)
+        
+        # Enviar por correo
+        email_sent = email_service.send_otp_code(
+            to_email=email,
+            code=new_otp,
+            username=db_user.usuario
+        )
+        
+        if not email_sent:
+            return {"success": False, "message": "Error al enviar el código"}
+        
+        return {
+            "success": True,
+            "message": "Nuevo código enviado",
+            "expires_in_minutes": OTP_CODE_EXPIRE_MINUTES
+        }
+        
+    except Exception as e:
+        print(f"❌ Error en resend_otp: {e}")
+        return {"success": False, "message": "Error interno del servidor"}
+    
 
 # ========================================
 # VERIFICAR SESIÓN

@@ -171,9 +171,6 @@ def lectura_to_response(lectura: Lectura) -> dict:
         } if lector else None
     }
 
-
-
-
 @router.get("/mis-lecturas", response_model=List[dict])
 def listar_mis_lecturas(
     # Parámetros opcionales de filtrado

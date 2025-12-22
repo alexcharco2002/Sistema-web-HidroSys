@@ -12,31 +12,31 @@ import './UniversalDashboard.css';
 import { buildModulesFromPermissions, getModuleByPath } from '../utils/modulesDefinitions';
 
 // Componentes compartidos
-import NotificationDropdown from '../Sections/NotificationDropdown';
-import UserProfile from '../Sections/UserProfile';
-import ChangePasswordModal from '../Sections/ChangePasswordModal';
-import ProfileSection from '../Sections/ProfileSection';
-import NotificationsSection from '../Sections/NotificationsSection';
-import HomeSection from '../Sections/HomeSection'; //  COMPONENTE HOME UNIVERSAL
+import NotificationDropdown from '../sections/NotificationDropdown';
+import UserProfile from '../sections/UserProfile';
+import ChangePasswordModal from '../sections/ChangePasswordModal';
+import ProfileSection from '../sections/ProfileSection';
+import NotificationsSection from '../sections/NotificationsSection';
+import HomeSection from '../sections/HomeSection'; //  COMPONENTE HOME UNIVERSAL
 
 // Componentes de secciones
-import UsersSection from '../Sections/UsersSection';
-import RolesSection from '../Sections/RolesSection';
-import SectorsSection from '../Sections/SectorsSection';
-import AffiliatesSection from '../Sections/AffiliatesSection';
-import MetersSection from '../Sections/MetersSection';
-import GeolocationSection from '../Sections/GeolocationSection';
-import InvoicesSection from '../Sections/InvoicesSection';
-import TarifasSection from '../Sections/TarifasSection';
-import ConfigSection from '../Sections/ConfigSection';
-import ServiciosSection from '../Sections/ServiciosSection';
-import ReadingsSection from '../Sections/ReadingsSection';
-import FinesSection from '../Sections/FinesSection';
-import FinesAffiliatesSection from '../Sections/FinesAffiliatesSection';  
-import HistorialConsumos from '../Sections/HistorialConsumos';
-import PaymentsSection from '../Sections/PaymentsSection';
+import UsersSection from '../sections/UsersSection';
+import RolesSection from '../sections/RolesSection';
+import SectorsSection from '../sections/SectorsSection';
+import AffiliatesSection from '../sections/AffiliatesSection';
+import MetersSection from '../sections/MetersSection';
+import GeolocationSection from '../sections/GeolocationSection';
+import InvoicesSection from '../sections/InvoicesSection';
+import TarifasSection from '../sections/TarifasSection';
+import ConfigSection from '../sections/ConfigSection';
+import ServiciosSection from '../sections/ServiciosSection';
+import ReadingsSection from '../sections/ReadingsSection';
+import FinesSection from '../sections/FinesSection';
+import FinesAffiliatesSection from '../sections/FinesAffiliatesSection';  
+import HistorialConsumos from '../sections/HistorialConsumos';
+import PaymentsSection from '../sections/PaymentsSection';
 
-import MiniMapaBurbuja from '../Sections/MiniMapaBurbuja'; 
+import MiniMapaBurbuja from '../sections/MiniMapaBurbuja'; 
 
 // Iconos
 import { 

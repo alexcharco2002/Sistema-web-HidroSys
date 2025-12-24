@@ -146,16 +146,15 @@ def affiliate_to_response(affiliate: UsuarioAfiliado, db: Session) -> dict:
         "id_sector": affiliate.id_sector,
         "id_usuario_sistema": affiliate.id_usuario_sistema,
         "activo": affiliate.activo,
-
+        "num_medidor": affiliate.num_medidor, 
         # Información del usuario del sistema
         "usuario": {
             "id": user.id_usuario_sistema,
             "usuario": user.usuario,
             "nombres": user.nombres,
             "apellidos": user.apellidos,
-            "foto": foto_url,  # ✅ Aquí usamos la foto procesada
+            "foto": foto_url,  
             "cedula": user.cedula,
-            "email": user.email,
             "telefono": user.telefono,
             "direccion": user.direccion,
             "activo": user.activo
@@ -168,19 +167,6 @@ def affiliate_to_response(affiliate: UsuarioAfiliado, db: Session) -> dict:
             "descripcion": sector.descripcion,
             "activo": sector.activo
         } if sector else None,
-
-        # informacion de medidor 
-        "medidor": [
-            {
-                "id_medidor": medidor.id_medidor,
-                "num_medidor": medidor.num_medidor,
-                "latitud": float(medidor.latitud) if medidor.latitud is not None else None,
-                "longitud": float(medidor.longitud) if medidor.longitud is not None else None,
-                "altitud": float(medidor.altitud) if medidor.altitud is not None else None,
-                "activo": medidor.activo
-            }
-            for medidor in affiliate.medidores
-        ] if affiliate.medidores else []
     }
 
 # ========================================
@@ -192,7 +178,7 @@ def listar_afiliados(
     id_sector: Optional[int] = Query(None, description="Filtrar por sector"),
     activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
     skip: int = Query(0, ge=0, description="Número de registros a saltar"),
-    limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros"),
+    limit: int = Query(100, ge=1, le=500, description="Número máximo de registros"),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
@@ -313,7 +299,7 @@ def listar_usuarios_disponibles(
 # ========================================
 # CREAR AFILIADO
 # ========================================
-@router.post("/", response_model=dict, status_code=status.HTTP_201_CREATED)
+@router.post("/create", response_model=dict, status_code=status.HTTP_201_CREATED)
 def crear_afiliado(
     affiliate_data: AffiliateCreate,
     db: Session = Depends(get_db),

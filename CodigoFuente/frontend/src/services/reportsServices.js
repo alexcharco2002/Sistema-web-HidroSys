@@ -8,7 +8,7 @@ import authService from './authServices';
 const API_CONFIG = {
   baseURL: 'https://localhost:8000',
   endpoints: {
-    // Endpoints de reportes por módulo - AHORA APUNTAN A /reportes
+    // Endpoints de reportes por módulo 
     usuarios: '/reportes/usuarios',
     roles: '/reportes/roles',
     afiliados: '/reportes/afiliados',
@@ -17,9 +17,17 @@ const API_CONFIG = {
     tarifas: '/reportes/tarifas',
     geolocalizacion: '/reportes/geolocalizacion',
     servicios: '/reportes/servicios',
+      // Lecturas y periodos
     lecturas: '/reportes/lecturas',
+    lecturasPeriodos: '/reportes/lecturas/periodos',
+    
+    // Facturas y periodos
     facturas: '/reportes/facturas',
+    facturasPeriodos: '/reportes/facturas/periodos',
+    
+    // Pagos y periodos
     pagos: '/reportes/pagos',
+    pagosPeriodos: '/reportes/pagos/periodos',
     multas: '/reportes/multas',
     multasAfiliados: '/reportes/multas-afiliados',
     configuracion: '/reportes/configuracion',
@@ -54,7 +62,7 @@ class ReportsServices {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 30000
+      timeout: 50000
     };
 
     const finalOptions = {
@@ -309,166 +317,313 @@ class ReportsServices {
     }
   }
 
+ /**
+ * 6. Obtener reporte de LECTURAS
+ */
+
+async getReporteLecturas(filtros = {}) {
+  try {
+    const queryString = this.buildQueryString({
+      skip: filtros.skip || 0,
+      limit: filtros.limit || 1000,
+      // filtro de búsqueda
+      search: filtros.search,  // ← AGREGADO
+      // filtros normales
+      fecha_desde: filtros.fecha_desde,
+      fecha_hasta: filtros.fecha_hasta,
+      activo: filtros.activo,
+      es_estimada: filtros.es_estimada,
+      // filtros de periodo
+      mes: filtros.mes,
+      anio: filtros.anio
+    });
+
+    const url = queryString 
+      ? `${API_CONFIG.endpoints.lecturas}?${queryString}`
+      : API_CONFIG.endpoints.lecturas;
+
+    const data = await this.makeRequest(url);
+
+    return {
+      success: true,
+      data: Array.isArray(data) ? data : [],
+      total: Array.isArray(data) ? data.length : 0
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo reporte de lecturas:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener reporte de lecturas',
+      data: []
+    };
+  }
+}
+
+
   /**
-   * 6. Obtener reporte de LECTURAS
+   * Obtener periodos disponibles
    */
-  async getReporteLecturas(filtros = {}) {
+  async getPeriodosLecturas() {
     try {
-      const queryString = this.buildQueryString({
-        skip: filtros.skip || 0,
-        limit: filtros.limit || 1000,
-        fecha_desde: filtros.fecha_desde,
-        fecha_hasta: filtros.fecha_hasta,
-        sector: filtros.sector,
-        tipo_lectura: filtros.tipo_lectura,
-        lector_id: filtros.lector_id
-      });
-
-      const url = queryString 
-        ? `${API_CONFIG.endpoints.lecturas}?${queryString}`
-        : API_CONFIG.endpoints.lecturas;
-
-      const data = await this.makeRequest(url);
-
+      const data = await this.makeRequest(API_CONFIG.endpoints.lecturasPeriodos);
+      
+      console.log('📅 Periodos de lecturas cargados:', data);
+      
       return {
         success: true,
-        data: Array.isArray(data) ? data : [],
-        total: Array.isArray(data) ? data.length : 0
+        data: Array.isArray(data) ? data : []
       };
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de lecturas:', error);
+      console.error('❌ Error obteniendo periodos de lecturas:', error);
       return {
         success: false,
-        message: error.message || 'Error al obtener reporte de lecturas',
+        message: error.message || 'Error al obtener periodos de lecturas',
         data: []
       };
     }
   }
 
-  /**
-   * 7. Obtener reporte de FACTURAS
-   */
-  async getReporteFacturas(filtros = {}) {
-    try {
-      const queryString = this.buildQueryString({
-        skip: filtros.skip || 0,
-        limit: filtros.limit || 1000,
-        fecha_desde: filtros.fecha_desde,
-        fecha_hasta: filtros.fecha_hasta,
-        estado: filtros.estado,
-        periodo: filtros.periodo
-      });
+ /**
+ * 7. Obtener reporte de FACTURAS
+ */
+async getReporteFacturas(filtros = {}) {
+  try {
+    // 🔥 Agregar mes y anio al queryString
+    const queryString = this.buildQueryString({
+      skip: filtros.skip || 0,
+      limit: filtros.limit || 1000,
+      search: filtros.search,
+      fecha_desde: filtros.fecha_desde,
+      fecha_hasta: filtros.fecha_hasta,
+      mes: filtros.mes,           // ✅ AGREGAR
+      anio: filtros.anio,         // ✅ AGREGAR
+      estado: filtros.estado
+    });
 
-      const url = queryString 
-        ? `${API_CONFIG.endpoints.facturas}?${queryString}`
-        : API_CONFIG.endpoints.facturas;
+    const url = queryString 
+      ? `${API_CONFIG.endpoints.facturas}?${queryString}`
+      : API_CONFIG.endpoints.facturas;
 
-      const data = await this.makeRequest(url);
+    console.log('📡 Request URL:', url); // Debug
 
-      // Las facturas pueden venir con estadísticas
-      if (data.facturas && data.estadisticas) {
-        return {
-          success: true,
-          data: data.facturas,
-          total: data.facturas.length,
-          estadisticas: data.estadisticas
-        };
-      }
+    const response = await this.makeRequest(url);
+    
+    console.log('✅ API Response:', response); // Debug
 
+    // ✅ CORRECCIÓN: La API devuelve { success, data, total, estadisticas }
+    if (response.success && response.data) {
       return {
         success: true,
-        data: Array.isArray(data) ? data : [],
-        total: Array.isArray(data) ? data.length : 0
+        data: response.data,           // ✅ Usar response.data directamente
+        total: response.total || response.data.length,
+        estadisticas: response.estadisticas
+      };
+    }
+
+    // Fallback para formato antiguo
+    if (response.facturas) {
+      return {
+        success: true,
+        data: response.facturas,
+        total: response.facturas.length,
+        estadisticas: response.estadisticas
+      };
+    }
+
+    // Si viene un array directo
+    if (Array.isArray(response)) {
+      return {
+        success: true,
+        data: response,
+        total: response.length
+      };
+    }
+
+    // Error
+    return {
+      success: false,
+      message: 'Formato de respuesta inválido',
+      data: []
+    };
+
+  } catch (error) {
+    console.error('❌ Error obteniendo reporte de facturas:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener reporte de facturas',
+      data: []
+    };
+  }
+}
+
+  /**
+ * Obtener periodos disponibles de Facturas
+ */
+async getPeriodosFacturas() {
+  try {
+    const data = await this.makeRequest(API_CONFIG.endpoints.facturasPeriodos);
+    
+    console.log('📅 Periodos de facturas cargados:', data);
+    
+    return {
+      success: true,
+      data: Array.isArray(data) ? data : []
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo periodos de facturas:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener periodos de facturas',
+      data: []
+    };
+  }
+}
+
+/**
+ * 8. Obtener reporte de PAGOS
+ */
+async getReportePagos(filtros = {}) {
+  try {
+    const queryString = this.buildQueryString({
+      skip: filtros.skip || 0,
+      limit: filtros.limit || 1000,
+      fecha_desde: filtros.fecha_desde,
+      fecha_hasta: filtros.fecha_hasta,
+      metodo_pago: filtros.metodo_pago,
+      estado: filtros.estado
+    });
+
+    const url = queryString
+      ? `${API_CONFIG.endpoints.pagos}?${queryString}`
+      : API_CONFIG.endpoints.pagos;
+
+    const response = await this.makeRequest(url);
+
+    // Aseguramos consistencia igual que MULTAS
+    const data = Array.isArray(response.data) ? response.data : [];
+    const total = response.total || data.length;
+
+    return {
+      success: true,
+      data: data,
+      total: total
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo reporte de pagos:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener reporte de pagos',
+      data: [],
+      total: 0
+    };
+  }
+}
+
+
+  async getPeriodosPagos() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.pagosPeriodos);
+      
+      console.log('📅 Periodos de pagos cargados:', data);
+      
+      return {
+        success: true,
+        data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de facturas:', error);
+      console.error('❌ Error obteniendo periodos de pagos:', error);
       return {
         success: false,
-        message: error.message || 'Error al obtener reporte de facturas',
+        message: error.message || 'Error al obtener periodos de pagos',
         data: []
       };
     }
   }
 
-  /**
-   * 8. Obtener reporte de PAGOS
-   */
-  async getReportePagos(filtros = {}) {
-    try {
-      const queryString = this.buildQueryString({
-        skip: filtros.skip || 0,
-        limit: filtros.limit || 1000,
-        fecha_desde: filtros.fecha_desde,
-        fecha_hasta: filtros.fecha_hasta,
-        metodo_pago: filtros.metodo_pago,
-        estado: filtros.estado
-      });
+ /**
+ * 9. Obtener reporte de MULTAS
+ */
+async getReporteMultas(filtros = {}) {
+  try {
+    const queryString = this.buildQueryString({
+      skip: filtros.skip || 0,
+      limit: filtros.limit || 1000,
+      fecha_desde: filtros.fecha_desde,
+      fecha_hasta: filtros.fecha_hasta,
+      estado: filtros.estado,
+      tipo: filtros.tipo,
+      activo: filtros.activo,
+      vigente: filtros.vigente
+    });
 
-      const url = queryString 
-        ? `${API_CONFIG.endpoints.pagos}?${queryString}`
-        : API_CONFIG.endpoints.pagos;
+    const url = queryString 
+      ? `${API_CONFIG.endpoints.multas}?${queryString}`
+      : API_CONFIG.endpoints.multas;
 
-      const data = await this.makeRequest(url);
+    const response = await this.makeRequest(url);
 
-      // Los pagos pueden venir con estadísticas
-      if (data.pagos && data.estadisticas) {
-        return {
-          success: true,
-          data: data.pagos,
-          total: data.pagos.length,
-          estadisticas: data.estadisticas
-        };
-      }
+    // Aseguramos que data sea un array y total sea un número
+    const data = Array.isArray(response.data) ? response.data : [];
+    const total = response.total || data.length;
 
-      return {
-        success: true,
-        data: Array.isArray(data) ? data : [],
-        total: Array.isArray(data) ? data.length : 0
-      };
-    } catch (error) {
-      console.error('❌ Error obteniendo reporte de pagos:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener reporte de pagos',
-        data: []
-      };
-    }
+    return {
+      success: true,
+      data: data,
+      total: total
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo reporte de multas:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener reporte de multas',
+      data: [],
+      total: 0
+    };
   }
+}
 
-  /**
-   * 9. Obtener reporte de MULTAS
-   */
-  async getReporteMultas(filtros = {}) {
-    try {
-      const queryString = this.buildQueryString({
-        skip: filtros.skip || 0,
-        limit: filtros.limit || 1000,
-        fecha_desde: filtros.fecha_desde,
-        fecha_hasta: filtros.fecha_hasta,
-        estado: filtros.estado,
-        tipo: filtros.tipo
-      });
+/**
+ * 11. Obtener reporte de MULTAS AFILIADOS
+ */
+async getReporteMultasAfiliados(filtros = {}) {
+  try {
+    const queryString = this.buildQueryString({
+      skip: filtros.skip || 0,
+      limit: filtros.limit || 1000,
+      id_usuario_afi: filtros.id_usuario_afi,
+      id_tipo_multa: filtros.id_tipo_multa,
+      fecha_desde: filtros.fecha_desde,
+      fecha_hasta: filtros.fecha_hasta,
+      estado: filtros.estado,
+      facturado: filtros.facturado,
+      activo: filtros.activo
+    });
 
-      const url = queryString 
-        ? `${API_CONFIG.endpoints.multas}?${queryString}`
-        : API_CONFIG.endpoints.multas;
+    const url = queryString 
+      ? `${API_CONFIG.endpoints.multasAfiliados}?${queryString}`
+      : API_CONFIG.endpoints.multasAfiliados;
 
-      const data = await this.makeRequest(url);
+    const response = await this.makeRequest(url);
 
-      return {
-        success: true,
-        data: Array.isArray(data) ? data : [],
-        total: Array.isArray(data) ? data.length : 0
-      };
-    } catch (error) {
-      console.error('❌ Error obteniendo reporte de multas:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener reporte de multas',
-        data: []
-      };
-    }
+    const data = Array.isArray(response.data) ? response.data : [];
+    const total = response.total || data.length;
+
+    return {
+      success: true,
+      data: data,
+      total: total
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo reporte de multas afiliados:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener reporte de multas afiliados',
+      data: [],
+      total: 0
+    };
   }
+}
+
 
   /**
    * 10. Obtener reporte de TARIFAS
@@ -527,32 +682,19 @@ class ReportsServices {
     }
   }
 
-  /**
-   * 12-17. Reportes pendientes de implementación en backend
-   */
-  async getReporteNotificaciones(filtros = {}) {
-    return this.getReporteGenerico('notificaciones', filtros);
-  }
 
-  async getReporteGeolocalizacion(filtros = {}) {
-    return this.getReporteGenerico('geolocalizacion', filtros);
-  }
 
-  async getReporteMultasAfiliados(filtros = {}) {
-    return this.getReporteGenerico('multasAfiliados', filtros);
-  }
+/**
+ * Obtener mis lecturas (consumo) del usuario autenticado
+ * @param {Object} filtros - Filtros para la consulta
+ * @returns {Object} Respuesta formateada para tablas
+ */
+async getMisLecturas(filtros = {}) {
+  return this.getReporteGenerico('misLecturas', filtros);
+}
 
-  async getReporteConfiguracion(filtros = {}) {
-    return this.getReporteGenerico('configuracion', filtros);
-  }
 
-  async getReporteEstadisticas(filtros = {}) {
-    return this.getReporteGenerico('estadisticas', filtros);
-  }
 
-  async getReporteHistorialConsumo(filtros = {}) {
-    return this.getReporteGenerico('historialConsumo', filtros);
-  }
 
   // ============================================================
   // FUNCIÓN GENÉRICA PARA MÓDULOS
@@ -607,10 +749,6 @@ class ReportsServices {
       'multas': () => this.getReporteMultas(filtros),
       'servicios': () => this.getReporteServicios(filtros),
       'multasafiliados': () => this.getReporteMultasAfiliados(filtros),
-      'geolocalizacion': () => this.getReporteGeolocalizacion(filtros),
-      'configuracion': () => this.getReporteConfiguracion(filtros),
-      'notificaciones': () => this.getReporteNotificaciones(filtros),
-      'estadisticas': () => this.getReporteEstadisticas(filtros),
       'historialconsumo': () => this.getReporteHistorialConsumo(filtros)
     };
 

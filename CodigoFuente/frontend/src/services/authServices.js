@@ -16,37 +16,33 @@ const api = axios.create({
 // ✅ Interceptor simplificado de axios (opcional, solo si usas axios)
 // authServices.js - MODIFICAR interceptor de axios (línea ~15)
 
+// authServices.js (o donde configuras axios)
+
 api.interceptors.response.use(
-<<<<<<< HEAD
-  response => response,
-  error => {
-    if (error.response && error.response.status === 401) {
-      console.warn("⚠️ 401 detectado en petición axios");
-=======
     response => response,
     error => {
         if (error.response && error.response.status === 401) {
             console.warn("⚠️ 401 detectado - Sesión inválida");
-            
-            // ✅ NUEVO: Verificar si es un logout forzado
+
+            // Verificar si el backend forzó el cierre de sesión
             const forceLogout = error.response.headers['x-force-logout'];
-            
+
             if (forceLogout) {
-                // Limpiar sesión local
+                // Limpiar datos locales
                 authService.clearLocalData();
-                
-                // Mostrar mensaje al usuario
+
+                // Avisar al usuario
                 alert('Tu sesión ha sido cerrada porque iniciaste sesión en otro dispositivo');
-                
+
                 // Redirigir al login
                 window.location.href = '/login';
             }
         }
-        
+
         return Promise.reject(error);
->>>>>>> practica-seguridad
     }
 );
+
 
 
 // ========================================

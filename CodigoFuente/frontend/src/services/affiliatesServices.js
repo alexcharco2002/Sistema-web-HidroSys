@@ -8,10 +8,11 @@ import authService from './authServices';
 const API_CONFIG = {
   baseURL: 'https://localhost:8000',
   endpoints: {
-    affiliates: '/affiliates/',                  // ✅ lleva /
-    availableUsers: '/affiliates/available/users', // ❌ NO lleva /
-    toggleStatus: (id) => `/affiliates/${id}/toggle-status`, // ❌ NO lleva /
-    stats: '/affiliates/stats/count'              // ❌ NO lleva /
+    affiliates: '/affiliates',                    // GET - sin /
+    createAffiliate: '/affiliates/create',        // POST - ruta específica
+    availableUsers: '/affiliates/available/users',
+    toggleStatus: (id) => `/affiliates/${id}/toggle-status`,
+    stats: '/affiliates/stats/count'
   }
 };
 
@@ -33,7 +34,7 @@ class AffiliatesService {
         'Accept': 'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 10000,
+      timeout: 50000,
     };
 
     const finalOptions = {
@@ -216,21 +217,38 @@ class AffiliatesService {
     }
   }
 
-  /**
-   * Crear un nuevo afiliado
-   */
   async createAffiliate(affiliateData) {
     try {
       this.validateAffiliateData(affiliateData);
 
-      const data = await this.makeRequest(API_CONFIG.endpoints.affiliates, {
-        method: 'POST',
-        body: {
+      const idUsuarioSistema = parseInt(affiliateData.id_usuario_sistema, 10);
+      const idSector = parseInt(affiliateData.id_sector, 10);
+
+      if (isNaN(idUsuarioSistema) || isNaN(idSector)) {
+        console.error('❌ Valores inválidos:', {
           id_usuario_sistema: affiliateData.id_usuario_sistema,
           id_sector: affiliateData.id_sector,
-          activo: affiliateData.activo !== undefined ? affiliateData.activo : true
+          convertidos: { idUsuarioSistema, idSector }
+        });
+        throw new Error('Los IDs deben ser números válidos');
+      }
+
+      const payload = {
+        id_usuario_sistema: idUsuarioSistema,
+        id_sector: idSector,
+        activo: affiliateData.activo !== undefined ? affiliateData.activo : true
+      };
+
+      console.log('📤 Payload final:', payload);
+
+      // ✅ CORRECCIÓN: pasar como objeto options
+      const data = await this.makeRequest(
+        API_CONFIG.endpoints.createAffiliate,
+        {
+          method: 'POST',
+          body: payload
         }
-      });
+      );
 
       return {
         success: true,
@@ -246,6 +264,8 @@ class AffiliatesService {
       };
     }
   }
+
+
 
   /**
    * Actualizar un afiliado existente

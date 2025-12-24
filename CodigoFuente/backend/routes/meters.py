@@ -11,7 +11,7 @@ from models.user import UsuarioSistema
 from models.affiliate import UsuarioAfiliado
 from models.sector import Sector
 from schemas.meter import (
-    MedidorCreate, MedidorUpdate, MedidorResponse, 
+    MedidorCreate, MedidorListItem, MedidorUpdate, MedidorResponse, 
     MedidorCompleto, MedidorStats, AfiliadoDisponible
 )
 from schemas.limite_geografico import CoordenadaValidacion, CoordenadaValidacionResponse
@@ -177,55 +177,79 @@ def listar_sectores_para_medidores(
         for s in sectores
     ]
 
-@router.get("/", response_model=List[MedidorCompleto])
+
+@router.get("/", response_model=list[MedidorListItem])
 def listar_medidores(
-    search: Optional[str] = Query(None, description="Búsqueda por número de medidor"),
-    id_sector: Optional[int] = Query(None, description="Filtrar por sector"),
-    activo: Optional[bool] = Query(None, description="Filtrar por estado"),
-    asignado: Optional[bool] = Query(None, description="Filtrar por asignación"),
-    skip: int = Query(0, ge=0, description="Registros a saltar"),
-    limit: int = Query(100, ge=1, le=500, description="Límite de registros"),
+    search: Optional[str] = Query(None),
+    id_sector: Optional[int] = Query(None),
+    activo: Optional[bool] = Query(None),
+    asignado: Optional[bool] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Lista todos los medidores con filtros opcionales
-    Requiere permiso: medidores.lectura o medidores.crud
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "medidores", "lectura")
-    
-    query = db.query(Medidor).options(
-        joinedload(Medidor.sector),
-        joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
+
+    query = (
+        db.query(
+            Medidor.id_medidor,
+            Medidor.num_medidor,
+            Medidor.activo,
+            Medidor.latitud,
+            Medidor.longitud,
+            Medidor.altitud,
+            
+            Medidor.id_sector,
+            Sector.nombre_sector.label("nombre_sector"),
+            
+            Medidor.id_usuario_afi,
+            UsuarioAfiliado.cod_usuario_afi,  # ✅ Corregido: viene de UsuarioAfiliado
+            
+            func.concat(
+                UsuarioSistema.nombres,
+                ' ',
+                UsuarioSistema.apellidos
+            ).label("nombre_afiliado")
+        )
+        .outerjoin(Sector, Sector.id_sector == Medidor.id_sector)
+        .outerjoin(
+            UsuarioAfiliado,
+            UsuarioAfiliado.id_usuario_afi == Medidor.id_usuario_afi
+        )
+        .outerjoin(
+            UsuarioSistema,
+            UsuarioSistema.id_usuario_sistema == UsuarioAfiliado.id_usuario_sistema
+        )
     )
     
-    # Aplicar filtros
     if search:
         like = f"%{search}%"
         query = query.filter(
             or_(
                 Medidor.num_medidor.ilike(like),
                 cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(like),
-                UsuarioAfiliado.nombre_afiliado.ilike(like)
+                UsuarioSistema.nombres.ilike(like),
+                UsuarioSistema.apellidos.ilike(like),
             )
         )
-    
+
     if id_sector is not None:
         query = query.filter(Medidor.id_sector == id_sector)
-    
+
     if activo is not None:
         query = query.filter(Medidor.activo == activo)
-    
+
     if asignado is not None:
-        if asignado:
-            query = query.filter(Medidor.id_usuario_afi.isnot(None))
-        else:
-            query = query.filter(Medidor.id_usuario_afi.is_(None))
-    
-    medidores = query.offset(skip).limit(limit).all()
-    
-    return medidores
+        query = query.filter(
+            Medidor.id_usuario_afi.isnot(None)
+            if asignado else
+            Medidor.id_usuario_afi.is_(None)
+        )
+
+    return query.offset(skip).limit(limit).all()
+
 
 
 @router.get("/stats/count", response_model=MedidorStats)

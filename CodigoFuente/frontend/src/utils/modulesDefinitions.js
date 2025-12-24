@@ -321,6 +321,17 @@ export const MODULE_DEFINITIONS = {
     componentName: "StatisticsSection",
     description: "Análisis visual de datos y rendimiento."
   },
+  facturasypagos: {
+    id: "facturas-pagos",
+    path: "facturas-pagos",
+    label: "Facturas y Pagos",
+    icon: FileText,
+    color: "indigo",
+    category: "REPORTS_ANALYSIS",
+    order: 10,
+    componentName: "AffiliateBillingSection",
+    description: "Estadísticas y análisis de facturas y pagos."
+  },
   // ⚙️ SISTEMA
   configuracion: {
     id: "settings",

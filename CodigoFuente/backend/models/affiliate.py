@@ -1,5 +1,5 @@
 # models/affiliate.py
-from sqlalchemy import Column, Integer, Boolean, Date, ForeignKey
+from sqlalchemy import Column, Integer, Boolean, Date, ForeignKey, String
 from sqlalchemy.orm import relationship
 from db.session import Base
 from models.multa_afiliado import MultaAfiliado
@@ -12,6 +12,7 @@ class UsuarioAfiliado(Base):
     fecha_afiliacion = Column(Date, nullable=True)
     activo = Column(Boolean, default=True)
     cod_usuario_afi = Column(Integer, nullable=False)
+    num_medidor = Column(String(30), nullable=True)
     
     id_sector = Column(Integer, ForeignKey("medidores.t_sector.id_sector"), nullable=False)
     id_usuario_sistema = Column(Integer, ForeignKey("usuarios.t_usuario_sistema.id_usuario_sistema"), nullable=False)
@@ -33,7 +34,7 @@ class UsuarioAfiliado(Base):
     medidores = relationship(
         "Medidor",
         back_populates="usuario_afiliado",
-        lazy="joined"
+        lazy="select"
     )
 
     # Relación con MultaAfiliado

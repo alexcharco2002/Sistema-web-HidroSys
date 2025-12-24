@@ -5,6 +5,7 @@ from typing import Literal, Optional, List
 from datetime import date
 from decimal import Decimal
 import re
+from schemas.affiliate import AffiliateWithUserInfo
 from schemas.detalle_factura import DetalleFacturaResponse
 from schemas.pago import PagoResponse
 
@@ -140,10 +141,6 @@ class AplicarDescuentoRequest(BaseModel):
 # ========================================
 # SCHEMAS CON INFORMACIÓN DE USUARIO
 # ========================================
-
-# Importar DESPUÉS de definir los schemas básicos
-from schemas.affiliate import AffiliateWithUserInfo
-
 
 class FacturaConUsuarioCompleto(FacturaResponse):
     """

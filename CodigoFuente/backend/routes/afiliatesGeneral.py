@@ -139,18 +139,7 @@ def listar_mis_lecturas_por_periodo(
     current_user = get_current_user(payload, db)
     afiliado = get_current_afiliado(current_user, db)
 
-    # ===============================
-    # CONSTRUCCIÓN DE FECHAS (CLAVE)
-    # ===============================
-    fecha_inicio = fecha_fin = None
-    if anio and mes:
-        fecha_inicio = date(anio, mes, 1)
-        fecha_fin = (
-            date(anio + 1, 1, 1) if mes == 12 else date(anio, mes + 1, 1)
-        )
-    elif anio:
-        fecha_inicio = date(anio, 1, 1)
-        fecha_fin = date(anio + 1, 1, 1)
+ 
 
     # ===============================
     # QUERY OPTIMIZADA
@@ -176,11 +165,6 @@ def listar_mis_lecturas_por_periodo(
     if id_medidor:
         query = query.filter(Medidor.id_medidor == id_medidor)
 
-    if fecha_inicio and fecha_fin:
-        query = query.filter(
-            Lectura.fecha_lectura >= fecha_inicio,
-            Lectura.fecha_lectura < fecha_fin
-        )
 
     if tipo_lectura:
         if tipo_lectura.lower() == "reales":

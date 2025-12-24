@@ -1,453 +1,832 @@
 // src/components/PaymentReceipt.js
-import React, { useRef } from 'react';
-import { X, Printer, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Printer, Download, CheckCircle, AlertCircle, Save } from 'lucide-react';
 import './PaymentReceipt.css';
-
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
-const PaymentReceipt = ({ pago, factura, onClose }) => {
-  const receiptRef = useRef(null);
+const PaymentReceipt = ({ pago, factura, onClose, onSave }) => {
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState('');
 
-  const handlePrint = () => {
-    const printContent = receiptRef.current;
-    if (!printContent) return;
-
-    const printWindow = window.open('', '', 'height=800,width=800');
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Comprobante de Pago</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            .receipt-container { max-width: 600px; margin: 0 auto; }
-            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
-            .info-row { display: flex; justify-content: space-between; margin: 8px 0; }
-            .label { font-weight: bold; }
-            .footer { margin-top: 30px; text-align: center; font-size: 12px; border-top: 1px solid #ccc; padding-top: 10px; }
-          </style>
-        </head>
-        <body>
-          ${receiptRef.current.innerHTML}
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
+  // ============================================
+  // FUNCIONES DE FORMATEO
+  // ============================================
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('es-EC', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return 'N/A';
+    }
   };
 
-  return (
-    <div className="receipt-overlay">
-      <div className="receipt-container">
-        <div className="receipt-header">
-          <h2>Comprobante de Pago</h2>
-          <button className="close-button" onClick={onClose}>
-            <X size={20} />
-          </button>
+  const formatDateShort = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('es-EC');
+    } catch (e) {
+      return 'N/A';
+    }
+  };
+
+  const formatCurrency = (value) => {
+    const numValue = parseFloat(value) || 0;
+    return new Intl.NumberFormat('es-EC', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2
+    }).format(numValue);
+  };
+
+  // ============================================
+  // GENERAR PDF OPTIMIZADO (LIGERO < 5MB)
+  // ============================================
+  const generatePDF = async () => {
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      // Crear documento PDF con compresión
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 15;
+      let y = 20;
+
+      // ===== ENCABEZADO =====
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(31, 41, 55);
+      doc.text('JUNTA DE AGUA POTABLE', pageWidth / 2, y, { align: 'center' });
+      
+      y += 7;
+      doc.setFontSize(14);
+      doc.setTextColor(59, 130, 246);
+      doc.text('SANJAPAMBA', pageWidth / 2, y, { align: 'center' });
+      
+      y += 5;
+      doc.setFontSize(9);
+      doc.setTextColor(107, 114, 128);
+      doc.text('Sanjapamba, Chimborazo, Ecuador', pageWidth / 2, y, { align: 'center' });
+      
+      y += 4;
+      doc.text('Teléfono: (593) 3-XXX-XXXX', pageWidth / 2, y, { align: 'center' });
+
+      // Línea divisoria
+      y += 6;
+      doc.setDrawColor(209, 213, 219);
+      doc.setLineWidth(0.5);
+      doc.line(margin, y, pageWidth - margin, y);
+
+      // ===== TÍTULO =====
+      y += 10;
+      doc.setFontSize(14);
+      doc.setTextColor(31, 41, 55);
+      doc.setFont('helvetica', 'bold');
+      doc.text('COMPROBANTE DE PAGO', pageWidth / 2, y, { align: 'center' });
+      
+      y += 6;
+      doc.setFontSize(10);
+      doc.setTextColor(107, 114, 128);
+      doc.text(`No. ${pago.id_pago || 'N/A'}`, pageWidth / 2, y, { align: 'center' });
+
+      // ===== DATOS DEL CLIENTE =====
+      y += 10;
+      doc.setFontSize(11);
+      doc.setTextColor(55, 65, 81);
+      doc.setFont('helvetica', 'bold');
+      doc.text('DATOS DEL CLIENTE', margin, y);
+      
+      y += 7;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(31, 41, 55);
+      
+      const nombreCliente = factura?.usuario_afiliado?.usuario_sistema 
+        ? `${factura.usuario_afiliado.usuario_sistema.nombres || ''} ${factura.usuario_afiliado.usuario_sistema.apellidos || ''}`.trim()
+        : 'N/A';
+      const cedulaCliente = factura?.usuario_afiliado?.usuario_sistema?.cedula || 'N/A';
+      const codigoCliente = factura?.usuario_afiliado?.cod_usuario_afi || 'N/A';
+      const numMedidor = factura?.usuario_afiliado?.medidores?.[0]?.num_medidor || 'N/A';
+      const nombreSector = factura?.usuario_afiliado?.sector?.nombre_sector || 'N/A';
+
+      doc.text(`Cliente: ${nombreCliente}`, margin, y);
+      y += 5;
+      doc.text(`Cédula: ${cedulaCliente}`, margin, y);
+      doc.text(`Código: ${codigoCliente}`, pageWidth / 2, y);
+      y += 5;
+      doc.text(`Medidor: ${numMedidor}`, margin, y);
+      doc.text(`Sector: ${nombreSector}`, pageWidth / 2, y);
+
+      // ===== DATOS DE LA FACTURA =====
+      y += 10;
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(55, 65, 81);
+      doc.text('DATOS DE LA FACTURA', margin, y);
+      
+      y += 7;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(31, 41, 55);
+      
+      doc.text(`Factura No.: ${factura?.num_factura || 'N/A'}`, margin, y);
+      y += 5;
+      doc.text(`Fecha Emisión: ${formatDateShort(factura?.fecha_emision)}`, margin, y);
+      y += 5;
+      doc.text(`Fecha Vencimiento: ${formatDateShort(factura?.fecha_vencimiento)}`, margin, y);
+      y += 5;
+      doc.text(`Total Factura: ${formatCurrency(factura?.total)}`, margin, y);
+      doc.text(`Estado: ${(factura?.estado_factura || 'N/A').toUpperCase()}`, pageWidth / 2, y);
+
+      // ===== DETALLES DEL PAGO =====
+      y += 10;
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(55, 65, 81);
+      doc.text('DETALLES DEL PAGO', margin, y);
+      
+      y += 7;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      
+      doc.text(`Fecha de Pago: ${formatDate(pago?.fecha_pago)}`, margin, y);
+      y += 5;
+      doc.text(`Método de Pago: ${pago?.metodo_pago || 'N/A'}`, margin, y);
+      y += 5;
+      
+      const nombreCajero = pago?.usuario_cajero 
+        ? `${pago.usuario_cajero.nombres || ''} ${pago.usuario_cajero.apellidos || ''}`.trim()
+        : 'N/A';
+      doc.text(`Recibido por: ${nombreCajero}`, margin, y);
+
+      // ===== MONTO PAGADO (DESTACADO) =====
+      y += 12;
+      doc.setFillColor(59, 130, 246);
+      doc.roundedRect(margin, y - 5, pageWidth - (margin * 2), 18, 3, 3, 'F');
+      
+      y += 4;
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('MONTO PAGADO:', margin + 5, y);
+      
+      doc.setFontSize(18);
+      const montoPagadoStr = formatCurrency(pago?.monto_pago);
+      doc.text(montoPagadoStr, pageWidth - margin - 5, y, { align: 'right' });
+
+      // ===== OBSERVACIONES =====
+      if (pago?.observaciones && pago.observaciones.trim() !== '') {
+        y += 15;
+        doc.setFillColor(254, 243, 199);
+        const obsHeight = 12;
+        doc.roundedRect(margin, y - 3, pageWidth - (margin * 2), obsHeight, 2, 2, 'F');
+        
+        y += 3;
+        doc.setTextColor(120, 53, 15);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'italic');
+        const obsTexto = `Observaciones: ${pago.observaciones}`;
+        const obsLineas = doc.splitTextToSize(obsTexto, pageWidth - (margin * 2) - 10);
+        doc.text(obsLineas, margin + 5, y);
+        y += obsLineas.length * 4;
+      }
+
+      // ===== FIRMAS =====
+      y += 30;
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.3);
+      doc.line(margin + 10, y, margin + 70, y);
+      doc.line(pageWidth - margin - 70, y, pageWidth - margin - 10, y);
+      
+      y += 4;
+      doc.setFontSize(8);
+      doc.setTextColor(156, 163, 175);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Firma del Cajero', margin + 40, y, { align: 'center' });
+      doc.text('Firma del Cliente', pageWidth - margin - 40, y, { align: 'center' });
+
+      // ===== PIE DE PÁGINA =====
+      y += 15;
+      doc.setFontSize(7);
+      doc.text('Este comprobante certifica el pago realizado', pageWidth / 2, y, { align: 'center' });
+      y += 4;
+      doc.text(`Impreso el: ${new Date().toLocaleString('es-EC')}`, pageWidth / 2, y, { align: 'center' });
+
+      // ===== GENERAR BASE64 Y VALIDAR TAMAÑO =====
+      const pdfOutput = doc.output('datauristring');
+      const pdfBase64 = pdfOutput.split(',')[1];
+      
+      // Calcular tamaño en MB
+      const sizeInBytes = (pdfBase64.length * 3) / 4;
+      const sizeInMB = sizeInBytes / (1024 * 1024);
+      
+      console.log(`📄 PDF generado: ${sizeInMB.toFixed(2)} MB`);
+      
+      // Validar tamaño máximo de 5MB
+      if (sizeInMB > 5) {
+        throw new Error(`El PDF generado (${sizeInMB.toFixed(2)} MB) excede el límite de 5 MB`);
+      }
+
+      setIsGenerating(false);
+      
+      return {
+        pdf: doc,
+        base64: pdfBase64,
+        size: sizeInMB
+      };
+
+    } catch (err) {
+      console.error('❌ Error al generar PDF:', err);
+      setError(err.message || 'Error desconocido al generar PDF');
+      setIsGenerating(false);
+      throw err;
+    }
+  };
+
+  // ============================================
+  // DESCARGAR PDF
+  // ============================================
+  const handleDownload = async () => {
+    try {
+      setError(null);
+      setSuccessMessage('');
+      
+      const { pdf } = await generatePDF();
+      const fileName = `Comprobante_Pago_${pago.id_pago}_Factura_${factura.num_factura}.pdf`;
+      pdf.save(fileName);
+      
+      setSuccessMessage('✅ PDF descargado exitosamente');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      console.error('Error al descargar PDF:', err);
+    }
+  };
+
+  // ============================================
+  // GUARDAR EN BASE DE DATOS
+  // ============================================
+  const handleSaveToDatabase = async () => {
+    try {
+      setError(null);
+      setSuccessMessage('');
+      
+      const { base64, size } = await generatePDF();
+      
+      if (onSave) {
+        await onSave({
+          id_pago: pago.id_pago,
+          pdf_base64: base64,
+          pdf_size_mb: size,
+          fecha_generacion: new Date().toISOString()
+        });
+        
+        setSuccessMessage(`✅ Comprobante guardado (${size.toFixed(2)} MB)`);
+        setTimeout(() => setSuccessMessage(''), 3000);
+      } else {
+        throw new Error('No se proporcionó la función onSave');
+      }
+    } catch (err) {
+      setError(`Error al guardar: ${err.message}`);
+    }
+  };
+
+  // ============================================
+  // IMPRIMIR PDF
+  // ============================================
+  const handlePrint = async () => {
+    try {
+      setError(null);
+      setSuccessMessage('');
+      
+      const { pdf } = await generatePDF();
+      pdf.autoPrint();
+      window.open(pdf.output('bloburl'), '_blank');
+      
+      setSuccessMessage('✅ Abriendo vista de impresión...');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      console.error('Error al imprimir:', err);
+    }
+  };
+
+  // ============================================
+  // VALIDACIONES
+  // ============================================
+  if (!pago || !factura) {
+    return (
+      <div className="receipt-modal-overlay">
+        <div className="receipt-modal-content" style={{ maxWidth: '400px' }}>
+          <div className="receipt-header">
+            <h2>Error</h2>
+            <button className="btn-close" onClick={onClose}>
+              <X size={16} />
+            </button>
+          </div>
+          <div className="receipt-body" style={{ padding: '20px', textAlign: 'center' }}>
+            <AlertCircle size={48} color="#ef4444" style={{ margin: '0 auto 10px' }} />
+            <p>No se proporcionaron los datos del pago o factura.</p>
+          </div>
         </div>
+      </div>
+    );
+  }
 
-        <div ref={receiptRef} className="receipt-content">
-          <div className="receipt-body">
-            <div className="success-icon">
-              <CheckCircle size={48} color="#10b981" />
-            </div>
-
-            <h3>Sistema de Agua Potable</h3>
-            <p>Sanjapamba, Chimborazo, Ecuador</p>
-            <p>Teléfono: (593) 3-XXX-XXXX</p>
-
-            <div className="divider"></div>
-
-            <div className="receipt-details">
-              <div className="detail-row">
-                <span className="label">Comprobante N°:</span>
-                <span className="value">{String(pago.id_pago).padStart(8, '0')}</span>
-              </div>
-              
-              <div className="detail-row">
-                <span className="label">Fecha de Pago:</span>
-                <span className="value">
-                  {new Date(pago.fecha_pago).toLocaleDateString('es-EC')}
-                </span>
-              </div>
-
-              <div className="detail-row">
-                <span className="label">Factura N°:</span>
-                <span className="value">{factura?.num_factura || 'N/A'}</span>
-              </div>
-
-              <div className="divider"></div>
-
-              <div className="detail-row">
-                <span className="label">Cliente:</span>
-                <span className="value">
-                  {factura?.usuario_afiliado?.usuario_sistema?.nombres}{' '}
-                  {factura?.usuario_afiliado?.usuario_sistema?.apellidos}
-                </span>
-              </div>
-
-              <div className="detail-row">
-                <span className="label">Cédula:</span>
-                <span className="value">
-                  {factura?.usuario_afiliado?.usuario_sistema?.cedula || 'N/A'}
-                </span>
-              </div>
-
-              <div className="detail-row">
-                <span className="label">Código Usuario:</span>
-                <span className="value">
-                  {factura?.usuario_afiliado?.cod_usuario_afi || 'N/A'}
-                </span>
-              </div>
-
-              <div className="divider"></div>
-
-              <div className="detail-row highlight">
-                <span className="label">Monto Pagado:</span>
-                <span className="value amount">
-                  ${parseFloat(pago.monto_pago).toFixed(2)}
-                </span>
-              </div>
-
-              <div className="detail-row">
-                <span className="label">Método de Pago:</span>
-                <span className="value">{pago.metodo_pago}</span>
-              </div>
-
-              {pago.observaciones && (
-                <div className="detail-row">
-                  <span className="label">Observaciones:</span>
-                  <span className="value">{pago.observaciones}</span>
-                </div>
-              )}
-
-              <div className="divider"></div>
-
-              <p className="info-text">
-                Este comprobante certifica el pago realizado
-              </p>
-
-              <div className="signatures">
-                <div className="signature-box">
-                  <div className="signature-line"></div>
-                  <p>Firma del Cajero</p>
-                </div>
-                <div className="signature-box">
-                  <div className="signature-line"></div>
-                  <p>Firma del Cliente</p>
-                </div>
-              </div>
-
-              <p className="print-date">
-                Impreso el: {new Date().toLocaleString('es-EC')}
-              </p>
-            </div>
+  // ============================================
+  // RENDERIZADO DEL COMPONENTE
+  // ============================================
+  return (
+    <div className="receipt-modal-overlay" onClick={onClose}>
+      <div className="receipt-modal-content" onClick={(e) => e.stopPropagation()}>
+        {/* HEADER CON BOTONES */}
+        <div className="receipt-header">
+          <h2>
+            <CheckCircle size={22} style={{ color: '#10b981' }} />
+            Comprobante de Pago
+          </h2>
+          <div className="receipt-actions">
+            <button 
+              className="btn-print" 
+              onClick={handlePrint}
+              disabled={isGenerating}
+              title="Imprimir comprobante"
+            >
+              <Printer size={16} />
+              Imprimir
+            </button>
+            <button 
+              className="btn-download" 
+              onClick={handleDownload}
+              disabled={isGenerating}
+              title="Descargar PDF"
+            >
+              <Download size={16} />
+              Descargar
+            </button>
+            {onSave && (
+              <button 
+                className="btn-download" 
+                onClick={handleSaveToDatabase}
+                disabled={isGenerating}
+                style={{ background: '#8b5cf6' }}
+                title="Guardar en base de datos"
+              >
+                <Save size={16} />
+                Guardar BD
+              </button>
+            )}
+            <button className="btn-close" onClick={onClose} title="Cerrar">
+              <X size={16} />
+            </button>
           </div>
         </div>
 
-        <div className="receipt-actions">
-          <button className="btn-print" onClick={handlePrint}>
-            <Printer size={18} />
-            Imprimir
-          </button>
-          <button className="btn-close" onClick={onClose}>
-            Cerrar
-          </button>
+        {/* MENSAJES DE ERROR Y ÉXITO */}
+        <div className="receipt-body">
+          {error && (
+            <div style={{ 
+              padding: '12px', 
+              background: '#fee2e2', 
+              borderRadius: '6px',
+              marginBottom: '15px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              border: '1px solid #fca5a5'
+            }}>
+              <AlertCircle size={18} color="#dc2626" />
+              <span style={{ color: '#dc2626', fontSize: '13px', fontWeight: '500' }}>
+                {error}
+              </span>
+            </div>
+          )}
+
+          {successMessage && (
+            <div style={{ 
+              padding: '12px', 
+              background: '#d1fae5', 
+              borderRadius: '6px',
+              marginBottom: '15px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              border: '1px solid #6ee7b7'
+            }}>
+              <CheckCircle size={18} color="#059669" />
+              <span style={{ color: '#059669', fontSize: '13px', fontWeight: '500' }}>
+                {successMessage}
+              </span>
+            </div>
+          )}
+
+          {isGenerating && (
+            <div style={{ 
+              padding: '20px', 
+              textAlign: 'center',
+              color: '#6b7280',
+              fontSize: '14px'
+            }}>
+              ⏳ Generando comprobante...
+            </div>
+          )}
+
+          {/* VISTA PREVIA DEL COMPROBANTE */}
+          <div className="receipt-company-header">
+            <h1>JUNTA DE AGUA POTABLE</h1>
+            <h2>SANJAPAMBA</h2>
+            <p>Sanjapamba, Chimborazo, Ecuador</p>
+            <p>Teléfono: (593) 3-XXX-XXXX</p>
+          </div>
+
+          <div className="receipt-divider"></div>
+
+          <div className="receipt-title">
+            <h3>COMPROBANTE DE PAGO</h3>
+            <p className="receipt-number">No. {pago.id_pago}</p>
+          </div>
+
+          {/* DATOS DEL CLIENTE */}
+          <div className="receipt-section">
+            <h4>Datos del Cliente</h4>
+            <div className="receipt-info-grid">
+              <div className="receipt-info-item">
+                <span className="label">Cliente:</span>
+                <span className="value">
+                  {factura.usuario_afiliado?.usuario_sistema?.nombres || ''}{' '}
+                  {factura.usuario_afiliado?.usuario_sistema?.apellidos || ''}
+                </span>
+              </div>
+              <div className="receipt-info-item">
+                <span className="label">Cédula:</span>
+                <span className="value">
+                  {factura.usuario_afiliado?.usuario_sistema?.cedula || 'N/A'}
+                </span>
+              </div>
+              <div className="receipt-info-item">
+                <span className="label">Código:</span>
+                <span className="value">
+                  {factura.usuario_afiliado?.cod_usuario_afi || 'N/A'}
+                </span>
+              </div>
+              <div className="receipt-info-item">
+                <span className="label">Medidor:</span>
+                <span className="value">
+                  {factura.usuario_afiliado?.medidores?.[0]?.num_medidor || 'N/A'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* DATOS DE LA FACTURA */}
+          <div className="receipt-section">
+            <h4>Datos de la Factura</h4>
+            <div className="receipt-info-grid">
+              <div className="receipt-info-item">
+                <span className="label">Factura No.:</span>
+                <span className="value">{factura.num_factura || 'N/A'}</span>
+              </div>
+              <div className="receipt-info-item">
+                <span className="label">Fecha Emisión:</span>
+                <span className="value">{formatDateShort(factura.fecha_emision)}</span>
+              </div>
+              <div className="receipt-info-item">
+                <span className="label">Total Factura:</span>
+                <span className="value">{formatCurrency(factura.total)}</span>
+              </div>
+              <div className="receipt-info-item">
+                <span className="label">Estado:</span>
+                <span className={`value status-${factura.estado_factura}`}>
+                  {(factura.estado_factura || 'N/A').toUpperCase()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* DETALLES DEL PAGO */}
+          <div className="receipt-section">
+            <h4>Detalles del Pago</h4>
+            <div className="receipt-info-grid">
+              <div className="receipt-info-item">
+                <span className="label">Fecha de Pago:</span>
+                <span className="value">{formatDateShort(pago.fecha_pago)}</span>
+              </div>
+              <div className="receipt-info-item">
+                <span className="label">Método de Pago:</span>
+                <span className="value">{pago.metodo_pago || 'N/A'}</span>
+              </div>
+              <div className="receipt-info-item" style={{ gridColumn: '1 / -1' }}>
+                <span className="label">Recibido por:</span>
+                <span className="value">
+                  {pago.usuario_cajero?.nombres || ''}{' '}
+                  {pago.usuario_cajero?.apellidos || ''}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* MONTO PAGADO */}
+          <div className="receipt-amount-section">
+            <div className="receipt-amount-row">
+              <span className="label">MONTO PAGADO:</span>
+              <span className="amount">{formatCurrency(pago.monto_pago)}</span>
+            </div>
+          </div>
+
+          {/* OBSERVACIONES */}
+          {pago.observaciones && pago.observaciones.trim() !== '' && (
+            <p className="receipt-notes">
+              <strong>Observaciones:</strong> {pago.observaciones}
+            </p>
+          )}
+
+          {/* FIRMAS */}
+          <div className="receipt-signature">
+            <div className="signature-line">
+              <hr />
+              <p>Firma del Cajero</p>
+            </div>
+            <div className="signature-line">
+              <hr />
+              <p>Firma del Cliente</p>
+            </div>
+          </div>
+
+          {/* PIE DE PÁGINA */}
+          <div className="receipt-footer">
+            <p>Este comprobante certifica el pago realizado</p>
+            <p className="receipt-print-date">
+              Generado el: {new Date().toLocaleString('es-EC')}
+            </p>
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
+// ============================================
+// FUNCIÓN EXPORTABLE PARA GENERAR PDF
+// ============================================
+// ============================================
+// FUNCIÓN EXPORTABLE PARA GENERAR PDF (CORREGIDA)
+// ============================================
 export const generatePaymentPDF = async (pago, factura) => {
+  console.log('🔧 Generando PDF para pago:', pago.id_pago);
+  
   try {
-    console.log('📄 Iniciando generación de PDF...');
-
-    // Crear el contenido HTML del comprobante
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body {
-            font-family: 'Courier New', monospace;
-            padding: 20px;
-            background: white;
-            color: #000;
-            line-height: 1.5;
-            width: 210mm;
-            height: 297mm;
-          }
-          .receipt-container {
-            max-width: 100%;
-            margin: 0 auto;
-            padding: 15px;
-            background: white;
-            min-height: 297mm;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #000;
-            padding-bottom: 10px;
-          }
-          .header h1 {
-            font-size: 16px;
-            margin: 5px 0;
-          }
-          .header p {
-            font-size: 11px;
-            margin: 3px 0;
-          }
-          .section {
-            margin: 15px 0;
-            border: 1px solid #ccc;
-            padding: 10px;
-          }
-          .section-title {
-            font-weight: bold;
-            font-size: 12px;
-            margin-bottom: 8px;
-            border-bottom: 1px solid #000;
-            padding-bottom: 5px;
-          }
-          .row {
-            display: flex;
-            justify-content: space-between;
-            font-size: 11px;
-            padding: 5px 0;
-            border-bottom: 1px dotted #ccc;
-          }
-          .row:last-child {
-            border-bottom: none;
-          }
-          .label {
-            font-weight: bold;
-            width: 40%;
-          }
-          .value {
-            text-align: right;
-            width: 55%;
-          }
-          .amount-box {
-            background: #f0f0f0;
-            border: 2px solid #000;
-            padding: 15px;
-            text-align: center;
-            margin: 20px 0;
-            font-size: 18px;
-            font-weight: bold;
-          }
-          .signatures {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 30px;
-            padding-top: 20px;
-          }
-          .signature {
-            width: 150px;
-            text-align: center;
-          }
-          .sig-line {
-            border-top: 1px solid #000;
-            margin-bottom: 5px;
-            height: 40px;
-          }
-          .sig-label {
-            font-size: 10px;
-          }
-          .footer {
-            text-align: center;
-            font-size: 9px;
-            margin-top: 20px;
-            border-top: 1px solid #ccc;
-            padding-top: 10px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="receipt-container">
-          <!-- ENCABEZADO -->
-          <div class="header">
-            <h1>COMPROBANTE DE PAGO</h1>
-            <p>Junta de Agua Potable Sanjapamba</p>
-            <p>Chimborazo, Ecuador</p>
-            <p>Tel: (593) 3-XXX-XXXX</p>
-          </div>
-
-          <!-- DATOS GENERALES -->
-          <div class="section">
-            <div class="section-title">DATOS DEL COMPROBANTE</div>
-            <div class="row">
-              <span class="label">Número:</span>
-              <span class="value">${String(pago.id_pago).padStart(8, '0')}</span>
-            </div>
-            <div class="row">
-              <span class="label">Fecha:</span>
-              <span class="value">${new Date(pago.fecha_pago).toLocaleDateString('es-EC')}</span>
-            </div>
-            <div class="row">
-              <span class="label">Hora:</span>
-              <span class="value">${new Date(pago.fecha_pago).toLocaleTimeString('es-EC')}</span>
-            </div>
-          </div>
-
-          <!-- DATOS DEL CLIENTE -->
-          <div class="section">
-            <div class="section-title">DATOS DEL CLIENTE</div>
-            <div class="row">
-              <span class="label">Cliente:</span>
-              <span class="value">${factura?.usuario_afiliado?.usuario_sistema?.nombres || ''} ${factura?.usuario_afiliado?.usuario_sistema?.apellidos || ''}</span>
-            </div>
-            <div class="row">
-              <span class="label">Cédula:</span>
-              <span class="value">${factura?.usuario_afiliado?.usuario_sistema?.cedula || 'N/A'}</span>
-            </div>
-            <div class="row">
-              <span class="label">Usuario:</span>
-              <span class="value">${factura?.usuario_afiliado?.cod_usuario_afi || 'N/A'}</span>
-            </div>
-            ${factura?.usuario_afiliado?.medidores?.[0]?.num_medidor ? `
-            <div class="row">
-              <span class="label">Medidor:</span>
-              <span class="value">${factura.usuario_afiliado.medidores[0].num_medidor}</span>
-            </div>
-            ` : ''}
-          </div>
-
-          <!-- DATOS DE LA FACTURA -->
-          ${factura?.num_factura ? `
-          <div class="section">
-            <div class="section-title">DATOS DE LA FACTURA</div>
-            <div class="row">
-              <span class="label">Número Factura:</span>
-              <span class="value">${factura.num_factura}</span>
-            </div>
-            <div class="row">
-              <span class="label">Fecha Emisión:</span>
-              <span class="value">${factura?.fecha_emision ? new Date(factura.fecha_emision).toLocaleDateString('es-EC') : 'N/A'}</span>
-            </div>
-            <div class="row">
-              <span class="label">Total Factura:</span>
-              <span class="value">$ ${parseFloat(factura?.total || 0).toFixed(2)}</span>
-            </div>
-          </div>
-          ` : ''}
-
-          <!-- MONTO PAGADO -->
-          <div class="amount-box">
-            PAGO: $ ${parseFloat(pago.monto_pago).toFixed(2)}
-          </div>
-
-          <!-- DATOS DEL PAGO -->
-          <div class="section">
-            <div class="section-title">DETALLES DEL PAGO</div>
-            <div class="row">
-              <span class="label">Método:</span>
-              <span class="value">${pago.metodo_pago || 'N/A'}</span>
-            </div>
-            ${pago.cajero ? `
-            <div class="row">
-              <span class="label">Cajero:</span>
-              <span class="value">${pago.cajero.nombres} ${pago.cajero.apellidos}</span>
-            </div>
-            ` : ''}
-            ${pago.observaciones ? `
-            <div class="row">
-              <span class="label">Observaciones:</span>
-              <span class="value">${pago.observaciones}</span>
-            </div>
-            ` : ''}
-          </div>
-
-          <!-- FIRMAS -->
-          <div class="signatures">
-            <div class="signature">
-              <div class="sig-line"></div>
-              <div class="sig-label">Firma del Cajero</div>
-            </div>
-            <div class="signature">
-              <div class="sig-line"></div>
-              <div class="sig-label">Firma del Cliente</div>
-            </div>
-          </div>
-
-          <!-- FOOTER -->
-          <div class="footer">
-            <p>Documento generado electrónicamente el ${new Date().toLocaleString('es-EC')}</p>
-            <p>Gracias por su pago</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
-    // Crear elemento temporal
-    const container = document.createElement('div');
-    container.innerHTML = htmlContent;
-    container.style.position = 'absolute';
-    container.style.left = '-99999px';
-    container.style.top = '0';
-    container.style.width = '210mm';
-    document.body.appendChild(container);
-
-    // ⏱️ Esperar a que se renderice
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Convertir HTML a Canvas
-    console.log('🎨 Convirtiendo HTML a imagen...');
-    const canvas = await html2canvas(container, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-      windowHeight: container.scrollHeight,
-      windowWidth: 800
-    });
-
-    // Limpiar elemento temporal
-    document.body.removeChild(container);
-
-    // Crear PDF
-    console.log('📝 Creando PDF...');
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
-
-    const imgWidth = 210; // Ancho A4 en mm
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    
-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-
-    // Generar blob
-    const pdfBlob = pdf.output('blob');
-
-    // Validación
-    if (!pdfBlob || pdfBlob.size === 0) {
-      throw new Error('PDF generado está vacío');
+    // Validaciones
+    if (!pago || !factura) {
+      throw new Error('Faltan datos del pago o factura');
     }
 
-    console.log('✅ PDF generado:', `${pdfBlob.size} bytes`);
+    // Función auxiliar para formatear fechas
+    const formatDateShort = (dateString) => {
+      if (!dateString) return 'N/A';
+      try {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('es-EC');
+      } catch (e) {
+        return 'N/A';
+      }
+    };
 
-    // Convertir a File
-    const fileName = `comprobante_${String(pago.id_pago).padStart(8, '0')}_${Date.now()}.pdf`;
-    const file = new File([pdfBlob], fileName, {
+    const formatDate = (dateString) => {
+      if (!dateString) return 'N/A';
+      try {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('es-EC', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } catch (e) {
+        return 'N/A';
+      }
+    };
+
+    const formatCurrency = (value) => {
+      const numValue = parseFloat(value) || 0;
+      return new Intl.NumberFormat('es-EC', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2
+      }).format(numValue);
+    };
+
+    // ===== CREAR DOCUMENTO PDF =====
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+      compress: true
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 15;
+    let y = 20;
+
+    // ===== ENCABEZADO =====
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(31, 41, 55);
+    doc.text('JUNTA DE AGUA POTABLE', pageWidth / 2, y, { align: 'center' });
+    
+    y += 7;
+    doc.setFontSize(14);
+    doc.setTextColor(59, 130, 246);
+    doc.text('SANJAPAMBA', pageWidth / 2, y, { align: 'center' });
+    
+    y += 5;
+    doc.setFontSize(9);
+    doc.setTextColor(107, 114, 128);
+    doc.text('Sanjapamba, Chimborazo, Ecuador', pageWidth / 2, y, { align: 'center' });
+    
+    y += 4;
+    doc.text('Teléfono: (593) 3-XXX-XXXX', pageWidth / 2, y, { align: 'center' });
+
+    // Línea divisoria
+    y += 6;
+    doc.setDrawColor(209, 213, 219);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, pageWidth - margin, y);
+
+    // ===== TÍTULO =====
+    y += 10;
+    doc.setFontSize(14);
+    doc.setTextColor(31, 41, 55);
+    doc.setFont('helvetica', 'bold');
+    doc.text('COMPROBANTE DE PAGO', pageWidth / 2, y, { align: 'center' });
+    
+    y += 6;
+    doc.setFontSize(10);
+    doc.setTextColor(107, 114, 128);
+    doc.text(`No. ${pago.id_pago || 'N/A'}`, pageWidth / 2, y, { align: 'center' });
+
+    // ===== DATOS DEL CLIENTE =====
+    y += 10;
+    doc.setFontSize(11);
+    doc.setTextColor(55, 65, 81);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DATOS DEL CLIENTE', margin, y);
+    
+    y += 7;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(31, 41, 55);
+    
+    const nombreCliente = factura?.usuario_afiliado?.usuario_sistema 
+      ? `${factura.usuario_afiliado.usuario_sistema.nombres || ''} ${factura.usuario_afiliado.usuario_sistema.apellidos || ''}`.trim()
+      : 'N/A';
+    const cedulaCliente = factura?.usuario_afiliado?.usuario_sistema?.cedula || 'N/A';
+    const codigoCliente = factura?.usuario_afiliado?.cod_usuario_afi || 'N/A';
+    const numMedidor = factura?.usuario_afiliado?.medidores?.[0]?.num_medidor || 'N/A';
+    const nombreSector = factura?.usuario_afiliado?.sector?.nombre_sector || 'N/A';
+
+    doc.text(`Cliente: ${nombreCliente}`, margin, y);
+    y += 5;
+    doc.text(`Cédula: ${cedulaCliente}`, margin, y);
+    doc.text(`Código: ${codigoCliente}`, pageWidth / 2, y);
+    y += 5;
+    doc.text(`Medidor: ${numMedidor}`, margin, y);
+    doc.text(`Sector: ${nombreSector}`, pageWidth / 2, y);
+
+    // ===== DATOS DE LA FACTURA =====
+    y += 10;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(55, 65, 81);
+    doc.text('DATOS DE LA FACTURA', margin, y);
+    
+    y += 7;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(31, 41, 55);
+    
+    doc.text(`Factura No.: ${factura?.num_factura || 'N/A'}`, margin, y);
+    y += 5;
+    doc.text(`Fecha Emisión: ${formatDateShort(factura?.fecha_emision)}`, margin, y);
+    y += 5;
+    doc.text(`Fecha Vencimiento: ${formatDateShort(factura?.fecha_vencimiento)}`, margin, y);
+    y += 5;
+    doc.text(`Total Factura: ${formatCurrency(factura?.total)}`, margin, y);
+    doc.text(`Estado: ${(factura?.estado_factura || 'N/A').toUpperCase()}`, pageWidth / 2, y);
+
+    // ===== DETALLES DEL PAGO =====
+    y += 10;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(55, 65, 81);
+    doc.text('DETALLES DEL PAGO', margin, y);
+    
+    y += 7;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    
+    doc.text(`Fecha de Pago: ${formatDate(pago?.fecha_pago)}`, margin, y);
+    y += 5;
+    doc.text(`Método de Pago: ${pago?.metodo_pago || 'N/A'}`, margin, y);
+    y += 5;
+    
+    const nombreCajero = pago?.usuario_cajero 
+      ? `${pago.usuario_cajero.nombres || ''} ${pago.usuario_cajero.apellidos || ''}`.trim()
+      : 'N/A';
+    doc.text(`Recibido por: ${nombreCajero}`, margin, y);
+
+    // ===== MONTO PAGADO (DESTACADO) =====
+    y += 12;
+    doc.setFillColor(59, 130, 246);
+    doc.roundedRect(margin, y - 5, pageWidth - (margin * 2), 18, 3, 3, 'F');
+    
+    y += 4;
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('MONTO PAGADO:', margin + 5, y);
+    
+    doc.setFontSize(18);
+    const montoPagadoStr = formatCurrency(pago?.monto_pago);
+    doc.text(montoPagadoStr, pageWidth - margin - 5, y, { align: 'right' });
+
+    // ===== OBSERVACIONES =====
+    if (pago?.observaciones && pago.observaciones.trim() !== '') {
+      y += 15;
+      doc.setFillColor(254, 243, 199);
+      const obsHeight = 12;
+      doc.roundedRect(margin, y - 3, pageWidth - (margin * 2), obsHeight, 2, 2, 'F');
+      
+      y += 3;
+      doc.setTextColor(120, 53, 15);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'italic');
+      const obsTexto = `Observaciones: ${pago.observaciones}`;
+      const obsLineas = doc.splitTextToSize(obsTexto, pageWidth - (margin * 2) - 10);
+      doc.text(obsLineas, margin + 5, y);
+      y += obsLineas.length * 4;
+    }
+
+    // ===== FIRMAS =====
+    y += 30;
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.3);
+    doc.line(margin + 10, y, margin + 70, y);
+    doc.line(pageWidth - margin - 70, y, pageWidth - margin - 10, y);
+    
+    y += 4;
+    doc.setFontSize(8);
+    doc.setTextColor(156, 163, 175);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Firma del Cajero', margin + 40, y, { align: 'center' });
+    doc.text('Firma del Cliente', pageWidth - margin - 40, y, { align: 'center' });
+
+    // ===== PIE DE PÁGINA =====
+    y += 15;
+    doc.setFontSize(7);
+    doc.text('Este comprobante certifica el pago realizado', pageWidth / 2, y, { align: 'center' });
+    y += 4;
+    doc.text(`Impreso el: ${new Date().toLocaleString('es-EC')}`, pageWidth / 2, y, { align: 'center' });
+
+    // ===== GENERAR BLOB Y FILE =====
+    const pdfBlob = doc.output('blob');
+    const fileName = `Comprobante_Pago_${pago.id_pago}_Factura_${factura.num_factura}.pdf`;
+    
+    // Crear un objeto File desde el Blob
+    const pdfFile = new File([pdfBlob], fileName, { 
       type: 'application/pdf',
       lastModified: Date.now()
     });
 
-    return file;
+    // Validar tamaño (máximo 5MB)
+    const sizeInMB = pdfFile.size / (1024 * 1024);
+    console.log(`📄 PDF generado: ${fileName} (${sizeInMB.toFixed(2)} MB)`);
+    
+    if (sizeInMB > 5) {
+      throw new Error(`El PDF generado (${sizeInMB.toFixed(2)} MB) excede el límite de 5 MB`);
+    }
+
+    // Retornar el archivo File (compatible con FormData y createObjectURL)
+    return pdfFile;
 
   } catch (error) {
-    console.error('❌ Error generando PDF:', error);
-    throw error;
+    console.error('❌ Error en generatePaymentPDF:', error);
+    throw new Error(`Error al generar PDF: ${error.message}`);
   }
 };
+
 
 export default PaymentReceipt;

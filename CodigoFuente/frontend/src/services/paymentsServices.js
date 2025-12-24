@@ -39,7 +39,7 @@ class PaymentsServices {
         'Accept': 'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 50000,
+      timeout: 120000,
     };
 
     const finalOptions = {
@@ -471,157 +471,188 @@ class PaymentsServices {
   }
 
   /**
-   * Subir comprobante PDF para un pago
-   */
-  async uploadComprobante(idPago, file) {
-    try {
-      // Validar archivo
-      if (!file) {
-        throw new Error('No se proporcionó ningún archivo');
-      }
+ * Subir comprobante PDF para un pago
+ */
+async uploadComprobante(idPago, file) {
+  try {
+    console.log(`📤 Subiendo comprobante para pago ${idPago}...`);
+    console.log('📄 Archivo:', file.name, `(${(file.size / 1024).toFixed(2)} KB)`);
 
-      if (!file.name.toLowerCase().endsWith('.pdf')) {
-        throw new Error('Solo se permiten archivos PDF');
-      }
-
-      // Validar tamaño (máximo 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        throw new Error('El archivo no debe superar 5MB');
-      }
-
-      // Crear FormData
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const url = `${API_CONFIG.baseURL}/pagos/${idPago}/comprobante`;
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authService.getToken()}`
-          // NO incluir 'Content-Type' - fetch lo establece automáticamente con FormData
-        },
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Error al subir comprobante');
-      }
-
-      const data = await response.json();
-      
-      return {
-        success: true,
-        data: data,
-        message: 'Comprobante subido exitosamente'
-      };
-      
-    } catch (error) {
-      console.error('❌ Error subiendo comprobante:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al subir comprobante'
-      };
+    // Validar archivo
+    if (!file) {
+      throw new Error('No se proporcionó ningún archivo');
     }
-  }
 
-  /**
-   * Descargar comprobante PDF de un pago
-   */
-  async downloadComprobante(idPago) {
-    try {
-      const url = `${API_CONFIG.baseURL}/pagos/${idPago}/comprobante`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${authService.getToken()}`
-        }
-      });
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('El pago no tiene comprobante');
-        }
-        throw new Error('No se pudo descargar el comprobante');
-      }
-
-      // Obtener el nombre del archivo desde los headers
-      const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = `comprobante_pago_${idPago}.pdf`;
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-        if (filenameMatch) {
-          filename = filenameMatch[1];
-        }
-      }
-
-      // Descargar el archivo
-      const blob = await response.blob();
-
-
-      console.log("Blob size:", blob.size);
-      console.log("Blob type:", blob.type);
-
-      if (blob.size === 0) {
-        throw new Error("El PDF llegó vacío");
-      }
-
-
-      const url_blob = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url_blob;
-      a.download = filename;
-
-      document.body.appendChild(a);
-      a.click();
-      
-      document.body.removeChild(a);
-
-      // 🔥 NO revocar inmediatamente
-      setTimeout(() => {
-        window.URL.revokeObjectURL(url_blob);
-      }, 1000);
-
-
-      return {
-        success: true,
-        message: 'Comprobante descargado exitosamente',
-        filename: filename
-      };
-      
-    } catch (error) {
-      console.error('❌ Error descargando comprobante:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al descargar comprobante'
-      };
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      throw new Error('Solo se permiten archivos PDF');
     }
-  }
 
-  /**
-   * Eliminar comprobante de un pago
-   */
-  async deleteComprobante(idPago) {
-    try {
-      const data = await this.makeRequest(`/pagos/${idPago}/comprobante`, {
-        method: 'DELETE'
-      });
-
-      return {
-        success: true,
-        data: data,
-        message: 'Comprobante eliminado exitosamente'
-      };
-      
-    } catch (error) {
-      console.error('❌ Error eliminando comprobante:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al eliminar comprobante'
-      };
+    // Validar tamaño (máximo 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error(`El archivo excede 5MB (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
     }
+
+    // Crear FormData con el nombre correcto del campo
+    const formData = new FormData();
+    formData.append('comprobante', file); // ✅ CAMBIAR DE 'file' A 'comprobante'
+
+    const url = `${API_CONFIG.baseURL}/pagos/${idPago}/comprobante`;
+    
+    console.log('🌐 Enviando a:', url);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authService.getToken()}`
+        // NO incluir 'Content-Type' - fetch lo establece automáticamente
+      },
+      body: formData
+    });
+
+    console.log('📡 Response status:', response.status);
+
+    if (!response.ok) {
+      let errorMessage = 'Error al subir comprobante';
+      try {
+        const errorData = await response.json();
+        console.error('❌ Error del servidor:', errorData);
+        errorMessage = errorData.detail || errorData.message || errorMessage;
+      } catch (e) {
+        errorMessage = `Error HTTP ${response.status}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    console.log('✅ Respuesta del servidor:', data);
+    
+    return {
+      success: true,
+      data: data.data || data,
+      message: data.message || 'Comprobante subido exitosamente'
+    };
+    
+  } catch (error) {
+    console.error('❌ Error subiendo comprobante:', error);
+    throw error; // ✅ Lanzar el error para que handleCreatePago lo capture
   }
+}
+
+/**
+ * Descargar comprobante PDF de un pago
+ */
+async downloadComprobante(idPago) {
+  try {
+    console.log(`📥 Descargando comprobante del pago ${idPago}...`);
+    
+    const url = `${API_CONFIG.baseURL}/pagos/${idPago}/comprobante`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${authService.getToken()}`
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('El pago no tiene comprobante');
+      }
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'No se pudo descargar el comprobante');
+    }
+
+    // Obtener el nombre del archivo desde los headers
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `comprobante_pago_${idPago}.pdf`;
+    
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1].replace(/['"]/g, '');
+      }
+    }
+
+    // Convertir la respuesta a blob
+    const blob = await response.blob();
+
+    console.log('📄 Blob recibido:', {
+      size: blob.size,
+      type: blob.type,
+      filename: filename
+    });
+
+    if (blob.size === 0) {
+      throw new Error('El PDF está vacío');
+    }
+
+    // Crear URL temporal y descargar
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename;
+    link.style.display = 'none';
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Limpiar URL después de un segundo
+    setTimeout(() => {
+      window.URL.revokeObjectURL(blobUrl);
+    }, 1000);
+
+    console.log('✅ Descarga iniciada:', filename);
+
+    return {
+      success: true,
+      message: 'Comprobante descargado exitosamente',
+      filename: filename
+    };
+    
+  } catch (error) {
+    console.error('❌ Error descargando comprobante:', error);
+    throw error;
+  }
+}
+
+/**
+ * Eliminar comprobante de un pago
+ */
+async deleteComprobante(idPago) {
+  try {
+    console.log(`🗑️ Eliminando comprobante del pago ${idPago}...`);
+    
+    const url = `${API_CONFIG.baseURL}/pagos/${idPago}/comprobante`;
+    
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${authService.getToken()}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Error al eliminar comprobante');
+    }
+
+    const data = await response.json();
+    console.log('✅ Comprobante eliminado');
+
+    return {
+      success: true,
+      data: data,
+      message: data.message || 'Comprobante eliminado exitosamente'
+    };
+    
+  } catch (error) {
+    console.error('❌ Error eliminando comprobante:', error);
+    throw error;
+  }
+}
+
 
   /**
    * Obtener caché de pagos

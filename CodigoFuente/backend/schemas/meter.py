@@ -170,3 +170,21 @@ class AfiliadoDisponible(BaseModel):
 
     class Config:
         from_attributes = True
+
+class MedidorListItem(BaseModel):
+    id_medidor: int
+    num_medidor: str | None
+    activo: bool | None
+    latitud: float | None
+    longitud: float | None
+    altitud: float | None
+
+    id_sector: int | None
+    nombre_sector: str | None
+
+    id_usuario_afi: int | None
+    cod_usuario_afi: int | None    # ✅ Agregado
+    nombre_afiliado: str | None
+
+    class Config:
+        from_attributes = True

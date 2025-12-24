@@ -1,44 +1,82 @@
-// src/pages/UniversalDashboard.js
+// ============================================================================
+// 🌐 UNIVERSAL DASHBOARD
+// Archivo central del sistema donde se arma el dashboard dinámico
+// Maneja:
+//  - Navegación
+//  - Carga de módulos
+//  - Rutas protegidas
+//  - Layout general
+// ============================================================================
+
+// ============================================================================
+// IMPORTACIONES BASE DE REACT Y ROUTER
+// ============================================================================
 import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 
+// ============================================================================
+// 🔐 SERVICIOS DE AUTENTICACIÓN Y USUARIO
+// ============================================================================
 import authService from '../services/authServices';
 import userService from '../services/userServices';
 
-// Estilos
+// ============================================================================
+// 🎨 ESTILOS DEL DASHBOARD
+// ============================================================================
 import './UniversalDashboard.css';
 
-// Importar configuración de módulos
+// ============================================================================
+// 🧠 DEFINICIÓN DINÁMICA DE MÓDULOS
+// ============================================================================
 import { buildModulesFromPermissions, getModuleByPath } from '../utils/modulesDefinitions';
+import ChangePasswordModal from '../components/ChangePasswordModal'; // Cambio de contraseña
 
-// Componentes compartidos
-import NotificationDropdown from '../sections/NotificationDropdown';
-import UserProfile from '../sections/UserProfile';
-import ChangePasswordModal from '../sections/ChangePasswordModal';
-import ProfileSection from '../sections/ProfileSection';
-import NotificationsSection from '../sections/NotificationsSection';
-import HomeSection from '../sections/HomeSection'; //  COMPONENTE HOME UNIVERSAL
+// ============================================================================
+// 🧩 COMPONENTES GENERALES (COMPARTIDOS POR TODOS LOS ROLES)
+// ============================================================================
+import HomeSection from '../sections/general/HomeSection';            // Inicio universal
+import NotificationDropdown from '../sections/general/NotificationDropdown'; // Dropdown de notificaciones
+import UserProfile from '../sections/general/UserProfile';            // Info del usuario
+import ProfileSection from '../sections/general/ProfileSection';      // Perfil
+import GeolocationSection from '../sections/general/GeolocationSection'; // Geolocalización
+import NotificationsSection from '../sections/general/NotificationsSection'; // Historial notificaciones
+import MiniMapaBurbuja from '../sections/general/MiniMapaBurbuja';    // Mini mapa visual
 
-// Componentes de secciones
-import UsersSection from '../sections/UsersSection';
-import RolesSection from '../sections/RolesSection';
-import SectorsSection from '../sections/SectorsSection';
-import AffiliatesSection from '../sections/AffiliatesSection';
-import MetersSection from '../sections/MetersSection';
-import GeolocationSection from '../sections/GeolocationSection';
-import InvoicesSection from '../sections/InvoicesSection';
-import TarifasSection from '../sections/TarifasSection';
-import ConfigSection from '../sections/ConfigSection';
-import ServiciosSection from '../sections/ServiciosSection';
-import ReadingsSection from '../sections/ReadingsSection';
-import FinesSection from '../sections/FinesSection';
-import FinesAffiliatesSection from '../sections/FinesAffiliatesSection';  
-import HistorialConsumos from '../sections/HistorialConsumos';
-import PaymentsSection from '../sections/PaymentsSection';
+// ============================================================================
+// 🛠️ COMPONENTES DE SECCIÓN - ADMINISTRADOR
+// ============================================================================
+import UsersSection from '../sections/administrador/UsersSection';          // Usuarios
+import AffiliatesSection from '../sections/administrador/AffiliatesSection';// Afiliados
+import MetersSection from '../sections/administrador/MetersSection';        //  Medidores
+import FinesSection from '../sections/administrador/FinesSection';          //  Multas
+import FinesAffiliatesSection from '../sections/administrador/FinesAffiliatesSection'; // Multas a afiliados
+import InvoicesSection from '../sections/administrador/InvoicesSection';    //  Facturación
+import RolesSection from '../sections/administrador/RolesSection';          // Roles
+import SectorsSection from '../sections/administrador/SectorsSection';      // Sectores
+import ConfigSection from '../sections/administrador/ConfigSection';        // Configuración
+import ServiciosSection from '../sections/administrador/ServiciosSection';  // Servicios
+import TarifasSection from '../sections/administrador/TarifasSection';      // Tarifas
+import ReportsSection from '../sections/administrador/ReportsSection';      // Reportes
 
-import MiniMapaBurbuja from '../sections/MiniMapaBurbuja'; 
+// ============================================================================
+// 📋 COMPONENTES DE SECCIÓN - LECTOR
+// ============================================================================
+import ReadingsSection from '../sections/lector/ReadingsSection';
 
-// Iconos
+// ============================================================================
+// 🧑‍🤝‍🧑 COMPONENTES DE SECCIÓN - AFILIADOS
+// ============================================================================
+import HistorialConsumos from '../sections/Affiliates/HistorialConsumos';     // 📈 Historial de consumo
+import AffiliateBillingSection from '../sections/Affiliates/AffiliateBillingSection'; // 🧾 Facturación afiliado
+
+// ============================================================================
+// 💰 COMPONENTES DE SECCIÓN - CAJERO
+// ============================================================================
+import PaymentsSection from '../sections/cajero/PaymentsSection';
+
+// ============================================================================
+// 🎨 ICONOS (LUCIDE)
+// ============================================================================
 import { 
   Activity, 
   Droplets,
@@ -54,6 +92,7 @@ import {
 // ============================================================================
 // 📦 MAPEO DE COMPONENTES
 // ============================================================================
+
 const COMPONENT_MAP = {
   UsersSection,
   ProfileSection,
@@ -72,7 +111,9 @@ const COMPONENT_MAP = {
   FinesSection,
   FinesAffiliatesSection ,
   HistorialConsumos,
-  PaymentsSection
+  PaymentsSection,
+  ReportsSection,
+  AffiliateBillingSection
 };
  // ============================================================================
   // COMPONENTE: RENDERIZADOR DINÁMICO DE MÓDULOS

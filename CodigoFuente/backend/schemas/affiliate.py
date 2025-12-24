@@ -54,15 +54,12 @@ class AffiliateWithUserInfo(BaseModel):
     
     class Config:
         from_attributes = True
-# ========================================
-# SCHEMAS DE AFILIADO
-# ========================================
 class AffiliateCreate(BaseModel):
     """Schema para crear afiliado"""
     id_usuario_sistema: int
     id_sector: int
     fecha_afiliacion: Optional[date] = None
-    cod_usuario_afi: int
+    cod_usuario_afi: Optional[int] = None  # ✅ Hacerlo opcional
     activo: bool = True
 
 

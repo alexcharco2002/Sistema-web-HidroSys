@@ -34,7 +34,7 @@ class MetersService {
         'Accept': 'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 10000,
+      timeout: 50000,
     };
 
     const finalOptions = {

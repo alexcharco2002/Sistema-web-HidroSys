@@ -1,7 +1,7 @@
 # routes/pagos.py
 
 import locale
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, extract,case, and_,  or_
@@ -296,17 +296,13 @@ def obtener_periodos_pagos_disponibles(
         "periodos_disponibles": periodos
     }
 
-# ========================================
-# OBTENER LAS FACTURAS POR PERIODO
-# ========================================
-
 @router.get("/facturas-periodo", response_model=List[FacturaConUsuarioCompleto])
 def obtener_facturas_periodo(
     periodo: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     estado_factura: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    limit: int = Query(50, ge=1, le=100),  # ✅ REDUCIR A 50-100
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
@@ -315,16 +311,19 @@ def obtener_facturas_periodo(
 
     query = db.query(Factura)
 
-    # 🔹 CARGAS OPTIMIZADAS
+    # ✅ OPTIMIZACIÓN: Cambiar joinedload por selectinload para relaciones grandes
     query = query.options(
         joinedload(Factura.usuario_afiliado)
             .joinedload(UsuarioAfiliado.usuario_sistema),
         joinedload(Factura.usuario_afiliado)
             .joinedload(UsuarioAfiliado.sector),
+    )
+
+    query = db.query(Factura).options(
         joinedload(Factura.usuario_afiliado)
-        .joinedload(UsuarioAfiliado.medidores), 
-        selectinload(Factura.detalles),
-        selectinload(Factura.pagos)
+            .joinedload(UsuarioAfiliado.usuario_sistema),
+        joinedload(Factura.usuario_afiliado)
+            .joinedload(UsuarioAfiliado.sector)
     )
 
     # Filtros
@@ -334,20 +333,19 @@ def obtener_facturas_periodo(
     if estado_factura:
         query = query.filter(Factura.estado_factura == estado_factura)
 
-    # JOIN SOLO SI HAY BÚSQUEDA
+    # ✅ BÚSQUEDA SIN JOIN DE MEDIDORES
     if search:
         query = (
             query
             .join(Factura.usuario_afiliado)
             .join(UsuarioAfiliado.usuario_sistema)
-            .outerjoin(UsuarioAfiliado.medidores)
             .filter(
                 or_(
                     Factura.num_factura.ilike(f"%{search}%"),
                     UsuarioSistema.nombres.ilike(f"%{search}%"),
                     UsuarioSistema.apellidos.ilike(f"%{search}%"),
                     UsuarioSistema.cedula.ilike(f"%{search}%"),
-                    Medidor.num_medidor.ilike(f"%{search}%")
+                    UsuarioAfiliado.num_medidor.ilike(f"%{search}%") 
                 )
             )
         )
@@ -360,12 +358,10 @@ def obtener_facturas_periodo(
         else_=5
     )
 
-    query = query.order_by(
-        estado_orden,
-        Factura.fecha_emision.desc()
-    )
+    query = query.order_by(estado_orden, Factura.fecha_emision.desc())
 
     return query.offset(skip).limit(limit).all()
+
 
 # ========================================
 # LISTAR PAGOS
@@ -939,3 +935,201 @@ def reporte_pagos_por_fecha(
         "monto_transferencia": monto_transferencia,
         "pagos": pagos
     }
+
+@router.post("/{id_pago}/comprobante", status_code=status.HTTP_200_OK)
+async def subir_comprobante(
+    id_pago: int,
+    comprobante: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Subir comprobante PDF para un pago registrado
+    
+    - **id_pago**: ID del pago
+    - **comprobante**: Archivo PDF del comprobante (máximo 5MB)
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "pagos", "actualizar")
+    
+    # Validar que el pago existe
+    pago = db.query(Pago).filter(Pago.id_pago == id_pago).first()
+    if not pago:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pago con ID {id_pago} no encontrado"
+        )
+    
+    # Validar que el pago está activo
+    if not pago.activo or pago.estado_pago != 'REGISTRADO':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No se puede subir comprobante para pago en estado '{pago.estado_pago}'"
+        )
+    
+    # Validar tipo de archivo
+    if not comprobante.content_type or comprobante.content_type != 'application/pdf':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo debe ser un PDF"
+        )
+    
+    try:
+        # Leer el contenido del archivo
+        pdf_content = await comprobante.read()
+        
+        # Validar tamaño (máximo 5MB)
+        size_mb = len(pdf_content) / (1024 * 1024)
+        if size_mb > 5:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El archivo excede el límite de 5MB (tamaño: {size_mb:.2f} MB)"
+            )
+        
+        # Guardar en la base de datos
+        pago.comprobante_pdf = pdf_content
+        pago.nombre_archivo = comprobante.filename
+        pago.tipo_mime = comprobante.content_type
+        
+        db.commit()
+        db.refresh(pago)
+        
+        # Auditoría
+        registrar_auditoria(
+            db=db,
+            accion="UPDATE",
+            descripcion=f"Comprobante PDF subido para pago #{id_pago} - Archivo: {comprobante.filename} ({size_mb:.2f} MB)",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Comprobante guardado",
+            mensaje=f"Comprobante del pago #{id_pago} guardado exitosamente",
+            tipo="exito"
+        )
+        
+        return {
+            "success": True,
+            "message": "Comprobante guardado exitosamente",
+            "data": {
+                "id_pago": id_pago,
+                "nombre_archivo": comprobante.filename,
+                "tamano_kb": round(len(pdf_content) / 1024, 2),
+                "tamano_mb": round(size_mb, 2)
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error al guardar comprobante: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al guardar comprobante: {str(e)}"
+        )
+
+
+# ========================================
+# DESCARGAR COMPROBANTE PDF
+# ========================================
+@router.get("/{id_pago}/comprobante", status_code=status.HTTP_200_OK)
+def descargar_comprobante(
+    id_pago: int,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Descargar comprobante PDF de un pago
+    """
+    from fastapi.responses import Response
+    
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "pagos", "lectura")
+    
+    # Buscar el pago
+    pago = db.query(Pago).filter(Pago.id_pago == id_pago).first()
+    if not pago:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pago con ID {id_pago} no encontrado"
+        )
+    
+    # Verificar que tenga comprobante
+    if not pago.comprobante_pdf:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Este pago no tiene comprobante PDF"
+        )
+    
+    # Retornar el PDF
+    return Response(
+        content=pago.comprobante_pdf,
+        media_type=pago.tipo_mime or "application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename={pago.nombre_archivo or f'comprobante_{id_pago}.pdf'}"
+        }
+    )
+
+
+# ========================================
+# ELIMINAR COMPROBANTE PDF
+# ========================================
+@router.delete("/{id_pago}/comprobante", status_code=status.HTTP_200_OK)
+def eliminar_comprobante(
+    id_pago: int,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Eliminar comprobante PDF de un pago
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "pagos", "eliminar")
+    
+    # Buscar el pago
+    pago = db.query(Pago).filter(Pago.id_pago == id_pago).first()
+    if not pago:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pago con ID {id_pago} no encontrado"
+        )
+    
+    # Verificar que tenga comprobante
+    if not pago.comprobante_pdf:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Este pago no tiene comprobante PDF"
+        )
+    
+    try:
+        # Eliminar comprobante
+        nombre_archivo_anterior = pago.nombre_archivo
+        pago.comprobante_pdf = None
+        pago.nombre_archivo = None
+        pago.tipo_mime = None
+        
+        db.commit()
+        
+        # Auditoría
+        registrar_auditoria(
+            db=db,
+            accion="DELETE",
+            descripcion=f"Comprobante PDF eliminado del pago #{id_pago} - Archivo: {nombre_archivo_anterior}",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
+        return {
+            "success": True,
+            "message": "Comprobante eliminado exitosamente",
+            "id_pago": id_pago
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al eliminar comprobante: {str(e)}"
+        )

@@ -1,0 +1,508 @@
+/* ========================================
+   ESTILOS PARA HOME SECTION
+   Inspirado en el módulo de reportes
+   ======================================== */
+
+/* ========================================
+   SECCIÓN DE MÓDULOS
+   ======================================== */
+.modules-section {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.modules-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.modules-header h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.modules-count {
+  font-size: 0.875rem;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 0.375rem 0.875rem;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+/* ========================================
+   ESTADO VACÍO
+   ======================================== */
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+}
+
+.empty-state h3 {
+  font-size: 1.25rem;
+  color: #111827;
+  margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+/* ========================================
+   GRID DE MÓDULOS
+   ======================================== */
+.home-actions-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+  padding: 1.5rem;
+  border-radius: 22px;
+}
+
+
+.home-actions-grid::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.25),
+    rgba(14, 165, 233, 0.15),
+    rgba(99, 102, 241, 0.25)
+  );
+  filter: blur(22px);
+  opacity: 0.55;
+  z-index: -1;
+}
+/* ========================================
+   TARJETA DE MÓDULO 
+   ======================================== */
+.action-card-home {
+  position: relative;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 1.25rem;
+  cursor: pointer;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 160px;
+}
+
+.action-card-home::before {
+  display: none; /* Eliminar el gradiente anterior */
+}
+
+.action-card-home:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+  border-color: rgba(59, 130, 246, 0.45);
+}
+
+/* HEADER: icono + textos */
+.action-card-home .user-card-header {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.action-card-home .user-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-direction: row;
+  margin-bottom: 0.75rem;
+}
+
+/* ICONO DEL MÓDULO */
+.action-card-home .action-icon-wrapper {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(
+    circle at 25% 20%,
+    rgba(255, 255, 255, 0.7),
+    transparent 60%
+  );
+  transition: transform 0.3s;
+}
+
+.action-card-home:hover .action-icon-wrapper {
+  transform: scale(1.05);
+}
+
+/* TEXTOS DEL MÓDULO */
+.action-card-home .user-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 0.25rem;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: initial;
+  letter-spacing: 0.01em;
+}
+
+.action-card-home .action-description {
+  font-size: 0.9rem;
+  color: #6b7280;
+  line-height: 1.4;
+  margin-top: 0.25rem;
+}
+
+/* FOOTER DE LA TARJETA */
+.action-card-home::after {
+  content: 'Ver módulo →';
+  display: block;
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(209, 213, 219, 0.9);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #1f2933;
+  transition: color 0.18s ease;
+}
+
+.action-card-home:hover::after {
+  color: var(--hover-color, #2563eb);
+}
+
+/* ========================================
+   VISTA LISTA
+   ======================================== */
+.home-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 1rem;
+}
+
+.action-list-item-home {
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.action-list-item-home:hover {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: #ffffff;
+  transform: translateX(4px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+}
+
+.action-list-item-home .action-list-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.action-list-item-home .action-list-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.action-list-item-home .action-list-label {
+  font-weight: 600;
+  color: #111827;
+  font-size: 0.95rem;
+}
+
+.action-list-item-home .action-list-description {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+/* ========================================
+   SUBTITLE EN HEADER
+   ======================================== */
+.subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0;
+  font-weight: 400;
+}
+
+/* ========================================
+   BOTONES ACTIVOS (LAYOUT)
+   ======================================== */
+.btn-secondary.active {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.btn-secondary.active:hover {
+  background-color: var(--primary-dark);
+  border-color: var(--primary-dark);
+}
+
+/* ========================================
+   COLORES POR TIPO DE MÓDULO
+   ======================================== */
+
+/* Azul */
+.bg-blue-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #dbeafe;
+}
+.text-blue-600 { color: #2563eb; }
+.action-card-home.blue { --hover-color: #2563eb; }
+.action-card-home.blue:hover { border-color: #2563eb; }
+
+/* Verde */
+.bg-green-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #dcfce7;
+}
+.text-green-600 { color: #16a34a; }
+.action-card-home.green { --hover-color: #16a34a; }
+.action-card-home.green:hover { border-color: #16a34a; }
+
+/* Púrpura */
+.bg-purple-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #f3e8ff;
+}
+.text-purple-600 { color: #9333ea; }
+.action-card-home.purple { --hover-color: #9333ea; }
+.action-card-home.purple:hover { border-color: #9333ea; }
+
+/* Naranja */
+.bg-orange-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #ffedd5;
+}
+.text-orange-600 { color: #ea580c; }
+.action-card-home.orange { --hover-color: #ea580c; }
+.action-card-home.orange:hover { border-color: #ea580c; }
+
+/* Rojo */
+.bg-red-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #fee2e2;
+}
+.text-red-600 { color: #dc2626; }
+.action-card-home.red { --hover-color: #dc2626; }
+.action-card-home.red:hover { border-color: #dc2626; }
+
+/* Cyan */
+.bg-cyan-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #cffafe;
+}
+.text-cyan-600 { color: #0891b2; }
+.action-card-home.cyan { --hover-color: #0891b2; }
+.action-card-home.cyan:hover { border-color: #0891b2; }
+
+/* Índigo */
+.bg-indigo-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #e0e7ff;
+}
+.text-indigo-600 { color: #4f46e5; }
+.action-card-home.indigo { --hover-color: #4f46e5; }
+.action-card-home.indigo:hover { border-color: #4f46e5; }
+
+/* Esmeralda */
+.bg-emerald-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #d1fae5;
+}
+.text-emerald-600 { color: #059669; }
+.action-card-home.emerald { --hover-color: #059669; }
+.action-card-home.emerald:hover { border-color: #059669; }
+
+/* Amarillo */
+.bg-amber-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #fef3c7;
+}
+.text-amber-600 { color: #d97706; }
+.action-card-home.amber { --hover-color: #d97706; }
+.action-card-home.amber:hover { border-color: #d97706; }
+
+/* Rosa */
+.bg-rose-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #ffe4e6;
+}
+.text-rose-600 { color: #e11d48; }
+.action-card-home.rose { --hover-color: #e11d48; }
+.action-card-home.rose:hover { border-color: #e11d48; }
+
+/* Lima */
+.bg-lime-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #ecfccb;
+}
+.text-lime-600 { color: #65a30d; }
+.action-card-home.lime { --hover-color: #65a30d; }
+.action-card-home.lime:hover { border-color: #65a30d; }
+
+/* Teal */
+.bg-teal-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #ccfbf1;
+}
+.text-teal-600 { color: #0d9488; }
+.action-card-home.teal { --hover-color: #0d9488; }
+.action-card-home.teal:hover { border-color: #0d9488; }
+
+/* Violeta */
+.bg-violet-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #ede9fe;
+}
+.text-violet-600 { color: #7c3aed; }
+.action-card-home.violet { --hover-color: #7c3aed; }
+.action-card-home.violet:hover { border-color: #7c3aed; }
+
+/* Fucsia */
+.bg-fuchsia-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #fae8ff;
+}
+.text-fuchsia-600 { color: #c026d3; }
+.action-card-home.fuchsia { --hover-color: #c026d3; }
+.action-card-home.fuchsia:hover { border-color: #c026d3; }
+
+/* Gris */
+.bg-gray-50 { 
+  background: radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.7), transparent 60%), #f9fafb;
+}
+.text-gray-600 { color: #4b5563; }
+.action-card-home.gray { --hover-color: #4b5563; }
+.action-card-home.gray:hover { border-color: #4b5563; }
+
+/* ========================================
+   ANIMACIONES
+   ======================================== */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.action-card-home,
+.action-list-item-home {
+  animation: fadeInUp 0.4s ease-out backwards;
+}
+
+.action-card-home:nth-child(1),
+.action-list-item-home:nth-child(1) { animation-delay: 0.05s; }
+.action-card-home:nth-child(2),
+.action-list-item-home:nth-child(2) { animation-delay: 0.1s; }
+.action-card-home:nth-child(3),
+.action-list-item-home:nth-child(3) { animation-delay: 0.15s; }
+.action-card-home:nth-child(4),
+.action-list-item-home:nth-child(4) { animation-delay: 0.2s; }
+.action-card-home:nth-child(5),
+.action-list-item-home:nth-child(5) { animation-delay: 0.25s; }
+.action-card-home:nth-child(6),
+.action-list-item-home:nth-child(6) { animation-delay: 0.3s; }
+.action-card-home:nth-child(7),
+.action-list-item-home:nth-child(7) { animation-delay: 0.35s; }
+.action-card-home:nth-child(8),
+.action-list-item-home:nth-child(8) { animation-delay: 0.4s; }
+.action-card-home:nth-child(9),
+.action-list-item-home:nth-child(9) { animation-delay: 0.45s; }
+.action-card-home:nth-child(10),
+.action-list-item-home:nth-child(10) { animation-delay: 0.5s; }
+
+.modules-section {
+  animation: fadeInUp 0.5s ease-out 0.2s backwards;
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 768px) {
+  .home-actions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .action-card-home .user-name {
+    font-size: 1rem;
+  }
+
+  .action-card-home .action-description {
+    font-size: 0.85rem;
+  }
+
+  .section-header .actions {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .modules-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .modules-count {
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .action-card-home {
+    padding: 1rem;
+    min-height: 140px;
+  }
+
+  .action-card-home .action-icon-wrapper {
+    width: 48px;
+    height: 48px;
+  }
+
+  .action-list-item-home {
+    padding: 0.875rem 1rem;
+  }
+
+  .action-list-item-home .action-list-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .modules-section {
+    padding: 0 0.5rem;
+  }
+
+  .modules-header h3 {
+    font-size: 1.1rem;
+  }
+
+  .empty-state {
+    padding: 3rem 1.5rem;
+  }
+}

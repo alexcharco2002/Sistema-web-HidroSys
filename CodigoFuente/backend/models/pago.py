@@ -1,6 +1,6 @@
 # models/pago.py
 
-from sqlalchemy import Column, Integer, Numeric, String, Text, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, LargeBinary, Numeric, String, Text, Boolean, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from db.session import Base
@@ -40,7 +40,10 @@ class Pago(Base):
     fecha_anulacion = Column(DateTime(timezone=True), nullable=True)
     activo = Column(Boolean, default=True, nullable=False)
     estado_pago = Column(String(20), nullable=False, default='REGISTRADO', index=True)
-    
+   
+    comprobante_pdf = Column(LargeBinary)
+    nombre_archivo = Column(String(255))
+    tipo_mime = Column(String(50), default='application/pdf')
     # Relaciones ORM
     factura = relationship(
         "Factura",

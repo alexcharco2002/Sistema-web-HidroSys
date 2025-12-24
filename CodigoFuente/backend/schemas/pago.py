@@ -1,10 +1,11 @@
 # schemas/pago.py
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Optional, List
+from typing import Dict, Optional, List
 from datetime import datetime
 from decimal import Decimal
 
+from models.pago import Pago
 from schemas.meter import UsuarioSistemaInfo
 
 class PagoBase(BaseModel):
@@ -133,6 +134,11 @@ class PagoResponse(BaseModel):
     activo: bool
     estado_pago: str
     
+    #
+    tiene_comprobante: bool = False
+    nombre_archivo: Optional[str] = None
+    tipo_mime: Optional[str] = None
+
     # Relaciones
     factura: Optional[FacturaInfo] = None
     usuario_afiliado: Optional[UsuarioAfiliadoInfo] = None
@@ -309,3 +315,52 @@ class PagoBatchResponse(BaseModel):
     total_exitosos: int
     total_fallidos: int
     monto_total_procesado: Decimal
+
+class PagoEnReporte(BaseModel):
+    id_pago: int
+    cod_usuario_afi: Optional[str]
+    nombres: Optional[str]
+    apellidos: Optional[str]
+    monto_pago: float
+    fecha_pago: datetime
+    metodo_pago: Optional[str]
+    estado_pago: str
+    num_factura: Optional[str]
+    cajero_nombre: Optional[str]
+    
+    class Config:
+        from_attributes = True
+        
+    @classmethod
+    def from_orm(cls, pago: Pago):
+        afiliado = pago.usuario_afiliado
+        usuario = afiliado.usuario_sistema if afiliado else None
+        cajero = pago.cajero
+        
+        return cls(
+            id_pago=pago.id_pago,
+            cod_usuario_afi=afiliado.cod_usuario_afi if afiliado else None,
+            nombres=usuario.nombres if usuario else None,
+            apellidos=usuario.apellidos if usuario else None,
+            monto_pago=float(pago.monto_pago or 0),
+            fecha_pago=pago.fecha_pago,
+            metodo_pago=pago.metodo_pago,
+            estado_pago=pago.estado_pago,
+            num_factura=pago.factura.num_factura if pago.factura else None,
+            cajero_nombre=f"{cajero.nombres} {cajero.apellidos}" if cajero else None
+        )
+
+class ReportePagosResponse(BaseModel):
+    success: bool
+    data: List[PagoEnReporte]
+    skip: int
+    limit: int
+    estadisticas: Dict
+
+class ComprobanteUploadResponse(BaseModel):
+    """Respuesta al subir un comprobante"""
+    success: bool
+    message: str
+    id_pago: int
+    nombre_archivo: str
+    tamano_kb: float

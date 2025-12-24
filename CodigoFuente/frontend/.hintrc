@@ -7,9 +7,15 @@
       "default",
       {
         "ignore": [
-          "inset"
+          "inset",
+          "min-width: fit-content"
         ]
       }
     ]
-  }
+  },
+  "browserslist": [
+    "defaults",
+    "not ie 11",
+    "not ios_saf <= 12.5"
+  ]
 }

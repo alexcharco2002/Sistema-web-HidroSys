@@ -12,7 +12,9 @@ const API_CONFIG = {
     periodosDisponibles: '/afiliados/periodos-disponibles',
     consumoPorPeriodo: '/afiliados/consumo-por-periodo',
     estadisticasGenerales: '/afiliados/estadisticas',
-    exportarLecturas: '/afiliados/exportar-lecturas' 
+    exportarLecturas: '/afiliados/exportar-lecturas',
+    misLecturasPeriodosDisponibles: '/afiliados/mis-lecturas/periodos-disponibles',
+
   }
 };
 
@@ -278,6 +280,29 @@ class AffiliateGeneralServices {
       };
     }
   }
+
+  /**
+ * Obtener periodos disponibles SOLO para mis lecturas
+ */
+async getPeriodosMisLecturas() {
+  try {
+    const data = await this.makeRequest(
+      API_CONFIG.endpoints.misLecturasPeriodosDisponibles
+    );
+
+    return {
+      success: true,
+      data
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo periodos de mis lecturas:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener periodos de lecturas'
+    };
+  }
+}
+
 
   /**
    * Obtener nombre del mes en español

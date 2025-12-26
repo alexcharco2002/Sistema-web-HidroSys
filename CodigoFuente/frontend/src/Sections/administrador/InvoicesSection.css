@@ -1,11 +1,32 @@
-/* ==================== INVOICES LIST - SISTEMA DE GRID ==================== */
+/* src/sections/invoicesList.css */
+/* ESTILOS PARA VISTA DE LISTA DE FACTURAS - OPTIMIZADO */
 
+/* ==================== CONTENEDOR DE LISTA ==================== */
+.invoices-list-container {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  margin-top: 24px;
+  border: 1px solid #e2e8f0;
+}
+
+/* ==================== CABECERA DE LISTA ==================== */
 .invoices-list-header {
   display: grid;
-  grid-template-columns:
-    45px 140px 110px 100px 180px 100px 120px 110px 130px 120px;
-  gap: 12px;
-  align-items: center;
+  grid-template-columns: 
+    55px       /* # */
+    130px      /* Número */
+    110px      /* Fecha */
+    110px      /* Medidor - REDUCIDO */
+    100px      /* Código Afi - REDUCIDO */
+    1fr        /* Nombre Afi - FLEXIBLE (mínimo 200px) */
+    95px       /* Consumo */
+    150px      /* Detalles - AUMENTADO */
+    135px      /* Total */
+    110px      /* Estado */
+    140px;     /* Acciones */
+  gap: 8px;
   padding: 16px 20px;
   background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
   font-weight: 600;
@@ -17,8 +38,6 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  border-radius: 10px 10px 0 0;
-  min-width: 1165px;
 }
 
 .invoices-list-header span {
@@ -33,69 +52,55 @@
   flex-shrink: 0;
 }
 
-
-/* ==================== HEADER ==================== */
-.invoices-list-header {
-  display: grid;
-  grid-template-columns:
-    45px        /* # */
-    140px       /* Número */
-    110px       /* Fecha */
-    100px       /* Código Afi */
-    180px       /* Usuario */
-    100px       /* Consumo */
-    120px       /* Detalles */
-    110px       /* Total */
-    130px       /* Estado */
-    120px;      /* Acciones */
-  gap: 12px;
-  align-items: center;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  font-weight: 600;
-  font-size: 12px;
-  color: #ffffff;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  position: -webkit-sticky;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  border-radius: 10px 10px 0 0;
-  min-width: 1165px;
-}
-
-.invoices-list-header span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.invoices-list-header svg {
-  opacity: 0.85;
-  flex-shrink: 0;
-}
-
-/* ==================== BODY ==================== */
+/* ==================== BODY CON SCROLL ==================== */
 .invoices-list-body {
   max-height: 600px;
   overflow-y: auto;
   overflow-x: hidden;
-  background: white;
 }
 
-/* ==================== ITEMS ==================== */
+/* ==================== SCROLLBAR PERSONALIZADO ==================== */
+.invoices-list-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.invoices-list-body::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+  margin: 4px 0;
+}
+
+.invoices-list-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+  border: 2px solid #f1f5f9;
+}
+
+.invoices-list-body::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ==================== ITEMS DE LISTA ==================== */
 .invoices-list-item {
   display: grid;
-  grid-template-columns:
-    45px 140px 110px 100px 180px 100px 120px 110px 130px 120px;
-  gap: 12px;
-  align-items: center;
+  grid-template-columns: 
+    55px       /* # */
+    130px      /* Número */
+    110px      /* Fecha */
+    110px      /* Medidor - REDUCIDO */
+    100px      /* Código Afi - REDUCIDO */
+    1fr        /* Nombre Afi - FLEXIBLE (mínimo 200px) */
+    95px       /* Consumo */
+    150px      /* Detalles - AUMENTADO */
+    105px      /* Total */
+    150px      /* Estado */
+    140px;     /* Acciones */
+  gap: 8px;
   padding: 14px 20px;
   border-bottom: 1px solid #f1f5f9;
+  align-items: center;
   transition: all 0.2s ease;
-  min-width: 1165px;
+  position: relative;
 }
 
 .invoices-list-item:nth-child(even) {
@@ -104,7 +109,7 @@
 
 .invoices-list-item:hover {
   background: #eff6ff;
-  transform: scale(1.001);
+  transform: scale(1.002);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
 }
 
@@ -115,7 +120,7 @@
 .invoices-list-item.inv-anulada {
   background: linear-gradient(90deg, #fef2f2 0%, #fff5f5 100%);
   border-left: 4px solid #ef4444;
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
 .invoices-list-item.inv-anulada:hover {
@@ -124,6 +129,8 @@
 }
 
 /* ==================== COLUMNAS ==================== */
+
+/* Columna # */
 .inv-col-index {
   display: flex;
   align-items: center;
@@ -139,6 +146,7 @@
   border-radius: 6px;
 }
 
+/* Columna Número */
 .inv-col-numero {
   display: flex;
   align-items: center;
@@ -168,12 +176,13 @@
   white-space: nowrap;
 }
 
+/* Columna Fecha */
 .inv-col-fecha {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 6px 10px;
+  padding: 6px 8px;
   font-size: 11px;
   font-weight: 500;
   color: #475569;
@@ -187,28 +196,34 @@
   flex-shrink: 0;
 }
 
+/* Columna Código (Medidor y Código Afi) - OPTIMIZADO */
 .inv-col-codigo {
-  font-size: 12px;
+  font-size: 11px;  /* Reducido de 12px */
   font-weight: 700;
   font-family: 'Monaco', 'Consolas', monospace;
   color: #1e293b;
   background: #e0f2fe;
   border: 1px solid #bae6fd;
-  padding: 6px 10px;
+  padding: 6px 8px;  /* Reducido padding */
   border-radius: 6px;
   text-align: center;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* Columna Usuario/Nombre - OPTIMIZADO */
 .inv-col-usuario {
   display: flex;
   align-items: center;
   overflow: hidden;
+  min-width: 0; /* Importante para ellipsis */
 }
 
 .inv-usuario-info {
   overflow: hidden;
   width: 100%;
+  min-width: 0; /* Importante para ellipsis */
 }
 
 .inv-usuario-nombre {
@@ -222,28 +237,30 @@
   display: block;
 }
 
+/* Columna Consumo */
 .inv-col-consumo {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #047857;
 }
 
 .inv-consumo-badge {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   font-family: 'Monaco', 'Consolas', monospace;
-  padding: 6px 12px;
+  padding: 5px 10px;
   border-radius: 8px;
-    background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
   color: #047857;
   white-space: nowrap;
 }
 
+/* Columna Detalles - OPTIMIZADO */
 .inv-col-detalles {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0 4px;
 }
 
 .inv-detalles-container {
@@ -252,15 +269,16 @@
   justify-content: center;
   flex-wrap: wrap;
   gap: 4px;
+  width: 100%;
 }
 
 .inv-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 8px;
+  padding: 3px 7px;
   border-radius: 12px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -293,14 +311,16 @@
   font-size: 10px;
   color: #64748b;
   font-weight: 500;
+  margin-left: 2px;
 }
 
 .inv-sin-dato {
   color: #cbd5e1;
-  font-size: 12px;
+  font-size: 11px;
   font-style: italic;
 }
 
+/* Columna Total */
 .inv-col-total {
   display: flex;
   align-items: center;
@@ -309,28 +329,31 @@
 }
 
 .inv-monto {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   font-family: 'Monaco', 'Consolas', monospace;
   color: #059669;
   white-space: nowrap;
 }
 
+/* Columna Estado */
 .inv-col-estado {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+/* Columna Acciones */
 .inv-col-acciones {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
+  flex-wrap: wrap;
 }
 
 .inv-btn {
-  padding: 8px;
+  padding: 7px;
   border-radius: 6px;
   border: none;
   cursor: pointer;
@@ -341,7 +364,7 @@
 }
 
 .inv-btn:hover {
-  transform: scale(1.05);
+  transform: scale(1.08);
 }
 
 .inv-btn-view {
@@ -360,6 +383,15 @@
 
 .inv-btn-edit:hover {
   background: #dcfce7;
+}
+
+.inv-btn-service {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.inv-btn-service:hover {
+  background: #fde68a;
 }
 
 .inv-btn-delete {
@@ -457,16 +489,19 @@
 }
 
 .status-badge.vencida {
-  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);
+  color: #374151;
+  border: 1px solid #9ca3af;
+}
+
+.status-badge.anulada {
+ background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
   color: #991b1b;
   border: 1px solid #fca5a5;
 }
 
-.status-badge.anulada {
-  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-  color: #4b5563;
-  border: 1px solid #d1d5db;
-}
+
+
 
 /* ==================== DETALLES MODAL ==================== */
 .detalles-agrupados {
@@ -540,23 +575,42 @@
   margin-left: 16px;
 }
 
-/* ==================== RESPONSIVE ==================== */
+/** ==================== RESPONSIVE ==================== */
 @media (max-width: 1400px) {
   .invoices-list-header,
   .invoices-list-item {
-    grid-template-columns: 40px 120px 100px 90px 150px 90px 110px 100px 120px 110px;
-    min-width: 1030px;
+    grid-template-columns: 
+      minmax(40px, 0.5fr)
+      minmax(120px, 1.2fr)
+      minmax(100px, 1fr)
+      minmax(90px, 0.9fr)
+      minmax(150px, 1.5fr)
+      minmax(90px, 0.9fr)
+      minmax(120px, 1.2fr)
+      minmax(100px, 1fr)
+      minmax(120px, 1.1fr)
+      minmax(120px, 1.2fr);
   }
 }
 
 @media (max-width: 1200px) {
   .invoices-list-header,
   .invoices-list-item {
-    grid-template-columns: 35px 110px 90px 80px 140px 85px 100px 95px 110px 100px;
+    grid-template-columns: 
+      minmax(35px, 0.5fr)
+      minmax(110px, 1.2fr)
+      minmax(90px, 1fr)
+      minmax(80px, 0.9fr)
+      minmax(140px, 1.5fr)
+      minmax(85px, 0.9fr)
+      minmax(110px, 1.2fr)
+      minmax(95px, 1fr)
+      minmax(110px, 1.1fr)
+      minmax(110px, 1.2fr);
     font-size: 11px;
-    min-width: 945px;
   }
 }
+
 /* ==================== IVA CONTROLS ==================== */
 .iva-controls {
   display: flex;
@@ -1722,4 +1776,34 @@ input:checked + .slider:before {
 /* Pendiente */
 .periodo-progress-fill.pendiente {
   background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.btn-confirm-anulacion {
+  display: flex;
+  align-items: center;
+  padding: 10px 20px;
+
+  background: #dc2626;       /* rojo */
+  color: white;
+
+  border: none;
+  border-radius: 8px;
+
+  font-size: 14px;
+  font-weight: 500;
+
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+/* hover */
+.btn-confirm-anulacion:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+/* disabled */
+.btn-confirm-anulacion:disabled {
+  background: #fca5a5;
+  color: #7f1d1d;
+  cursor: not-allowed;
 }

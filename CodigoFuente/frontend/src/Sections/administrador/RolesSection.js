@@ -505,10 +505,17 @@ const RolesSection = () => {
     <div className="roles-section">
       {/* Header */}
       <div className="section-header">
+        
         <div className="section-title">
-          <ShieldCheck className="w-6 h-6 text-blue-600" />
-          <h2>Gestión de Roles y Permisos</h2>
+          <ShieldCheck className="w-7 h-7 text-blue-600" />
+          <div>
+            <h2>Gestión de Roles y Permisos</h2>
+            <p className="section-subtitle">
+              Gestiona los roles y permisos
+            </p>
+            </div>
         </div>
+        
         {/* 🔑 Botón "Nuevo Rol" solo si tiene permiso de crear */}
         {permissions.canCreate && (
           <button 

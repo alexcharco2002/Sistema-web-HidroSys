@@ -82,6 +82,8 @@ const FinesAffiliatesSection = () => {
     canDelete: false
   });
 
+  
+
   // Función separada para tipos de multa
   const loadTiposMulta = async () => {
     try {
@@ -571,10 +573,17 @@ const FinesAffiliatesSection = () => {
     <div className="users-section">
       {/* HEADER */}
       <div className="section-header">
+        
         <div className="section-title">
-          <FileText className="w-6 h-6 text-blue-600" />
-          <h2>Gestión de Multas de Afiliados</h2>
+          <FileText className="w-7 h-7 text-blue-600" />
+          <div>
+            <h2>Gestión de multas a afiliados</h2>
+            <p className="section-subtitle">
+              Gestiona y añade multas a afiliados
+            </p>
+          </div>
         </div>
+
         {permissions.canCreate && (
           <button
             className="btn-primary"

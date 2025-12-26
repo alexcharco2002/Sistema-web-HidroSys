@@ -424,8 +424,13 @@ const FinesSection = () => {
     <div className="users-section">
       <div className="section-header">
         <div className="section-title">
-          <AlertTriangle className="w-6 h-6 text-amber-600" />
-          <h2>Gestión de Tipos de Multa</h2>
+          <AlertTriangle className="w-7 h-7 text-amber-600" />
+          <div>
+            <h2>Gestión de tipos de multas</h2>
+            <p className="section-subtitle">
+              Gestiona la información de los tipos de multas
+            </p>
+          </div>
         </div>
         {permissions.canCreate && (
           <button 

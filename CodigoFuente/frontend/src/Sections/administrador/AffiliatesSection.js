@@ -1522,40 +1522,51 @@ const AffiliatesSection = () => {
               {modalType === 'create' && (
                 <form onSubmit={handleSubmit} className="user-form">
                   <div className="form-grid">
-                    <div className="form-group form-group-full">
-                      <label>Seleccionar Usuario *</label>
-                      <select
-                        required
-                        value={formData.id_usuario_sistema || ''}
-                        onChange={(e) => setFormData({ ...formData, id_usuario_sistema: e.target.value })}
-                      >
-                        <option value="">Seleccione un usuario</option>
-                        {availableUsers.map(user => (
-                          <option key={user.id_usuario_sistema} value={user.id_usuario_sistema}>
-                            {user.nombres} {user.apellidos} - {user.cedula}
-                          </option>
-                        ))}
-                      </select>
-                      <small className="text-gray-500 mt-1">
-                        Solo se muestran usuarios no afiliados
-                      </small>
-                    </div>
+                  
+                  {/* Seleccionar Usuario */}
+                  <div className="form-group form-group-full">
+                    <label>Seleccionar Usuario *</label>
+                    <select
+                      required
+                      value={formData.id_usuario_sistema || ''}
+                      onChange={(e) => setFormData({ 
+                        ...formData, 
+                        id_usuario_sistema: e.target.value ? parseInt(e.target.value) : null 
+                      })}
+                    >
+                      <option value="">Seleccione un usuario</option>
+                      {availableUsers.map(user => (
+                        <option key={user.id_usuario_sistema} value={user.id_usuario_sistema}>
+                          {user.nombres} {user.apellidos} - {user.cedula}
+                        </option>
+                      ))}
+                    </select>
+                    <small className="text-gray-500 mt-1">
+                      Solo se muestran usuarios no afiliados
+                    </small>
+                  </div>
 
-                    <div className="form-group form-group-full">
-                      <label>Sector *</label>
-                      <select
-                        required
-                        value={formData.id_sector || ''}
-                        onChange={(e) => setFormData({ ...formData, id_sector: e.target.value  })}
-                      >
-                        <option value="">Seleccione un sector</option>
-                        {sectors.map(sector => (
-                          <option key={sector.id_sector} value={sector.id_sector}>
-                            {sector.nombre_sector}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                  {/* Seleccionar Sector */}
+                  <div className="form-group form-group-full">
+                    <label>Sector *</label>
+                    <select
+                      required
+                      value={formData.id_sector || ''}
+                      onChange={(e) => setFormData({ 
+                        ...formData, 
+                        id_sector: e.target.value ? parseInt(e.target.value) : null 
+                      })}
+                    >
+                      <option value="">Seleccione un sector</option>
+                      {sectors.map(sector => (
+                        <option key={sector.id_sector} value={sector.id_sector}>
+                          {sector.nombre_sector}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+
 
                     {/* CHECKBOX PARA CREAR MEDIDOR */}
                     <div className="form-group form-group-full">

@@ -20,7 +20,7 @@ class PagoBase(BaseModel):
     @classmethod
     def validar_metodo_pago(cls, v: str) -> str:
         """Valida que el método de pago sea válido"""
-        metodos_validos = ['EFECTIVO', 'TARJETA', 'z', 'CHEQUE', 'DEPOSITO', 'OTRO']
+        metodos_validos = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'DEPOSITO', 'OTRO']
         v_upper = v.strip().upper()
         if v_upper not in metodos_validos:
             raise ValueError(f'Método de pago inválido. Debe ser uno de: {", ".join(metodos_validos)}')

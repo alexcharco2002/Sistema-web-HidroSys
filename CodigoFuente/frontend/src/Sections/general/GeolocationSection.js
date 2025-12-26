@@ -434,9 +434,15 @@ const GeolocationSection = () => {
     <div className="users-section">
       {/* HEADER */}
       <div className="section-header">
-        <div className="section-title">
-          <MapPin className="w-6 h-6 text-blue-600" />
-          <h2>Geolocalización de Medidores</h2>
+        
+       <div className="section-title">
+          <MapPin className="w-7 h-7 text-blue-600" />
+          <div>
+            <h2>Geolocalización de Medidores </h2>
+            <p className="section-subtitle">
+              Ubicación en el mapa de los medidores
+            </p>
+          </div>
         </div>
 
         <div className="flex gap-2">
@@ -749,12 +755,12 @@ const GeolocationSection = () => {
                 {selectedMedidor.nombre_afiliado && (
                   <>
                     <div className="detail-group">
-                      <label>Usuario Asignado:</label>
+                      <label>Nombre afiliado:</label>
                       <p>{selectedMedidor.nombre_afiliado}</p>
                     </div>
                     {selectedMedidor.cod_usuario_afi && (
                       <div className="detail-group">
-                        <label>Código Usuario:</label>
+                        <label>Código afiliado:</label>
                         <p>{selectedMedidor.cod_usuario_afi}</p>
                       </div>
                     )}

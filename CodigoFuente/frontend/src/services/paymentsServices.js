@@ -106,37 +106,44 @@ class PaymentsServices {
     }
   }
 
-    /**
-     * Obtener TODAS las facturas del periodo
-     */
-    async getFacturasPeriodo(filters = {}) {
-    try {
-        const params = new URLSearchParams();
-        if (filters.periodo) params.append('periodo', filters.periodo);
-        if (filters.search) params.append('search', filters.search);
-        if (filters.estado_factura) params.append('estado_factura', filters.estado_factura);
-        if (filters.skip) params.append('skip', filters.skip);
-        if (filters.limit) params.append('limit', filters.limit);
 
-        const queryString = params.toString();
-        const endpoint = queryString
-        ? `${API_CONFIG.endpoints.facturasPeriodo}?${queryString}`
-        : API_CONFIG.endpoints.facturasPeriodo;
+// ✅ La función getFacturasPeriodo ya está bien, solo asegúrate de que use el endpoint correcto
+async getFacturasPeriodo(filters = {}) {
+  try {
+    const params = new URLSearchParams();
+    
+    if (filters.periodo) params.append('periodo', filters.periodo);
+    if (filters.search) params.append('search', filters.search);
+    if (filters.estado_factura) params.append('estado_factura', filters.estado_factura);
+    if (filters.skip) params.append('skip', filters.skip);
+    if (filters.limit) params.append('limit', filters.limit);
 
-        const data = await this.makeRequest(endpoint);
+    const queryString = params.toString();
+    const endpoint = queryString 
+      ? `${API_CONFIG.endpoints.facturasPeriodo}?${queryString}` 
+      : API_CONFIG.endpoints.facturasPeriodo;
 
-        return {
-        success: true,
-        data: data
-        };
-    } catch (error) {
-        console.error('❌ Error obteniendo facturas del periodo:', error);
-        return {
-        success: false,
-        message: error.message || 'Error al obtener facturas'
-        };
-    }
-    }
+    console.log('🔍 Fetching facturas desde:', endpoint);  // ✅ AGREGAR LOG
+    const data = await this.makeRequest(endpoint);
+    
+    console.log('✅ Facturas recibidas:', data.length);  // ✅ AGREGAR LOG
+    console.log('📋 Primera factura:', data[0]);  // ✅ AGREGAR LOG
+    console.log('📝 Detalles de primera factura:', data[0]?.detalles);  // ✅ AGREGAR LOG
+    
+    return { 
+      success: true, 
+      data: data 
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo facturas del periodo:', error);
+    return { 
+      success: false, 
+      message: error.message || 'Error al obtener facturas' 
+    };
+  }
+}
+
+
 
   // ========================================
   // OBTENER PAGOS
@@ -401,34 +408,36 @@ class PaymentsServices {
   /**
    * Anular un pago
    */
-  async anularPago(pagoId, motivo = null) {
-    try {
-      const endpoint = motivo
-        ? `${API_CONFIG.endpoints.anular(pagoId)}?motivo=${encodeURIComponent(motivo)}`
-        : API_CONFIG.endpoints.anular(pagoId);
-
-      const data = await this.makeRequest(endpoint, {
-        method: 'PATCH'
-      });
-
-      // Limpiar cachés
-      this.cachedPagos = null;
-      this.cachedStats = null;
-
-      return {
-        success: true,
-        data: data,
-        message: 'Pago anulado exitosamente'
-      };
-      
-    } catch (error) {
-      console.error('❌ Error anulando pago:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al anular pago'
-      };
-    }
+ 
+/**
+ * Anula un pago y regenera la factura
+ */
+async anularPagoConRegeneracion(idPago, motivo) {
+  try {
+    const endpoint = `${API_CONFIG.endpoints.anular(idPago)}`;
+    
+    const data = await this.makeRequest(endpoint, {
+      method: 'PATCH',
+      body: {
+        motivo: motivo,
+        regenerar_factura: true  // ✅ Flag para regenerar
+      }
+    });
+    
+    return {
+      success: true,
+      data: data
+    };
+    
+  } catch (error) {
+    console.error('❌ Error anulando pago con regeneración:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al anular pago'
+    };
   }
+}
+
 
   // ========================================
   // UTILIDADES

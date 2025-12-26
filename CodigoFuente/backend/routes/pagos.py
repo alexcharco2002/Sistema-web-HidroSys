@@ -4,16 +4,19 @@ import locale
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, extract,case, and_,  or_
+from typing import List, Optional, Tuple as TypingTuple  
+from sqlalchemy import  func, extract,case, and_,  or_
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 
 
+from models.detalle_factura import DetalleFactura
 from models.meter import Medidor
 from models.pago import Pago
 from models.factura import Factura
 from models.affiliate import UsuarioAfiliado
+from models.sector import Sector
 from models.user import UsuarioSistema
 from models.role import RolAccion
 
@@ -296,71 +299,272 @@ def obtener_periodos_pagos_disponibles(
         "periodos_disponibles": periodos
     }
 
-@router.get("/facturas-periodo", response_model=List[FacturaConUsuarioCompleto])
-def obtener_facturas_periodo(
+
+from sqlalchemy.orm import aliased  # ✅ Importar aliased
+
+@router.get("/facturas-periodo", response_model=List[dict])
+def obtener_facturas_periodo_con_pagos(
     periodo: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     estado_factura: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),  # ✅ REDUCIR A 50-100
+    limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
+    """
+    Obtener facturas por periodo con información completa:
+    - Una factura tiene UN solo pago (relación 1:1)
+    - El comprobante está en la tabla t_pagos
+    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "pagos", "lectura")
 
-    query = db.query(Factura)
-
-    # ✅ OPTIMIZACIÓN: Cambiar joinedload por selectinload para relaciones grandes
-    query = query.options(
-        joinedload(Factura.usuario_afiliado)
-            .joinedload(UsuarioAfiliado.usuario_sistema),
-        joinedload(Factura.usuario_afiliado)
-            .joinedload(UsuarioAfiliado.sector),
-    )
-
-    query = db.query(Factura).options(
-        joinedload(Factura.usuario_afiliado)
-            .joinedload(UsuarioAfiliado.usuario_sistema),
-        joinedload(Factura.usuario_afiliado)
-            .joinedload(UsuarioAfiliado.sector)
-    )
-
-    # Filtros
-    if periodo:
-        query = query.filter(Factura.periodo == periodo)
-
-    if estado_factura:
-        query = query.filter(Factura.estado_factura == estado_factura)
-
-    # ✅ BÚSQUEDA SIN JOIN DE MEDIDORES
-    if search:
+    try:
+        # ✅ Crear alias para el cajero
+        Cajero = aliased(UsuarioSistema)
+        
+        # ========================================
+        # 🔥 QUERY PRINCIPAL - FACTURAS CON PAGO
+        # ========================================
         query = (
-            query
-            .join(Factura.usuario_afiliado)
-            .join(UsuarioAfiliado.usuario_sistema)
-            .filter(
+            db.query(
+                # Factura
+                Factura.id_factura,
+                Factura.num_factura,
+                Factura.periodo,
+                Factura.fecha_emision,
+                Factura.estado_factura,
+                Factura.consumo_m3,
+                Factura.exceso_m3,
+                Factura.valor_consumo,
+                Factura.valor_exceso,
+                Factura.subtotal,
+                Factura.descuento,
+                Factura.impuesto,
+                Factura.total,
+                # Afiliado
+                UsuarioAfiliado.id_usuario_afi,
+                UsuarioAfiliado.cod_usuario_afi,
+                UsuarioAfiliado.num_medidor,
+                # Usuario sistema (del afiliado)
+                UsuarioSistema.nombres,
+                UsuarioSistema.apellidos,
+                UsuarioSistema.cedula,
+                UsuarioSistema.direccion,
+                UsuarioSistema.telefono,
+                UsuarioSistema.email,
+                # Sector
+                Sector.nombre_sector,
+                # ✅ PAGO (relación 1:1)
+                Pago.id_pago,
+                Pago.monto_pago,
+                Pago.fecha_pago,
+                Pago.metodo_pago,
+                Pago.estado_pago,
+                Pago.observaciones,
+                # ✅ COMPROBANTE
+                Pago.nombre_archivo,
+                Pago.tipo_mime,
+                case(
+                    (Pago.comprobante_pdf.isnot(None), True),
+                    else_=False
+                ).label('tiene_comprobante'),
+                # ✅ CAJERO (usando alias)
+                Cajero.nombres.label('cajero_nombres'),
+                Cajero.apellidos.label('cajero_apellidos')
+            )
+            .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
+            .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
+            # ✅ JOIN con pagos (puede no tener pago)
+            .outerjoin(Pago, Factura.id_factura == Pago.id_factura)
+            # ✅ JOIN con cajero usando alias
+            .outerjoin(Cajero, Pago.id_cajero == Cajero.id_usuario_sistema)
+        )
+
+        # Filtros
+        if periodo:
+            query = query.filter(Factura.periodo == periodo)
+
+        if estado_factura:
+            query = query.filter(Factura.estado_factura == estado_factura)
+
+        if search:
+            query = query.filter(
                 or_(
                     Factura.num_factura.ilike(f"%{search}%"),
                     UsuarioSistema.nombres.ilike(f"%{search}%"),
                     UsuarioSistema.apellidos.ilike(f"%{search}%"),
                     UsuarioSistema.cedula.ilike(f"%{search}%"),
-                    UsuarioAfiliado.num_medidor.ilike(f"%{search}%") 
+                    UsuarioAfiliado.num_medidor.ilike(f"%{search}%")
                 )
             )
+
+        # Ordenar
+        estado_orden = case(
+            (Factura.estado_factura == 'pendiente', 1),
+            (Factura.estado_factura == 'vencida', 2),
+            (Factura.estado_factura == 'pagada', 3),
+            (Factura.estado_factura == 'anulada', 4),
+            else_=5
         )
 
-    estado_orden = case(
-        (Factura.estado_factura == 'pendiente', 1),
-        (Factura.estado_factura == 'vencida', 2),
-        (Factura.estado_factura == 'pagada', 3),
-        (Factura.estado_factura == 'anulada', 4),
-        else_=5
-    )
+        facturas = (
+            query
+            .order_by(estado_orden, Factura.fecha_emision.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
 
-    query = query.order_by(estado_orden, Factura.fecha_emision.desc())
+        if not facturas:
+            return []
 
-    return query.offset(skip).limit(limit).all()
+        ids_facturas = [f.id_factura for f in facturas]
+
+        # ========================================
+        # 🔥 QUERY: DETALLES
+        # ========================================
+        detalles_query = (
+            db.query(
+                DetalleFactura.id_detalle,
+                DetalleFactura.id_factura,
+                DetalleFactura.tipo_detalle,
+                DetalleFactura.descripcion,
+                DetalleFactura.subtotal_detalle,
+            )
+            .filter(DetalleFactura.id_factura.in_(ids_facturas))
+            .order_by(
+                DetalleFactura.id_factura,
+                case(
+                    (DetalleFactura.tipo_detalle == 'consumo', 1),
+                    (DetalleFactura.tipo_detalle == 'multa', 2),
+                    (DetalleFactura.tipo_detalle == 'servicio', 3),
+                    else_=4
+                ),
+                DetalleFactura.id_detalle
+            )
+            .all()
+        )
+        
+        detalles_por_factura = {}
+        for d in detalles_query:
+            if d.id_factura not in detalles_por_factura:
+                detalles_por_factura[d.id_factura] = []
+            detalles_por_factura[d.id_factura].append({
+                "id_detalle": d.id_detalle,
+                "tipo_detalle": d.tipo_detalle,
+                "descripcion": d.descripcion or "Sin descripción",
+                "subtotal_detalle": float(d.subtotal_detalle) if d.subtotal_detalle else 0.0,
+            })
+
+        print(f"✅ Facturas: {len(facturas)} | Detalles: {len(detalles_query)}")
+
+        # ========================================
+        # 🔄 FORMATEAR RESPUESTA
+        # ========================================
+        resultado = []
+        
+        for f in facturas:
+            detalles_factura = detalles_por_factura.get(f.id_factura, [])
+            
+            # ✅ Construir nombre del cajero
+            cajero_nombre = None
+            if f.cajero_nombres and f.cajero_apellidos:
+                cajero_nombre = f"{f.cajero_nombres} {f.cajero_apellidos}"
+            elif f.cajero_nombres:
+                cajero_nombre = f.cajero_nombres
+            elif f.cajero_apellidos:
+                cajero_nombre = f.cajero_apellidos
+            
+            # ✅ PAGO (puede ser None si no tiene pago)
+            pago = None
+            if f.id_pago:
+                pago = {
+                    "id_pago": f.id_pago,
+                    "monto_pago": float(f.monto_pago) if f.monto_pago else 0.0,
+                    "fecha_pago": f.fecha_pago.isoformat() if f.fecha_pago else None,
+                    "metodo_pago": f.metodo_pago or "No especificado",
+                    "estado_pago": f.estado_pago,
+                    "observaciones": f.observaciones,
+                    "cajero": cajero_nombre or "Sin cajero",
+                    # ✅ COMPROBANTE
+                    "tiene_comprobante": f.tiene_comprobante,
+                    "nombre_archivo": f.nombre_archivo,
+                    "tipo_mime": f.tipo_mime or "application/pdf"
+                }
+            
+            # Calcular totales
+            monto_pagado = float(f.monto_pago) if f.monto_pago else 0.0
+            saldo_pendiente = float(f.total) - monto_pagado
+            
+            resultado.append({
+                "id_factura": f.id_factura,
+                "num_factura": f.num_factura,
+                "periodo": f.periodo,
+                "fecha_emision": f.fecha_emision.isoformat(),
+                "estado_factura": f.estado_factura,
+                
+                "consumo_m3": f.consumo_m3 or 0,
+                "exceso_m3": f.exceso_m3 or 0,
+                "valor_consumo": float(f.valor_consumo) if f.valor_consumo else 0.0,
+                "valor_exceso": float(f.valor_exceso) if f.valor_exceso else 0.0,
+                
+                "subtotal": float(f.subtotal) if f.subtotal else 0.0,
+                "descuento": float(f.descuento) if f.descuento else 0.0,
+                "impuesto": float(f.impuesto) if f.impuesto else 0.0,
+                "total": float(f.total),
+                
+                "usuario_afiliado": {
+                    "id_usuario_afi": f.id_usuario_afi,
+                    "cod_usuario_afi": f.cod_usuario_afi,
+                    "num_medidor": f.num_medidor or "N/A",
+                    
+                    "usuario_sistema": {
+                        "nombres": f.nombres,
+                        "apellidos": f.apellidos,
+                        "cedula": f.cedula,
+                        "direccion": f.direccion,
+                        "telefono": f.telefono,
+                        "email": f.email,
+                    },
+                    
+                    "sector": {
+                        "nombre_sector": f.nombre_sector or "Sin sector"
+                    }
+                },
+                
+                "detalles": detalles_factura,
+                
+                "resumen_detalles": {
+                    "total_conceptos": len(detalles_factura),
+                    "consumo": len([d for d in detalles_factura if d['tipo_detalle'] == 'consumo']),
+                    "multas": len([d for d in detalles_factura if d['tipo_detalle'] == 'multa']),
+                    "servicios": len([d for d in detalles_factura if d['tipo_detalle'] == 'servicio']),
+                },
+                
+                # ✅ UN SOLO PAGO (no array)
+                "pago": pago,
+                
+                # ✅ RESUMEN SIMPLIFICADO
+                "tiene_pago": pago is not None,
+                "monto_pagado": monto_pagado,
+                "saldo_pendiente": saldo_pendiente,
+                "esta_totalmente_pagada": saldo_pendiente <= 0,
+                "tiene_comprobante": f.tiene_comprobante if f.id_pago else False
+            })
+
+        return resultado
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener facturas del periodo: {str(e)}"
+        )
+
 
 
 # ========================================
@@ -434,23 +638,166 @@ def listar_pagos(
     pagos = query.offset(skip).limit(limit).all()
     return pagos
 
-
 # ========================================
-# OBTENER ESTADÍSTICAS
+# ESTADÍSTICAS DE FACTURAS POR PERIODO
 # ========================================
-@router.get("/stats/resumen", response_model=PagoStats)
-def obtener_estadisticas(
-    periodo: Optional[str] = Query(None, description="Periodo específico (YYYY-MM)"),
-    id_usuario_afi: Optional[int] = Query(None, description="Usuario específico"),
+@router.get("/stats/facturas-periodo")
+def obtener_estadisticas_facturas_periodo(
+    periodo: str = Query(..., description="Periodo (YYYY-MM)"),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """Obtiene estadísticas generales de pagos"""
+    """
+    Obtiene estadísticas de facturas para un periodo específico
+    Incluye: total facturas, estados, montos, pagos
+    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "pagos", "lectura")
     
-    stats = obtener_estadisticas_pagos(db, periodo, id_usuario_afi)
-    return stats
+    try:
+        # ========================================
+        # QUERY DE FACTURAS DEL PERIODO
+        # ========================================
+        facturas_query = db.query(Factura).filter(
+            Factura.periodo == periodo
+        )
+        
+        total_facturas = facturas_query.count()
+        
+        # ========================================
+        # FACTURAS POR ESTADO
+        # ========================================
+        facturas_pendientes = facturas_query.filter(
+            Factura.estado_factura == 'pendiente'
+        ).count()
+        
+        facturas_pagadas = facturas_query.filter(
+            Factura.estado_factura == 'pagada'
+        ).count()
+        
+        facturas_vencidas = facturas_query.filter(
+            Factura.estado_factura == 'vencida'
+        ).count()
+        
+        facturas_anuladas = facturas_query.filter(
+            Factura.estado_factura == 'anulada'
+        ).count()
+        
+        # ========================================
+        # MONTOS TOTALES
+        # ========================================
+        # Total facturado (sin incluir anuladas)
+        total_facturado = db.query(func.sum(Factura.total)).filter(
+            Factura.periodo == periodo,
+            Factura.estado_factura != 'anulada'
+        ).scalar() or Decimal('0.00')
+        
+        # Total pendiente (pendientes + vencidas)
+        total_pendiente = db.query(func.sum(Factura.total)).filter(
+            Factura.periodo == periodo,
+            Factura.estado_factura.in_(['pendiente', 'vencida'])
+        ).scalar() or Decimal('0.00')
+        
+        # Total cobrado (facturas pagadas)
+        total_cobrado = db.query(func.sum(Factura.total)).filter(
+            Factura.periodo == periodo,
+            Factura.estado_factura == 'pagada'
+        ).scalar() or Decimal('0.00')
+        
+        # ========================================
+        # ESTADÍSTICAS DE PAGOS DEL PERIODO
+        # ========================================
+        # Obtener IDs de facturas del periodo
+        ids_facturas = [f.id_factura for f in facturas_query.all()]
+        
+        if ids_facturas:
+            # Total de pagos registrados
+            pagos_query = db.query(Pago).filter(
+                Pago.id_factura.in_(ids_facturas),
+                Pago.activo == True,
+                Pago.estado_pago == 'REGISTRADO'
+            )
+            
+            total_pagos_registrados = pagos_query.count()
+            
+            # Monto total recaudado (suma de pagos REGISTRADOS)
+            total_recaudado = db.query(func.sum(Pago.monto_pago)).filter(
+                Pago.id_factura.in_(ids_facturas),
+                Pago.activo == True,
+                Pago.estado_pago == 'REGISTRADO'
+            ).scalar() or Decimal('0.00')
+            
+            # Recaudación por método de pago
+            total_efectivo = db.query(func.sum(Pago.monto_pago)).filter(
+                Pago.id_factura.in_(ids_facturas),
+                Pago.activo == True,
+                Pago.estado_pago == 'REGISTRADO',
+                Pago.metodo_pago == 'EFECTIVO'
+            ).scalar() or Decimal('0.00')
+            
+            total_transferencia = db.query(func.sum(Pago.monto_pago)).filter(
+                Pago.id_factura.in_(ids_facturas),
+                Pago.activo == True,
+                Pago.estado_pago == 'REGISTRADO',
+                Pago.metodo_pago == 'TRANSFERENCIA'
+            ).scalar() or Decimal('0.00')
+            
+            total_tarjeta = db.query(func.sum(Pago.monto_pago)).filter(
+                Pago.id_factura.in_(ids_facturas),
+                Pago.activo == True,
+                Pago.estado_pago == 'REGISTRADO',
+                Pago.metodo_pago == 'TARJETA'
+            ).scalar() or Decimal('0.00')
+        else:
+            total_pagos_registrados = 0
+            total_recaudado = Decimal('0.00')
+            total_efectivo = Decimal('0.00')
+            total_transferencia = Decimal('0.00')
+            total_tarjeta = Decimal('0.00')
+        
+        # ========================================
+        # CONSTRUIR RESPUESTA
+        # ========================================
+        estadisticas = {
+            # Facturas
+            "total_facturas": total_facturas,
+            "facturas_pendientes": facturas_pendientes,
+            "facturas_pagadas": facturas_pagadas,
+            "facturas_vencidas": facturas_vencidas,
+            "facturas_anuladas": facturas_anuladas,
+            
+            # Montos
+            "total_facturado": float(total_facturado),
+            "total_pendiente": float(total_pendiente),
+            "total_cobrado": float(total_cobrado),
+            
+            # Pagos
+            "total_pagos_registrados": total_pagos_registrados,
+            "total_recaudado": float(total_recaudado),
+            "total_efectivo": float(total_efectivo),
+            "total_transferencia": float(total_transferencia),
+            "total_tarjeta": float(total_tarjeta),
+            
+            # Periodo
+            "periodo": periodo
+        }
+        
+        print(f"✅ Estadísticas del periodo {periodo}:")
+        print(f"   📊 Total facturas: {total_facturas}")
+        print(f"   💰 Total recaudado: ${total_recaudado}")
+        print(f"   ✅ Facturas pagadas: {facturas_pagadas}")
+        
+        return estadisticas
+        
+    except Exception as e:
+        print(f"❌ Error obteniendo estadísticas: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener estadísticas: {str(e)}"
+        )
+
 
 
 # ========================================
@@ -738,23 +1085,176 @@ def actualizar_pago(
             detail=f"Error al actualizar pago: {str(e)}"
         )
 
+def regenerar_factura_desde_factura_anulada(
+    db: Session,
+    factura_original: Factura,
+    motivo_regeneracion: str = "Regenerada por anulación de pago"
+) -> TypingTuple[bool, str, Optional[Factura]]:
+    """
+    Regenera una factura con los mismos datos de una factura original
+    Se usa cuando se anula un pago
+    
+    Args:
+        db: Sesión de base de datos
+        factura_original: Factura a duplicar
+        motivo_regeneracion: Motivo de la regeneración
+    
+    Returns:
+        (exito, mensaje, factura_nueva)
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"🔄 REGENERANDO FACTURA")
+        print(f"   Original: {factura_original.num_factura}")
+        print(f"   Periodo: {factura_original.periodo}")
+        print(f"   Motivo: {motivo_regeneracion}")
+        print(f"{'='*60}\n")
+        
+        # ============================================
+        # PASO 1: OBTENER DATOS DE LA FACTURA ORIGINAL
+        # ============================================
+        id_usuario_afi = factura_original.id_usuario_afi
+        periodo = factura_original.periodo
+        
+        # ============================================
+        # PASO 2: GENERAR NUEVO NÚMERO DE FACTURA
+        # ============================================
+        # Formato: FACT-YYYYMM-XXXX
+        periodo_parts = periodo.split('-')
+        anio = periodo_parts[0]
+        mes = periodo_parts[1]
+        
+        # Buscar último número del periodo
+        ultima_factura = (
+            db.query(Factura)
+            .filter(Factura.periodo == periodo)
+            .filter(Factura.num_factura.like(f'FACT-{periodo}-%'))
+            .order_by(Factura.num_factura.desc())
+            .first()
+        )
+        
+        if ultima_factura:
+            ultimo_numero = int(ultima_factura.num_factura.split('-')[-1])
+            nuevo_numero = ultimo_numero + 1
+        else:
+            nuevo_numero = 1
+        
+        nuevo_num_factura = f"FACT-{periodo}-{str(nuevo_numero).zfill(4)}"
+        
+        print(f"📝 Nuevo número de factura: {nuevo_num_factura}")
+        
+        # ============================================
+        # PASO 3: CREAR NUEVA FACTURA
+        # ============================================
+        nueva_factura = Factura(
+            # Identificación
+            num_factura=nuevo_num_factura,
+            id_usuario_afi=id_usuario_afi,
+            id_tarifa=factura_original.id_tarifa,
+            id_lectura=factura_original.id_lectura,
+            periodo=periodo,
+            
+            # Fecha - solo fecha_emision existe
+            fecha_emision=datetime.now().date(),  # ✅ Usar .date() para tipo Date
+            
+            # Copiar consumos
+            consumo_m3=factura_original.consumo_m3,
+            exceso_m3=factura_original.exceso_m3,
+            valor_consumo=factura_original.valor_consumo,
+            valor_exceso=factura_original.valor_exceso,
+            
+            # Copiar totales
+            subtotal=factura_original.subtotal,
+            descuento=factura_original.descuento,
+            impuesto=factura_original.impuesto,
+            total=factura_original.total,
+            
+            # Estado inicial
+            estado_factura='pendiente'
+            # activo ya no existe en el modelo
+        )
+        
+        db.add(nueva_factura)
+        db.flush()  # Para obtener el ID
+        
+        print(f"✅ Nueva factura creada: {nueva_factura.num_factura}")
+        print(f"   ID: {nueva_factura.id_factura}")
+        print(f"   Total: ${nueva_factura.total}")
+        
+        # ============================================
+        # PASO 4: COPIAR DETALLES
+        # ============================================
+        detalles_originales = db.query(DetalleFactura).filter(
+            DetalleFactura.id_factura == factura_original.id_factura
+        ).all()
+        
+        detalles_creados = 0
+        for detalle_orig in detalles_originales:
+            nuevo_detalle = DetalleFactura(
+                id_factura=nueva_factura.id_factura,
+                tipo_detalle=detalle_orig.tipo_detalle,
+                descripcion=detalle_orig.descripcion,
+                subtotal_detalle=detalle_orig.subtotal_detalle
+                # activo ya no existe en el modelo
+            )
+            db.add(nuevo_detalle)
+            detalles_creados += 1
+        
+        print(f"✅ {detalles_creados} detalle(s) copiado(s)")
+        
+        # ============================================
+        # PASO 5: MARCAR FACTURA ORIGINAL COMO ANULADA
+        # ============================================
+        factura_original.estado_factura = 'anulada'
+        # No cambiar activo porque no existe
+        
+        print(f"✅ Factura original {factura_original.num_factura} marcada como ANULADA")
+        
+        # ============================================
+        # PASO 6: COMMIT
+        # ============================================
+        db.commit()
+        db.refresh(nueva_factura)
+        
+        print(f"\n{'='*60}")
+        print(f"✅ FACTURA REGENERADA EXITOSAMENTE")
+        print(f"   Original: {factura_original.num_factura} (ANULADA)")
+        print(f"   Nueva: {nueva_factura.num_factura} (PENDIENTE)")
+        print(f"   Total: ${nueva_factura.total}")
+        print(f"   Periodo: {nueva_factura.periodo}")
+        print(f"{'='*60}\n")
+        
+        return True, f"Factura {nueva_factura.num_factura} regenerada", nueva_factura
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error regenerando factura: {e}")
+        import traceback
+        traceback.print_exc()
+        return False, f"Error al regenerar factura: {str(e)}", None
+
 
 # ========================================
 # ANULAR PAGO
 # ========================================
-@router.patch("/{id_pago}/anular", response_model=PagoResponse)
+@router.patch("/{id_pago}/anular")
 def anular_pago(
     id_pago: int,
-    motivo: Optional[str] = Query(None, description="Motivo de anulación"),
+    request: dict,  # ✅ Recibir body con motivo y flag
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
-    Anula un pago (solo si está REGISTRADO)
+    Anula un pago y opcionalmente regenera la factura
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "pagos", "eliminar")
     
+    # Extraer parámetros
+    motivo = request.get('motivo', 'Anulado por usuario')
+    regenerar_factura = request.get('regenerar_factura', False)
+    
+    # Buscar pago
     pago = db.query(Pago).filter(Pago.id_pago == id_pago).first()
     
     if not pago:
@@ -770,45 +1270,97 @@ def anular_pago(
         )
     
     try:
+        # ============================================
+        # PASO 1: ANULAR EL PAGO
+        # ============================================
         pago.estado_pago = 'ANULADO'
-        pago.motivo_anulacion = motivo or 'Anulado por usuario'
+        pago.motivo_anulacion = motivo
         pago.fecha_anulacion = datetime.now()
         pago.activo = False
         
-        # Si el pago tiene factura asociada, verificar si debe cambiar su estado
+        print(f"✅ Pago #{pago.id_pago} anulado")
+        
+        # ============================================
+        # PASO 2: BUSCAR LA FACTURA ASOCIADA
+        # ============================================
+        factura_original = None
+        nueva_factura = None
+        
         if pago.id_factura:
-            factura = db.query(Factura).filter(
+            factura_original = db.query(Factura).filter(
                 Factura.id_factura == pago.id_factura
             ).first()
             
-            if factura and factura.estado_factura == 'pagada':
-                # Calcular total pagado sin este pago
-                total_pagado = db.query(func.sum(Pago.monto_pago)).filter(
-                    Pago.id_factura == pago.id_factura,
-                    Pago.estado_pago == 'REGISTRADO',
-                    Pago.id_pago != id_pago
-                ).scalar() or Decimal('0.00')
+            if factura_original:
+                print(f"📄 Factura asociada: {factura_original.num_factura}")
                 
-                # Si ya no cubre el total, volver a pendiente
-                if total_pagado < factura.total:
-                    factura.estado_factura = 'pendiente'
-                    print(f"⚠️ Factura {factura.num_factura} devuelta a estado PENDIENTE")
+                # ============================================
+                # PASO 3: REGENERAR FACTURA (SI SE SOLICITA)
+                # ============================================
+                if regenerar_factura:
+                    exito, mensaje, nueva_factura = regenerar_factura_desde_factura_anulada(
+                        db=db,
+                        factura_original=factura_original,
+                        motivo_regeneracion=f"Regenerada por anulación de pago #{pago.id_pago}. Motivo: {motivo}"
+                    )
+                    
+                    if not exito:
+                        raise Exception(f"Error al regenerar factura: {mensaje}")
+                else:
+                    # Solo cambiar estado a pendiente si no se regenera
+                    factura_original.estado_factura = 'pendiente'
+                    print(f"⚠️ Factura {factura_original.num_factura} devuelta a PENDIENTE")
         
+        # ============================================
+        # PASO 4: COMMIT
+        # ============================================
         db.commit()
         db.refresh(pago)
         
-        # Auditoría
+        # ============================================
+        # PASO 5: AUDITORÍA
+        # ============================================
         registrar_auditoria(
             db=db,
             accion="UPDATE",
-            descripcion=f"Pago #{pago.id_pago} anulado. Motivo: {motivo or 'No especificado'}",
+            descripcion=f"Pago #{pago.id_pago} anulado. Motivo: {motivo}. " + 
+                       (f"Nueva factura: {nueva_factura.num_factura}" if nueva_factura else "Sin regeneración"),
             id_usuario=current_user.id_usuario_sistema
         )
         
-        return pago
+        # ============================================
+        # PASO 6: PREPARAR RESPUESTA
+        # ============================================
+        response = {
+            "pago_anulado": {
+                "id_pago": pago.id_pago,
+                "monto_pago": float(pago.monto_pago),
+                "estado_pago": pago.estado_pago,
+                "motivo_anulacion": pago.motivo_anulacion,
+                "fecha_anulacion": pago.fecha_anulacion.isoformat() if pago.fecha_anulacion else None
+            },
+            "factura_original": {
+                "id_factura": factura_original.id_factura,
+                "num_factura": factura_original.num_factura,
+                "estado_factura": factura_original.estado_factura
+            } if factura_original else None,
+            "nueva_factura": {
+                "id_factura": nueva_factura.id_factura,
+                "num_factura": nueva_factura.num_factura,
+                "periodo": nueva_factura.periodo,
+                "total": float(nueva_factura.total),
+                "estado_factura": nueva_factura.estado_factura,
+                "fecha_emision": nueva_factura.fecha_emision.isoformat()
+            } if nueva_factura else None
+        }
+        
+        return response
         
     except Exception as e:
         db.rollback()
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al anular el pago: {str(e)}"

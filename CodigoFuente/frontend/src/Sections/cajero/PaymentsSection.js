@@ -60,16 +60,27 @@ const PaymentsSection = () => {
   // ESTADOS DE ESTADÍSTICAS
   // ============================================================
   const [stats, setStats] = useState({
-    total_pagos: 0,
-    pagos_registrados: 0,
-    pagos_activos: 0,  // ✅ AGREGAR
-    pagos_anulados: 0,
-     monto_total: 0,
-    monto_total_pagado: 0,
-    monto_efectivo: 0,
-    monto_transferencia: 0,
-    monto_tarjeta: 0
+    // Facturas
+    total_facturas: 0,
+    facturas_pendientes: 0,
+    facturas_pagadas: 0,
+    facturas_vencidas: 0,
+    facturas_anuladas: 0,
+    
+    // Montos
+    total_facturado: 0,
+    total_pendiente: 0,
+    total_cobrado: 0,
+    
+    // Pagos
+    total_pagos_registrados: 0,
+    total_recaudado: 0,
+    total_efectivo: 0,
+    total_transferencia: 0,
+    total_tarjeta: 0
   });
+
+
 
   // ============================================================
   // ESTADOS DE MODAL
@@ -319,27 +330,13 @@ const PaymentsSection = () => {
     // FUNCIÓN PARA CALCULAR TOTAL PAGADO DE UNA FACTURA
     // ============================================================
 
-  const calcularTotalPagado = (factura) => {
-    
-    if (!factura.pagos || factura.pagos.length === 0) {
-      console.log('   ⚠️ No hay pagos asociados');
-      return 0;
-    }
-    
-    const total = factura.pagos
-      .filter(pago => {
-        return pago.estado_pago === 'REGISTRADO';
-      })
-      .reduce((sum, pago) => sum + parseFloat(pago.monto_pago || 0), 0);
-    
-    return total;
-  };
+    const calcularTotalPagado = (factura) => {
+      return factura.monto_pagado || 0;
+    };
 
-  const calcularSaldoPendiente = (factura) => {
-    const totalPagado = calcularTotalPagado(factura);
-    const saldo = parseFloat(factura.total || 0) - totalPagado;
-    return saldo;
-  };
+    const calcularSaldoPendiente = (factura) => {
+      return factura.saldo_pendiente || 0;
+    };
 
     // Helper para obtener badge de estado de pago
     const getEstadoPagoBadge = (factura) => {
@@ -408,42 +405,55 @@ const PaymentsSection = () => {
   // ============================================================
   // FILTRADO Y ORDENAMIENTO DE FACTURAS
   // ============================================================
-  const toggleSortOrder = () => {
-    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
-  };
+// ============================================================
+// FILTRADO Y ORDENAMIENTO DE FACTURAS
+// ============================================================
+const toggleSortOrder = () => {
+  setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
+};
 
-  const filteredFacturas = facturas.filter(factura => {
-    const searchLower = searchTerm.toLowerCase();
-    
-    const matchesSearch =
-      factura.num_factura?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.cod_usuario_afi?.toString().includes(searchTerm) ||
-      factura.usuario_afiliado?.usuario_sistema?.nombres?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.usuario_sistema?.apellidos?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.usuario_sistema?.cedula?.includes(searchTerm);
+const filteredFacturas = facturas.filter(factura => {
+  const searchLower = searchTerm.toLowerCase();
+  
+  // ✅ BÚSQUEDA: Solo por factura, afiliado, cédula, medidor, código
+  const matchesSearch =
+    factura.num_factura?.toLowerCase().includes(searchLower) ||
+    factura.usuario_afiliado?.cod_usuario_afi?.toString().includes(searchTerm) ||
+    factura.usuario_afiliado?.num_medidor?.toLowerCase().includes(searchLower) ||
+    factura.usuario_afiliado?.usuario_sistema?.nombres?.toLowerCase().includes(searchLower) ||
+    factura.usuario_afiliado?.usuario_sistema?.apellidos?.toLowerCase().includes(searchLower) ||
+    factura.usuario_afiliado?.usuario_sistema?.cedula?.includes(searchTerm);
 
-    const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
+  // ✅ FILTRO DE ESTADO DE FACTURA
+  const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
 
-    return matchesSearch && matchesStatus;
+  // ✅ FILTRO DE MÉTODO DE PAGO
+  const matchesMetodo = filterMetodo === 'all' || 
+    (factura.pago && factura.pago.metodo_pago === filterMetodo);
+
+  return matchesSearch && matchesStatus && matchesMetodo;
+});
+
+const sortedFacturas = useMemo(() => {
+  return [...filteredFacturas].sort((a, b) => {
+    let comparison = 0;
+
+    if (sortOption === 'fecha') {
+      comparison = new Date(a.fecha_emision) - new Date(b.fecha_emision);
+    } else if (sortOption === 'monto') {
+      comparison = parseFloat(a.total) - parseFloat(b.total);
+    } else if (sortOption === 'metodo') {
+      // ✅ Ordenar por método de pago
+      const metodoA = a.pago?.metodo_pago || '';
+      const metodoB = b.pago?.metodo_pago || '';
+      comparison = metodoA.localeCompare(metodoB);
+    } else if (sortOption === 'estado') {
+      comparison = (a.estado_factura || '').localeCompare(b.estado_factura || '');
+    }
+
+    return sortOrder === 'asc' ? comparison : -comparison;
   });
-
-  const sortedFacturas = useMemo(() => {
-    return [...filteredFacturas].sort((a, b) => {
-      let comparison = 0;
-
-      if (sortOption === 'fecha') {
-        comparison = new Date(a.fecha_emision) - new Date(b.fecha_emision);
-      } else if (sortOption === 'monto') {
-        comparison = parseFloat(a.total) - parseFloat(b.total);
-      } else if (sortOption === 'vencimiento') {
-        comparison = new Date(a.fecha_vencimiento) - new Date(b.fecha_vencimiento);
-      } else if (sortOption === 'estado') {
-        comparison = (a.estado_factura || '').localeCompare(b.estado_factura || '');
-      }
-
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-  }, [filteredFacturas, sortOption, sortOrder]);
+}, [filteredFacturas, sortOption, sortOrder]);
 
   // ============================================================
   // FUNCIONES DE MODAL
@@ -660,33 +670,81 @@ const PaymentsSection = () => {
   // ============================================================
   // FUNCIONES DE ACCIONES
   // ============================================================
-  const handleAnularPago = async (pagoId) => {
-    if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para anular pagos');
-      return;
-    }
 
-    const motivo = window.prompt('Motivo de anulación (opcional):');
-    if (motivo === null) return;
+  /**
+ * Anula un pago y regenera la factura
+ */
+const handleAnularPagoConRegeneracion = async (factura) => {
+  if (!permissions.canDelete) {
+    alert('❌ No tienes permiso para anular pagos');
+    return;
+  }
 
-    setLoading(true);
-    try {
-      const result = await paymentsServices.anularPago(pagoId, motivo);
+  if (!factura.pago) {
+    alert('❌ Esta factura no tiene pago registrado');
+    return;
+  }
+
+  // Confirmación
+  const confirmar = window.confirm(
+    `⚠️ ¿Estás seguro de anular el pago de la factura ${factura.num_factura}?\n\n` +
+    `• Monto: ${formatCurrency(factura.pago.monto_pago)}\n` +
+    `• Método: ${factura.pago.metodo_pago}\n` +
+    `• Cajero: ${factura.pago.cajero}\n\n` +
+    `Se generará una nueva factura con los mismos datos.`
+  );
+
+  if (!confirmar) return;
+
+  // Solicitar motivo
+  const motivo = window.prompt(
+    'Motivo de anulación (requerido):',
+    'Anulación solicitada por cliente'
+  );
+
+  if (motivo === null) return;
+  
+  if (!motivo || motivo.trim() === '') {
+    alert('❌ Debes especificar un motivo de anulación');
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    console.log('🔄 Anulando pago y regenerando factura...');
+    
+    const result = await paymentsServices.anularPagoConRegeneracion(
+      factura.pago.id_pago,
+      motivo.trim()
+    );
+    
+    if (result.success) {
+      alert(
+        `✅ Pago anulado correctamente\n\n` +
+        `Nueva factura generada: ${result.data.nueva_factura.num_factura}\n` +
+        `Periodo: ${result.data.nueva_factura.periodo}`
+      );
       
-      if (result.success) {
-        alert('✅ Pago anulado correctamente');
-        closeModal();
-        await fetchPagosByPeriodo();
-        await fetchStats();
-      } else {
-        alert(`❌ Error: ${result.message}`);
-      }
-    } catch (error) {
-      alert('❌ Error al anular pago');
-    } finally {
-      setLoading(false);
+      closeModal();
+      
+      // Recargar datos
+      await Promise.all([
+        fetchFacturasPeriodo(),
+        fetchStats()
+      ]);
+      
+      console.log('✅ Datos recargados');
+    } else {
+      alert(`❌ Error: ${result.message}`);
     }
-  };
+  } catch (error) {
+    console.error('❌ Error al anular pago:', error);
+    alert(`❌ Error al anular pago: ${error.message || 'Error desconocido'}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
 
   // Función simplificada para descargar
@@ -741,11 +799,9 @@ const PaymentsSection = () => {
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('es-EC', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
     });
   };
 
@@ -801,17 +857,24 @@ const PaymentsSection = () => {
         <div className="periodo-selection-page">
           <div className="section-header">
             <div className="section-title">
-              <DollarSign className="w-7 h-7 text-green-600" />
+            <DollarSign className="w-7 h-7 text-blue-600" />
+            <div>
               <h2>Gestión de Pagos</h2>
+              <p className="section-subtitle">
+                Gestiona la información de los pagos
+              </p>
             </div>
+        </div>
+
           </div>
+          
 
           {/* SECCIÓN 1: PERÍODOS RECIENTES */}
           <div className="periodo-selector-container">
             <div className="periodo-selector-header">
               <div>
                 <h3>
-                  <CalendarDays className="w-5 h-5 text-green-600 mr-2" />
+                  <CalendarDays className="w-5 h-5 text-blue-600 mr-2" />
                   Períodos de Pagos
                 </h3>
                 <p className="periodo-selector-subtitle">
@@ -887,7 +950,7 @@ const PaymentsSection = () => {
             <div className="flex items-center">
               <div>
                 <h3 className="font-semibold text-[16px] leading-[1.2]">
-                  <Clock className="w-5 h-5 text-green-600 mr-2 flex-shrink-0 self-center" />
+                  <Clock className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 self-center" />
                   Historial de Períodos
                 </h3>
                 <p className="periodo-historial-subtitle text-[14px]">
@@ -1008,8 +1071,9 @@ const PaymentsSection = () => {
               <h3>Resumen del Periodo</h3>
             </div>
 
+            {/* Estadísticas del periodo */}
             <div className="users-stats">
-              {/* Facturas Mostradas */}
+              {/* Facturas Totales */}
               <div className="stat-item">
                 <FileText className="stat-icon text-blue-600" />
                 <div>
@@ -1066,6 +1130,7 @@ const PaymentsSection = () => {
                 </div>
               </div>
             </div>
+
           </div>
 
 
@@ -1075,7 +1140,7 @@ const PaymentsSection = () => {
               <Search className="search-icon" />
               <input
                 type="text"
-                placeholder="Buscar por ID, factura, afiliado..."
+                placeholder="Buscar por factura, afiliado, cédula, medidor..."
                 className="search-input"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -1083,16 +1148,20 @@ const PaymentsSection = () => {
             </div>
 
             <div className="filters-right">
+              {/* ✅ FILTRO DE ESTADO DE FACTURA */}
               <select
                 className="filter-select"
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
               >
                 <option value="all">Todos los estados</option>
-                <option value="REGISTRADO">Registrados</option>
-                <option value="ANULADO">Anulados</option>
+                <option value="pendiente">Pendientes</option>
+                <option value="pagada">Pagadas</option>
+                <option value="vencida">Vencidas</option>
+                <option value="anulada">Anuladas</option>
               </select>
 
+              {/* ✅ FILTRO DE MÉTODO DE PAGO */}
               <select
                 className="filter-select"
                 value={filterMetodo}
@@ -1104,6 +1173,7 @@ const PaymentsSection = () => {
                 <option value="TARJETA">Tarjeta</option>
               </select>
 
+              {/* ✅ ORDENAMIENTO */}
               <select
                 className="filter-select"
                 value={sortOption}
@@ -1127,7 +1197,7 @@ const PaymentsSection = () => {
               <button 
                 className="btn-secondary" 
                 onClick={() => {
-                  fetchPagosByPeriodo();
+                  fetchFacturasPeriodo();
                   fetchStats();
                 }} 
                 title="Recargar"
@@ -1136,6 +1206,29 @@ const PaymentsSection = () => {
               </button>
             </div>
           </div>
+
+          {/* ✅ CONTADOR DE RESULTADOS */}
+          {searchTerm || filterStatus !== 'all' || filterMetodo !== 'all' ? (
+            <div className="filter-results-info">
+              <span>
+                Mostrando <strong>{sortedFacturas.length}</strong> de <strong>{facturas.length}</strong> facturas
+              </span>
+              {(searchTerm || filterStatus !== 'all' || filterMetodo !== 'all') && (
+                <button 
+                  className="btn-clear-filters"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setFilterStatus('all');
+                    setFilterMetodo('all');
+                  }}
+                >
+                  <X className="w-3 h-3" />
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+          ) : null}
+
 
           {/* MENSAJE DE ERROR */}
           {error && (
@@ -1173,164 +1266,155 @@ const PaymentsSection = () => {
 
             {/* BODY */}
             <div className="invoices-list-body">
-            {sortedFacturas.length > 0 ? (
+              {sortedFacturas.length > 0 ? (
                 sortedFacturas.map((factura, index) => {
-                const totalPagado = calcularTotalPagado(factura);
-                const saldoPendiente = calcularSaldoPendiente(factura);
-                const puedeRecibirPago = factura.estado_factura === 'pendiente' || factura.estado_factura === 'vencida';
+                  const totalPagado = calcularTotalPagado(factura);
+                  const saldoPendiente = calcularSaldoPendiente(factura);
+                  const puedeRecibirPago = factura.estado_factura === 'pendiente' || factura.estado_factura === 'vencida';
 
-                return (
-                    <div 
-                    key={factura.id_factura} 
-                    className={`invoices-list-item ${
-                        factura.estado_factura === 'anulada' ? 'inv-anulada' : 
-                        factura.estado_factura === 'pagada' ? 'inv-pagada' :
-                        factura.estado_factura === 'vencida' ? 'inv-vencida' : ''
-                    }`}
-                    >
-                    {/* Columna 1: # */}
-                    <div className="inv-col-index">
-                        <span className="inv-index-badge">{index + 1}</span>
-                    </div>
-
-                    {/* Columna 2: Número Factura */}
-                    <div className="inv-col-numero">
-                        <FileText className="w-4 h-4" />
-                        <span className="inv-numero-text">
-                        {factura.num_factura}
-                        </span>
-                    </div>
-
-                    {/* Columna 3: Fecha Emisión */}
-                    <div className="inv-col-fecha">
-                        <Calendar className="w-3 h-3" />
-                        <span>{formatDateShort(factura.fecha_emision)}</span>
-                    </div>
-
-                    {/* Columna 4: Código Afiliado */}
-                    <div className="inv-col-codigo">
-                        {factura.usuario_afiliado?.cod_usuario_afi ?? '—'}
-                    </div>
-
-                    {/* Columna 5: Afiliado */}
-                    <div className="inv-col-usuario">
-                        {factura.usuario_afiliado?.usuario_sistema ? (
-                        <div className="inv-usuario-info">
-                            <span className="inv-usuario-nombre">
-                            {factura.usuario_afiliado.usuario_sistema.nombres} {factura.usuario_afiliado.usuario_sistema.apellidos}
-                            </span>
-                        </div>
-                        ) : (
-                        <span className="inv-sin-dato">-</span>
-                        )}
-                    </div>
-
-                    {/* Columna 6: Total */}
-                    <div className="inv-col-total">
-                        <span className="inv-monto">{formatCurrency(factura.total)}</span>
-                    </div>
-
-                    {/* Columna 7: Total Pagado */}
-                    <div className="inv-col-total">
-                        <span className="inv-monto" style={{ color: totalPagado > 0 ? '#10b981' : '#6b7280' }}>
-                        {formatCurrency(totalPagado)}
-                        </span>
-                        
-                    </div>
-
-                    {/* Columna 8: Saldo Pendiente */}
-                    <div className="inv-col-total">
-                        <span 
-                        className="inv-monto font-bold" 
-                        style={{ 
-                            color: saldoPendiente > 0 ? '#ef4444' : '#10b981'
-                        }}
-                        >
-                        {formatCurrency(saldoPendiente)}
-                        </span>
-                    </div>
-
-                    {/* Columna 9: Estado */}
-                    <div className="inv-col-estado">
-                        {getEstadoPagoBadge(factura)}
-                    </div>
-                    {/* Columna 10: Comprobante */}
-
-                    <div className="inv-col-comprobante">
-                      {factura.pagos && factura.pagos.length > 0 ? (
-                        <div className="comprobantes-list">
-                          {factura.pagos.map((pago) => {
-                            const tieneArchivo =
-                              pago.tiene_comprobante || (pago.nombre_archivo && pago.nombre_archivo.trim() !== '');
-
-                            if (!tieneArchivo) return null;
-
-                            return (
-                              <div key={pago.id_pago} className="flex gap-1">
-
-                                {/* Descargar comprobante */}
-                                <button
-                                  className="inv-btn inv-btn-edit"
-                                  onClick={() => descargarComprobante(pago.id_pago)}
-                                  title={`Descargar comprobante de pago #${pago.id_pago} - ${
-                                    pago.nombre_archivo || 'comprobante.pdf'
-                                  }`}
-                                >
-                                  <FileCheck className="w-4 h-4" />
-                                </button>
-                              </div>
-                            );
-                          })}
-
-                          {factura.pagos.filter(
-                            (p) => p.tiene_comprobante || (p.nombre_archivo && p.nombre_archivo.trim() !== '')
-                          ).length === 0 && (
-                            <span className="text-xs text-gray-400">Sin comprobantes</span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">-</span>
-                      )}
-                    </div>
-
-                    {/* Columna 11: Acciones */}
-                    <div className="inv-col-acciones">
-                      <button 
-                        className="inv-btn inv-btn-view" 
-                        onClick={() => openModal('view-factura', factura)} 
-                        title="Ver factura y pagos"
+                  return (
+                      <div 
+                      key={factura.id_factura} 
+                      className={`invoices-list-item ${
+                          factura.estado_factura === 'anulada' ? 'inv-anulada' : 
+                          factura.estado_factura === 'pagada' ? 'inv-pagada' :
+                          factura.estado_factura === 'vencida' ? 'inv-vencida' : ''
+                      }`}
                       >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      {/* Columna 1: # */}
+                      <div className="inv-col-index">
+                          <span className="inv-index-badge">{index + 1}</span>
+                      </div>
 
-                      {permissions.canCreate && puedeRecibirPago && saldoPendiente > 0 && (
-                        <button
-                          className="inv-btn inv-btn-edit"
-                          onClick={() => openPaymentModal(factura)}
-                          title={`Registrar pago - Saldo: ${formatCurrency(saldoPendiente)}`}
-                          style={{ backgroundColor: '#10b981', color: 'white' }}
+                      {/* Columna 2: Número Factura */}
+                      <div className="inv-col-numero">
+                          <FileText className="w-4 h-4" />
+                          <span className="inv-numero-text">
+                          {factura.num_factura}
+                          </span>
+                      </div>
+
+                      {/* Columna 3: Fecha Emisión */}
+                      <div className="inv-col-fecha">
+                          <Calendar className="w-3 h-3" />
+                          <span>{formatDateShort(factura.fecha_emision)}</span>
+                      </div>
+
+                      {/* Columna 4: Código Afiliado */}
+                      <div className="inv-col-codigo">
+                          {factura.usuario_afiliado?.cod_usuario_afi ?? '—'}
+                      </div>
+
+                      {/* Columna 5: Afiliado */}
+                      <div className="inv-col-usuario">
+                          {factura.usuario_afiliado?.usuario_sistema ? (
+                          <div className="inv-usuario-info">
+                              <span className="inv-usuario-nombre">
+                              {factura.usuario_afiliado.usuario_sistema.nombres} {factura.usuario_afiliado.usuario_sistema.apellidos}
+                              </span>
+                          </div>
+                          ) : (
+                          <span className="inv-sin-dato">-</span>
+                          )}
+                      </div>
+
+                      {/* Columna 6: Total */}
+                      <div className="inv-col-total">
+                          <span className="inv-monto">{formatCurrency(factura.total)}</span>
+                      </div>
+
+                      {/* Columna 7: Total Pagado */}
+                      <div className="inv-col-total">
+                          <span className="inv-monto" style={{ color: totalPagado > 0 ? '#10b981' : '#6b7280' }}>
+                          {formatCurrency(totalPagado)}
+                          </span>
+                          
+                      </div>
+
+                      {/* Columna 8: Saldo Pendiente */}
+                      <div className="inv-col-total">
+                          <span 
+                          className="inv-monto font-bold" 
+                          style={{ 
+                              color: saldoPendiente > 0 ? '#ef4444' : '#10b981'
+                          }}
+                          >
+                          {formatCurrency(saldoPendiente)}
+                          </span>
+                      </div>
+
+                      {/* Columna 9: Estado */}
+                      <div className="inv-col-estado">
+                          {getEstadoPagoBadge(factura)}
+                      </div>
+                      
+                      {/* Columna 10: Comprobante */}
+                      <div className="inv-col-comprobante">
+                        {factura.pago && factura.pago.tiene_comprobante ? (
+                          <button
+                            className="inv-btn inv-btn-edit"
+                            onClick={() => descargarComprobante(factura.pago.id_pago)}
+                            title={`Descargar: ${factura.pago.nombre_archivo || 'comprobante.pdf'}`}
+                          >
+                            <FileCheck className="w-4 h-4 text-green-600" />
+                          </button>
+                        ) : factura.pago && !factura.pago.tiene_comprobante ? (
+                          <span className="text-xs text-gray-400">Sin comprobante</span>
+                        ) : (
+                          <span className="text-xs text-gray-400">Sin pago</span>
+                        )}
+                      </div>
+
+                      {/* Columna 11: Acciones */}
+                      <div className="inv-col-acciones">
+                        <button 
+                          className="inv-btn inv-btn-view" 
+                          onClick={() => openModal('view-factura', factura)} 
+                          title="Ver factura y pagos"
                         >
-                          <DollarSign className="w-4 h-4" />
+                          <Eye className="w-4 h-4" />
                         </button>
-                      )}
 
-                      {factura.estado_factura === 'pagada' && (
-                        <span className="text-xs text-green-600 font-semibold px-2">
-                          ✓ Completa
-                        </span>
-                      )}
+                        {permissions.canCreate && puedeRecibirPago && saldoPendiente > 0 && (
+                          <button
+                            className="inv-btn inv-btn-edit"
+                            onClick={() => openPaymentModal(factura)}
+                            title={`Registrar pago - Saldo: ${formatCurrency(saldoPendiente)}`}
+                            style={{ backgroundColor: '#10b981', color: 'white' }}
+                          >
+                            <DollarSign className="w-4 h-4" />
+                          </button>
+                        )}
+                        
+                        {/* ✅ Anular pago - Solo si está pagada */}
+                        {permissions.canDelete && factura.estado_factura === 'pagada' && factura.pago && (
+                          <button
+                            className="inv-btn inv-btn-delete"
+                            onClick={() => handleAnularPagoConRegeneracion(factura)}
+                            title={`Anular pago y regenerar factura`}
+                            style={{ backgroundColor: '#ef4444', color: 'white' }}
+                          >
+                            <Ban className="w-4 h-4" />
+                          </button>
+                        )}
 
-                      {factura.estado_factura === 'anulada' && (
-                        <span className="text-xs text-red-600 font-semibold px-2">
-                          ✗ Anulada
-                        </span>
-                      )}
-                    </div>
+                        {factura.estado_factura === 'pagada' && (
+                          <span className="text-xs text-green-600 font-semibold px-2">
+                            ✓ Completa
+                          </span>
+                        )}
 
-                    </div>
-                );
+                        {factura.estado_factura === 'anulada' && (
+                          <span className="text-xs text-red-600 font-semibold px-2">
+                            ✗ Anulada
+                          </span>
+                        )}
+                      </div>
+
+                      </div>
+                  );
                 })
-            ) : (
+              ) : (
                 <div className="invoices-list-empty">
                 <FileText className="inv-empty-icon" />
                 <h3>No hay facturas en este periodo</h3>
@@ -1341,7 +1425,7 @@ const PaymentsSection = () => {
                     }
                 </p>
                 </div>
-            )}
+              )}
             </div>
 
             {/* FOOTER */}
@@ -1429,23 +1513,26 @@ const PaymentsSection = () => {
                     Datos del Afiliado
                   </h4>
                   <div className="user-details">
-                    <div className="detail-group">
-                      <label>Código</label>
-                      <p className="font-mono">{selectedPago.usuario_afiliado.cod_usuario_afi}</p>
-                    </div>
                     <div className="detail-group form-group-full">
-                      <label>Nombre</label>
+                      <label>Nombre Afiliado:</label>
                       <p>
                         {selectedPago.usuario_afiliado.usuario_sistema?.nombres}{' '}
-                        {selectedPago.usuario_afiliado.usuario_sistema?.apellidos}
+                        {selectedPago.usuario_afiliado.usuario_sistema?.apellidos}  {' '} 
+                        - {selectedPago.usuario_afiliado.usuario_sistema?.cedula || 'N/A'}
+                        
                       </p>
                     </div>
+
                     <div className="detail-group">
-                      <label>Cédula</label>
-                      <p className="font-mono">
-                        {selectedPago.usuario_afiliado.usuario_sistema?.cedula || 'N/A'}
-                      </p>
+                      <label>Código Afiliado:</label>
+                      <p className="font-mono">{selectedPago.usuario_afiliado.cod_usuario_afi}</p>
                     </div>
+
+                    <div className="detail-group">
+                      <label>Medidor:</label>
+                      <p className="font-mono">{selectedPago.usuario_afiliado.num_medidor}</p>
+                    </div>
+
                     {/* ✅ AGREGAR NÚMERO DE MEDIDOR */}
                     {selectedPago.usuario_afiliado.medidores && 
                     selectedPago.usuario_afiliado.medidores.length > 0 && (
@@ -1564,115 +1651,112 @@ const PaymentsSection = () => {
                 </div>
               )}
 
-              {/* SECCIÓN DE PAGOS ASOCIADOS */}
-              {selectedPago.pagos && selectedPago.pagos.length > 0 && (
+              {/* SECCIÓN DE PAGO (único, no array) */}
+              {selectedPago.pago && (
                 <div className="factura-section">
                   <h4 className="section-title">
                     <DollarSign className="w-4 h-4" />
-                    Pagos Registrados ({selectedPago.pagos.length})
+                    Información del Pago
                   </h4>
                   <div className="pagos-list">
-                    {selectedPago.pagos.map((pago, index) => (
-                      <div 
-                        key={pago.id_pago} 
-                        className={`pago-item ${pago.estado_pago === 'ANULADO' ? 'pago-anulado' : ''}`}
-                      >
-                        {/* CABECERA DEL PAGO */}
-                        <div className="pago-header">
-                          <div className="pago-header-left">
-                            <span className="pago-numero">Pago #{index + 1}</span>
-                            <span className="pago-id">ID: {pago.id_pago}</span>
-                          </div>
-                          {getStatusBadge(pago.estado_pago)}
+                    {/* Ya no usamos .map porque es un solo objeto */}
+                    <div 
+                      className={`pago-item ${selectedPago.pago.estado_pago === 'ANULADO' ? 'pago-anulado' : ''}`}
+                    >
+                      {/* CABECERA DEL PAGO */}
+                      <div className="pago-header">
+                        <div className="pago-header-left">
+                          <span className="pago-numero">Pago #{selectedPago.pago.id_pago}</span>
+                        </div>
+                        {getStatusBadge(selectedPago.pago.estado_pago)}
+                      </div>
+                      
+                      {/* DETALLES DEL PAGO */}
+                      <div className="pago-details">
+                        <div className="pago-detail">
+                          <span className="pago-label">
+                            <Calendar className="w-3 h-3" />
+                            Fecha:
+                          </span>
+                          <span className="pago-value">{formatDate(selectedPago.pago.fecha_pago)}</span>
                         </div>
                         
-                        {/* DETALLES DEL PAGO */}
-                        <div className="pago-details">
-                          <div className="pago-detail">
-                            <span className="pago-label">
-                              <Calendar className="w-3 h-3" />
-                              Fecha:
-                            </span>
-                            <span className="pago-value">{formatDate(pago.fecha_pago)}</span>
-                          </div>
-                          
-                          <div className="pago-detail">
-                            <span className="pago-label">
-                              <DollarSign className="w-3 h-3" />
-                              Monto:
-                            </span>
-                            <span className="pago-value font-bold text-green-600">
-                              {formatCurrency(pago.monto_pago)}
-                            </span>
-                          </div>
-                          
-                          <div className="pago-detail">
-                            <span className="pago-label">
-                              {getMetodoIcon(pago.metodo_pago)}
-                              Método:
-                            </span>
-                            <span className="pago-value">
-                              {pago.metodo_pago}
-                            </span>
-                          </div>
-
-                          {/* CAJERO (si existe) */}
-                          {pago.cajero && (
-                            <div className="pago-detail">
-                              <span className="pago-label">
-                                <User className="w-3 h-3" />
-                                Cajero:
-                              </span>
-                              <span className="pago-value">
-                                {pago.cajero.nombres} {pago.cajero.apellidos}
-                              </span>
-                            </div>
-                          )}
+                        <div className="pago-detail">
+                          <span className="pago-label">
+                            <DollarSign className="w-3 h-3" />
+                            Monto:
+                          </span>
+                          <span className="pago-value font-bold text-green-600">
+                            {formatCurrency(selectedPago.pago.monto_pago)}
+                          </span>
+                        </div>
+                        
+                        <div className="pago-detail">
+                          <span className="pago-label">
+                            {getMetodoIcon(selectedPago.pago.metodo_pago)}
+                            Método:
+                          </span>
+                          <span className="pago-value">
+                            {selectedPago.pago.metodo_pago}
+                          </span>
                         </div>
 
-                        {/* OBSERVACIONES */}
-                        {pago.observaciones && (
-                          <div className="pago-observaciones">
-                            <span className="pago-obs-label">
-                              <FileText className="w-3 h-3" />
-                              Observaciones:
+                        {/* CAJERO */}
+                        {selectedPago.pago.cajero && (
+                          <div className="pago-detail">
+                            <span className="pago-label">
+                              <User className="w-3 h-3" />
+                              Cajero:
                             </span>
-                            <p className="pago-obs-text">{pago.observaciones}</p>
-                          </div>
-                        )}
-
-                        {/* INFORMACIÓN DE ANULACIÓN */}
-                        {pago.estado_pago === 'ANULADO' && (
-                          <div className="pago-anulacion-info">
-                            <div className="anulacion-header">
-                              <Ban className="w-4 h-4" />
-                              <span>Pago Anulado</span>
-                            </div>
-                            {pago.fecha_anulacion && (
-                              <div className="anulacion-detail">
-                                <span className="anulacion-label">Fecha de anulación:</span>
-                                <span className="anulacion-value">
-                                  {formatDate(pago.fecha_anulacion)}
-                                </span>
-                              </div>
-                            )}
-                            {pago.motivo_anulacion && (
-                              <div className="anulacion-detail">
-                                <span className="anulacion-label">Motivo:</span>
-                                <span className="anulacion-value">{pago.motivo_anulacion}</span>
-                              </div>
-                            )}
+                            <span className="pago-value">
+                              {selectedPago.pago.cajero}
+                            </span>
                           </div>
                         )}
                       </div>
-                    ))}
+
+                      {/* OBSERVACIONES */}
+                      {selectedPago.pago.observaciones && (
+                        <div className="pago-observaciones">
+                          <span className="pago-obs-label">
+                            <FileText className="w-3 h-3" />
+                            Observaciones:
+                          </span>
+                          <p className="pago-obs-text">{selectedPago.pago.observaciones}</p>
+                        </div>
+                      )}
+
+                      {/* INFORMACIÓN DE ANULACIÓN */}
+                      {selectedPago.pago.estado_pago === 'ANULADO' && (
+                        <div className="pago-anulacion-info">
+                          <div className="anulacion-header">
+                            <Ban className="w-4 h-4" />
+                            <span>Pago Anulado</span>
+                          </div>
+                          {selectedPago.pago.fecha_anulacion && (
+                            <div className="anulacion-detail">
+                              <span className="anulacion-label">Fecha de anulación:</span>
+                              <span className="anulacion-value">
+                                {formatDate(selectedPago.pago.fecha_anulacion)}
+                              </span>
+                            </div>
+                          )}
+                          {selectedPago.pago.motivo_anulacion && (
+                            <div className="anulacion-detail">
+                              <span className="anulacion-label">Motivo:</span>
+                              <span className="anulacion-value">{selectedPago.pago.motivo_anulacion}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
                   {/* RESUMEN DE PAGOS */}
                   <div className="pagos-summary">
                     <div className="summary-header">
                       <TrendingUp className="w-4 h-4" />
-                      <span>Resumen de Pagos</span>
+                      <span>Resumen de Pago</span>
                     </div>
                     <div className="summary-row">
                       <span>Total Factura:</span>
@@ -1681,15 +1765,15 @@ const PaymentsSection = () => {
                     <div className="summary-row pagado">
                       <span>Total Pagado:</span>
                       <span className="font-bold text-green-600">
-                        {formatCurrency(calcularTotalPagado(selectedPago))}
+                        {formatCurrency(selectedPago.monto_pagado)}
                       </span>
                     </div>
                     <div className="summary-row total">
                       <span>Saldo Pendiente:</span>
                       <span className={`font-bold ${
-                        calcularSaldoPendiente(selectedPago) > 0 ? 'text-red-600' : 'text-green-600'
+                        selectedPago.saldo_pendiente > 0 ? 'text-red-600' : 'text-green-600'
                       }`}>
-                        {formatCurrency(calcularSaldoPendiente(selectedPago))}
+                        {formatCurrency(selectedPago.saldo_pendiente)}
                       </span>
                     </div>
                     
@@ -1699,27 +1783,28 @@ const PaymentsSection = () => {
                         <div 
                           className="progress-fill"
                           style={{
-                            width: `${(calcularTotalPagado(selectedPago) / parseFloat(selectedPago.total)) * 100}%`
+                            width: `${(selectedPago.monto_pagado / parseFloat(selectedPago.total)) * 100}%`
                           }}
                         />
                       </div>
                       <span className="progress-percentage">
-                        {((calcularTotalPagado(selectedPago) / parseFloat(selectedPago.total)) * 100).toFixed(1)}% pagado
+                        {((selectedPago.monto_pagado / parseFloat(selectedPago.total)) * 100).toFixed(1)}% pagado
                       </span>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* MENSAJE SI NO HAY PAGOS */}
-              {(!selectedPago.pagos || selectedPago.pagos.length === 0) && (
+              {/* MENSAJE SI NO HAY PAGO */}
+              {!selectedPago.pago && (
                 <div className="factura-section">
                   <div className="empty-state-small">
                     <AlertCircle className="w-8 h-8 text-gray-400" />
-                    <p>No hay pagos registrados para esta factura</p>
+                    <p>No hay pago registrado para esta factura</p>
                   </div>
                 </div>
               )}
+
             </div>
 
             <div className="modal-footer">

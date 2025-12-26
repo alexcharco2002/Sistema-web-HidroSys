@@ -16,6 +16,7 @@ from calendar import month_name
 
 from models.lectura import Lectura
 from models.meter import Medidor
+from models.sector import Sector
 from models.user import UsuarioSistema
 from models.affiliate import UsuarioAfiliado
 from db.session import SessionLocal
@@ -63,159 +64,214 @@ def get_current_afiliado(current_user: UsuarioSistema, db: Session) -> UsuarioAf
     return afiliado
 
 
-@router.get("/periodos-disponibles", response_model=Dict)
-def obtener_periodos_disponibles(
+@router.get("/mis-lecturas/periodos-disponibles", response_model=dict)
+def obtener_periodos_mis_lecturas(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
-    Obtiene los años y meses donde el afiliado tiene lecturas registradas
+    Obtiene años y meses disponibles agrupados por año
+    Retorna: {anios_disponibles: [2026, 2025], periodos: {2026: [...], 2025: [...]}}
     """
     current_user = get_current_user(payload, db)
-    afiliado = get_current_afiliado(current_user, db)
 
-    # ===============================
-    # CONSULTA OPTIMIZADA
-    # ===============================
-    periodos = (
-        db.query(
-            func.extract('year', Lectura.fecha_lectura).label('anio'),
-            func.extract('month', Lectura.fecha_lectura).label('mes'),
-            func.count(Lectura.id_lectura).label('total_lecturas'),
-            func.coalesce(func.sum(Lectura.consumo_m3), 0).label('consumo_total')
-        )
-        .join(Medidor, Medidor.id_medidor == Lectura.id_medidor)
+    afiliado = (
+        db.query(UsuarioAfiliado.id_usuario_afi)
         .filter(
-            Medidor.id_usuario_afi == afiliado.id_usuario_afi,
-            Medidor.activo.is_(True),
-            Lectura.activo.is_(True)
+            UsuarioAfiliado.id_usuario_sistema == current_user.id_usuario_sistema
         )
-        .group_by('anio', 'mes')
-        .order_by(desc('anio'), desc('mes'))
-        .all()
+        .first()
     )
 
-    if not periodos:
+    if not afiliado:
         return {
             "anios_disponibles": [],
             "periodos": {}
         }
 
-    # ===============================
-    # ORGANIZAR RESULTADO
-    # ===============================
-    periodos_por_anio = {}
+    periodos = (
+        db.query(
+            extract('year', Lectura.fecha_lectura).label("anio"),
+            extract('month', Lectura.fecha_lectura).label("mes"),
+            func.count(Lectura.id_lectura).label("total_lecturas")
+        )
+        .join(Medidor, Medidor.id_medidor == Lectura.id_medidor)
+        .filter(
+            Medidor.id_usuario_afi == afiliado.id_usuario_afi,
+            Lectura.activo == True
+        )
+        .group_by("anio", "mes")
+        .order_by(
+            extract('year', Lectura.fecha_lectura).desc(),
+            extract('month', Lectura.fecha_lectura).desc()
+        )
+        .all()
+    )
+
+    # ✅ AGRUPAR POR AÑO
+    periodos_agrupados = {}
     anios_disponibles = []
 
     for p in periodos:
         anio = int(p.anio)
         mes = int(p.mes)
-
-        if anio not in periodos_por_anio:
-            periodos_por_anio[anio] = []
+        
+        # Crear lista para el año si no existe
+        if anio not in periodos_agrupados:
+            periodos_agrupados[anio] = []
             anios_disponibles.append(anio)
-
-        periodos_por_anio[anio].append({
+        
+        # Agregar mes con su nombre en español
+        periodos_agrupados[anio].append({
             "mes": mes,
             "nombre_mes": obtener_nombre_mes(mes),
-            "total_lecturas": p.total_lecturas,
-            "consumo_total": float(p.consumo_total)
+            "total_lecturas": p.total_lecturas
         })
 
     return {
         "anios_disponibles": anios_disponibles,
-        "periodos": periodos_por_anio
+        "periodos": periodos_agrupados
     }
 
 @router.get("/mis-lecturas", response_model=List[dict])
-def listar_mis_lecturas_por_periodo(
-    anio: Optional[int] = Query(None),
-    mes: Optional[int] = Query(None, ge=1, le=12),
-    tipo_lectura: Optional[str] = Query(None),
-    id_medidor: Optional[int] = Query(None),
+def listar_mis_lecturas(
+    anio: Optional[int] = Query(None, description="Año para filtrar (ej: 2025)"),
+    mes: Optional[int] = Query(None, ge=1, le=12, description="Mes para filtrar (1-12)"),
+    tipo_lectura: Optional[str] = Query(None, description="Tipo: 'reales', 'estimadas' o 'todas'"),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
+    """
+    Lista las lecturas del afiliado actual con filtros opcionales de año y mes
+    """
     current_user = get_current_user(payload, db)
-    afiliado = get_current_afiliado(current_user, db)
 
- 
+    # ✅ OBTENER AFILIADO CON DATOS DEL USUARIO
+    afiliado = (
+        db.query(UsuarioAfiliado)
+        .options(joinedload(UsuarioAfiliado.usuario_sistema))  # ⚠️ Cargar relación
+        .filter(UsuarioAfiliado.id_usuario_sistema == current_user.id_usuario_sistema)
+        .first()
+    )
 
-    # ===============================
-    # QUERY OPTIMIZADA
-    # ===============================
+    if not afiliado:
+        return []
+
+    # ✅ OBTENER NOMBRE COMPLETO DEL AFILIADO
+    nombre_afiliado = (
+        f"{afiliado.usuario_sistema.nombres} {afiliado.usuario_sistema.apellidos}".strip()
+        if afiliado.usuario_sistema else "Sin nombre"
+    )
+    codigo_afiliado = afiliado.cod_usuario_afi
+
+    # ==================== CONSTRUCCIÓN DE LA QUERY ====================
     query = (
-        db.query(Lectura)
-        .join(Medidor)
-        .options(
-            joinedload(Lectura.medidor)
-                .joinedload(Medidor.sector),
-            joinedload(Lectura.medidor)
-                .joinedload(Medidor.usuario_afiliado)
-                .joinedload(UsuarioAfiliado.usuario_sistema),
-            joinedload(Lectura.lector)
+        db.query(
+            Lectura.id_lectura,
+            Lectura.id_medidor,
+            Lectura.lectura_actual,
+            Lectura.lectura_anterior,
+            Lectura.consumo_m3,
+            Lectura.fecha_lectura,
+            Lectura.observacion,
+            Lectura.es_estimada,
+            Lectura.activo,
+            
+            Medidor.num_medidor,
+            
+            UsuarioAfiliado.cod_usuario_afi,
+            
+            UsuarioSistema.nombres.label("lector_nombres"),
+            UsuarioSistema.apellidos.label("lector_apellidos"),
+            
+            Sector.nombre_sector,
         )
+        .join(Medidor, Medidor.id_medidor == Lectura.id_medidor)
+        .join(UsuarioAfiliado, UsuarioAfiliado.id_usuario_afi == Medidor.id_usuario_afi)
+        .outerjoin(
+            UsuarioSistema,
+            UsuarioSistema.id_usuario_sistema == Lectura.id_lector
+        )
+        .outerjoin(Sector, Sector.id_sector == Medidor.id_sector)
         .filter(
-            Medidor.id_usuario_afi == afiliado.id_usuario_afi,
-            Medidor.activo.is_(True),
-            Lectura.activo.is_(True)
+            Medidor.activo == True,
+            Lectura.activo == True,
+            Medidor.id_usuario_afi == afiliado.id_usuario_afi
         )
     )
 
-    if id_medidor:
-        query = query.filter(Medidor.id_medidor == id_medidor)
-
+    # ==================== APLICAR FILTROS OPCIONALES ====================
+    
+    if anio and mes:
+        fecha_inicio = date(anio, mes, 1)
+        if mes == 12:
+            fecha_fin = date(anio + 1, 1, 1)
+        else:
+            fecha_fin = date(anio, mes + 1, 1)
+        
+        query = query.filter(
+            Lectura.fecha_lectura >= fecha_inicio,
+            Lectura.fecha_lectura < fecha_fin
+        )
+        print(f"📅 Filtrando por: {obtener_nombre_mes(mes)} {anio}")
+        
+    elif anio:
+        fecha_inicio = date(anio, 1, 1)
+        fecha_fin = date(anio + 1, 1, 1)
+        
+        query = query.filter(
+            Lectura.fecha_lectura >= fecha_inicio,
+            Lectura.fecha_lectura < fecha_fin
+        )
+        print(f"📅 Filtrando por año: {anio}")
 
     if tipo_lectura:
-        if tipo_lectura.lower() == "reales":
-            query = query.filter(Lectura.es_estimada.is_(False))
-        elif tipo_lectura.lower() == "estimadas":
-            query = query.filter(Lectura.es_estimada.is_(True))
+        tipo_lower = tipo_lectura.lower()
+        if tipo_lower == "reales":
+            query = query.filter(Lectura.es_estimada == False)
+        elif tipo_lower == "estimadas":
+            query = query.filter(Lectura.es_estimada == True)
 
-    lecturas = query.order_by(Lectura.fecha_lectura.desc()).all()
+    # ==================== EJECUTAR QUERY ====================
+    lecturas = (
+        query
+        .order_by(Lectura.fecha_lectura.desc())
+        .limit(200)
+        .all()
+    )
 
-    # ===============================
-    # FORMATEO
-    # ===============================
-    resultado = []
-    for lectura in lecturas:
-        medidor = lectura.medidor
-        afiliado_data = medidor.usuario_afiliado if medidor else None
-        usuario = afiliado_data.usuario_sistema if afiliado_data else None
+    print(f"✅ Lecturas encontradas: {len(lecturas)} para {nombre_afiliado}")
 
-        fecha = lectura.fecha_lectura
-
-        resultado.append({
-            "id_lectura": lectura.id_lectura,
-            "id_medidor": lectura.id_medidor,
-            "lectura_actual": lectura.lectura_actual,
-            "lectura_anterior": lectura.lectura_anterior,
-            "consumo_m3": lectura.consumo_m3,
-            "fecha_lectura": fecha,
-            "anio": fecha.year if fecha else None,
-            "mes": fecha.month if fecha else None,
-            "nombre_mes": obtener_nombre_mes(fecha.month) if fecha else None,
-            "observacion": lectura.observacion,
-            "activo": lectura.activo,
-            "es_estimada": lectura.es_estimada,
+    # ==================== FORMATEAR RESPUESTA ====================
+    return [
+        {
+            "id_lectura": l.id_lectura,
+            "id_medidor": l.id_medidor,
+            "lectura_actual": l.lectura_actual,
+            "lectura_anterior": l.lectura_anterior,
+            "consumo_m3": l.consumo_m3,
+            "fecha_lectura": l.fecha_lectura,
+            "observacion": l.observacion,
+            "es_estimada": l.es_estimada,
+            "activo": l.activo,
+            
+            "anio": l.fecha_lectura.year if l.fecha_lectura else None,
+            "mes": l.fecha_lectura.month if l.fecha_lectura else None,
+            "nombre_mes": obtener_nombre_mes(l.fecha_lectura.month) if l.fecha_lectura else None,
+            
             "medidor": {
-                "id_medidor": medidor.id_medidor,
-                "num_medidor": medidor.num_medidor,
-                "codigo_afiliado": afiliado_data.cod_usuario_afi if afiliado_data else None,
-                "nombre_afiliado": (
-                    f"{usuario.nombres} {usuario.apellidos}"
-                    if usuario else "Sin afiliado"
-                ),
-                "sector": medidor.sector.nombre_sector if medidor.sector else "Sin sector"
+                "num_medidor": l.num_medidor,
+                "codigo_afiliado": codigo_afiliado,  # ✅ Del afiliado actual
+                "nombre_afiliado": nombre_afiliado,  # ✅ AGREGADO
+                "sector": l.nombre_sector or "Sin sector",
             },
             "lector": {
-                "id_usuario_sistema": lectura.lector.id_usuario_sistema if lectura.lector else None,
-                "nombres": lectura.lector.nombres if lectura.lector else None,
-                "apellidos": lectura.lector.apellidos if lectura.lector else None
-            }
-        })
-
-    return resultado
+                "nombres": l.lector_nombres,
+                "apellidos": l.lector_apellidos,
+            },
+        }
+        for l in lecturas
+    ]
 
 @router.get("/consumo-por-periodo", response_model=Dict)
 def obtener_consumo_por_periodo(

@@ -24,7 +24,7 @@ from routes import facturas
 from routes import pagos
 from routes import reports
 from routes import affiliate_billing
-
+from routes import afiliatesGeneral
 import os
 
 app = FastAPI(
@@ -75,6 +75,7 @@ app.include_router(iva.router)
 app.include_router(pagos.router)
 app.include_router(reports.router)
 app.include_router(affiliate_billing.router)
+app.include_router(afiliatesGeneral.router)
 
 
 

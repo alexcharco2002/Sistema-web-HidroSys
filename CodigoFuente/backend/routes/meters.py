@@ -7,6 +7,7 @@ from psycopg2.errors import ForeignKeyViolation, UniqueViolation
 from typing import List, Optional
 
 from models.meter import Medidor
+from models.servicio import Servicio
 from models.user import UsuarioSistema
 from models.affiliate import UsuarioAfiliado
 from models.sector import Sector
@@ -15,6 +16,7 @@ from schemas.meter import (
     MedidorCompleto, MedidorStats, AfiliadoDisponible
 )
 from schemas.limite_geografico import CoordenadaValidacion, CoordenadaValidacionResponse
+from schemas.servicio import ServicioResponse
 from utils.notifications import registrar_notificacion
 from utils.audit_logger import registrar_auditoria
 from utils.geo_utils import GeoUtils
@@ -249,6 +251,51 @@ def listar_medidores(
         )
 
     return query.offset(skip).limit(limit).all()
+
+
+@router.get("/", response_model=List[ServicioResponse])
+def listar_servicios(
+    search: Optional[str] = Query(None, description="Buscar por nombre o descripción"),
+    activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
+    es_vigente: Optional[bool] = Query(None, description="Filtrar por vigencia: True=vigentes, False=vencidas, None=todas"),  # ← CAMBIO AQUÍ
+    skip: int = Query(0, ge=0, description="Número de registros a saltar"),
+    limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros"),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Lista servicios con filtros opcionales
+    Por defecto muestra todas las versiones
+    Requiere permiso: servicios.lectura o servicios.crud
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "servicios", "lectura")
+
+    query = db.query(Servicio)
+
+    # Filtro por vigencia (NUEVO)
+    if es_vigente is not None:  # ← CAMBIO AQUÍ
+        query = query.filter(Servicio.es_vigente == es_vigente)
+
+    # Filtro de búsqueda
+    if search:
+        search_filter = f"%{search}%"
+        query = query.filter(
+            (Servicio.nombre.ilike(search_filter)) |
+            (Servicio.descripcion.ilike(search_filter))
+        )
+
+    # Filtro por estado
+    if activo is not None:
+        query = query.filter(Servicio.activo == activo)
+
+    # Ordenar por nombre y vigencia
+    query = query.order_by(Servicio.nombre, Servicio.vigencia_desde.desc())
+
+    # Paginación
+    servicios = query.offset(skip).limit(limit).all()
+
+    return servicios
 
 
 

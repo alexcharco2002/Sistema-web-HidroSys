@@ -648,8 +648,13 @@ const TarifasSection = () => {
     <div className="users-section">
       <div className="section-header">
         <div className="section-title">
-          <DollarSign className="w-6 h-6 text-blue-600" />
-          <h2>Gestión de Tarifas</h2>
+          <DollarSign className="w-7 h-7 text-blue-600" />
+          <div>
+            <h2>Gestión de Tarifas</h2>
+            <p className="section-subtitle">
+              Gestiona la información de las tarifas
+            </p>
+          </div>
         </div>
         {permissions.canCreate && (
           <button 

@@ -331,10 +331,18 @@ useEffect(() => {
     <>
     <div className="users-section">
       <div className="section-header">
+
         <div className="section-title">
-          <Layers className="w-6 h-6 text-blue-600" />
-          <h2>Gestión de Sectores</h2>
+          <Layers className="w-7 h-7 text-blue-600" />
+          <div>
+            <h2>Gestión de Sectores</h2>
+            <p className="section-subtitle">
+              Gestiona la información de los sectores
+            </p>
+          </div>
         </div>
+        
+
         {permissions.canCreate && (
           <button 
             className="btn-primary"

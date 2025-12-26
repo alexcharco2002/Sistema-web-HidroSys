@@ -13,7 +13,8 @@ const API_CONFIG = {
     availableAffiliates: '/meters/available/affiliates',
     toggleStatus: (id) => `/meters/${id}/toggle-status`,
     stats: '/meters/stats/count',
-    validateLocation: '/meters/validar-ubicacion'
+    validateLocation: '/meters/validar-ubicacion',
+    services: '/servicios',
   }
 };
 
@@ -565,6 +566,32 @@ class MetersService {
       }
     }
   }
+
+  // Obtener servicios activos y vigentes
+  async getActiveServices() {
+    try {
+      const params = new URLSearchParams({
+        activo: 'true',
+        es_vigente: 'true',
+        limit: '100'
+      });
+
+      const data = await this.makeRequest(`${API_CONFIG.endpoints.services}?${params.toString()}`);
+      
+      return {
+        success: true,
+        data: data
+      };
+    } catch (error) {
+      console.error('Error obteniendo servicios:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener servicios',
+        data: []
+      };
+    }
+  }
+  
 
   /**
    * Limpiar caché de estadísticas

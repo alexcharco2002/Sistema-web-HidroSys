@@ -5,13 +5,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 import metersService from '../../services/metersServices';
 import authService from '../../services/authServices';
 
+import InvoicePDF from "../../components/InvoicePDF";
+
+
 import './MetersSection.css';
 
 import {
-  Gauge, Search, Edit, Trash2, Eye, CheckCircle, XCircle,
+  Gauge, Search, CheckCircle, XCircle,
   MapPin, X, Save, RefreshCw, AlertCircle, Map,
   Navigation, Mountain, UserCheck, IdCard, UserX,
-  User
+  User, Eye, Edit, Trash2, FileText 
 } from 'lucide-react';
 
 const MetersSection = () => {
@@ -28,8 +31,22 @@ const MetersSection = () => {
   const [modalType, setModalType] = useState('create');
   const [selectedMeter, setSelectedMeter] = useState(null);
   const [error, setError] = useState(null);
-  // usuario afiliado local 
-  const currentUser = authService.getCurrentUser();
+
+  // En MetersSection.js - después de los demás estados
+  const [pendingTransfers, setPendingTransfers] = useState([]); // Array de traspasos pendientes
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [selectedMeterForInvoice, setSelectedMeterForInvoice] = useState(null);
+  const [currentTransferData, setCurrentTransferData] = useState(null); // Datos del traspaso actual
+  const [availableServices, setAvailableServices] = useState([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [invoiceFormData, setInvoiceFormData] = useState({
+    useService: true,
+    selectedServiceId: null,
+    customServiceName: 'Traspaso de Medidor',
+    customServiceAmount: 10.00
+  });
+
+
 
 
   const [formData, setFormData] = useState({
@@ -210,6 +227,10 @@ const MetersSection = () => {
     return;
   }
 
+  setShowInvoiceModal(false);
+  setSelectedMeterForInvoice(null);
+  setCurrentTransferData(null);
+
   setModalType(type);
   setSelectedMeter(meter);
   setError(null);
@@ -231,32 +252,14 @@ const MetersSection = () => {
 
   } else if (type === 'edit' && meter) {
     
-    // 3️⃣ Insertar el afiliado asignado al inicio de la lista (si no está)
-    if (meter.usuario_afiliado) {
-      setAvailableAffiliates(prev => {
-        const exists = prev.some(a => a.id_usuario_afi === meter.usuario_afiliado.id_usuario_afi);
-        
-        if (!exists) {
-          const assigned = {
-            id_usuario_afi: meter.usuario_afiliado.id_usuario_afi,
-            cod_usuario_afi: meter.usuario_afiliado.cod_usuario_afi,
-            nombre_afiliado: meter.usuario_afiliado.nombre_afiliado,
-            sector: meter.usuario_afiliado.sector,
-          };
-          return [assigned, ...prev];
-        }
-        
-        return prev;
-      });
-    }
-
     // 4️⃣ Cargar los datos al formulario
     setFormData({
       num_medidor: meter.num_medidor,
+
       latitud: meter.latitud || '',
       longitud: meter.longitud || '',
       altitud: meter.altitud || '',
-      id_usuario_afi: meter.usuario_afiliado?.id_usuario_afi || null,
+      id_usuario_afi: meter.id_usuario_afi || null,
       id_sector: meter.id_sector,
       activo: meter.activo
     });
@@ -312,37 +315,100 @@ const MetersSection = () => {
         }
 
       } else if (modalType === 'edit') {
-        if (!permissions.canUpdate) {
-          setError('No tienes permiso para editar medidores');
-          return;
-        }
+  if (!permissions.canUpdate) {
+    setError('No tienes permiso para editar medidores');
+    return;
+  }
 
-        const dataToSend = {
+  // ✅ DETECTAR CAMBIO DE AFILIADO
+  const oldAffiliateId = selectedMeter.id_usuario_afi;
+  const newAffiliateId = formData.id_usuario_afi;
+  const hasAffiliateChange = oldAffiliateId !== newAffiliateId;
+
+  const dataToSend = {
+    num_medidor: formData.num_medidor.trim(),
+    latitud: formData.latitud ? parseFloat(formData.latitud) : null,
+    longitud: formData.longitud ? parseFloat(formData.longitud) : null,
+    altitud: formData.altitud ? parseFloat(formData.altitud) : null,
+    id_usuario_afi: formData.id_usuario_afi || null,
+    id_sector: formData.id_sector || null,
+    activo: formData.activo
+  };
+
+  result = await metersService.updateMeter(selectedMeter.id_medidor, dataToSend);
+
+  if (result.success) {
+    // ✅ SI HUBO CAMBIO DE AFILIADO, GUARDAR COMO TRASPASO PENDIENTE
+    if (hasAffiliateChange && newAffiliateId) {
+      const newAffiliateData = availableAffiliates.find(a => a.id_usuario_afi === newAffiliateId);
+      
+      const traspasoData = {
+        meterId: selectedMeter.id_medidor,
+        meter: {
+          id_medidor: selectedMeter.id_medidor,
           num_medidor: formData.num_medidor.trim(),
-          latitud: formData.latitud ? parseFloat(formData.latitud) : null,
-          longitud: formData.longitud ? parseFloat(formData.longitud) : null,
-          altitud: formData.altitud ? parseFloat(formData.altitud) : null,
-          id_usuario_afi: formData.id_usuario_afi || null,
-          id_sector: formData.id_sector || null,
-          activo: formData.activo
-        };
+          nombre_afiliado: newAffiliateData?.nombre_afiliado || 'N/A',
+         cod_usuario_afi: newAffiliateData?.cod_usuario_afi || 'N/A',    
 
-        result = await metersService.updateMeter(selectedMeter.id_medidor, dataToSend);
-        
-        if (result.success) {
-          alert('✅ Cambios guardados correctamente');
-          await fetchMeters();
-          closeModal();
-        } else {
-          setError(result.message);
-        }
-      }
+          nombre_sector: formData.id_sector ? 
+            sectors.find(s => s.id_sector === formData.id_sector)?.nombre_sector : 
+            selectedMeter.nombre_sector,
+          latitud: dataToSend.latitud,
+          longitud: dataToSend.longitud,
+          altitud: dataToSend.altitud
+        },
+        oldAffiliate: {
+          id: oldAffiliateId,
+          nombre: selectedMeter.nombre_afiliado || 'No asignado',
+          codigo: selectedMeter.cod_usuario_afi || 'N/A'
+        },
+        newAffiliate: {
+          id: newAffiliateId,
+          nombre: newAffiliateData?.nombre_afiliado || 'N/A',
+          codigo: newAffiliateData?.cod_usuario_afi || 'N/A'
+        },
+        timestamp: Date.now()
+      };
+
+      // Agregar a la lista de traspasos pendientes
+      setPendingTransfers(prev => {
+        // Remover traspaso anterior del mismo medidor si existe
+        const filtered = prev.filter(t => t.meterId !== selectedMeter.id_medidor);
+        return [...filtered, traspasoData];
+      });
+      
+      console.log('✅ Traspaso registrado para facturación posterior');
+    }
+
+    await fetchMeters();
+    closeModal();
+    
+    // ✅ SOLO MENSAJE DE ÉXITO
+    alert('✅ Cambios guardados correctamente');
+  } else {
+    setError(result.message || 'Error al actualizar medidor');
+  }
+}
 
     } catch (error) {
       console.error('Error al guardar medidor:', error);
       setError(error.message || 'Error al guardar medidor');
     }
   };
+
+  // Verificar si un medidor tiene traspaso pendiente
+const hasPendingTransfer = (meterId) => {
+  return pendingTransfers.some(t => t.meterId === meterId);
+};
+
+// Obtener datos del traspaso pendiente
+const getPendingTransfer = (meterId) => {
+  return pendingTransfers.find(t => t.meterId === meterId);
+};
+
+
+
+
 
   const handleDelete = async (meterId) => {
   if (!permissions.canDelete) {
@@ -423,13 +489,162 @@ const MetersSection = () => {
     );
   }
 
+// Abrir modal de factura con datos del traspaso
+const openInvoiceModal = async (meterId) => {
+  const traspasoData = getPendingTransfer(meterId);
+  
+  if (!traspasoData) {
+    alert('No hay información de traspaso disponible para este medidor.');
+    return;
+  }
+  
+  // IMPORTANTE: Cerrar cualquier otro modal abierto
+  setShowModal(false);
+  setSelectedMeter(null);
+  
+  console.log('Abriendo modal de factura con traspaso:', traspasoData);
+  
+  setCurrentTransferData(traspasoData);
+  setSelectedMeterForInvoice(traspasoData.meter);
+  setLoadingServices(true);
+  setShowInvoiceModal(true); // Abrir el modal de factura
+  
+  // Cargar servicios activos y vigentes
+  try {
+    const result = await metersService.getActiveServices();
+    console.log('Servicios cargados:', result);
+    
+    if (result.success && result.data.length > 0) {
+      setAvailableServices(result.data);
+      
+      const traspasoService = result.data.find(
+        s => s.nombre.toLowerCase().includes('traspaso') || 
+             s.nombre.toLowerCase().includes('adicional')
+      );
+      
+      if (traspasoService) {
+        setInvoiceFormData({
+          useService: true,
+          selectedServiceId: traspasoService.idservicio,
+          customServiceName: traspasoService.nombre,
+          customServiceAmount: parseFloat(traspasoService.preciobase || 0)
+        });
+      } else {
+        const firstService = result.data[0];
+        setInvoiceFormData({
+          useService: true,
+          selectedServiceId: firstService.idservicio,
+          customServiceName: firstService.nombre,
+          customServiceAmount: parseFloat(firstService.preciobase || 10.00)
+        });
+      }
+    } else {
+      setInvoiceFormData({
+        useService: false,
+        selectedServiceId: null,
+        customServiceName: 'Traspaso de Medidor',
+        customServiceAmount: 10.00
+      });
+    }
+  } catch (error) {
+    console.error('Error cargando servicios:', error);
+    setInvoiceFormData({
+      useService: false,
+      selectedServiceId: null,
+      customServiceName: 'Traspaso de Medidor',
+      customServiceAmount: 10.00
+    });
+  } finally {
+    setLoadingServices(false);
+  }
+};
+
+
+
+const closeInvoiceModal = () => {
+  setShowInvoiceModal(false);
+  setSelectedMeterForInvoice(null);
+  setCurrentTransferData(null);
+  setAvailableServices([]);
+  setInvoiceFormData({
+    useService: true,
+    selectedServiceId: null,
+    customServiceName: 'Traspaso de Medidor',
+    customServiceAmount: 10.00,
+    observaciones: ''
+  });
+};
+
+const handleGenerateInvoice = () => {
+  const meter = selectedMeterForInvoice;
+  
+  if (!currentTransferData) {
+    alert('No hay datos de traspaso disponibles');
+    return;
+  }
+  
+  let serviceData;
+  if (invoiceFormData.useService && invoiceFormData.selectedServiceId) {
+    const selectedService = availableServices.find(
+      s => s.id_servicio === invoiceFormData.selectedServiceId
+    );
+    serviceData = {
+      nombre: selectedService.nombre,
+      monto: parseFloat(selectedService?.precio_base) || invoiceFormData.customServiceAmount 
+    };
+  } else {
+    serviceData = {
+      nombre: invoiceFormData.customServiceName,
+      monto: invoiceFormData.customServiceAmount
+    };
+  }
+
+  const invoiceData = {
+    meter: {
+      num_medidor: meter.num_medidor,
+      nombre_sector: meter.nombre_sector,
+      latitud: meter.latitud,
+      longitud: meter.longitud
+    },
+    oldAffiliate: currentTransferData.oldAffiliate,
+    newAffiliate: currentTransferData.newAffiliate,
+    observaciones: invoiceFormData.observaciones || '',
+    service: serviceData,
+    invoiceNumber: `INV-${Date.now()}`,
+    date: new Date().toLocaleDateString('es-EC')
+  };
+
+  console.log('📄 Generando factura con:', invoiceData);
+
+  const result = InvoicePDF.generate(invoiceData);
+  
+  if (result.success) {
+    // ✅ REMOVER EL TRASPASO DE LA LISTA DE PENDIENTES
+    setPendingTransfers(prev => prev.filter(t => t.meterId !== currentTransferData.meterId));
+    
+    alert(`✅ Factura generada exitosamente: ${result.fileName}`);
+    closeInvoiceModal();
+  } else {
+    alert('❌ Error al generar la factura');
+  }
+};
+
+
+
+
   // INTERFAZ PRINCIPAL
   return (
     <div className="meters-section">
       <div className="section-header">
+
         <div className="section-title">
           <Gauge className="w-7 h-7 text-blue-600" />
-          <h2>Gestión de Medidores</h2>
+          <div>
+            <h2>Gestión de Medidores</h2>
+            <p className="section-subtitle">
+              Gestiona la información de los medidores y su ubicación
+            </p>
+            </div>
         </div>
         {permissions.canCreate && (
           <button 
@@ -622,8 +837,68 @@ const MetersSection = () => {
                     </div>
                   </div>
                 </div>
-           
+                {/* Indicador de traspaso pendiente */}
+                {hasPendingTransfer(meter.id_medidor) && (
+                  <div className="transfer-pending-badge">
+                    <FileText className="w-3 h-3 mr-1" />
+                    Factura pendiente
+                  </div>
+                )}
+                <div className="user-actions">
+                    <button
+                      className="action-btn view"
+                      onClick={() => openModal('view', meter)}
+                      title="Ver detalles"
+                    >
+                      <Eye className="w-4 h-4 icon-view" />
+                    </button>
 
+                    {/* ✅ BOTÓN DE FACTURA - Solo si hay traspaso pendiente */}
+                    {hasPendingTransfer(meter.id_medidor) && (
+                      <button
+                        className="action-btn invoice"
+                        onClick={() => openInvoiceModal(meter.id_medidor)}
+                        title="Emitir factura de traspaso"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
+                    )}
+
+
+
+                    {permissions.canUpdate && (
+                      <button
+                        className="action-btn edit"
+                        onClick={() => openModal('edit', meter)}
+                        title="Editar medidor"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    )}
+
+
+                    {permissions.canToggleStatus && (
+                      <button
+                        className="action-btn toggle"
+                        onClick={() => toggleMeterStatus(meter.id_medidor)}
+                        title={meter.activo ? 'Desactivar' : 'Activar'}
+                      >
+                        {meter.activo ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                      </button>
+                    )}
+
+                    {permissions.canDelete && (
+                      <button
+                        className="action-btn delete"
+                        onClick={() => handleDelete(meter.id_medidor)}
+                        title="Eliminar medidor"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                   
+
+                </div>
 
               </div>
 
@@ -631,19 +906,21 @@ const MetersSection = () => {
                 <div className="user-contact">
 
                   {/* Afiliado */}
-                  <div className="contact-item">
-                    {isAssigned ? (
-                      <UserCheck className="w-4 h-4 text-green-500" />
-                    ) : (
-                      <User className="w-4 h-4 text-amber-500" />
-                    )}
-                    <div className="contact-text-group flex">
-                      <span className="label font-semibold mr-1">Afiliado:</span>
-                      <span className="value">
-                        {meter.nombre_afiliado || "No asignado"}
-                      </span>
+                  {isAssigned &&(
+                    <div className="contact-item">
+                      {isAssigned ? (
+                        <UserCheck className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <User className="w-4 h-4 text-amber-500" />
+                      )}
+                      <div className="contact-text-group flex">
+                        <span className="label font-semibold mr-1">Nombre afiliado:</span>
+                        <span className="value">
+                          {meter.nombre_afiliado || "No asignado"}
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Código de Afiliado */}
                   {isAssigned && (
@@ -734,53 +1011,47 @@ const MetersSection = () => {
               {/* MODAL DE VISTA */}
               {modalType === 'view' && selectedMeter && (
                 <div className="user-details">
-                 
                   <div className="detail-group">
                     <label>Número de Medidor:</label>
                     <p>{selectedMeter.num_medidor}</p>
                   </div>
-                 <div className="detail-group">
-                    <label>Afiliado:</label>
-                    <p>
-                      {selectedMeter.usuario_afiliado ? (
-                        <>
-                          {selectedMeter.usuario_afiliado.nombre_afiliado}
-                        </>
-                      ) : (
-                        'No asignado'
-                      )}
-                    </p>
+                  
+                  <div className="detail-group">
+                    <label>Nombre Afiliado:</label>
+                    <p>{selectedMeter.nombre_afiliado || 'No asignado'}</p>
                   </div>
+                  
                   {selectedMeter.id_usuario_afi && (
                     <div className="detail-group">
                       <label>Código del afiliado:</label>
-                      <p>Código: {selectedMeter.usuario_afiliado?.cod_usuario_afi || 'N/A'}</p>
+                      <p>{selectedMeter.cod_usuario_afi || 'N/A'}</p>
                     </div>
                   )}
+                  
                   <div className="detail-group">
                     <label>Sector:</label>
-                    <p>{selectedMeter.sector?.nombre_sector || 'N/A'}</p>
+                    <p>{selectedMeter.nombre_sector || 'N/A'}</p>
                   </div>
+                  
                   <div className="detail-group">
                     <label>Coordenadas:</label>
                     <p>
                       {selectedMeter.latitud && selectedMeter.longitud
-                        ? `Lat: ${selectedMeter.latitud}, Lng: ${selectedMeter.longitud}`
+                        ? `Lat: ${Number(selectedMeter.latitud).toFixed(4)}°, Lng: ${Number(selectedMeter.longitud).toFixed(4)}°`
                         : 'No disponibles'}
                     </p>
                   </div>
+                  
                   {selectedMeter.altitud && (
                     <div className="detail-group">
                       <label>Altitud:</label>
-                      <p>{selectedMeter.altitud} metros</p>
+                      <p>{selectedMeter.altitud} msnm</p>
                     </div>
                   )}
+                  
                   <div className="detail-group">
                     <label>Estado:</label>
-
-                    <span
-                      className={`status-badge ${selectedMeter.activo ? 'active' : 'inactive'}`}
-                    >
+                    <span className={`status-badge ${selectedMeter.activo ? 'active' : 'inactive'}`}>
                       {selectedMeter.activo ? (
                         <>
                           <CheckCircle className="w-3 h-3 mr-1" />
@@ -811,7 +1082,6 @@ const MetersSection = () => {
                         placeholder="Ej: MED-001"
                       />
                     </div>
-
                     <div className="form-group form-group-full">
                       <label>Asignar a Afiliado (opcional)</label>
                       <select
@@ -822,16 +1092,35 @@ const MetersSection = () => {
                         })}
                       >
                         <option value="">Sin asignar</option>
-                        {availableAffiliates.map(affiliate => (
-                          <option key={affiliate.id_usuario_afi} value={affiliate.id_usuario_afi}>
-                            {affiliate.cod_usuario_afi} - {affiliate.nombre_afiliado}- Sector: {affiliate.sector?.nombre_sector || 'N/A'}
+                        
+                        {/* Mostrar el afiliado actual si existe en modo edición */}
+                        {modalType === 'edit' && selectedMeter?.id_usuario_afi && (
+                          <option 
+                            key={`current-${selectedMeter.id_usuario_afi}`} 
+                            value={selectedMeter.id_usuario_afi}
+                          >
+                            {selectedMeter.cod_usuario_afi} - {selectedMeter.nombre_afiliado} - Sector: {selectedMeter.nombre_sector || 'N/A'} (Actual)
                           </option>
-                        ))}
+                        )}
+                        
+                        {/* Mostrar afiliados disponibles */}
+                        {availableAffiliates
+                          .filter(affiliate => 
+                            // Evitar duplicar el afiliado actual
+                            modalType === 'create' || affiliate.id_usuario_afi !== selectedMeter?.id_usuario_afi
+                          )
+                          .map(affiliate => (
+                            <option key={affiliate.id_usuario_afi} value={affiliate.id_usuario_afi}>
+                              {affiliate.cod_usuario_afi} - {affiliate.nombre_afiliado} - Sector: {affiliate.nombre_sector || 'N/A'}
+                            </option>
+                          ))
+                        }
                       </select>
                       <small className="text-gray-500 mt-1">
                         Solo se muestran afiliados sin medidor asignado
                       </small>
                     </div>
+
 
                     <div className="form-group form-group-full">
                       <label>Sector</label>
@@ -909,10 +1198,202 @@ const MetersSection = () => {
                   </div>
                 </form>
               )}
+
+
+
             </div>
           </div>
         </div>
       )}
+
+{/* ==================== MODAL DE EMISIÓN DE FACTURA ==================== */}
+{showInvoiceModal && (
+  <div className="modal-overlay">
+    <div className="modal">
+      <div className="modal-header">
+        <h3>Emitir Factura de Traspaso</h3>
+        <button className="modal-close" onClick={closeInvoiceModal}>
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      
+      <div className="modal-body">
+        <form className="user-form">
+          <div className="form-grid">
+            
+            {/* Información del medidor */}
+            <div className="form-group form-group-full">
+              <div className="meter-info-card">
+                <h4 className="meter-info-title">
+                  <Gauge className="w-4 h-4 mr-2" />
+                  Medidor Seleccionado
+                </h4>
+                <div className="meter-info-content">
+                  <p><strong>No. Medidor:</strong> {selectedMeterForInvoice?.num_medidor}</p>
+                  <p><strong>Afiliado:</strong> {selectedMeterForInvoice?.nombre_afiliado}</p>
+                  <p><strong>Código:</strong> {selectedMeterForInvoice?.cod_usuario_afi}</p>
+                  <p><strong>Sector:</strong> {selectedMeterForInvoice?.nombre_sector}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Checkbox para usar servicio predefinido */}
+            <div className="form-group form-group-full">
+              <label className="flex items-center gap-2 cursor-pointer p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200">
+                <input
+                  type="checkbox"
+                  checked={invoiceFormData.useService}
+                  onChange={(e) => {
+                    const isChecked = e.target.checked;
+                    
+                    if (!isChecked) {
+                      setInvoiceFormData({ 
+                        useService: false,
+                        selectedServiceId: null,
+                        customServiceName: '',
+                        customServiceAmount: 0
+                      });
+                    } else {
+                      setInvoiceFormData({ 
+                        ...invoiceFormData, 
+                        useService: true,
+                        customServiceName: 'Traspaso de Medidor',
+                        customServiceAmount: 10.00
+                      });
+                    }
+                  }}
+                  className="w-4 h-4"
+                />
+                <span className="font-semibold text-gray-700">Usar servicio predefinido del sistema</span>
+              </label>
+            </div>
+
+            {/* Select de servicio */}
+            {invoiceFormData.useService && (
+              <div className="form-group form-group-full">
+                <label>Seleccionar Servicio *</label>
+                <select
+                  value={invoiceFormData.selectedServiceId || ''}
+                  onChange={(e) => {
+                    const serviceId = parseInt(e.target.value);
+                    const service = availableServices.find(s => s.id_servicio === serviceId);
+                    setInvoiceFormData({
+                      ...invoiceFormData,
+                      selectedServiceId: serviceId,
+                      customServiceName: service?.nombre || '',
+                      customServiceAmount: parseFloat(service?.precio_base || service?.tarifa) || 0 
+                    });
+                  }}
+                  disabled={loadingServices}
+                >
+                  <option value="">Seleccione un servicio</option>
+                  {availableServices.map(service => (
+                    <option key={service.id_servicio} value={service.id_servicio}>
+                      {service.nombre} - ${Number(service.tarifa || service.precio_base).toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+                {loadingServices && (
+                  <small className="text-gray-500">Cargando servicios disponibles...</small>
+                )}
+              </div>
+            )}
+
+            {/* Datos del servicio personalizado */}
+            <div className="form-group form-group-full">
+              <label>Nombre del Servicio *</label>
+              <input
+                type="text"
+                value={invoiceFormData.customServiceName}
+                onChange={(e) => setInvoiceFormData({ 
+                  ...invoiceFormData, 
+                  customServiceName: e.target.value 
+                })}
+                placeholder="Ej: Traspaso de Medidor"
+                required
+              />
+              <small className="text-gray-500">
+                {invoiceFormData.useService 
+                  ? 'Puede editar el nombre si lo desea' 
+                  : 'Ingrese el nombre del servicio a facturar'}
+              </small>
+            </div>
+
+            <div className="form-group">
+              <label>Monto ($) *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={invoiceFormData.customServiceAmount}
+                onChange={(e) => setInvoiceFormData({ 
+                  ...invoiceFormData, 
+                  customServiceAmount: parseFloat(e.target.value) || 0 
+                })}
+                placeholder="0.00"
+                required
+                className="font-semibold text-green-700"
+              />
+              <small className="text-gray-500">
+                {invoiceFormData.useService 
+                  ? 'Puede editar el monto si lo desea' 
+                  : 'Ingrese el monto a cobrar'}
+              </small>
+            </div>
+
+            {/* Resumen - Tarjeta de info */}
+            <div className="form-group form-group-full">
+              <div className="meter-info-card" style={{ 
+                backgroundColor: '#ecfdf5', 
+                borderColor: '#6ee7b7' 
+              }}>
+                <h4 className="meter-info-title" style={{ color: '#065f46' }}>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Resumen de Factura
+                </h4>
+                <div className="meter-info-content">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold" style={{ color: '#065f46' }}>
+                      Total a Cobrar:
+                    </span>
+                    <span className="text-2xl font-bold" style={{ color: '#059669' }}>
+                      ${Number(invoiceFormData.customServiceAmount).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Botones de acción */}
+          <div className="form-actions">
+            <button 
+              type="button" 
+              className="btn-secondary" 
+              onClick={closeInvoiceModal}
+            >
+              <X className="w-4 h-4 mr-2" />
+              Cancelar
+            </button>
+            
+            <button 
+              type="button" 
+              className="btn-primary"
+              onClick={handleGenerateInvoice}
+              disabled={!invoiceFormData.customServiceName || invoiceFormData.customServiceAmount <= 0}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Generar Factura
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+)}
+
+     
     </div>
   );
 };

@@ -910,9 +910,15 @@ const formatTooltip = (key, value) => {
       {!selectedModulo && (
         <div className="periodo-selection-page">
           <div className="section-header">
+           
             <div className="section-title">
               <BarChart3 className="w-7 h-7 text-blue-600" />
-              <h2>Reportes y Estadísticas</h2>
+              <div>
+                <h2>Reportes y Estadística</h2>
+                <p className="section-subtitle">
+                  Visualiza reportes y estadisticas de los diferentes modulos del sistema
+                </p>
+              </div>
             </div>
           </div>
 

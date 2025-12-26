@@ -5,39 +5,36 @@ import affiliateGeneralServices from '../../services/affiliateGeneralServices';
 import authService from '../../services/authServices';
 import { 
   Droplet,
-  Search,
   Eye,
   Calendar,
   Activity,
   AlertCircle,
   FileText,
-  ArrowUpDown,
   BarChart3,
   TrendingUp,
   RefreshCw,
   X,
-  User,
-  Filter,
   Download,
-  ChevronDown,
   TrendingDown,
   CheckCircle,
   XCircle,
   Clock,
-  Gauge
+  Gauge, ArrowUpDown
 } from 'lucide-react';
 
 const HistorialConsumos = () => {
+
   // ============================================================
   // ESTADOS PRINCIPALES
   // ============================================================
   const [lecturas, setLecturas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingExport, setLoadingExport] = useState(false); // ✅ NUEVO ESTADO
   const [error, setError] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [permissions, setPermissions] = useState({
-    canRead: false
-  });
+  const [, setCurrentUser] = useState(null);
+  const [permissions, setPermissions] = useState({ canRead: false });
+  const [isInitialized, setIsInitialized] = useState(false);
+
 
   // ============================================================
   // ESTADOS DE FILTROS Y BÚSQUEDA
@@ -50,7 +47,6 @@ const HistorialConsumos = () => {
   const [filterConsumoMax, setFilterConsumoMax] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
   const [sortBy, setSortBy] = useState('fecha');
-  const [showFilters, setShowFilters] = useState(false);
 
   // ============================================================
   // ESTADOS DE PERIODOS (AÑO/MES)
@@ -77,6 +73,81 @@ const HistorialConsumos = () => {
     tendencia: null
   });
 
+  // 
+  const fetchPeriodosDisponibles = useCallback(async () => {
+    try {
+      const result = await affiliateGeneralServices.getPeriodosMisLecturas();
+      if (result.success) {
+        setAniosDisponibles(result.data.anios_disponibles || []);
+        setPeriodosDisponibles(result.data.periodos || {});
+        
+        // ✅ Retornar el año reciente en lugar de setearlo
+        if (result.data.anios_disponibles && result.data.anios_disponibles.length > 0) {
+          return result.data.anios_disponibles[0];
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('❌ Error obteniendo periodos:', error);
+      return null;
+    }
+  }, []);
+
+  // ============================================================
+  // EFECTOS - CARGA INICIAL Y ACTUALIZACIÓN
+  // ============================================================
+
+
+  // ✅ 2. Cargar periodos una sola vez al inicio
+  useEffect(() => {
+    const inicializar = async () => {
+      if (permissions.canRead && !isInitialized) {
+        const anioReciente = await fetchPeriodosDisponibles();
+        if (anioReciente) {
+          setSelectedAnio(anioReciente);
+          setMesesDelAnio(periodosDisponibles[anioReciente] || []);
+        }
+        setIsInitialized(true);
+      }
+    };
+    
+    inicializar();
+  }, [permissions.canRead, isInitialized,fetchPeriodosDisponibles, periodosDisponibles]); 
+
+  // ✅ 3. Cargar lecturas solo cuando cambien los filtros reales
+  useEffect(() => {
+    const cargarLecturas = async () => {
+      if (!permissions.canRead || !isInitialized) {
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await affiliateGeneralServices.getMisLecturasPorPeriodo(
+          selectedAnio || null,
+          selectedMes || null,
+          { tipo_lectura: filterTipoLectura }
+        );
+
+        if (result.success) {
+          setLecturas(result.data);
+          calcularEstadisticas(result.data);
+        } else {
+          setError(result.message);
+        }
+      } catch (err) {
+        setError('Error al cargar tu historial de consumos');
+        console.error('❌ Error cargando lecturas:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarLecturas();
+  }, [permissions.canRead, isInitialized, selectedAnio, selectedMes, filterTipoLectura]);
+
   // ============================================================
   // INICIALIZACIÓN - PERMISOS Y USUARIO
   // ============================================================
@@ -87,8 +158,8 @@ const HistorialConsumos = () => {
 
   const loadUserPermissions = () => {
     const canRead =
-      authService.hasPermission('lecturas', 'lectura') ||
-      authService.hasPermission('lecturas', 'crud') ||
+      authService.hasPermission('historialconsumo', 'lectura') ||
+      authService.hasPermission('historialconsumo', 'crud') ||
       authService.hasPermission('historialconsumo', 'lectura');
 
     setPermissions({ canRead });
@@ -106,32 +177,6 @@ const HistorialConsumos = () => {
   // ============================================================
   
   /**
-   * Cargar los periodos disponibles desde el backend
-   * Obtiene años y meses donde existen lecturas registradas
-   */
-  const fetchPeriodosDisponibles = useCallback(async () => {
-    try {
-      const result = await affiliateGeneralServices.getPeriodosDisponibles();
-      
-      if (result.success) {
-        setAniosDisponibles(result.data.anios_disponibles || []);
-        setPeriodosDisponibles(result.data.periodos || {});
-        
-        // Seleccionar el año más reciente por defecto
-        if (result.data.anios_disponibles && result.data.anios_disponibles.length > 0) {
-          const anioReciente = result.data.anios_disponibles[0];
-          setSelectedAnio(anioReciente);
-          setMesesDelAnio(result.data.periodos[anioReciente] || []);
-        }
-      } else {
-        console.error('Error al cargar periodos:', result.message);
-      }
-    } catch (error) {
-      console.error('❌ Error obteniendo periodos:', error);
-    }
-  }, []);
-
-  /**
    * Manejar cambio de año seleccionado
    * Actualiza la lista de meses disponibles para ese año
    */
@@ -146,63 +191,6 @@ const HistorialConsumos = () => {
       setMesesDelAnio([]);
     }
   };
-
-  // ============================================================
-  // FUNCIONES DE CARGA DE DATOS
-  // ============================================================
-  
-  /**
-   * Cargar lecturas filtradas por periodo seleccionado
-   * Se ejecuta cuando cambian los filtros de año, mes o tipo
-   */
-  const fetchLecturasPorPeriodo = useCallback(async () => {
-    if (!permissions.canRead) {
-      setError('No tienes permiso para ver tu historial de consumos');
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const result = await affiliateGeneralServices.getMisLecturasPorPeriodo(
-        selectedAnio || null,
-        selectedMes || null,
-        { tipo_lectura: filterTipoLectura }
-      );
-
-      if (result.success) {
-        setLecturas(result.data);
-        calcularEstadisticas(result.data);
-      } else {
-        setError(result.message);
-      }
-    } catch (err) {
-      setError('Error al cargar tu historial de consumos');
-      console.error('❌ Error cargando lecturas:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [permissions.canRead, selectedAnio, selectedMes, filterTipoLectura]);
-
-  // ============================================================
-  // EFECTOS - CARGA INICIAL Y ACTUALIZACIÓN
-  // ============================================================
-  
-  // Cargar periodos disponibles cuando el usuario tiene permisos
-  useEffect(() => {
-    if (permissions.canRead) {
-      fetchPeriodosDisponibles();
-    }
-  }, [fetchPeriodosDisponibles, permissions.canRead]);
-
-  // Recargar lecturas cuando cambien los filtros de periodo
-  useEffect(() => {
-    if (permissions.canRead && aniosDisponibles.length > 0) {
-      fetchLecturasPorPeriodo();
-    }
-  }, [fetchLecturasPorPeriodo, permissions.canRead, aniosDisponibles.length]);
 
   // ============================================================
   // CÁLCULO DE ESTADÍSTICAS
@@ -271,59 +259,77 @@ const HistorialConsumos = () => {
   // ============================================================
   // FUNCIONES DE FILTRADO Y ORDENAMIENTO
   // ============================================================
-  
   const toggleSortOrder = () => {
-    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
+    const newOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+    console.log(`🔄 Cambiando orden: ${sortOrder} → ${newOrder}`);
+    setSortOrder(newOrder);
   };
 
   /**
    * Aplicar filtros y ordenamiento a las lecturas
    */
-  const filteredLecturas = lecturas
-    .filter(lectura => {
-      // Filtro de búsqueda por texto
-      const matchesSearch = 
-        lectura.medidor?.num_medidor?.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lectura.observacion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lectura.medidor?.sector?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lectura.id_lectura?.toString().includes(searchTerm);
+  const filteredLecturas = React.useMemo(() => {
+    console.log(`🔍 Filtrando y ordenando: sortBy="${sortBy}", sortOrder="${sortOrder}"`);
+    
+    return lecturas
+      .filter(lectura => {
+        // Filtro de búsqueda por texto
+        const matchesSearch = 
+          lectura.medidor?.num_medidor?.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+          lectura.observacion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          lectura.medidor?.sector?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          lectura.id_lectura?.toString().includes(searchTerm);
 
-      // Filtro por tipo de lectura
-      const matchesTipo = 
-        filterTipoLectura === 'todas' ||
-        (filterTipoLectura === 'reales' && !lectura.es_estimada) ||
-        (filterTipoLectura === 'estimadas' && lectura.es_estimada);
+        // Filtro por tipo de lectura
+        const matchesTipo = 
+          filterTipoLectura === 'todas' ||
+          (filterTipoLectura === 'reales' && !lectura.es_estimada) ||
+          (filterTipoLectura === 'estimadas' && lectura.es_estimada);
 
-      // Filtros por rango de fechas
-      const fechaLectura = new Date(lectura.fecha_lectura);
-      const matchesFechaDesde = !filterFechaDesde || fechaLectura >= new Date(filterFechaDesde);
-      const matchesFechaHasta = !filterFechaHasta || fechaLectura <= new Date(filterFechaHasta);
+        // Filtros por rango de fechas
+        const fechaLectura = new Date(lectura.fecha_lectura);
+        const matchesFechaDesde = !filterFechaDesde || fechaLectura >= new Date(filterFechaDesde);
+        const matchesFechaHasta = !filterFechaHasta || fechaLectura <= new Date(filterFechaHasta);
 
-      // Filtros por rango de consumo
-      const matchesConsumoMin = !filterConsumoMin || lectura.consumo_m3 >= parseFloat(filterConsumoMin);
-      const matchesConsumoMax = !filterConsumoMax || lectura.consumo_m3 <= parseFloat(filterConsumoMax);
+        // Filtros por rango de consumo
+        const matchesConsumoMin = !filterConsumoMin || lectura.consumo_m3 >= parseFloat(filterConsumoMin);
+        const matchesConsumoMax = !filterConsumoMax || lectura.consumo_m3 <= parseFloat(filterConsumoMax);
 
-      return matchesSearch && matchesTipo && matchesFechaDesde && matchesFechaHasta && matchesConsumoMin && matchesConsumoMax;
-    })
-    .sort((a, b) => {
-      let comparison = 0;
-      
-      switch(sortBy) {
-        case 'fecha':
-          comparison = new Date(a.fecha_lectura) - new Date(b.fecha_lectura);
-          break;
-        case 'consumo':
-          comparison = a.consumo_m3 - b.consumo_m3;
-          break;
-        case 'medidor':
-          comparison = (a.medidor?.num_medidor || '').localeCompare(b.medidor?.num_medidor || '');
-          break;
-        default:
-          comparison = new Date(a.fecha_lectura) - new Date(b.fecha_lectura);
-      }
-      
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
+        return matchesSearch && matchesTipo && matchesFechaDesde && matchesFechaHasta && 
+              matchesConsumoMin && matchesConsumoMax;
+      })
+      .sort((a, b) => {
+        let comparison = 0;
+        
+        switch(sortBy) {
+          case 'fecha':
+            comparison = new Date(a.fecha_lectura) - new Date(b.fecha_lectura);
+            break;
+          case 'consumo':
+            comparison = (a.consumo_m3 || 0) - (b.consumo_m3 || 0);
+            break;
+          case 'medidor':
+            comparison = (a.medidor?.num_medidor || '').localeCompare(b.medidor?.num_medidor || '');
+            break;
+          default:
+            comparison = new Date(a.fecha_lectura) - new Date(b.fecha_lectura);
+        }
+        
+        return sortOrder === 'asc' ? comparison : -comparison;
+      });
+  }, [
+    lecturas, 
+    searchTerm, 
+    filterTipoLectura, 
+    filterFechaDesde, 
+    filterFechaHasta, 
+    filterConsumoMin, 
+    filterConsumoMax,
+    sortBy,       
+    sortOrder    
+  ]);
+
+
 
   // ============================================================
   // FUNCIONES DE MODAL
@@ -377,26 +383,27 @@ const HistorialConsumos = () => {
   /**
  * Exportar datos a CSV (ahora desde backend)
  */
+ /**
+ * Exportar datos a Excel desde backend
+ */
   const exportarDatos = async () => {
     if (lecturas.length === 0) {
       alert('No hay datos para exportar');
       return;
     }
 
-    setLoading(true);
+    setLoadingExport(true); // ✅ Usar estado separado
     
     try {
       const result = await affiliateGeneralServices.exportarLecturas(
         selectedAnio || null,
         selectedMes || null,
-        {
-          tipo_lectura: filterTipoLectura
-        }
+        { tipo_lectura: filterTipoLectura }
       );
-      
+
       if (result.success) {
         console.log(`✅ Archivo descargado: ${result.filename}`);
-        // Opcional: mostrar toast de éxito
+        // Opcional: mostrar notificación de éxito
       } else {
         alert(result.message || 'Error al exportar datos');
       }
@@ -404,9 +411,10 @@ const HistorialConsumos = () => {
       console.error('Error:', error);
       alert('Error al descargar el archivo');
     } finally {
-      setLoading(false);
+      setLoadingExport(false); // ✅ Desactivar estado de exportación
     }
   };
+
 
 
 
@@ -438,28 +446,81 @@ const HistorialConsumos = () => {
   }
 
   // ============================================================
+  // FUNCIÓN DE RECARGA
+  // ============================================================
+  const handleRecargar = async () => {
+    console.log('🔄 Recargando datos...');
+    setLoading(true);
+    setError(null);
+
+    try {
+      
+      // 2️⃣ Recargar lecturas con los filtros actuales
+      const result = await affiliateGeneralServices.getMisLecturasPorPeriodo(
+        selectedAnio || null,
+        selectedMes || null,
+        { tipo_lectura: filterTipoLectura }
+      );
+
+      if (result.success) {
+        setLecturas(result.data);
+        calcularEstadisticas(result.data);
+        console.log(`✅ Recargado: ${result.data.length} lecturas`);
+      } else {
+        setError(result.message);
+      }
+    } catch (err) {
+      console.error('❌ Error recargando:', err);
+      setError('Error al recargar los datos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  // ============================================================
   // RENDERIZADO PRINCIPAL
   // ============================================================
-  
   return (
     <div className="users-section">
-      {/* HEADER */}
-      <div className="section-header">
-        <div className="section-title">
-          <Clock className="w-6 h-6 text-blue-600" />
-          <h2>Mi Historial de Consumos</h2>
-        </div>
-        <div className="flex items-center gap-3">
-          <button 
-            className="btn-primary"
-            onClick={exportarDatos}
-            title="Exportar a CSV"
-          >
-            <Download className="w-4 h-4" />
-            <span className="ml-2">Exportar</span>
-          </button>
+
+    {/* HEADER */}
+    <div className="section-header">
+      <div className="section-title">
+        <Clock className="w-7 h-7 text-blue-600" />
+        <div>
+          <h2>Mi Historial de Lecturas</h2>
+          <p className="section-subtitle">Información de mi historial de Lecturas</p>
         </div>
       </div>
+      
+      <div className="flex items-center gap-3">
+
+      <button 
+        className={`btn-primary ${loadingExport ? 'opacity-75 cursor-wait' : ''}`}
+        onClick={exportarDatos}
+        disabled={loadingExport || lecturas.length === 0}
+        title={
+          lecturas.length === 0 
+            ? 'No hay datos para exportar' 
+            : 'Exportar a Excel'
+        }
+      >
+        {loadingExport ? (
+          <>
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+            <span>Generando Excel...</span>
+          </>
+        ) : (
+          <>
+            <Download className="w-4 h-4 mr-2" />
+            <span>Descargar Excel</span>
+          </>
+        )}
+      </button>
+
+      </div>
+    </div>
 
       {/* MENSAJE DE ERROR */}
       {error && (
@@ -469,65 +530,98 @@ const HistorialConsumos = () => {
         </div>
       )}
 
-      {/* TARJETAS DE ESTADÍSTICAS */}
+      {/* ==================== ESTADÍSTICAS DE LECTURAS ==================== */}
       {stats && (
-        <div className="users-stats">
-          <div className="stat-item">
-            <FileText className="stat-icon text-blue-600" />
-            <div>
-              <p className="stat-label">Total Lecturas</p>
-              <p className="stat-value">{stats.total_lecturas}</p>
-            </div>
+        <div className="periodo-stats-container">
+
+          {/* Header */}
+          <div className="periodo-stats-header">
+            <FileText className="w-5 h-5 text-blue-600 mr-2" />
+            <h3>Resumen de mis Lecturas</h3>
           </div>
-          <div className="stat-item">
-            <Activity className="stat-icon text-green-600" />
-            <div>
-              <p className="stat-label">Consumo Total</p>
-              <p className="stat-value">{stats.consumo_total} m³</p>
-            </div>
-          </div>
-          <div className="stat-item">
-            <BarChart3 className="stat-icon text-yellow-600" />
-            <div>
-              <p className="stat-label">Promedio Mensual</p>
-              <p className="stat-value">{stats.consumo_promedio} m³</p>
-            </div>
-          </div>
-          <div className="stat-item">
-            <TrendingUp className="stat-icon text-red-600" />
-            <div>
-              <p className="stat-label">Mayor Consumo</p>
-              <p className="stat-value">
-                {stats.mes_mayor_consumo ? `${stats.mes_mayor_consumo.consumo_m3} m³` : 'N/A'}
-              </p>
-            </div>
-          </div>
-          <div className="stat-item">
-            <TrendingDown className="stat-icon text-blue-600" />
-            <div>
-              <p className="stat-label">Menor Consumo</p>
-              <p className="stat-value">
-                {stats.mes_menor_consumo ? `${stats.mes_menor_consumo.consumo_m3} m³` : 'N/A'}
-              </p>
-            </div>
-          </div>
-          {stats.tendencia && (
+
+          {/* Cards */}
+          <div className="users-stats">
+
+            {/* 📄 Total lecturas */}
             <div className="stat-item">
-              {stats.tendencia.direccion === 'aumento' ? (
-                <TrendingUp className="stat-icon text-orange-600" />
-              ) : (
-                <TrendingDown className="stat-icon text-green-600" />
-              )}
+              <FileText className="stat-icon text-blue-600" />
               <div>
-                <p className="stat-label">Tendencia (3 meses)</p>
-                <p className={`stat-value text-sm ${stats.tendencia.direccion === 'aumento' ? 'text-orange-600' : 'text-green-600'}`}>
-                  {stats.tendencia.direccion === 'aumento' ? '↑' : '↓'} {stats.tendencia.porcentaje}%
+                <p className="stat-label">Total Lecturas</p>
+                <p className="stat-value">{stats.total_lecturas}</p>
+              </div>
+            </div>
+
+            {/* 💧 Consumo total */}
+            <div className="stat-item active green">
+              <Activity className="stat-icon text-green-600" />
+              <div>
+                <p className="stat-label">Consumo Total</p>
+                <p className="stat-value">{stats.consumo_total} m³</p>
+              </div>
+            </div>
+
+            {/* 📊 Promedio mensual */}
+            <div className="stat-item active yellow">
+              <BarChart3 className="stat-icon text-yellow-600" />
+              <div>
+                <p className="stat-label">Promedio Mensual</p>
+                <p className="stat-value">{stats.consumo_promedio} m³</p>
+              </div>
+            </div>
+
+            {/* 🔺 Mayor consumo */}
+            <div className="stat-item active red">
+              <TrendingUp className="stat-icon text-red-600" />
+              <div>
+                <p className="stat-label">Mayor Consumo</p>
+                <p className="stat-value">
+                  {stats.mes_mayor_consumo
+                    ? `${stats.mes_mayor_consumo.consumo_m3} m³`
+                    : 'N/A'}
                 </p>
               </div>
             </div>
-          )}
+
+            {/* 🔻 Menor consumo */}
+            <div className="stat-item active blue">
+              <TrendingDown className="stat-icon text-blue-600" />
+              <div>
+                <p className="stat-label">Menor Consumo</p>
+                <p className="stat-value">
+                  {stats.mes_menor_consumo
+                    ? `${stats.mes_menor_consumo.consumo_m3} m³`
+                    : 'N/A'}
+                </p>
+              </div>
+            </div>
+
+            {/* 📈 Tendencia */}
+            {stats.tendencia && (
+              <div
+                className={`stat-item active ${
+                  stats.tendencia.direccion === 'aumento' ? 'orange' : 'green'
+                }`}
+              >
+                {stats.tendencia.direccion === 'aumento' ? (
+                  <TrendingUp className="stat-icon text-orange-600" />
+                ) : (
+                  <TrendingDown className="stat-icon text-green-600" />
+                )}
+                <div>
+                  <p className="stat-label">Tendencia (3 meses)</p>
+                  <p className="stat-value text-sm">
+                    {stats.tendencia.direccion === 'aumento' ? '↑' : '↓'}{' '}
+                    {stats.tendencia.porcentaje}%
+                  </p>
+                </div>
+              </div>
+            )}
+
+          </div>
         </div>
       )}
+
 
       {/* ==================== FILTROS PRINCIPALES — PERIODO ==================== */}
       <div className="filters-section">
@@ -535,7 +629,7 @@ const HistorialConsumos = () => {
         {/* IZQUIERDA — (vacío o futuro buscador si quieres) */}
         <div />
 
-        {/* DERECHA — Filtros de período */}
+        {/* Filtros de período */}
         <div className="filters-right">
 
           {/* 📅 Año */}
@@ -546,9 +640,7 @@ const HistorialConsumos = () => {
           >
             <option value="">Todos los años</option>
             {aniosDisponibles.map(anio => (
-              <option key={anio} value={anio}>
-                {anio}
-              </option>
+              <option key={anio} value={anio}>{anio}</option>
             ))}
           </select>
 
@@ -567,28 +659,46 @@ const HistorialConsumos = () => {
             ))}
           </select>
 
-          {/* 🏷️ Tipo de lectura */}
+          {/* 🎯 Tipo de lectura */}
           <select
             className="filter-select"
             value={filterTipoLectura}
             onChange={(e) => setFilterTipoLectura(e.target.value)}
           >
-            <option value="todas">Todas</option>
+            <option value="todas">Tipos de lectura</option>
             <option value="reales">Reales</option>
             <option value="estimadas">Estimadas</option>
           </select>
 
-          {/* 🔍 Más filtros */}
-          <button
-            className="btn-secondary"
-            onClick={() => setShowFilters(!showFilters)}
-            title="Más filtros"
+          {/* 📊 Ordenar por */}
+          <select
+            className="filter-select"
+            value={sortBy}
+            onChange={(e) => {
+              console.log(`📊 Nuevo criterio de orden: ${e.target.value}`);
+              setSortBy(e.target.value);
+            }}
+            title="Ordenar por"
           >
-            <Filter className="w-4 h-4" />
+            <option value="fecha">Ordenar por Fecha</option>
+            <option value="consumo">Ordenar por Consumo</option>
+          </select>
+
+          {/* ⬆️⬇️ Dirección de orden */}
+          <button 
+            className="btn-secondary"
+            onClick={toggleSortOrder}
+            title={`Actualmente: ${sortOrder === 'asc' ? 'Ascendente (menor a mayor)' : 'Descendente (mayor a menor)'}`}
+            style={{ minWidth: '60px' }}
+          >
+            <ArrowUpDown className="w-4 h-4" />
+            <span className="ml-1 text-xs">
+              {sortOrder === 'asc' ? '↑' : '↓'}
+            </span>
           </button>
 
           {/* ❌ Limpiar filtros */}
-          <button
+          <button 
             className="btn-secondary"
             onClick={limpiarFiltros}
             title="Limpiar filtros"
@@ -596,71 +706,20 @@ const HistorialConsumos = () => {
             <X className="w-4 h-4" />
           </button>
 
+          {/* 🔄 Recargar */}
+          <button 
+            className="btn-secondary"
+            onClick={handleRecargar}
+            disabled={loading}
+            title="Recargar lista"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+
         </div>
+
+
       </div>
-
-
-      {/* FILTROS AVANZADOS */}
-      {showFilters && (
-        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Fecha Desde
-              </label>
-              <input
-                type="date"
-                className="filter-select w-full"
-                value={filterFechaDesde}
-                onChange={(e) => setFilterFechaDesde(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Fecha Hasta
-              </label>
-              <input
-                type="date"
-                className="filter-select w-full"
-                value={filterFechaHasta}
-                onChange={(e) => setFilterFechaHasta(e.target.value)}
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Consumo Mínimo (m³)
-              </label>
-              <input
-                type="number"
-                className="filter-select w-full"
-                placeholder="Ej: 10"
-                value={filterConsumoMin}
-                onChange={(e) => setFilterConsumoMin(e.target.value)}
-                min="0"
-                step="0.1"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Consumo Máximo (m³)
-              </label>
-              <input
-                type="number"
-                className="filter-select w-full"
-                placeholder="Ej: 50"
-                value={filterConsumoMax}
-                onChange={(e) => setFilterConsumoMax(e.target.value)}
-                min="0"
-                step="0.1"
-              />
-            </div>
-          </div>
-          <div className="mt-3 text-sm text-gray-600">
-            Mostrando {filteredLecturas.length} de {lecturas.length} lecturas
-          </div>
-        </div>
-      )}
 
       {/* LISTA DE LECTURAS */}
       <div className="periodo-historial-container">
@@ -707,27 +766,30 @@ const HistorialConsumos = () => {
                   <div className="periodo-historial-stat-item">
                     <Gauge className="w-4 h-4 text-blue-500" />
                     <span>{lectura.consumo_m3} m³</span>
-                  </div>
-                  <div className="periodo-historial-stat-separator">•</div>
+                  </div>                  
+                </div>
+                 <div className="periodo-historial-col-stats">
+                  
                   <div className="periodo-historial-stat-item">
                     <Activity className="w-4 h-4 text-gray-500" />
-                    <span>{lectura.lectura_actual} - {lectura.lectura_anterior}</span>
+                    <span>Lecturas • Actual: {lectura.lectura_actual} - Anterior: {lectura.lectura_anterior}</span>
                   </div>
                 </div>
 
                 <div className="periodo-historial-col-estado">
                   {lectura.es_estimada ? (
                     <div className="periodo-historial-badge incompleto">
-                      <AlertCircle className="w-4 h-4" />
+                      <AlertCircle className="w-4 h-4 text-red-600" />
                       <span>Estimada</span>
                     </div>
                   ) : (
                     <div className="periodo-historial-badge completo">
-                      <CheckCircle className="w-4 h-4" />
+                      <CheckCircle className="w-4 h-4 text-green-600" />
                       <span>Real</span>
                     </div>
                   )}
                 </div>
+
 
                 <div className="periodo-historial-col-action">
                   <Eye className="w-4 h-4" />
@@ -739,7 +801,7 @@ const HistorialConsumos = () => {
         )}
       </div>
 
-      {/* MODAL DE DETALLES - Sin llamada adicional */}
+      {/* MODAL DE DETALLES*/}
       {showModal && selectedLectura && (
         <div className="modal-overlay">
           <div className="modal">
@@ -767,9 +829,9 @@ const HistorialConsumos = () => {
                   <p>{selectedLectura.medidor?.sector || 'Sin sector'}</p>
                 </div>
 
-                {/* Código de Usuario */}
+                {/* Código de Afiliado */}
                 <div className="detail-group">
-                  <label>Código de Usuario:</label>
+                  <label>Código de Afiliado:</label>
                   <p>{selectedLectura.medidor?.codigo_afiliado || 'N/A'}</p>
                 </div>
 
@@ -798,7 +860,7 @@ const HistorialConsumos = () => {
 
                 {/* Fecha */}
                 <div className="detail-group">
-                  <label>Fecha:</label>
+                  <label>Fecha lectura:</label>
                   <p>{formatDate(selectedLectura.fecha_lectura)}</p>
                 </div>
 
@@ -856,12 +918,6 @@ const HistorialConsumos = () => {
                   </span>
                 </div>
               </div>
-            </div>
-
-            <div className="form-actions">
-              <button type="button" className="btn-primary" onClick={closeModal}>
-                Cerrar
-              </button>
             </div>
           </div>
         </div>

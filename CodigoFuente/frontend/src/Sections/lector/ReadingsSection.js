@@ -43,6 +43,9 @@ const ReadingsSection = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  //const [meterInfo, setMeterInfo] = useState(null); // Objeto único en lugar de array
+
+
   // ============================================================
   // ESTADOS DE PERIODOS
   // ============================================================
@@ -256,7 +259,23 @@ const handleConfirmarEstimada = async (reading) => {
   }
 };
 
+
+const filteredMeters = useMemo(() => {
+  if (!meterSearchTerm.trim()) return meters;
   
+  const searchLower = meterSearchTerm.toLowerCase().trim();
+  
+  return meters.filter(afiliado => {
+    const numMedidor = afiliado.num_medidor?.toLowerCase() || '';
+    const nombreCompleto = afiliado.nombre_completo?.toLowerCase() || '';
+    const codigoAfiliado = String(afiliado.cod_usuario_afi || '').toLowerCase();
+    
+    return numMedidor.includes(searchLower) || 
+           nombreCompleto.includes(searchLower) || 
+           codigoAfiliado.includes(searchLower);
+  });
+}, [meters, meterSearchTerm]);
+
   
 
   // FUNCIÓN PARA CONFIRMAR TODAS LAS LECTURAS ESTIMADAS
@@ -375,34 +394,34 @@ const handleConfirmarEstimada = async (reading) => {
     }
   };
 
-  const fetchReadingsByPeriodo = useCallback(async () => {
-    if (!periodoSeleccionado) return;
+const fetchReadingsByPeriodo = useCallback(async () => {
+  if (!periodoSeleccionado) return;
 
-    setLoading(true);
-    setError(null);
+  setLoading(true);
+  setError(null);
 
-    try {
-      const result = await readingsServices.getLecturas();
+  try {
+    // 🔥 Pasar filtros de periodo al backend
+    const result = await readingsServices.getLecturas({
+      mes: periodoSeleccionado.mes,
+      anio: periodoSeleccionado.anio
+    });
 
-      if (result.success) {
-        const lecturasFiltradas = result.data.filter(lectura => {
-          const fecha = new Date(lectura.fecha_lectura + 'T00:00:00');
-          return (
-            fecha.getMonth() + 1 === periodoSeleccionado.mes &&
-            fecha.getFullYear() === periodoSeleccionado.anio
-          );
-        });
-
-        setReadings(lecturasFiltradas);
-      } else {
-        setError(result.message);
-      }
-    } catch (err) {
-      setError('Error al cargar lecturas del periodo');
-    } finally {
-      setLoading(false);
+    if (result.success) {
+      console.log(`✅ Lecturas del periodo ${periodoSeleccionado.mes}/${periodoSeleccionado.anio}:`, result.data.length);
+      setReadings(result.data);  // Ya vienen filtradas del backend
+    } else {
+      setError(result.message);
     }
-  }, [periodoSeleccionado]);
+  } catch (err) {
+    console.error('❌ Error:', err);
+    setError('Error al cargar lecturas del periodo');
+  } finally {
+    setLoading(false);
+  }
+}, [periodoSeleccionado]);
+
+
 
   // efecto solo se ejecuta cuando hay periodo seleccionado
   useEffect(() => {
@@ -436,79 +455,74 @@ const handleConfirmarEstimada = async (reading) => {
   // ============================================================
   // FUNCIONES DE CARGA DE DATOS
   // ============================================================
-  const fetchMeters = async () => {
-    try {
-      const result = await readingsServices.getMedidoresParaLecturas();
-      if (result.success) {
-        setMeters(result.data || []);
-      } else {
-        setError(result.message);
-      }
-    } catch (error) {
-      setError('Error al cargar medidores');
-    }
-  };
-
-  // ============================================================
-  // FUNCIONES AUXILIARES
-  // ============================================================
-  const filteredMeters = useMemo(() => {
-    if (!meterSearchTerm.trim()) return meters;
+const fetchMeters = async () => {
+  try {
+    const result = await readingsServices.getMedidoresParaLecturas();
     
-    const searchLower = meterSearchTerm.toLowerCase().trim();
-    return meters.filter(medidor => {
-      const numMedidor = medidor.num_medidor?.toLowerCase() || '';
-      const nombreAfiliado = medidor.nombre_afiliado?.toLowerCase() || '';
-      const codigoAfiliado = String(medidor.codigo_afiliado || '').toLowerCase();
+    console.log('🔍 Resultado completo:', result);
+    
+    if (result.success) {
+      console.log('✅ Afiliados recibidos:', result.data);
+      console.log('✅ Total afiliados:', result.data.length);
       
-      return numMedidor.includes(searchLower) ||
-             nombreAfiliado.includes(searchLower) ||
-             codigoAfiliado.includes(searchLower);
-    });
-  }, [meters, meterSearchTerm]);
+      setMeters(result.data);  // 🔥 Usar setMeters aquí
+    } else {
+      setError(result.message);
+    }
+  } catch (error) {
+    console.error('❌ Error en fetchMeters:', error);
+    setError("Error al cargar afiliados");
+  }
+};
+
 
   // ============================================================
   // FUNCIONES DE FILTRADO Y ORDENAMIENTO
   // ============================================================
+
   const filteredReadings = readings.filter(reading => {
     const searchLower = searchTerm.toLowerCase();
     
-    const matchesSearch =
-      reading.medidor?.num_medidor?.toLowerCase().includes(searchLower) ||
+    // 🔥 Cambios: usar campos directos en vez de reading.medidor?.campo
+    const matchesSearch = 
+      reading.num_medidor?.toLowerCase().includes(searchLower) ||
       reading.observacion?.toLowerCase().includes(searchLower) ||
       reading.id_lectura.toString().includes(searchTerm) ||
-      (reading.medidor?.codigo_afiliado + '').toLowerCase().includes(searchLower) ||
-      (reading.medidor?.nombre_afiliado || '').toLowerCase().includes(searchLower);
-
-    const matchesStatus =
-      filterStatus === 'all' ||
-      (filterStatus === 'active' && reading.activo) ||
+      reading.codigo_afiliado?.toString().toLowerCase().includes(searchLower) ||
+      reading.nombre_afiliado?.toLowerCase().includes(searchLower);
+    
+    const matchesStatus = 
+      filterStatus === 'all' || 
+      (filterStatus === 'active' && reading.activo) || 
       (filterStatus === 'inactive' && !reading.activo);
-
+    
     return matchesSearch && matchesStatus;
   });
 
-  const sortedReadings = [...filteredReadings].sort((a, b) => {
-    // ✅ PRIMERA PRIORIDAD: Lecturas estimadas siempre al final
-    if (a.es_estimada !== b.es_estimada) {
-      return a.es_estimada ? 1 : -1;  
-    }
 
-    // ✅ SEGUNDA PRIORIDAD: Ordenamiento según la opción seleccionada
-    let comparison = 0;
+const sortedReadings = [...filteredReadings].sort((a, b) => {
+  // PRIMERA PRIORIDAD: Lecturas estimadas siempre al final
+  if (a.es_estimada !== b.es_estimada) {
+    return a.es_estimada ? 1 : -1;
+  }
 
-    if (sortOption === 'fecha') {
-      comparison = new Date(a.fecha_lectura) - new Date(b.fecha_lectura);
-    } else if (sortOption === 'medidor') {
-      const medidorA = a.medidor?.num_medidor?.toLowerCase() || '';
-      const medidorB = b.medidor?.num_medidor?.toLowerCase() || '';
-      comparison = medidorA.localeCompare(medidorB);
-    } else if (sortOption === 'consumo') {
-      comparison = a.consumo_m3 - b.consumo_m3;
-    }
+  // SEGUNDA PRIORIDAD: Ordenamiento según la opción seleccionada
+  let comparison = 0;
+  
+  if (sortOption === 'fecha') {
+    comparison = new Date(a.fecha_lectura) - new Date(b.fecha_lectura);
+  } else if (sortOption === 'medidor') {
+    // 🔥 CAMBIO: usar campos planos
+    const medidorA = a.num_medidor?.toLowerCase() || '';
+    const medidorB = b.num_medidor?.toLowerCase() || '';
+    comparison = medidorA.localeCompare(medidorB);
+  } else if (sortOption === 'consumo') {
+    comparison = a.consumo_m3 - b.consumo_m3;
+  }
+  
+  return sortOrder === 'asc' ? comparison : -comparison;
+});
 
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
 
   const toggleSortOrder = () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
@@ -552,7 +566,7 @@ const handleConfirmarEstimada = async (reading) => {
         activo: true,
       });
       setSelectedMeterInfo(null);
-    } else if (type === 'edit' && reading) {
+    }else if (type === 'edit' && reading) {
       setFormData({
         id_lectura: reading.id_lectura,
         id_medidor: reading.id_medidor,
@@ -563,9 +577,21 @@ const handleConfirmarEstimada = async (reading) => {
         observacion: reading.observacion || '',
         activo: reading.activo,
       });
-      const medidor = meters.find(m => m.id_medidor === reading.id_medidor);
-      if (medidor) {
-        setSelectedMeterInfo(medidor);
+
+      // 🔥 BUSCAR AFILIADO EN METERS PARA MOSTRAR INFO
+      const afiliado = meters.find(m => m.id_medidor === reading.id_medidor);
+      
+      if (afiliado) {
+        setSelectedMeterInfo(afiliado);
+      } else {
+        // 🔥 Si no está en meters, crear objeto con datos de la lectura
+        setSelectedMeterInfo({
+          id_medidor: reading.id_medidor,
+          num_medidor: reading.num_medidor,
+          cod_usuario_afi: reading.codigo_afiliado,
+          nombre_completo: reading.nombre_afiliado,
+          lectura_anterior: reading.lectura_anterior
+        });
       }
     } else if (type === 'excel') {
       setExcelPreview([]);
@@ -987,7 +1013,12 @@ return (
         <div className="section-header">
           <div className="section-title">
             <BookOpen className="w-7 h-7 text-blue-600" />
-            <h2>Gestión de Lecturas</h2>
+            <div>
+              <h2>Gestión de lecturas </h2>
+              <p className="section-subtitle">
+                Gestiona la lecturas de los afiliado
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1463,8 +1494,8 @@ return (
             <div className="readings-list-header">
               <span>#</span>
               <span><Gauge className="w-4 h-4" /> Medidor</span>
-              <span><User className="w-4 h-4" /> Nombre Afi</span>
               <span>Código Afi</span>
+              <span><User className="w-4 h-4" /> Nombre Afi</span>
               <span><MapPin className="w-4 h-4" /> Sector</span>
               <span>Lect. Ant.</span>
               <span>Lect. Act.</span>
@@ -1473,6 +1504,7 @@ return (
               <span>Estado</span>
               <span>Acciones</span>
             </div>
+
 
             <div className="readings-list-body">
               {sortedReadings.length > 0 ? (
@@ -1490,22 +1522,22 @@ return (
                           <Gauge className="w-4 h-4" />
                         </div>
                         <span className="medidor-numero">
-                          {reading.medidor?.num_medidor || 'N/A'}
+                          {reading.num_medidor || 'N/A'}
                         </span>
                       </div>
 
-                      <div className={`list-col-nombre ${!reading.medidor?.nombre_afiliado ? 'empty' : ''}`}>
+                      <div className={`list-col-codigo ${!reading.codigo_afiliado ? 'empty' : ''}`}>
+                        {reading.codigo_afiliado || '---'}
+                      </div>
+
+                      <div className={`list-col-nombre ${!reading.nombre_afiliado ? 'empty' : ''}`}>
                         <User className="w-4 h-4" />
-                        {reading.medidor?.nombre_afiliado || 'No registrado'}
+                        {reading.nombre_afiliado || 'No registrado'}
                       </div>
 
-                      <div className={`list-col-codigo ${!reading.medidor?.codigo_afiliado ? 'empty' : ''}`}>
-                        {reading.medidor?.codigo_afiliado || '---'}
-                      </div>
-
-                      <div className={`list-col-sector ${!reading.medidor?.sector ? 'empty' : ''}`}>
+                      <div className={`list-col-sector ${!reading.sector ? 'empty' : ''}`}>
                         <MapPin className="w-4 h-4" />
-                        {reading.medidor?.sector || 'Sin sector'}
+                        {reading.sector || 'Sin sector'}
                       </div>
 
                       <div className="list-col-lectura">
@@ -1553,7 +1585,7 @@ return (
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        {permissions.canUpdate && !reading.es_estimada &&  (
+                        {permissions.canUpdate && !reading.es_estimada && (
                           <button 
                             className="list-action-btn edit" 
                             onClick={() => openModal('edit', reading)} 
@@ -1563,7 +1595,6 @@ return (
                           </button>
                         )}
 
-                        {/* Botón para confirmar lectura estimada */}
                         {permissions.canUpdate && reading.es_estimada && (
                           <button 
                             className="list-action-btn confirm" 
@@ -1574,7 +1605,6 @@ return (
                             <CheckCircle className="w-4 h-4" />
                           </button>
                         )}
-                        
                       </div>
                     </div>
                   );
@@ -1590,41 +1620,48 @@ return (
               )}
             </div>
 
+            {/* 🔥 FOOTER ACTUALIZADO CON NOMBRE DEL LECTOR */}
             {sortedReadings.length > 0 && (
-            <div className="readings-list-footer">
-              <button 
-                className="btn-secondary"
-                onClick={() => setPeriodoSeleccionado(null)}
-              >
-                <ArrowUpDown className="w-4 h-4 mr-2" style={{ transform: 'rotate(90deg)' }} />
-                Cambiar periodo
-              </button>
-
-              {/* ✅ Botón solo visible si hay estimadas */}
-              {sortedReadings.some(r => r.es_estimada) && permissions.canUpdate && (
+              <div className="readings-list-footer">
                 <button 
-                  className="btn-primary"
-                  onClick={handleConfirmarTodas}
-                  title="Confirmar todas las lecturas estimadas"
+                  className="btn-secondary"
+                  onClick={() => setPeriodoSeleccionado(null)}
                 >
-                  <Check className="w-4 h-4 mr-2" />
-                  Confirmar lecturas estimadas ({sortedReadings.filter(r => r.es_estimada).length})
+                  <ArrowUpDown className="w-4 h-4 mr-2" style={{ transform: 'rotate(90deg)' }} />
+                  Cambiar periodo
                 </button>
-              )}
-              
-              <div className="readings-list-footer-stats">
-                <span>
-                  Mostrando <strong>{sortedReadings.length}</strong> lecturas
-                </span>
-                <span>
-                  Consumo total: <strong>{sortedReadings.reduce((sum, r) => sum + (r.consumo_m3 || 0), 0)} m³</strong>
-                </span>
-              </div>
-            </div>
-          )}
 
+                {sortedReadings.some(r => r.es_estimada) && permissions.canUpdate && (
+                  <button 
+                    className="btn-primary"
+                    onClick={handleConfirmarTodas}
+                    title="Confirmar todas las lecturas estimadas"
+                  >
+                    <Check className="w-4 h-4 mr-2" />
+                    Confirmar lecturas estimadas ({sortedReadings.filter(r => r.es_estimada).length})
+                  </button>
+                )}
+                
+                <div className="readings-list-footer-stats">
+                  <span>
+                    Mostrando <strong>{sortedReadings.length}</strong> lecturas
+                  </span>
+                  <span>
+                    Consumo total: <strong>{sortedReadings.reduce((sum, r) => sum + (r.consumo_m3 || 0), 0)} m³</strong>
+                  </span>
+                  {/* 🔥 MOSTRAR NOMBRE DEL LECTOR */}
+                  {sortedReadings.length > 0 && sortedReadings[0].lector_nombre && sortedReadings[0].lector_nombre !== 'No registrado' && (
+                    <span>
+                      <User className="w-4 h-4 inline mr-1" />
+                      Lecturas tomadas por: <strong>{sortedReadings[0].lector_nombre}</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
+
       </div>
     )}
 
@@ -1929,25 +1966,25 @@ return (
               {/* Medidor */}
               <div className="detail-group">
                 <label>Medidor:</label>
-                <p>{selectedReading.medidor?.num_medidor || 'N/A'}</p>
+                <p>{selectedReading.num_medidor || 'N/A'}</p>
               </div>
 
-              {/* Sector */}
+              {/* 🔥 SECTOR */}
               <div className="detail-group">
                 <label>Sector:</label>
-                <p>{selectedReading.medidor?.sector || 'Sin sector'}</p>
+                <p>{selectedReading.sector || 'Sin sector'}</p>
               </div>
 
-              {/* Código de Usuario */}
+              {/* Código de Afiliado */}
               <div className="detail-group">
-                <label>Código de Usuario:</label>
-                <p>{selectedReading.medidor?.codigo_afiliado || 'N/A'}</p>
+                <label>Código de Afiliado:</label>
+                <p>{selectedReading.codigo_afiliado || 'N/A'}</p>
               </div>
 
               {/* Nombre Afiliado */}
               <div className="detail-group">
                 <label>Nombre Afiliado:</label>
-                <p>{selectedReading.medidor?.nombre_afiliado || 'Sin afiliado'}</p>
+                <p>{selectedReading.nombre_afiliado || 'Sin afiliado'}</p>
               </div>
 
               {/* Lecturas */}
@@ -1973,14 +2010,10 @@ return (
                 <p>{new Date(selectedReading.fecha_lectura + 'T00:00:00').toLocaleDateString('es-EC')}</p>
               </div>
 
-              {/* Lector */}
+              {/* 🔥 LECTOR */}
               <div className="detail-group">
                 <label>Lector:</label>
-                <p>
-                  {selectedReading.lector
-                    ? `${selectedReading.lector.nombres} ${selectedReading.lector.apellidos}`
-                    : 'No registrado'}
-                </p>
+                <p>{selectedReading.lector_nombre || 'No registrado'}</p>
               </div>
 
               {/* Observación */}
@@ -1989,13 +2022,10 @@ return (
                 <p>{selectedReading.observacion || 'Sin observaciones'}</p>
               </div>
 
-              {/* Estado  */}
+              {/* Estado */}
               <div className="detail-group">
                 <label>Estado:</label>
-
-                <span
-                  className={`status-badge ${selectedReading.activo ? 'active' : 'inactive'}`}
-                >
+                <span className={`status-badge ${selectedReading.activo ? 'active' : 'inactive'}`}>
                   {selectedReading.activo ? (
                     <>
                       <CheckCircle className="w-3 h-3 mr-1" />
@@ -2010,8 +2040,20 @@ return (
                 </span>
               </div>
 
+              {/* Tipo de Lectura */}
+              {selectedReading.es_estimada && (
+                <div className="detail-group">
+                  <label>Tipo:</label>
+                  <span className="status-badge" style={{ backgroundColor: '#fbbf24', color: '#92400e' }}>
+                    <TrendingUp className="w-3 h-3 mr-1" />
+                    Lectura Estimada
+                  </span>
+                </div>
+              )}
+
             </div>
           )}
+
 
           {/* ==================== MODAL DE CREACIÓN/EDICIÓN ==================== */}
           {(modalType === 'create' || modalType === 'edit') && (
@@ -2019,7 +2061,7 @@ return (
               <div className="form-grid">
                 
                 <div className="form-group form-group-full">
-                  <label>Medidor *</label>
+                  <label>Afiliado / Medidor *</label>
                   
                   {modalType === 'create' && (
                     <div className="meter-search-container">
@@ -2027,7 +2069,7 @@ return (
                         <Search className="w-4 h-4 text-gray-400" />
                         <input
                           type="text"
-                          placeholder="Buscar medidor..."
+                          placeholder="Buscar por código, nombre o medidor..."
                           value={meterSearchTerm}
                           onChange={(e) => setMeterSearchTerm(e.target.value)}
                         />
@@ -2050,10 +2092,10 @@ return (
                     onChange={(e) => handleMedidorChange(e.target.value)}
                     disabled={modalType === 'edit'}
                   >
-                    <option value="">Seleccione un medidor</option>
-                    {filteredMeters.map(medidor => (
-                      <option key={medidor.id_medidor} value={medidor.id_medidor}>
-                        {medidor.num_medidor} | {medidor.codigo_afiliado || 'S/C'} | {medidor.nombre_afiliado || 'Sin afiliado'}
+                    <option value="">Seleccione un afiliado</option>
+                    {filteredMeters.map(afiliado => (
+                      <option key={afiliado.id_medidor} value={afiliado.id_medidor}>
+                        🏠 {afiliado.num_medidor} | 👤 {afiliado.cod_usuario_afi || 'S/C'} - {afiliado.nombre_completo || 'Sin nombre'}
                       </option>
                     ))}
                   </select>
@@ -2062,11 +2104,13 @@ return (
                     <div className="meter-info-card">
                       <h4 className="meter-info-title">
                         <Gauge className="w-4 h-4 mr-2" />
-                        Información del Medidor
+                        Información del Afiliado
                       </h4>
                       <div className="meter-info-content">
-                        <p><strong>Afiliado:</strong> {selectedMeterInfo.nombre_afiliado ?? "Sin afiliado"}</p>
-                        <p><strong>Sector:</strong> {selectedMeterInfo.sector || 'Sin sector'}</p>
+                        <p><strong>Afiliado:</strong> {selectedMeterInfo.nombre_completo || "Sin nombre"}</p>
+                        <p><strong>Código:</strong> {selectedMeterInfo.cod_usuario_afi || 'Sin código'}</p>
+                        <p><strong>Medidor:</strong> {selectedMeterInfo.num_medidor || 'Sin medidor'}</p>
+                        <p><strong>Lectura Anterior:</strong> {selectedMeterInfo.lectura_anterior || 0} m³</p>
                       </div>
                     </div>
                   )}
@@ -2082,6 +2126,7 @@ return (
                     readOnly={modalType === 'create'}
                     className={modalType === 'create' ? 'bg-gray-100' : ''}
                   />
+                  <small className="text-gray-500">Auto-cargada al seleccionar afiliado</small>
                 </div>
 
                 <div className="form-group">
@@ -2093,6 +2138,7 @@ return (
                     onChange={(e) => setFormData({ ...formData, lectura_actual: e.target.value })}
                     min={formData.lectura_anterior || 0}
                   />
+                  <small className="text-gray-500">Debe ser mayor o igual a lectura anterior</small>
                 </div>
 
                 <div className="form-group">
@@ -2103,6 +2149,7 @@ return (
                     readOnly
                     className="bg-gray-100 font-semibold text-green-700"
                   />
+                  <small className="text-gray-500">Calculado automáticamente</small>
                 </div>
 
                 <div className="form-group">
@@ -2121,10 +2168,10 @@ return (
                     rows="3"
                     value={formData.observacion}
                     onChange={(e) => setFormData({ ...formData, observacion: e.target.value })}
-                    placeholder="Observaciones opcionales..."
+                    placeholder="Observaciones opcionales (ej: medidor dañado, lectura irregular, etc.)..."
                   />
                 </div>
-        
+
                 {modalType === 'edit' && (
                   <div className="form-group">
                     <label>Estado</label>
@@ -2140,12 +2187,13 @@ return (
               </div>
 
               <div className="form-actions">
-
                 <button type="button" className="btn-secondary" onClick={closeModal}>
+                  <X className="w-4 h-4 mr-2" />
                   Cancelar
                 </button>
-                {/* ✅ Botón eliminar*/}
-                {modalType === 'edit' && (
+                
+                {/* ✅ Botón eliminar */}
+                {modalType === 'edit' && permissions.canDelete && (
                   <button 
                     type="button" 
                     className="btn-delete"
@@ -2155,15 +2203,15 @@ return (
                     Eliminar
                   </button>
                 )}
+                
                 <button type="submit" className="btn-primary">
                   <Save className="w-4 h-4 mr-2" />
                   {modalType === 'create' ? 'Crear Lectura' : 'Guardar Cambios'}
                 </button>
-                
               </div>
             </form>
           )}
-          
+
 
         </div>
       </div>

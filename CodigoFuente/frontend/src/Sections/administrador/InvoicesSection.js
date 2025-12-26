@@ -49,7 +49,7 @@ const InvoicesSection = () => {
   // ============================================================
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [sortOption, setSortOption] = useState('fecha');
+  const [sortOption, setSortOption] = useState('codigo');
   const [sortOrder, setSortOrder] = useState('desc');
 
   // ============================================================
@@ -98,11 +98,32 @@ const InvoicesSection = () => {
   const [showServicios, setShowServicios] = useState(false);
   const [serviciosDisponibles, setServiciosDisponibles] = useState([]);
   const [serviciosSeleccionados, setServiciosSeleccionados] = useState([]);
-
-    // Después de los estados existentes de servicios
   const [showServiciosModal, setShowServiciosModal] = useState(false);
   const [facturaSeleccionadaServicios, setFacturaSeleccionadaServicios] = useState(null);
   const [serviciosSeleccionadosModal, setServiciosSeleccionadosModal] = useState([]);
+
+  // ============================================================
+  // ESTADOS  MANEJAR ANULACION DE MULTAS
+  // ============================================================
+  // Estados para modal de anulación
+  const [anulacionData, setAnulacionData] = useState({
+    motivo: '',
+    motivoPersonalizado: ''
+  });
+
+  // Motivos predefinidos para anulación de facturas
+  const motivosAnulacionFactura = [
+    'Error en el cálculo del consumo',
+    'Lectura de medidor incorrecta',
+    'Factura duplicada',
+    'Usuario solicita corrección',
+    'Error en datos del afiliado',
+    'Aplicación incorrecta de tarifa',
+    'Problemas técnicos del sistema',
+    'Otro (especificar)'
+  ];
+
+
 
   // ============================================================
   // FUNCIONES DE PERMISOS
@@ -294,48 +315,76 @@ const InvoicesSection = () => {
   ]);
 
   // ============================================================
-  // FUNCIONES DE FILTRADO Y ORDENAMIENTO
-  // ============================================================
-  const filteredFacturas = facturas.filter(factura => {
-    const searchLower = searchTerm.toLowerCase();
-    
-    // Buscar en múltiples campos
-    const matchesSearch =
-      factura.num_factura?.toLowerCase().includes(searchLower) ||
-      factura.id_factura?.toString().includes(searchTerm) ||
-      factura.usuario_afiliado?.usuario_sistema?.nombres?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.usuario_sistema?.apellidos?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.usuario_sistema?.cedula?.includes(searchTerm);
-    
-    const matchesStatus =
-      filterStatus === 'all' ||
-      factura.estado_factura === filterStatus;
-    
-    return matchesSearch && matchesStatus;
-  });
+// FUNCIONES DE FILTRADO Y ORDENAMIENTO
+// ============================================================
+const filteredFacturas = facturas.filter(factura => {
+  const searchLower = searchTerm.toLowerCase();
+  
+  // Buscar en múltiples campos
+  const matchesSearch =
+    factura.num_factura?.toLowerCase().includes(searchLower) ||
+    factura.id_factura?.toString().includes(searchTerm) ||
+    factura.usuario_afiliado?.cod_usuario_afi?.toLowerCase().includes(searchLower) ||
+    factura.usuario_afiliado?.usuario_sistema?.nombres?.toLowerCase().includes(searchLower) ||
+    factura.usuario_afiliado?.usuario_sistema?.apellidos?.toLowerCase().includes(searchLower) ||
+    factura.usuario_afiliado?.usuario_sistema?.cedula?.includes(searchTerm);
+  
+  const matchesStatus =
+    filterStatus === 'all' ||
+    factura.estado_factura === filterStatus;
+  
+  return matchesSearch && matchesStatus;
+});
 
-
-  const sortedFacturas = useMemo(() => {
-    return [...filteredFacturas].sort((a, b) => {
-      let comparison = 0;
-
-      if (sortOption === 'fecha') {
-        comparison = new Date(a.fecha_emision) - new Date(b.fecha_emision);
-      } else if (sortOption === 'numero') {
-        comparison = a.num_factura.localeCompare(b.num_factura);
-      } else if (sortOption === 'total') {
-        comparison = parseFloat(a.total) - parseFloat(b.total);
-      } else if (sortOption === 'estado') {
-        comparison = a.estado_factura.localeCompare(b.estado_factura);
-      }
-
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-  }, [filteredFacturas, sortOption, sortOrder]);
-
-  const toggleSortOrder = () => {
-    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
+// Función auxiliar para determinar prioridad de estado
+const getEstadoPrioridad = (estado) => {
+  const prioridades = {
+    'pendiente': 1,
+    'vencida': 2,
+    'pagada': 3,
+    'anulada': 4
   };
+  return prioridades[estado] || 5;
+};
+
+const sortedFacturas = useMemo(() => {
+  return [...filteredFacturas].sort((a, b) => {
+    let comparison = 0;
+
+    // Primero ordenar por estado (pendiente → vencida → pagada → anulada)
+    const estadoA = getEstadoPrioridad(a.estado_factura);
+    const estadoB = getEstadoPrioridad(b.estado_factura);
+    
+    if (estadoA !== estadoB) {
+      return estadoA - estadoB; // Siempre ascendente para estados
+    }
+
+    // Luego ordenar por el criterio seleccionado
+    if (sortOption === 'fecha') {
+      comparison = new Date(a.fecha_emision) - new Date(b.fecha_emision);
+    } else if (sortOption === 'numero') {
+      comparison = a.num_factura.localeCompare(b.num_factura);
+    } else if (sortOption === 'total') {
+      comparison = parseFloat(a.total) - parseFloat(b.total);
+    } else if (sortOption === 'estado') {
+      comparison = a.estado_factura.localeCompare(b.estado_factura);
+    } else if (sortOption === 'codigo') {
+      // Ordenar por código de afiliado - CONVERTIR A STRING
+      const codigoA = String(a.usuario_afiliado?.cod_usuario_afi || '');
+      const codigoB = String(b.usuario_afiliado?.cod_usuario_afi || '');
+      comparison = codigoA.localeCompare(codigoB, undefined, { numeric: true });
+    }
+
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+}, [filteredFacturas, sortOption, sortOrder]);
+
+
+
+const toggleSortOrder = () => {
+  setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
+};
+
 
  // ============================================================
   // FUNCIONES DE MODAL
@@ -390,33 +439,59 @@ const InvoicesSection = () => {
   // FUNCIONES DE ACCIONES facturas 
   // ============================================================
 
-  const handleAnularFactura = async (facturaId) => {
-    if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para anular facturas');
-      return;
-    }
+ const handleAnularFactura = (factura) => {
+  if (!permissions.canDelete) {
+    alert('❌ No tienes permiso para anular facturas');
+    return;
+  }
+  
+  // Abrir modal con la factura seleccionada
+  setSelectedFactura(factura);
+  setModalType('anular');
+  setAnulacionData({ motivo: '', motivoPersonalizado: '' });
+};
 
-    const motivo = window.prompt('Motivo de anulación (opcional):');
-    if (motivo === null) return;
+const handleConfirmarAnulacion = async (e) => {
+  e.preventDefault();
+  
+  if (!selectedFactura) return;
+  
+  // Determinar el motivo final
+  let motivoFinal = anulacionData.motivo;
+  if (anulacionData.motivo === 'Otro (especificar)') {
+    motivoFinal = anulacionData.motivoPersonalizado;
+  } else if (anulacionData.motivoPersonalizado.trim()) {
+    // Si hay observaciones adicionales, agregarlas
+    motivoFinal = `${anulacionData.motivo} - ${anulacionData.motivoPersonalizado}`;
+  }
 
-    setLoading(true);
-    try {
-      const result = await invoicesServices.anularFactura(facturaId, motivo);
-      
-      if (result.success) {
-        alert('✅ Factura anulada correctamente');
-        closeModal();
-        await fetchFacturasByPeriodo();
-        await fetchStats();
-      } else {
-        alert(`❌ Error: ${result.message}`);
-      }
-    } catch (error) {
-      alert('❌ Error al anular factura');
-    } finally {
-      setLoading(false);
+  setLoading(true);
+  try {
+    const result = await invoicesServices.anularFactura(
+      selectedFactura.id_factura, 
+      motivoFinal
+    );
+    
+    if (result.success) {
+      alert('✅ Factura anulada correctamente');
+      closeModal();
+      await fetchFacturasByPeriodo();
+      await fetchStats();
+      // Resetear datos
+      setAnulacionData({ motivo: '', motivoPersonalizado: '' });
+    } else {
+      alert(`❌ Error: ${result.message}`);
     }
-  };
+  } catch (error) {
+    console.error('Error al anular factura:', error);
+    alert('❌ Error al anular factura');
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
   
   // ============================================================
   // FUNCIONES DE servicios 
@@ -839,10 +914,17 @@ const agruparDetallesPorTipo = (detalles) => {
         <div className="periodo-selection-page">
           <div className="section-header">
             <div className="section-title">
-              <FileText className="w-7 h-7 text-blue-600" />
-              <h2>Gestión de Facturas</h2>
-            </div>
+          <FileText className="w-7 h-7 text-blue-600" />
+          <div>
+            <h2>Gestión de Facturas</h2>
+            <p className="section-subtitle">
+              Gestiona la información de las facturas
+            </p>
           </div>
+           
+          </div>
+          
+        </div>
 
           {/* SECCIÓN 1: PERÍODOS RECIENTES */}
           <div className="periodo-selector-container">
@@ -1311,8 +1393,11 @@ const agruparDetallesPorTipo = (detalles) => {
                 <span>#</span>
                 <span><FileText className="w-4 h-4" /> Número</span>
                 <span><Calendar className="w-4 h-4" /> Fecha</span>
+                <span><Gauge className="w-4 h-4" /> Medidor</span>
+                
+
                 <span><IdCard  className="w-4 h-4" /> Código Afi</span>
-                <span><User className="w-4 h-4" /> Usuario</span>
+                <span><User className="w-4 h-4" /> Nombre Afi</span>
                 <span><Gauge className="w-4 h-4" /> Consumo</span>
                 <span><FileText className="w-4 h-4" /> Detalles</span>
                 <span><DollarSign className="w-4 h-4" /> Total</span>
@@ -1349,6 +1434,12 @@ const agruparDetallesPorTipo = (detalles) => {
                         <Calendar className="w-3 h-3" />
                         <span>{formatDateShort(factura.fecha_emision)}</span>
                       </div>
+
+                     {/* Columna 4: Código Afiliado */}
+                      <div className="inv-col-codigo">
+                        {factura.usuario_afiliado?.num_medidor ?? '—'}
+                      </div>
+
 
                       {/* Columna 4: Código Afiliado */}
                       <div className="inv-col-codigo">
@@ -1468,12 +1559,11 @@ const agruparDetallesPorTipo = (detalles) => {
                             <Briefcase className="w-4 h-4"  />
                           </button>
                         )}
-           
 
                         {permissions.canDelete && ['pendiente', 'vencida'].includes(factura.estado_factura) && (
                           <button
                             className="inv-btn inv-btn-delete"
-                            onClick={() => handleAnularFactura(factura.id_factura)}
+                            onClick={() => handleAnularFactura(factura)}
                             title="Anular factura"
                           >
                             <Ban className="w-4 h-4" />
@@ -1528,7 +1618,6 @@ const agruparDetallesPorTipo = (detalles) => {
         </div>
       )}
       {/* MODAL DETALLE FACTURA */}
-      {/* ==================== MODAL DETALLE FACTURA ==================== */}
       {showModal && modalType === 'view' && selectedFactura && (
         <div className="modal-overlay">
           <div className="modal modal-factura">
@@ -1565,7 +1654,7 @@ const agruparDetallesPorTipo = (detalles) => {
               <div className="detail-group">
                 <label>Número de Medidor:</label>
                 <p className="font-mono">
-                  {selectedFactura.usuario_afiliado?.medidores?.[0]?.num_medidor ?? 'N/A'}
+                  {selectedFactura.usuario_afiliado.num_medidor ?? 'N/A'}
                 </p>
               </div>
 
@@ -2172,6 +2261,186 @@ const agruparDetallesPorTipo = (detalles) => {
           </div>
         </div>
       )}
+
+{/* MODAL ANULAR FACTURA */}
+{modalType === 'anular' && selectedFactura && (
+  <div className="modal-overlay">
+    <div className="modal modal-danger" style={{ maxWidth: '650px' }}> {/* 👈 Modal más ancho */}
+
+      {/* HEADER */}
+      <div className="modal-header">
+        <h3>
+          <Ban className="w-5 h-5 inline mr-2 text-red-600" />
+          Anular Factura - {selectedFactura.num_factura}
+        </h3>
+        <button className="modal-close" onClick={closeModal}>
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* BODY */}
+      <div className="modal-body">
+
+        {/* INFORMACIÓN DE LA FACTURA */}
+        <div className="payment-info-section">
+          <div className="payment-client">
+            <h4 className="discount-title text-red-600">
+              <AlertCircle className="w-4 h-4" />
+              Detalles de la factura
+            </h4>
+
+            <div className="grid grid-cols-2 gap-3"> {/* 👈 Grid de 2 columnas */}
+              <div>
+                <p className="client-name">
+                  <strong>Afiliado:</strong>{' '}
+                  {selectedFactura.usuario_afiliado?.usuario_sistema
+                    ? `${selectedFactura.usuario_afiliado.usuario_sistema.nombres} ${selectedFactura.usuario_afiliado.usuario_sistema.apellidos}`
+                    : 'No registrado'}
+                </p>
+
+                <p className="client-code">
+                  <strong>Código:</strong>{' '}
+                  {selectedFactura.usuario_afiliado?.cod_usuario_afi || 'N/A'}
+                </p>
+
+                <p className="client-code">
+                  <strong>Medidor:</strong>{' '}
+                  {selectedFactura.usuario_afiliado?.num_medidor || 'N/A'}
+                </p>
+              </div>
+
+              <div>
+                <p className="client-code">
+                  <strong>Periodo:</strong>{' '}
+                  <span className="text-blue-600 font-semibold">
+                    {selectedFactura.mes_facturado || 'N/A'}/{selectedFactura.anio_facturado || 'N/A'}
+                  </span>
+                </p>
+                <p className="client-code">
+                  <strong>Consumo:</strong>{' '}
+                  {selectedFactura.consumo_m3 || 0} m³
+                </p>
+
+                <p className="client-code">
+                  <strong>Fecha emisión:</strong>{' '}
+                  {formatDateShort(selectedFactura.fecha_emision)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* RESUMEN */}
+        <div className="payment-summary">
+          <div className="client-code">
+            <span><strong>Total Factura:</strong> {' '} </span>
+            <span className="amount text-red-600 font-bold text-lg">
+              {formatCurrency(selectedFactura.total_factura || selectedFactura.total)}
+            </span>
+          </div>
+        </div>
+
+        {/* ALERTA */}
+        <div className="payment-note warning">
+          <AlertCircle className="w-4 h-4" />
+          <p>
+            Esta acción <strong>no se puede deshacer</strong>.  
+            La factura quedará anulada permanentemente en el sistema.
+          </p>
+        </div>
+
+        {/* FORMULARIO */}
+        <div className="discount-section">
+          <h4 className="discount-title">
+            <Ban className="w-4 h-4 text-red-600" />
+            Motivo de anulación
+          </h4>
+
+          <div className="discount-input-container">
+            <label>Motivo de anulación *</label>
+            <select
+              value={anulacionData.motivo}
+              onChange={(e) =>
+                setAnulacionData({ ...anulacionData, motivo: e.target.value })
+              }
+              required
+              className="discount-input"
+              style={{ 
+                width: '100%', 
+                minHeight: '45px',   
+                fontSize: '14px',      
+                padding: '10px 14px'   
+              }}
+            >
+              <option value="">-- Seleccione un motivo de anulación --</option>
+              {motivosAnulacionFactura.map((motivo, index) => (
+                <option key={index} value={motivo}>
+                  {motivo}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {anulacionData.motivo === 'Otro (especificar)' && (
+            <div className="discount-input-container mt-3">
+              <label>Especifique el motivo de anulación *</label>
+              <textarea
+                rows={5} 
+                value={anulacionData.motivoPersonalizado}
+                onChange={(e) =>
+                  setAnulacionData({
+                    ...anulacionData,
+                    motivoPersonalizado: e.target.value
+                  })
+                }
+                minLength={10}
+                required
+                className="discount-input"
+                placeholder="Describa el motivo de la anulación de esta factura..."
+                style={{ 
+                  width: '95%',
+                  fontSize: '14px',       /* 👈 Texto más grande */
+                  padding: '12px 12px',   /* 👈 Más padding */
+                  lineHeight: '1.5'       /* 👈 Mejor espaciado */
+                }}
+              />
+
+              <small className="text-gray-500 text-xs mt-1 block">
+                {anulacionData.motivoPersonalizado.length}/10 caracteres mínimos requeridos
+              </small>
+            </div>
+          )}
+
+     
+        </div>
+      </div>
+
+      {/* FOOTER */}
+      <div className="modal-footer">
+        <button className="btn-secondary" onClick={closeModal}>
+          <X className="w-4 h-4 mr-2" />
+          Cancelar
+        </button>
+
+        <button
+          type="submit"
+           className="btn-confirm-anulacion"
+          disabled={
+            !anulacionData.motivo ||
+            (anulacionData.motivo === 'Otro (especificar)' &&
+              anulacionData.motivoPersonalizado.length < 10) ||
+            loading
+          }
+          onClick={handleConfirmarAnulacion}
+        >
+          <Ban className="w-4 h-4 mr-2" />
+          {loading ? 'Anulando factura...' : 'Confirmar Anulación'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
 
     </div>

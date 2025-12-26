@@ -265,8 +265,6 @@ class AffiliatesService {
     }
   }
 
-
-
   /**
    * Actualizar un afiliado existente
    */

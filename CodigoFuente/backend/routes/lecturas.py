@@ -3,11 +3,12 @@ from fastapi import APIRouter, Body, Depends, Form, HTTPException, status, Query
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from models.factura import Factura
+from models.sector import Sector
 from models.tarifa import Tarifa
 from schemas.tarifa import TarifaResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func
+from sqlalchemy import extract, func
 from typing import List, Optional
 from datetime import date, datetime
 import io
@@ -38,7 +39,9 @@ from utils.audit_logger import registrar_auditoria
 from db.session import SessionLocal
 from security.jwt import verify_token
 
-from utils.facturacion import calcular_descuento, generar_factura_desde_lectura # para generar facturas automaticas 
+from utils.facturacion import calcular_descuento, generar_factura_desde_lectura, reactivar_factura_anulada, recalcular_factura, regenerar_factura_desde_lectura_anulada # para generar facturas automaticas 
+
+
 router = APIRouter(prefix="/lecturas", tags=["lecturas"])
 
 from typing import Optional
@@ -171,181 +174,88 @@ def lectura_to_response(lectura: Lectura) -> dict:
         } if lector else None
     }
 
+# ========================================
+# ENDPOINT PARA LISTAR TODOS LOS AFILIADOS CON SUS MEDIDORES
+# ========================================
 
-
-
-@router.get("/mis-lecturas", response_model=List[dict])
-def listar_mis_lecturas(
-    # Parámetros opcionales de filtrado
-    fecha_desde: Optional[date] = Query(None, description="Filtrar lecturas desde esta fecha"),
-    fecha_hasta: Optional[date] = Query(None, description="Filtrar lecturas hasta esta fecha"),
-    tipo_lectura: Optional[str] = Query(None, description="Filtrar por tipo: 'reales' o 'estimadas'"),
-    consumo_min: Optional[float] = Query(None, description="Consumo mínimo en m³"),
-    consumo_max: Optional[float] = Query(None, description="Consumo máximo en m³"),
-    id_medidor: Optional[int] = Query(None, description="Filtrar por medidor específico"),
+@router.get("/medidores/lista/completa", response_model=dict)
+def listar_afiliados_con_medidores(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Lista las lecturas de los medidores del usuario autenticado (afiliado)
-    Con filtros opcionales para búsqueda avanzada
-    """
-
-    current_user = get_current_user(payload, db)
-
-    # Obtener el afiliado asociado al usuario actual
-    afiliado = db.query(UsuarioAfiliado).filter(
-        UsuarioAfiliado.id_usuario_sistema == current_user.id_usuario_sistema
-    ).first()
-
-    if not afiliado:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontró información de afiliado para este usuario"
-        )
-
-    # Obtener medidores activos del afiliado
-    medidores_query = db.query(Medidor.id_medidor).filter(
-        Medidor.id_usuario_afi == afiliado.id_usuario_afi,
-        Medidor.activo == True
-    )
-
-    # Filtrar por medidor específico si se proporciona
-    if id_medidor:
-        medidores_query = medidores_query.filter(Medidor.id_medidor == id_medidor)
-
-    medidores_ids = [m[0] for m in medidores_query.all()]
-
-    if not medidores_ids:
-        return []
-
-    # Construir query base de lecturas
-    lecturas_query = db.query(Lectura).filter(
-        Lectura.id_medidor.in_(medidores_ids),
-        Lectura.activo == True
-    )
-
-    # Aplicar filtros opcionales
-    if fecha_desde:
-        lecturas_query = lecturas_query.filter(Lectura.fecha_lectura >= fecha_desde)
-    
-    if fecha_hasta:
-        lecturas_query = lecturas_query.filter(Lectura.fecha_lectura <= fecha_hasta)
-    
-    if tipo_lectura:
-        if tipo_lectura.lower() == 'reales':
-            lecturas_query = lecturas_query.filter(Lectura.es_estimada == False)
-        elif tipo_lectura.lower() == 'estimadas':
-            lecturas_query = lecturas_query.filter(Lectura.es_estimada == True)
-    
-    if consumo_min is not None:
-        lecturas_query = lecturas_query.filter(Lectura.consumo_m3 >= consumo_min)
-    
-    if consumo_max is not None:
-        lecturas_query = lecturas_query.filter(Lectura.consumo_m3 <= consumo_max)
-
-    # Ordenar por fecha descendente
-    lecturas = lecturas_query.order_by(Lectura.fecha_lectura.desc()).all()
-
-    # Formatear resultados
-    resultado = []
-
-    for lectura in lecturas:
-        medidor = lectura.medidor
-        afiliado_data = medidor.usuario_afiliado if medidor else None
-
-        codigo_afiliado = afiliado_data.cod_usuario_afi if afiliado_data else None
-
-        if afiliado_data and afiliado_data.usuario_sistema:
-            usuario = afiliado_data.usuario_sistema
-            nombre_afiliado = f"{usuario.nombres} {usuario.apellidos}"
-        else:
-            nombre_afiliado = "Sin afiliado"
-
-        sector_nombre = (
-            medidor.sector.nombre_sector
-            if medidor and medidor.sector
-            else "Sin sector"
-        )
-
-        lector = lectura.lector
-        lector_info = {
-            "id_usuario_sistema": lector.id_usuario_sistema if lector else None,
-            "nombres": lector.nombres if lector else None,
-            "apellidos": lector.apellidos if lector else None
-        }
-
-        resultado.append({
-            "id_lectura": lectura.id_lectura,
-            "id_medidor": lectura.id_medidor,
-            "lectura_actual": lectura.lectura_actual,
-            "lectura_anterior": lectura.lectura_anterior,
-            "consumo_m3": lectura.consumo_m3,
-            "fecha_lectura": lectura.fecha_lectura,
-            "observacion": lectura.observacion,
-            "activo": lectura.activo,
-            "es_estimada": lectura.es_estimada,
-            "medidor": {
-                "id_medidor": medidor.id_medidor if medidor else None,
-                "num_medidor": medidor.num_medidor if medidor else None,
-                "codigo_afiliado": codigo_afiliado,
-                "nombre_afiliado": nombre_afiliado,
-                "sector": sector_nombre
-            },
-            "lector": lector_info
-        })
-
-    return resultado
-
-# ========================================
-# LISTAR TARIFAS ACTIVAS Y VIGENTES
-# ========================================
-@router.get("/tarifas-vigentes", response_model=List[TarifaResponse])
-def listar_tarifas_vigentes(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db),
-    payload: dict = Depends(verify_token)
-):
-    """
-    Lista únicamente tarifas ACTIVAS y VIGENTES
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "lectura")
 
-    return (
-        db.query(Tarifa)
-        .filter(
-            Tarifa.es_vigente.is_(True),
-            Tarifa.activo.is_(True)
+    try:
+        # 🔹 Subconsulta: última lectura de cada medidor
+        subq_ultima_lectura = (
+            db.query(
+                Lectura.id_medidor,
+                func.max(Lectura.fecha_lectura).label("max_fecha")
+            )
+            .group_by(Lectura.id_medidor)
+            .subquery()
         )
-        .order_by(
-            Tarifa.vigencia_desde.desc(),
-            Tarifa.nombre
-        )
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
 
+        # 🔹 Consulta principal: TODOS LOS AFILIADOS con sus medidores
+        resultados = (
+            db.query(
+                Medidor.id_medidor,
+                Medidor.num_medidor,
+                UsuarioAfiliado.cod_usuario_afi,
+                UsuarioSistema.nombres,
+                UsuarioSistema.apellidos,
+                Lectura.lectura_actual.label("lectura_anterior")
+            )
+            .join(UsuarioAfiliado, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
+            .outerjoin(
+                subq_ultima_lectura,
+                subq_ultima_lectura.c.id_medidor == Medidor.id_medidor
+            )
+            .outerjoin(
+                Lectura,
+                (Lectura.id_medidor == Medidor.id_medidor) &
+                (Lectura.fecha_lectura == subq_ultima_lectura.c.max_fecha)
+            )
+            # 🔥 SIN FILTRO: listar TODOS los afiliados
+            .order_by(UsuarioAfiliado.cod_usuario_afi)
+            .all()  # 🔥 Cambio clave: .all() en vez de .first()
+        )
+
+        if not resultados:
+            return {"afiliados": []}
+
+        # 🔹 Transformar a lista de diccionarios
+        afiliados = [
+            {
+                "id_medidor": r.id_medidor,
+                "num_medidor": r.num_medidor,
+                "cod_usuario_afi": r.cod_usuario_afi,
+                "nombre_completo": f"{r.nombres} {r.apellidos}",
+                "lectura_anterior": r.lectura_anterior or 0
+            }
+            for r in resultados
+        ]
+
+        return {"afiliados": afiliados}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener lista de afiliados: {str(e)}"
+        )
 
 
 @router.get("", response_model=List[dict])
-def listar_lecturas(
-    search: Optional[str] = Query(None),
-    id_medidor: Optional[int] = Query(None),
-    fecha_desde: Optional[date] = Query(None),
-    fecha_hasta: Optional[date] = Query(None),
-    activo: Optional[bool] = Query(None),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+def listar_lecturas_optimizado(
+    mes: int = Query(None, ge=1, le=12, description="Mes del periodo (1-12)"),
+    anio: int = Query(None, ge=2020, description="Año del periodo"),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Lista todas las lecturas con información completa del medidor,
-    afiliado y sector.
-    """
     current_user = get_current_user(payload, db)
     require_any_permission(
         current_user,
@@ -353,94 +263,116 @@ def listar_lecturas(
         [
             ("lecturas", "lectura"),
             ("lecturas", "crud"),
-            ("historialconsumo", "crud"),  # ← tu permiso 103
+            ("historialconsumo", "crud"),
         ]
     )
 
-    query = db.query(Lectura)
-
-    # ============ FILTROS ============
-    if search:
-        query = query.filter(
-            (Lectura.observacion.ilike(f"%{search}%")) |
-            (Lectura.id_medidor == int(search) if search.isdigit() else False)
+    try:
+        # 🔥 Crear DOS alias diferentes para UsuarioSistema
+        # Uno para el Afiliado y otro para el Lector
+        UsuarioAfiliado_Alias = aliased(UsuarioSistema, name="usuario_afiliado")
+        UsuarioLector_Alias = aliased(UsuarioSistema, name="usuario_lector")
+        
+        # 🔹 Query base
+        query = (
+            db.query(
+                Lectura.id_lectura,
+                Lectura.id_medidor,  # 🔥 AGREGADO: id_medidor
+                Lectura.fecha_lectura,
+                Lectura.lectura_actual,
+                Lectura.lectura_anterior,
+                Lectura.consumo_m3,
+                Lectura.observacion,
+                Lectura.activo,
+                Lectura.es_estimada,
+                
+                # Datos del medidor
+                Medidor.num_medidor,
+                
+                # Datos del afiliado (dueño del medidor)
+                UsuarioAfiliado.cod_usuario_afi.label("codigo_afiliado"),
+                UsuarioAfiliado_Alias.nombres.label("afiliado_nombres"),
+                UsuarioAfiliado_Alias.apellidos.label("afiliado_apellidos"),
+                
+                # Datos del sector
+                Sector.nombre_sector,
+                
+                # 🔥 Datos del lector (quien tomó la lectura)
+                UsuarioLector_Alias.nombres.label("lector_nombres"),
+                UsuarioLector_Alias.apellidos.label("lector_apellidos"),
+            )
+            # Join con Medidor
+            .join(Medidor, Lectura.id_medidor == Medidor.id_medidor)
+            
+            # Join con UsuarioAfiliado (tabla intermedia)
+            .join(UsuarioAfiliado, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            
+            # 🔥 Join con UsuarioSistema (datos del AFILIADO)
+            .join(
+                UsuarioAfiliado_Alias,
+                UsuarioAfiliado.id_usuario_sistema == UsuarioAfiliado_Alias.id_usuario_sistema
+            )
+            
+            # Join con Sector (opcional)
+            .outerjoin(Sector, Sector.id_sector == Medidor.id_sector)
+            
+            # 🔥 Join con UsuarioSistema (datos del LECTOR) - OPCIONAL
+            .outerjoin(
+                UsuarioLector_Alias,
+                Lectura.id_lector == UsuarioLector_Alias.id_usuario_sistema
+            )
         )
 
-    if id_medidor:
-        query = query.filter(Lectura.id_medidor == id_medidor)
-
-    if fecha_desde:
-        query = query.filter(Lectura.fecha_lectura >= fecha_desde)
-
-    if fecha_hasta:
-        query = query.filter(Lectura.fecha_lectura <= fecha_hasta)
-
-    if activo is not None:
-        query = query.filter(Lectura.activo == activo)
-
-    query = query.order_by(Lectura.fecha_lectura.desc())
-    lecturas = query.offset(skip).limit(limit).all()
-
-    resultado = []
-
-    for lectura in lecturas:
-        medidor = lectura.medidor
-
-        # =========================
-        # 🔵 INFORMACIÓN DEL AFILIADO
-        # =========================
-        afiliado = medidor.usuario_afiliado if medidor else None
+        # 🔥 Filtrar por periodo si se proporciona
+        if mes is not None and anio is not None:
+            query = query.filter(
+                extract('month', Lectura.fecha_lectura) == mes,
+                extract('year', Lectura.fecha_lectura) == anio
+            )
         
-        codigo_afiliado = afiliado.cod_usuario_afi if afiliado else None
-        
-        # Nombre afiliado
-        if afiliado and afiliado.usuario_sistema:
-            usuario_sistema = afiliado.usuario_sistema
-            nombre_afiliado = f"{usuario_sistema.nombres} {usuario_sistema.apellidos}"
-        else:
-            nombre_afiliado = "Sin afiliado"
+        # Ordenar y limitar
+        lecturas = query.order_by(Lectura.fecha_lectura.desc()).limit(500).all()
 
-        # Sector
-        sector_nombre = medidor.sector.nombre_sector if medidor and medidor.sector else "Sin sector"
+        print(f"✅ Total lecturas encontradas: {len(lecturas)}")
 
-        # =========================
-        # 🟢 INFORMACIÓN DEL LECTOR
-        # =========================
-        lector = lectura.lector
-        lector_info = {
-            "id_usuario_sistema": lector.id_usuario_sistema if lector else None,
-            "nombres": lector.nombres if lector else None,
-            "apellidos": lector.apellidos if lector else None
-        }
+        return [
+            {
+                "id_lectura": l.id_lectura,
+                "id_medidor": l.id_medidor,  # 🔥 AGREGADO en la respuesta
+                "fecha_lectura": l.fecha_lectura,
+                "lectura_actual": l.lectura_actual,
+                "lectura_anterior": l.lectura_anterior,
+                "consumo_m3": l.consumo_m3,
+                "observacion": l.observacion,
+                "activo": l.activo,
+                "es_estimada": l.es_estimada,
+                
+                # Medidor
+                "num_medidor": l.num_medidor,
+                
+                # Afiliado (dueño del medidor)
+                "codigo_afiliado": l.codigo_afiliado,
+                "nombre_afiliado": f"{l.afiliado_nombres} {l.afiliado_apellidos}",
+                
+                # Sector
+                "sector": l.nombre_sector or "Sin sector",
+                
+                # 🔥 Lector (quien tomó la lectura)
+                "lector_nombre": (
+                    f"{l.lector_nombres} {l.lector_apellidos}".strip() 
+                    if l.lector_nombres else "No registrado"
+                ),
+            }
+            for l in lecturas
+        ]
 
-        # =========================
-        # 🟣 ARMAR RESPUESTA FINAL
-        # =========================
-        resultado.append({
-            "id_lectura": lectura.id_lectura,
-            "id_medidor": lectura.id_medidor,
-            "lectura_actual": lectura.lectura_actual,
-            "lectura_anterior": lectura.lectura_anterior,
-            "consumo_m3": lectura.consumo_m3,
-            "fecha_lectura": lectura.fecha_lectura,
-            "observacion": lectura.observacion,
-            "activo": lectura.activo,
-            "es_estimada": lectura.es_estimada,
-
-            # 🔵 datos del medidor
-            "medidor": {
-                "id_medidor": medidor.id_medidor if medidor else None,
-                "num_medidor": medidor.num_medidor if medidor else None,
-                "codigo_afiliado": codigo_afiliado,
-                "nombre_afiliado": nombre_afiliado,
-                "sector": sector_nombre
-            },
-
-            # 🟢 datos del lector
-            "lector": lector_info
-        })
-
-    return resultado
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al listar lecturas: {str(e)}"
+        )
 
 
 @router.get("/stats/count", response_model=LecturaStats)
@@ -657,6 +589,7 @@ def crear_lectura(
 
 
 @router.put("/{id_lectura}", response_model=dict)
+@router.put("/{id_lectura}", response_model=dict)
 def actualizar_lectura(
     id_lectura: int,
     lectura_data: LecturaUpdate,
@@ -664,8 +597,10 @@ def actualizar_lectura(
     payload: dict = Depends(verify_token)
 ):
     """
-    Actualiza una lectura existente
-    Requiere permiso: lecturas.actualizar o lecturas.crud
+    Actualiza una lectura existente y gestiona factura según estado:
+    - PENDIENTE: Recalcula factura existente
+    - ANULADA: Reactiva y recalcula la factura (mismo número)
+    - PAGADA: No permite actualización
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "actualizar")
@@ -679,28 +614,32 @@ def actualizar_lectura(
             detail="Lectura no encontrada"
         )
 
-    # ✅ VALIDACIÓN: Verificar si la lectura tiene facturas asociadas
+    # ============================================
+    # VERIFICAR FACTURA RELACIONADA
+    # ============================================
     factura_relacionada = db.query(Factura).filter(
         Factura.id_lectura == id_lectura
     ).first()
     
-    if factura_relacionada:
-        # ⚠️ NO lanzar HTTPException, retornar directamente con status 200
+    # ⚠️ BLOQUEAR si factura está PAGADA
+    if factura_relacionada and factura_relacionada.estado_factura == 'pagada':
         return {
             "success": False,
             "accion": "no_actualizado",
-            "message": "⚠️ NO se puede actualizar la lectura porque ya tiene una factura generada.",
+            "message": "⚠️ NO se puede actualizar la lectura porque tiene una factura pagada.",
             "info": {
                 "id_factura": factura_relacionada.id_factura,
-                "numero_factura": getattr(factura_relacionada, 'numero_factura', None),
-                "estado": getattr(factura_relacionada, 'estado', None)
+                "numero_factura": factura_relacionada.num_factura,
+                "estado": factura_relacionada.estado_factura
             }
         }
 
-    # Actualizar campos
+    # ============================================
+    # ACTUALIZAR LECTURA
+    # ============================================
     update_data = lectura_data.model_dump(exclude_unset=True)
     
-    # Validar que no genere duplicado en el mes/año al actualizar
+    # Validar duplicados
     if "fecha_lectura" in update_data or "id_medidor" in update_data:
         nueva_fecha = update_data.get("fecha_lectura", lectura.fecha_lectura)
         nuevo_medidor = update_data.get("id_medidor", lectura.id_medidor)
@@ -714,7 +653,6 @@ def actualizar_lectura(
         ).first()
 
         if duplicado:
-            # ⚠️ NO lanzar HTTPException, retornar directamente
             return {
                 "success": False,
                 "accion": "no_actualizado",
@@ -725,28 +663,95 @@ def actualizar_lectura(
                     "año": nueva_fecha.year
                 }
             }
-        
+    
+    # Aplicar cambios a la lectura
     for key, value in update_data.items():
         setattr(lectura, key, value)
+    
+    # Recalcular consumo si cambiaron las lecturas
+    if "lectura_actual" in update_data or "lectura_anterior" in update_data:
+        lectura.consumo_m3 = lectura.lectura_actual - lectura.lectura_anterior
     
     try:
         db.commit()
         db.refresh(lectura)
         
-        # Auditoría
+        # ============================================
+        # GESTIÓN DE FACTURA SEGÚN ESTADO
+        # ============================================
+        accion_factura = "sin_factura"
+        info_factura = {}
+        mensaje_adicional = ""
+        
+        if factura_relacionada:
+            if factura_relacionada.estado_factura == 'pendiente':
+                # ✅ CASO 1: RECALCULAR factura pendiente
+                print(f"\n🔄 Factura PENDIENTE: recalculando...")
+                
+                try:
+                    factura_actualizada = recalcular_factura(db, factura_relacionada, lectura)
+                    
+                    accion_factura = "factura_recalculada"
+                    info_factura = {
+                        "id_factura": factura_actualizada.id_factura,
+                        "numero_factura": factura_actualizada.num_factura,
+                        "consumo_m3": factura_actualizada.consumo_m3,
+                        "exceso_m3": factura_actualizada.exceso_m3,
+                        "nuevo_total": float(factura_actualizada.total),
+                        "estado": factura_actualizada.estado_factura
+                    }
+                    mensaje_adicional = "Factura recalculada (mantiene multas y servicios)"
+                    
+                except Exception as e:
+                    print(f"❌ Error recalculando: {e}")
+                    return {
+                        "success": False,
+                        "accion": "error_recalculo",
+                        "message": f"Lectura actualizada pero error al recalcular factura: {str(e)}"
+                    }
+                
+            elif factura_relacionada.estado_factura == 'anulada':
+                # ✅ CASO 2: REACTIVAR factura anulada (MISMO NÚMERO)
+                print(f"\n♻️ Factura ANULADA: reactivando...")
+                
+                try:
+                    factura_reactivada = reactivar_factura_anulada(db, factura_relacionada, lectura)
+                    
+                    accion_factura = "factura_reactivada"
+                    info_factura = {
+                        "id_factura": factura_reactivada.id_factura,
+                        "numero_factura": factura_reactivada.num_factura,
+                        "consumo_m3": factura_reactivada.consumo_m3,
+                        "nuevo_total": float(factura_reactivada.total),
+                        "estado": factura_reactivada.estado_factura,
+                        "estado_anterior": "anulada"
+                    }
+                    mensaje_adicional = "Factura reactivada (anulada → pendiente)"
+                    
+                except Exception as e:
+                    print(f"❌ Error reactivando: {e}")
+                    return {
+                        "success": False,
+                        "accion": "error_reactivacion",
+                        "message": f"Lectura actualizada pero error al reactivar factura: {str(e)}"
+                    }
+        
+        # ============================================
+        # AUDITORÍA Y NOTIFICACIÓN
+        # ============================================
         registrar_auditoria(
             db=db,
             accion="UPDATE",
-            descripcion=f"Lectura {id_lectura} actualizada por '{payload['sub']}'",
+            descripcion=f"Lectura {id_lectura} actualizada - {accion_factura}",
             id_usuario=current_user.id_usuario_sistema
         )
         
-        # Notificación
+        mensaje_notif = f"Lectura modificada. {mensaje_adicional if mensaje_adicional else 'Sin factura asociada'}"
         registrar_notificacion(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
-            titulo="Lectura modificada",
-            mensaje=f"La lectura fue modificada correctamente.",
+            titulo="Lectura actualizada",
+            mensaje=mensaje_notif,
             tipo="info"
         )
         
@@ -754,16 +759,19 @@ def actualizar_lectura(
             "success": True,
             "accion": "actualizado",
             "data": lectura_to_response(lectura),
-            "message": "✅ Lectura actualizada correctamente"
+            "factura": info_factura if info_factura else None,
+            "accion_factura": accion_factura,
+            "message": f"✅ Lectura actualizada. {mensaje_adicional}"
         }
     
     except Exception as e:
         db.rollback()
         print(f"❌ Error al actualizar lectura: {e}")
-        # ⚠️ Aquí SÍ puedes lanzar HTTPException porque es error técnico
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al actualizar la lectura"
+            detail=f"Error al actualizar la lectura: {str(e)}"
         )
 
 
@@ -876,74 +884,6 @@ def toggle_lectura_status(
         )
 
 
-# ========================================
-# ENDPOINT PARA OBTENER MEDIDORES CON INFORMACIÓN
-# ========================================
-
-@router.get("/medidores/lista/completa", response_model=List[dict])
-def listar_medidores_con_info(
-    db: Session = Depends(get_db),
-    payload: dict = Depends(verify_token)
-):
-    """
-    Lista todos los medidores activos y con afiliados, con información del UsuarioAfiliado 
-    """
-    current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "lecturas", "lectura")
-    
-    try:
-        # ✅ Obtener solo medidores activos Y que tengan afiliado asignado
-        medidores = db.query(Medidor).filter(
-            Medidor.activo == True,
-            Medidor.id_usuario_afi.isnot(None)  # Solo medidores con afiliado
-        ).all()
-        
-        resultado = []
-        
-        for medidor in medidores:
-            afiliado = medidor.usuario_afiliado
-            codigo_afiliado = None
-            nombre_afiliado = "Sin Afiliado"
-            
-            if afiliado:
-                # Obtener código del afiliado
-                codigo_afiliado = afiliado.cod_usuario_afi
-                
-                # Obtener información del usuario sistema
-                if afiliado.usuario_sistema:
-                    us = afiliado.usuario_sistema
-                    nombre_afiliado = f"{us.nombres} {us.apellidos}"
-            
-            # Obtener información del sector
-            sector_nombre = medidor.sector.nombre_sector if medidor.sector else "Sin sector"
-            
-            # Obtener última lectura para prellenar
-            ultima_lectura = db.query(Lectura).filter(
-                Lectura.id_medidor == medidor.id_medidor
-            ).order_by(Lectura.fecha_lectura.desc()).first()
-            
-            lectura_anterior = ultima_lectura.lectura_actual if ultima_lectura else 0
-            
-            resultado.append({
-                "id_medidor": medidor.id_medidor,
-                "num_medidor": medidor.num_medidor,
-                "codigo_afiliado": codigo_afiliado or "N/A",
-                "nombre_afiliado": nombre_afiliado,
-                "sector": sector_nombre,
-                "lectura_anterior": lectura_anterior,
-                "activo": medidor.activo
-            })
-        
-        return resultado
-    
-    except Exception as e:
-        print(f"❌ Error al obtener medidores: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al obtener medidores: {str(e)}"
-        )
 
 
 

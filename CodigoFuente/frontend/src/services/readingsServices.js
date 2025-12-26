@@ -285,25 +285,39 @@ class ReadingsServices {
     return `${this.getNombreMes(mes)} ${anio}`;
   }
 
-
-  /**
-   * Obtener lista completa de medidores con información de afiliados
-   */
-  async getMedidoresParaLecturas() {
-    try {
-      const data = await this.makeRequest(API_CONFIG.endpoints.medidoresCompletos);
+/**
+ * Obtener lista completa de afiliados con sus medidores
+ */
+async getMedidoresParaLecturas() {
+  try {
+    const data = await this.makeRequest(API_CONFIG.endpoints.medidoresCompletos);
+    
+    console.log('📋 Datos recibidos del backend:', data);
+    
+    // 🔥 Validar estructura de respuesta
+    if (data && data.afiliados && Array.isArray(data.afiliados)) {
       return {
         success: true,
-        data: data
-      };
-    } catch (error) {
-      console.error('❌ Error obteniendo medidores:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener medidores'
+        data: data.afiliados  // Retornar el array de afiliados
       };
     }
+    
+    // Si no viene en el formato esperado, intentar con data directamente
+    const medidoresArray = Array.isArray(data) ? data : [data];
+    
+    return {
+      success: true,
+      data: medidoresArray
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo afiliados:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener afiliados'
+    };
   }
+}
+
 
   /**
    * Obtener estadísticas de lecturas desde el backend
@@ -324,43 +338,54 @@ class ReadingsServices {
     }
   }
 
-  /**
-   * Obtener lista de lecturas
-   */
-  async getLecturas(filters = {}) {
-    try {
-      const params = new URLSearchParams();
-      if (filters.search) params.append('search', filters.search);
-      if (filters.id_medidor) params.append('id_medidor', filters.id_medidor);
-      if (filters.fecha_desde) params.append('fecha_desde', filters.fecha_desde);
-      if (filters.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta);
-      if (filters.activo !== undefined) params.append('activo', filters.activo);
-      if (filters.skip) params.append('skip', filters.skip);
-      if (filters.limit) params.append('limit', filters.limit);
-
-      const queryString = params.toString();
-      const endpoint = queryString 
-        ? `${API_CONFIG.endpoints.lecturas}?${queryString}`
-        : API_CONFIG.endpoints.lecturas;
-
-      const data = await this.makeRequest(endpoint);
-
-      // Actualizar caché
-      this.cachedLecturas = data;
-
-      return {
-        success: true,
-        data: data
-      };
-
-    } catch (error) {
-      console.error('❌ Error obteniendo lecturas:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener lecturas'
-      };
+/**
+ * Obtener lista de lecturas con filtros opcionales
+ */
+async getLecturas(filters = {}) {
+  try {
+    const params = new URLSearchParams();
+    
+    // 🔥 Agregar filtros de periodo
+    if (filters.mes) {
+      params.append('mes', filters.mes);
     }
+    if (filters.anio) {
+      params.append('anio', filters.anio);
+    }
+    
+    // Filtros existentes
+    if (filters.search) params.append('search', filters.search);
+    if (filters.id_medidor) params.append('id_medidor', filters.id_medidor);
+    if (filters.fecha_desde) params.append('fecha_desde', filters.fecha_desde);
+    if (filters.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta);
+    if (filters.activo !== undefined) params.append('activo', filters.activo);
+    if (filters.skip) params.append('skip', filters.skip);
+    if (filters.limit) params.append('limit', filters.limit);
+
+    const queryString = params.toString();
+    const endpoint = queryString 
+      ? `${API_CONFIG.endpoints.lecturas}?${queryString}` 
+      : API_CONFIG.endpoints.lecturas;
+
+    const data = await this.makeRequest(endpoint);
+
+    // Actualizar caché
+    this.cachedLecturas = data;
+
+    return {
+      success: true,
+      data: data
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo lecturas:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener lecturas'
+    };
   }
+}
+
+
 
   /**
    * Obtener una lectura por ID

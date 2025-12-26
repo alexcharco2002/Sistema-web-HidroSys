@@ -2,6 +2,7 @@
 
 import locale
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
@@ -11,6 +12,7 @@ from decimal import Decimal
 from models.factura import Factura
 from models.detalle_factura import DetalleFactura
 from models.iva import IVA
+from models.sector import Sector
 from models.servicio import Servicio
 from models.user import UsuarioSistema
 from models.role import RolAccion
@@ -30,7 +32,6 @@ from utils.facturacion import (
     generar_numero_factura,
     validar_periodo_factura,
     calcular_tarifa_consumo,
-    calcular_totales_factura,
     validar_unicidad_factura,
     validar_cambio_estado_factura,
     validar_coherencia_totales_factura,
@@ -148,61 +149,204 @@ def listar_servicios_para_facturacion(
 
 
 # ========================================
-# LISTAR FACTURAS
+# LISTAR FACTURAS - COMPLETO CON TODOS LOS CAMPOS
 # ========================================
-@router.get("/", response_model=List[FacturaConUsuarioCompleto])  # ✅ Cambio 1
-def listar_facturas(
-    search: Optional[str] = Query(None, description="Buscar por número de factura"),
-    id_usuario_afi: Optional[int] = Query(None, description="Filtrar por usuario afiliado"),
-    periodo: Optional[str] = Query(None, description="Filtrar por periodo (YYYY-MM)"),
-    estado_factura: Optional[str] = Query(None, description="Filtrar por estado"),
-    fecha_desde: Optional[date] = Query(None, description="Fecha de emisión desde"),
-    fecha_hasta: Optional[date] = Query(None, description="Fecha de emisión hasta"),
+
+@router.get("/", response_model=List[dict])
+def listar_facturas_optimizado(
+    search: Optional[str] = Query(None),
+    id_usuario_afi: Optional[int] = Query(None),
+    periodo: Optional[str] = Query(None),
+    estado_factura: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
-    Lista facturas con múltiples filtros e información completa del usuario
+    Listar facturas con TODOS los campos necesarios para el frontend.
+    Incluye: factura, cliente, consumo, detalles.
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "facturas", "lectura")
-    
-    # ✅ Cambio 2: Agregar joinedload
-    query = db.query(Factura).options(
-        joinedload(Factura.usuario_afiliado)
-            .joinedload(UsuarioAfiliado.usuario_sistema),
-        joinedload(Factura.usuario_afiliado)
-            .joinedload(UsuarioAfiliado.sector),
-        joinedload(Factura.usuario_afiliado)
-            .joinedload(UsuarioAfiliado.medidores)
-    )
-    
-    # Filtros (todo igual)
-    if search:
-        query = query.filter(Factura.num_factura.ilike(f"%{search}%"))
-    
-    if id_usuario_afi:
-        query = query.filter(Factura.id_usuario_afi == id_usuario_afi)
-    
-    if periodo:
-        query = query.filter(Factura.periodo == periodo)
-    
-    if estado_factura:
-        query = query.filter(Factura.estado_factura == estado_factura)
-    
-    if fecha_desde:
-        query = query.filter(Factura.fecha_emision >= fecha_desde)
-    
-    if fecha_hasta:
-        query = query.filter(Factura.fecha_emision <= fecha_hasta)
-    
-    # Ordenar por fecha de emisión descendente
-    query = query.order_by(Factura.fecha_emision.desc(), Factura.id_factura.desc())
-    
-    facturas = query.offset(skip).limit(limit).all()
-    return facturas
+
+    try:
+        # ========================================
+        # 🔥 QUERY PRINCIPAL - FACTURAS COMPLETAS
+        # ========================================
+        query = (
+            db.query(
+                # ===== DATOS DE FACTURA =====
+                Factura.id_factura,
+                Factura.num_factura,
+                Factura.periodo,
+                Factura.fecha_emision,
+                Factura.estado_factura,
+                
+                # 🔥 DATOS DE CONSUMO Y VALORES
+                Factura.consumo_m3,
+                Factura.exceso_m3,
+                Factura.valor_consumo,
+                Factura.valor_exceso,
+                
+                # 🔥 DATOS DE CÁLCULO
+                Factura.subtotal,
+                Factura.descuento,
+                Factura.impuesto,
+                Factura.total,
+                
+                # ===== DATOS DEL AFILIADO =====
+                UsuarioAfiliado.id_usuario_afi,
+                UsuarioAfiliado.cod_usuario_afi,
+                UsuarioAfiliado.num_medidor,  # 👈 CORRECTO
+                
+                # ===== DATOS DEL USUARIO SISTEMA =====
+                UsuarioSistema.nombres,
+                UsuarioSistema.apellidos,
+                UsuarioSistema.cedula,        # 👈 AGREGADO
+                UsuarioSistema.direccion,     # 👈 AGREGADO
+                UsuarioSistema.telefono,      # 👈 AGREGADO (extra)
+                UsuarioSistema.email,         # 👈 AGREGADO (extra)
+                
+                # ===== DATOS DEL SECTOR =====
+                Sector.nombre_sector,
+            )
+            # ✅ Joins necesarios
+            .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
+            .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
+        )
+
+        # ========================================
+        # 🔍 FILTROS
+        # ========================================
+        if search:
+            query = query.filter(
+                or_(
+                    Factura.num_factura.ilike(f"%{search}%"),
+                    UsuarioSistema.nombres.ilike(f"%{search}%"),
+                    UsuarioSistema.apellidos.ilike(f"%{search}%"),
+                    UsuarioSistema.cedula.ilike(f"%{search}%"),
+                    cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(f"%{search}%"),
+                    UsuarioAfiliado.num_medidor.ilike(f"%{search}%")
+                )
+            )
+
+        if id_usuario_afi:
+            query = query.filter(Factura.id_usuario_afi == id_usuario_afi)
+
+        if periodo:
+            query = query.filter(Factura.periodo == periodo)
+
+        if estado_factura:
+            query = query.filter(Factura.estado_factura == estado_factura)
+
+        # ========================================
+        # 📊 ORDENAR Y PAGINAR
+        # ========================================
+        facturas = (
+            query
+            .order_by(Factura.fecha_emision.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+        # ========================================
+        # 🔥 OBTENER DETALLES DE TODAS LAS FACTURAS (1 QUERY)
+        # ========================================
+        if facturas:
+            ids_facturas = [f.id_factura for f in facturas]
+            
+            detalles_query = (
+                db.query(
+                    DetalleFactura.id_detalle,
+                    DetalleFactura.id_factura,
+                    DetalleFactura.tipo_detalle,
+                    DetalleFactura.descripcion,
+                    DetalleFactura.subtotal_detalle,
+                )
+                .filter(DetalleFactura.id_factura.in_(ids_facturas))
+                .order_by(DetalleFactura.id_detalle)  # 👈 Ordenar para consistencia
+                .all()
+            )
+            
+            # Agrupar detalles por id_factura
+            detalles_por_factura = {}
+            for d in detalles_query:
+                if d.id_factura not in detalles_por_factura:
+                    detalles_por_factura[d.id_factura] = []
+                detalles_por_factura[d.id_factura].append({
+                    "id_detalle": d.id_detalle,
+                    "tipo_detalle": d.tipo_detalle,
+                    "descripcion": d.descripcion,
+                    "subtotal_detalle": float(d.subtotal_detalle),  # 👈 NOMBRE CORRECTO
+                })
+        else:
+            detalles_por_factura = {}
+
+        print(f"✅ Total facturas encontradas: {len(facturas)}")
+
+        # ========================================
+        # 🔄 FORMATEAR RESPUESTA COMPLETA
+        # ========================================
+        return [
+            {
+                # ===== DATOS PRINCIPALES DE FACTURA =====
+                "id_factura": f.id_factura,
+                "num_factura": f.num_factura,
+                "periodo": f.periodo,
+                "fecha_emision": f.fecha_emision.isoformat(),
+                "estado_factura": f.estado_factura,
+                
+                # ===== DATOS DE CONSUMO =====
+                "consumo_m3": f.consumo_m3 or 0,
+                "exceso_m3": f.exceso_m3 or 0,
+                "valor_consumo": float(f.valor_consumo) if f.valor_consumo else 0.0,
+                "valor_exceso": float(f.valor_exceso) if f.valor_exceso else 0.0,
+                
+                # ===== DATOS DE CÁLCULO =====
+                "subtotal": float(f.subtotal) if f.subtotal else 0.0,
+                "descuento": float(f.descuento) if f.descuento else 0.0,
+                "impuesto": float(f.impuesto) if f.impuesto else 0.0,
+                "total": float(f.total),
+                
+                # ===== USUARIO AFILIADO (estructura completa) =====
+                "usuario_afiliado": {
+                    "id_usuario_afi": f.id_usuario_afi,
+                    "cod_usuario_afi": f.cod_usuario_afi,
+                    "num_medidor": f.num_medidor or "N/A",
+                    
+                    # 🔥 Usuario Sistema (con todos los campos)
+                    "usuario_sistema": {
+                        "nombres": f.nombres,
+                        "apellidos": f.apellidos,
+                        "cedula": f.cedula,           # 👈 AGREGADO
+                        "direccion": f.direccion,     # 👈 AGREGADO
+                        "telefono": f.telefono,       # 👈 AGREGADO (extra)
+                        "email": f.email,             # 👈 AGREGADO (extra)
+                    },
+                    
+                    # Sector
+                    "sector": {
+                        "nombre_sector": f.nombre_sector or "Sin sector"
+                    }
+                },
+                
+                # ===== DETALLES (con nombre correcto) =====
+                "detalles": detalles_por_factura.get(f.id_factura, []),
+            }
+            for f in facturas
+        ]
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al listar facturas: {str(e)}"
+        )
+
 
 
 # ========================================

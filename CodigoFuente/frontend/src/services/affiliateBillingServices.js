@@ -12,7 +12,7 @@ const API_CONFIG = {
     periodosFacturasDisponibles: '/afiliados/periodos-facturas-disponibles',
     detalleFactura: '/afiliados/factura',
     estadisticasFacturas: '/afiliados/estadisticas-facturas',
-    exportarFacturas: '/afiliados/exportar-facturas',
+
     subirComprobante: '/afiliados/subir-comprobante',
     misPagos: '/afiliados/mis-pagos',
     descargarFactura: '/afiliados/descargar-factura'
@@ -206,87 +206,6 @@ class AffiliateBillingServices {
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
-      };
-    }
-  }
-
-  /**
-   * Exportar facturas a CSV
-   * @param {number} anio - Año opcional
-   * @param {number} mes - Mes (1-12) opcional
-   * @param {object} filtrosAdicionales - Filtros adicionales
-   */
-  async exportarFacturas(anio = null, mes = null, filtrosAdicionales = {}) {
-    try {
-      const params = new URLSearchParams();
-      
-      if (anio) params.append('anio', anio);
-      if (mes) params.append('mes', mes);
-      
-      if (filtrosAdicionales.estado_pago && filtrosAdicionales.estado_pago !== 'todos') {
-        params.append('estado_pago', filtrosAdicionales.estado_pago);
-      }
-
-      if (filtrosAdicionales.estado_factura && filtrosAdicionales.estado_factura !== 'todos') {
-        params.append('estado_factura', filtrosAdicionales.estado_factura);
-      }
-      
-      const queryString = params.toString();
-      const url = `${API_CONFIG.baseURL}${API_CONFIG.endpoints.exportarFacturas}${queryString ? '?' + queryString : ''}`;
-      
-      console.log(`📥 Descargando CSV de facturas: ${url}`);
-      
-      // ⚠️ NO usar makeRequest porque necesitamos blob, no JSON
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${authService.getToken()}`
-        }
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Error ${response.status}: ${response.statusText}`);
-      }
-      
-      // ✅ Obtener el blob (archivo binario)
-      const blob = await response.blob();
-      
-      // ✅ Extraer nombre del archivo desde los headers
-      const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = 'mis_facturas.csv';
-      
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1].replace(/['"]/g, '');
-        }
-      }
-      
-      // ✅ Crear URL temporal y disparar descarga
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      
-      // ✅ Limpiar recursos
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-      
-      console.log(`✅ CSV de facturas descargado: ${filename}`);
-      
-      return {
-        success: true,
-        filename
-      };
-      
-    } catch (error) {
-      console.error('❌ Error exportando facturas:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al exportar las facturas'
       };
     }
   }
@@ -491,6 +410,66 @@ class AffiliateBillingServices {
       return {
         success: false,
         message: error.message || 'Error al subir el comprobante'
+      };
+    }
+  }
+
+  /**
+   * Descargar comprobante de pago
+   * @param {number} idPago - ID del pago
+   */
+  async descargarComprobante(idPago) {
+    try {
+      const url = `${API_CONFIG.baseURL}/afiliados/comprobante/${idPago}`;
+      
+      console.log(`📥 Descargando comprobante del pago #${idPago}`);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authService.getToken()}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const blob = await response.blob();
+      
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `comprobante_${idPago}.pdf`;
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '');
+        }
+      }
+      
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      console.log(`✅ Comprobante descargado: ${filename}`);
+      
+      return {
+        success: true,
+        filename
+      };
+      
+    } catch (error) {
+      console.error('❌ Error descargando comprobante:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al descargar el comprobante'
       };
     }
   }

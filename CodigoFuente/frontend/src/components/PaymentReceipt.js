@@ -10,12 +10,23 @@ const PaymentReceipt = ({ pago, factura, onClose, onSave }) => {
   const [successMessage, setSuccessMessage] = useState('');
 
   // ============================================
-  // FUNCIONES DE FORMATEO
+  // FUNCIONES DE FORMATEO (SIN BUG DE ZONA HORARIA)
   // ============================================
+
+  const parseLocalDate = (dateString) => {
+    // YYYY-MM-DD → fecha local segura
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-');
+      return new Date(year, month - 1, day);
+    }
+    // Fechas con hora
+    return new Date(dateString);
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     try {
-      const date = new Date(dateString);
+      const date = parseLocalDate(dateString);
       return date.toLocaleDateString('es-EC', {
         year: 'numeric',
         month: 'long',
@@ -23,7 +34,7 @@ const PaymentReceipt = ({ pago, factura, onClose, onSave }) => {
         hour: '2-digit',
         minute: '2-digit'
       });
-    } catch (e) {
+    } catch {
       return 'N/A';
     }
   };
@@ -31,12 +42,14 @@ const PaymentReceipt = ({ pago, factura, onClose, onSave }) => {
   const formatDateShort = (dateString) => {
     if (!dateString) return 'N/A';
     try {
-      const date = new Date(dateString);
+      const date = parseLocalDate(dateString);
       return date.toLocaleDateString('es-EC');
-    } catch (e) {
+    } catch {
       return 'N/A';
     }
   };
+
+
 
   const formatCurrency = (value) => {
     const numValue = parseFloat(value) || 0;
@@ -581,9 +594,7 @@ const PaymentReceipt = ({ pago, factura, onClose, onSave }) => {
 // ============================================
 // FUNCIÓN EXPORTABLE PARA GENERAR PDF
 // ============================================
-// ============================================
-// FUNCIÓN EXPORTABLE PARA GENERAR PDF (CORREGIDA)
-// ============================================
+
 export const generatePaymentPDF = async (pago, factura) => {
   console.log('🔧 Generando PDF para pago:', pago.id_pago);
   
@@ -593,21 +604,41 @@ export const generatePaymentPDF = async (pago, factura) => {
       throw new Error('Faltan datos del pago o factura');
     }
 
-    // Función auxiliar para formatear fechas
+    // 📅 Fecha corta (solo fecha)
     const formatDateShort = (dateString) => {
       if (!dateString) return 'N/A';
+
       try {
+        // Si viene como YYYY-MM-DD
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+          const [year, month, day] = dateString.split('-');
+          const date = new Date(year, month - 1, day); // LOCAL
+          return date.toLocaleDateString('es-EC');
+        }
+
+        // Si viene con hora
         const date = new Date(dateString);
         return date.toLocaleDateString('es-EC');
-      } catch (e) {
+      } catch {
         return 'N/A';
       }
     };
 
+    // 📅 Fecha larga (fecha + hora)
     const formatDate = (dateString) => {
       if (!dateString) return 'N/A';
+
       try {
-        const date = new Date(dateString);
+        let date;
+
+        // YYYY-MM-DD → fecha local sin UTC
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+          const [year, month, day] = dateString.split('-');
+          date = new Date(year, month - 1, day);
+        } else {
+          date = new Date(dateString);
+        }
+
         return date.toLocaleDateString('es-EC', {
           year: 'numeric',
           month: 'long',
@@ -615,10 +646,12 @@ export const generatePaymentPDF = async (pago, factura) => {
           hour: '2-digit',
           minute: '2-digit'
         });
-      } catch (e) {
+      } catch {
         return 'N/A';
       }
     };
+
+
 
     const formatCurrency = (value) => {
       const numValue = parseFloat(value) || 0;

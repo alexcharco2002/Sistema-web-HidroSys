@@ -125,11 +125,23 @@ class MultaAfiliadoPagoRequest(BaseModel):
 
 
 class MultaAfiliadoStats(BaseModel):
-    """Estadísticas de multas de afiliados"""
+    # Contadores por estado
     total_multas: int
     pendientes: int
     pagadas: int
     anuladas: int
     exoneradas: int
-    monto_total_pendiente: Decimal
-    monto_total_pagado: Decimal
+    
+    # Contadores de facturación
+    facturadas: int
+    pendientes_facturacion: int
+    
+    # Montos
+    monto_total: Decimal
+    monto_pendiente: Decimal
+    monto_pagado: Decimal
+    monto_facturado: Decimal
+    monto_pendiente_facturacion: Decimal
+    
+    class Config:
+        from_attributes = True

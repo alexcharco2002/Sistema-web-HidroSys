@@ -16,7 +16,8 @@ const API_CONFIG = {
     porFactura: idFactura => `/pagos/factura/${idFactura}`,
     porAfiliado: idAfiliado => `/pagos/afiliado/${idAfiliado}`,
     statsFacturasPeriodo: '/pagos/stats/facturas-periodo', 
-    facturasPeriodo: '/pagos/facturas-periodo'
+    facturasPeriodo: '/pagos/facturas-periodo',
+    facturasmontos: '/pagos/facturas-montos',
   }
 };
 
@@ -143,6 +144,25 @@ async getFacturasPeriodo(filters = {}) {
   }
 }
 
+/**
+ * Obtener desglose de montos de una factura (con y sin multas)
+ */
+async getFacturaMontos(idFactura) {
+  try {
+    const endpoint = `/pagos/factura/${idFactura}/montos`;
+    const data = await this.makeRequest(endpoint);
+    return {
+      success: true,
+      data: data
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo montos de factura:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener montos'
+    };
+  }
+}
 
 
   // ========================================
@@ -318,48 +338,56 @@ async getFacturasPeriodo(filters = {}) {
     }
   }
 
+// ========================================
+// CREAR Y ACTUALIZAR PAGOS
+// ========================================
 
-  // ========================================
-  // CREAR Y ACTUALIZAR PAGOS
-  // ========================================
-  
-  /**
-   * Registrar un nuevo pago
-   */
-  async createPago(pagoData) {
-    try {
-      const data = await this.makeRequest(API_CONFIG.endpoints.pagos, {
-        method: 'POST',
-        body: {
-          id_factura: pagoData.id_factura ? parseInt(pagoData.id_factura) : null,
-          monto_pago: parseFloat(pagoData.monto_pago),
-          fecha_pago: pagoData.fecha_pago || new Date().toISOString(),
-          metodo_pago: pagoData.metodo_pago || 'EFECTIVO',
-          id_usuario_afi: pagoData.id_usuario_afi ? parseInt(pagoData.id_usuario_afi) : null,
-          id_cajero: pagoData.id_cajero ? parseInt(pagoData.id_cajero) : null,
-          observaciones: pagoData.observaciones || null,
-          estado_pago: pagoData.estado_pago || 'REGISTRADO'
-        }
-      });
+/**
+ * Registrar un nuevo pago
+ */
+async createPago(pagoData) {
+  try {
+    const data = await this.makeRequest(API_CONFIG.endpoints.pagos, {
+      method: 'POST',
+      body: {
+        id_factura: pagoData.id_factura ? parseInt(pagoData.id_factura) : null,
+        monto_pago: parseFloat(pagoData.monto_pago),
+        fecha_pago: pagoData.fecha_pago || new Date().toISOString(),
+        metodo_pago: pagoData.metodo_pago || 'EFECTIVO',
+        id_usuario_afi: pagoData.id_usuario_afi ? parseInt(pagoData.id_usuario_afi) : null,
+        id_cajero: pagoData.id_cajero ? parseInt(pagoData.id_cajero) : null,
+        observaciones: pagoData.observaciones || null,
+        estado_pago: pagoData.estado_pago || 'REGISTRADO',
+        incluir_multas: pagoData.incluir_multas !== undefined ? pagoData.incluir_multas : true  // ✅ AGREGAR
+      }
+    });
 
-      // Limpiar cachés
-      this.cachedPagos = null;
-      this.cachedStats = null;
+    console.log('📤 Datos enviados al backend:', {
+      monto_pago: parseFloat(pagoData.monto_pago),
+      incluir_multas: pagoData.incluir_multas,
+      id_factura: pagoData.id_factura
+    });
 
-      return {
-        success: true,
-        data: data,
-        message: 'Pago registrado exitosamente'
-      };
-      
-    } catch (error) {
-      console.error('❌ Error registrando pago:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al registrar pago'
-      };
-    }
+    // Limpiar cachés
+    this.cachedPagos = null;
+    this.cachedStats = null;
+
+    return {
+      success: true,
+      data: data,
+      message: 'Pago registrado exitosamente'
+    };
+    
+  } catch (error) {
+    console.error('❌ Error registrando pago:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al registrar pago'
+    };
   }
+}
+
+
 
   /**
    * Actualizar un pago existente

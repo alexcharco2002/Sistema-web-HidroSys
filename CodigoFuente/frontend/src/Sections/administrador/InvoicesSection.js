@@ -823,7 +823,12 @@ const handleConfirmarAnulacion = async (e) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
-    return new Date(dateString + 'T00:00:00').toLocaleDateString('es-EC', {
+
+    const safeDate = dateString.includes('T')
+      ? new Date(dateString)
+      : new Date(dateString + 'T00:00:00');
+
+    return safeDate.toLocaleDateString('es-EC', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'

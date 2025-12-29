@@ -117,11 +117,12 @@
   border-bottom-color: #3b82f6;
 }
 
-/* Grid de gráficos */
+/* Grid de gráficos - 3 POR FILA */
 .graphics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(3, 1fr); /* CAMBIO: 3 columnas fijas */
   gap: 20px;
+  width: 100%;
 }
 
 .chart-card {
@@ -129,6 +130,9 @@
   border-radius: 12px;
   padding: 20px;
   border: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  min-height: 350px;
 }
 
 .chart-title {
@@ -144,6 +148,7 @@
   flex-direction: column;
   align-items: center;
   gap: 16px;
+  flex: 1;
 }
 
 /* Leyenda */
@@ -188,6 +193,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
 }
 
 .distribution-item {
@@ -275,11 +281,12 @@
   color: #111827;
 }
 
-/* Tablas */
+/* Tablas - 1 POR FILA */
 .tables-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  display: flex; /* CAMBIO: flex en lugar de grid */
+  flex-direction: column; /* CAMBIO: columna vertical */
   gap: 20px;
+  width: 100%;
 }
 
 .stats-table-card {
@@ -287,6 +294,7 @@
   border-radius: 12px;
   padding: 20px;
   border: 1px solid #e5e7eb;
+  width: 100%; /* CAMBIO: ancho completo */
 }
 
 .table-title {
@@ -363,11 +371,14 @@
   }
 }
 
-.donut-segment {
+.donut-segment,
+.pie-segment {
   transition: opacity 0.2s;
+  cursor: pointer;
 }
 
-.donut-segment:hover {
+.donut-segment:hover,
+.pie-segment:hover {
   opacity: 0.8;
 }
 
@@ -395,13 +406,45 @@
 }
 
 /* Responsive */
+/* Tablets grandes (hasta 1400px) - 2 gráficos por fila */
+@media (max-width: 1400px) {
+  .graphics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Tablets y móviles (hasta 768px) - 1 gráfico por fila */
 @media (max-width: 768px) {
-  .graphics-grid,
-  .tables-container {
+  .graphics-grid {
     grid-template-columns: 1fr;
+  }
+  
+  .tables-container {
+    gap: 16px;
   }
   
   .metrics-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+  
+  .chart-card {
+    min-height: 300px;
+  }
+}
+
+/* Móviles pequeños (hasta 480px) */
+@media (max-width: 480px) {
+  .report-stats-content {
+    padding: 12px;
+  }
+  
+  .graphics-grid,
+  .tables-container {
+    gap: 12px;
+  }
+  
+  .chart-card,
+  .stats-table-card {
+    padding: 12px;
   }
 }

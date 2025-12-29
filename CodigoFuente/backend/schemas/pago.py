@@ -46,6 +46,15 @@ class PagoBase(BaseModel):
 class PagoCreate(PagoBase):
     """Schema para crear un nuevo pago"""
     id_cajero: int = Field(..., description="ID del cajero que registra el pago")
+    incluir_multas: bool = Field(True, description="Indica si el pago incluye multas o solo consumo/servicios")  # ⭐ NUEVO CAMPO
+    
+    @field_validator('incluir_multas')
+    @classmethod
+    def validar_incluir_multas(cls, v: bool) -> bool:
+        """Valida el flag de inclusión de multas"""
+        if not isinstance(v, bool):
+            raise ValueError('incluir_multas debe ser un valor booleano')
+        return v
 
 
 class PagoUpdate(BaseModel):

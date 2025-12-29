@@ -1,0 +1,643 @@
+/* ========================================
+   ESTILOS ESPECÍFICOS PARA LECTURAS
+   ======================================== */
+
+/* Contenedor principal */
+.lecturas-container {
+  background-color: white;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  margin-top: 1.5rem;
+}
+
+/* Header de lecturas */
+.lecturas-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.lecturas-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lecturas-count-text {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+/* Estado vacío */
+.lecturas-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+  color: #6b7280;
+}
+
+/* Lista de lecturas en grid */
+.lecturas-grid-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Card de cada lectura */
+.lectura-card-item {
+  display: grid;
+  grid-template-columns: 1.5fr 1.2fr 2fr 1fr 0.8fr;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.lectura-card-item:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 
+              0 2px 4px -1px rgba(59, 130, 246, 0.06);
+  transform: translateY(-1px);
+}
+
+/* Secciones clickeables */
+.lectura-clickable {
+  cursor: pointer;
+}
+
+/* ========================================
+   SECCIÓN DE INFORMACIÓN
+   ======================================== */
+
+.lectura-info-section {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.lectura-info-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.lectura-fecha {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #111827;
+}
+
+.lectura-medidor {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+/* ========================================
+   SECCIÓN DE CONSUMO
+   ======================================== */
+
+.lectura-consumo-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.lectura-consumo-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.lectura-card-item:hover .lectura-consumo-box {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  transform: scale(1.02);
+}
+
+.lectura-consumo-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.lectura-consumo-valor {
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: #1e40af;
+  line-height: 1;
+}
+
+.lectura-consumo-label {
+  font-size: 0.625rem;
+  color: #60a5fa;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+/* ========================================
+   SECCIÓN DE VALORES (ACTUAL Y ANTERIOR)
+   ======================================== */
+
+.lectura-valores-section {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background-color: #f9fafb;
+  border-radius: 0.375rem;
+}
+
+.lectura-valor-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.lectura-valor-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.lectura-valor-numero {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #111827;
+}
+
+.lectura-valor-label {
+  font-size: 0.625rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.lectura-separador {
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: #9ca3af;
+}
+
+/* ========================================
+   SECCIÓN DE ESTADO
+   ======================================== */
+
+.lectura-estado-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Badge de estado */
+.lectura-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid;
+  transition: all 0.2s ease;
+}
+
+/* Badge Real (verde) */
+.lectura-badge-real {
+  background-color: #f0fdf4;
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.lectura-card-item:hover .lectura-badge-real {
+  background-color: #10b981;
+  color: white;
+  transform: scale(1.05);
+}
+
+/* Badge Estimada (rojo/naranja) */
+.lectura-badge-estimada {
+  background-color: #fff7ed;
+  border-color: #f59e0b;
+  color: #f59e0b;
+}
+
+.lectura-card-item:hover .lectura-badge-estimada {
+  background-color: #f59e0b;
+  color: white;
+  transform: scale(1.05);
+}
+
+/* ========================================
+   SECCIÓN DE ACCIONES
+   ======================================== */
+
+.lectura-actions-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Botón Ver (azul) */
+.lectura-btn-ver {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background-color: #eff6ff;
+  border: 1px solid #3b82f6;
+  color: #3b82f6;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.lectura-btn-ver:hover {
+  background-color: #3b82f6;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
+}
+
+.lectura-btn-ver:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px -1px rgba(59, 130, 246, 0.3);
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+
+@media (max-width: 1280px) {
+  .lectura-card-item {
+    grid-template-columns: 1.3fr 1fr 1.8fr 0.9fr 0.7fr;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+  }
+
+  .lectura-consumo-valor {
+    font-size: 1rem;
+  }
+
+  .lectura-valor-numero {
+    font-size: 0.8125rem;
+  }
+}
+
+@media (max-width: 1024px) {
+  .lectura-card-item {
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .lectura-info-section {
+    grid-column: span 2;
+  }
+
+  .lectura-consumo-section,
+  .lectura-valores-section,
+  .lectura-estado-section,
+  .lectura-actions-section {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .lectura-card-item {
+    grid-template-columns: 1fr;
+    padding: 1rem;
+  }
+
+  .lectura-info-section,
+  .lectura-consumo-section,
+  .lectura-valores-section,
+  .lectura-estado-section,
+  .lectura-actions-section {
+    grid-column: span 1;
+  }
+
+  .lectura-consumo-box {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .lectura-valores-section {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .lectura-separador {
+    transform: rotate(90deg);
+  }
+
+  .lectura-btn-ver {
+    width: 100%;
+  }
+
+  .lecturas-container {
+    padding: 1rem;
+  }
+}
+
+/* ========================================
+   ANIMACIONES
+   ======================================== */
+
+@keyframes lecturaFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.lectura-card-item {
+  animation: lecturaFadeIn 0.3s ease-out;
+}
+
+/* Efecto de pulso para consumo destacado */
+@keyframes lecturaPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.lectura-card-item:hover .lectura-consumo-valor {
+  animation: lecturaPulse 2s infinite;
+}
+
+
+/* ========================================
+   CONTENEDOR PRINCIPAL DE FILTROS
+   ======================================== */
+
+.filters-main-container {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+/* ========================================
+   CARD DE SECCIÓN DE FILTROS
+   ======================================== */
+
+.filters-section-card {
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.filters-section-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Header de la sección */
+.filters-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #f3f4f6;
+}
+
+.filters-section-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+/* Contenido de la sección */
+.filters-section-content {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+/* ========================================
+   GRUPOS DE FILTROS
+   ======================================== */
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+/* Label de filtro */
+.filter-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* Select de filtro */
+.filter-select {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: #374151;
+  background-color: white;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.filter-select:hover:not(:disabled) {
+  border-color: #3b82f6;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.filter-select:disabled {
+  background-color: #f3f4f6;
+  color: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ========================================
+   BOTÓN DE TOGGLE (Ascendente/Descendente)
+   ======================================== */
+
+.filter-btn-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  background-color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-btn-toggle:hover {
+  border-color: #6366f1;
+  background-color: #f5f3ff;
+  color: #6366f1;
+}
+
+.filter-btn-toggle:active {
+  transform: scale(0.98);
+}
+
+/* ========================================
+   GRUPO DE ACCIONES
+   ======================================== */
+
+.filter-actions-group {
+  grid-column: span 2;
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+/* Botones de acción */
+.filter-btn-action {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid;
+}
+
+/* Botón Limpiar (rojo) */
+.filter-btn-clear {
+  background-color: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.filter-btn-clear:hover {
+  background-color: #dc2626;
+  border-color: #dc2626;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(220, 38, 38, 0.3);
+}
+
+/* Botón Recargar (azul) */
+.filter-btn-reload {
+  background-color: #eff6ff;
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+
+.filter-btn-reload:hover:not(:disabled) {
+  background-color: #2563eb;
+  border-color: #2563eb;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
+}
+
+.filter-btn-reload:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.filter-btn-action:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+
+@media (max-width: 1024px) {
+  .filters-main-container {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .filters-section-content {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .filters-section-card {
+    padding: 1rem;
+  }
+
+  .filters-section-content {
+    grid-template-columns: 1fr;
+    gap: 0.875rem;
+  }
+
+  .filter-actions-group {
+    flex-direction: column;
+  }
+
+  .filter-btn-action {
+    width: 100%;
+  }
+}
+
+/* ========================================
+   ANIMACIONES
+   ======================================== */
+
+@keyframes filtersFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.filters-section-card {
+  animation: filtersFadeIn 0.3s ease-out;
+}

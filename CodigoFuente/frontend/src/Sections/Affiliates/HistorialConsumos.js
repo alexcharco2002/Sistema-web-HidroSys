@@ -19,8 +19,10 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Gauge, ArrowUpDown
+  Gauge, ArrowUpDown, SlidersHorizontal
 } from 'lucide-react';
+
+import './HistorialConsumos.css';
 
 const HistorialConsumos = () => {
 
@@ -380,9 +382,7 @@ const HistorialConsumos = () => {
     setSelectedMes('');
   };
 
-  /**
- * Exportar datos a CSV (ahora desde backend)
- */
+
  /**
  * Exportar datos a Excel desde backend
  */
@@ -622,180 +622,249 @@ const HistorialConsumos = () => {
         </div>
       )}
 
+      {/* ==================== FILTROS PRINCIPALES ==================== */}
+      <div className="filters-main-container">
+        
+        {/* ✅ SECCIÓN 1: FILTROS DE PERIODO */}
+        <div className="filters-section-card">
+          <div className="filters-section-header">
+            <Calendar className="w-4 h-4 text-blue-600" />
+            <h4 className="filters-section-title">Filtrar por Periodo</h4>
+          </div>
 
-      {/* ==================== FILTROS PRINCIPALES — PERIODO ==================== */}
-      <div className="filters-section">
+          <div className="filters-section-content-full">
 
-        {/* IZQUIERDA — (vacío o futuro buscador si quieres) */}
-        <div />
+          <div className="filter-group-row">
+            {/* 📅 Año */}
+            <div className="filter-group">
+              <label className="filter-label">Año</label>
+              <select
+                className="filter-select"
+                value={selectedAnio}
+                onChange={handleAnioChange}
+              >
+                <option value="">Todos los años</option>
+                {aniosDisponibles.map(anio => (
+                  <option key={anio} value={anio}>{anio}</option>
+                ))}
+              </select>
+            </div>
 
-        {/* Filtros de período */}
-        <div className="filters-right">
-
-          {/* 📅 Año */}
-          <select
-            className="filter-select"
-            value={selectedAnio}
-            onChange={handleAnioChange}
-          >
-            <option value="">Todos los años</option>
-            {aniosDisponibles.map(anio => (
-              <option key={anio} value={anio}>{anio}</option>
-            ))}
-          </select>
-
-          {/* 📆 Mes */}
-          <select
-            className="filter-select"
-            value={selectedMes}
-            onChange={(e) => setSelectedMes(e.target.value)}
-            disabled={!selectedAnio}
-          >
-            <option value="">Todos los meses</option>
-            {mesesDelAnio.map(periodo => (
-              <option key={periodo.mes} value={periodo.mes}>
-                {periodo.nombre_mes} ({periodo.total_lecturas})
-              </option>
-            ))}
-          </select>
-
-          {/* 🎯 Tipo de lectura */}
-          <select
-            className="filter-select"
-            value={filterTipoLectura}
-            onChange={(e) => setFilterTipoLectura(e.target.value)}
-          >
-            <option value="todas">Tipos de lectura</option>
-            <option value="reales">Reales</option>
-            <option value="estimadas">Estimadas</option>
-          </select>
-
-          {/* 📊 Ordenar por */}
-          <select
-            className="filter-select"
-            value={sortBy}
-            onChange={(e) => {
-              console.log(`📊 Nuevo criterio de orden: ${e.target.value}`);
-              setSortBy(e.target.value);
-            }}
-            title="Ordenar por"
-          >
-            <option value="fecha">Ordenar por Fecha</option>
-            <option value="consumo">Ordenar por Consumo</option>
-          </select>
-
-          {/* ⬆️⬇️ Dirección de orden */}
-          <button 
-            className="btn-secondary"
-            onClick={toggleSortOrder}
-            title={`Actualmente: ${sortOrder === 'asc' ? 'Ascendente (menor a mayor)' : 'Descendente (mayor a menor)'}`}
-            style={{ minWidth: '60px' }}
-          >
-            <ArrowUpDown className="w-4 h-4" />
-            <span className="ml-1 text-xs">
-              {sortOrder === 'asc' ? '↑' : '↓'}
-            </span>
-          </button>
-
-          {/* ❌ Limpiar filtros */}
-          <button 
-            className="btn-secondary"
-            onClick={limpiarFiltros}
-            title="Limpiar filtros"
-          >
-            <X className="w-4 h-4" />
-          </button>
-
-          {/* 🔄 Recargar */}
-          <button 
-            className="btn-secondary"
-            onClick={handleRecargar}
-            disabled={loading}
-            title="Recargar lista"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+            {/* 📆 Mes */}
+            <div className="filter-group">
+              <label className="filter-label">Mes</label>
+              <select
+                className="filter-select"
+                value={selectedMes}
+                onChange={(e) => setSelectedMes(e.target.value)}
+                disabled={!selectedAnio}
+              >
+                <option value="">Todos los meses</option>
+                {mesesDelAnio.map(periodo => (
+                  <option key={periodo.mes} value={periodo.mes}>
+                    {periodo.nombre_mes} ({periodo.total_lecturas})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
         </div>
 
 
+        </div>
+
+        {/* ✅ SECCIÓN 2: FILTROS ADICIONALES Y ACCIONES */}
+        <div className="filters-section-card">
+          <div className="filters-section-header">
+            <SlidersHorizontal className="w-4 h-4 text-purple-600" />
+            <h4 className="filters-section-title">Filtros y Ordenamiento</h4>
+          </div>
+          
+          <div className="filters-section-content">
+            {/* 🎯 Tipo de lectura */}
+            <div className="filter-group">
+              <label className="filter-label">Tipo de Lectura</label>
+              <select
+                className="filter-select"
+                value={filterTipoLectura}
+                onChange={(e) => setFilterTipoLectura(e.target.value)}
+              >
+                <option value="todas">Todas</option>
+                <option value="reales">Reales</option>
+                <option value="estimadas">Estimadas</option>
+              </select>
+            </div>
+
+            {/* 📊 Ordenar por */}
+            <div className="filter-group">
+              <label className="filter-label">Ordenar por</label>
+              <select
+                className="filter-select"
+                value={sortBy}
+                onChange={(e) => {
+                  console.log(`📊 Nuevo criterio de orden: ${e.target.value}`);
+                  setSortBy(e.target.value);
+                }}
+              >
+                <option value="fecha">Fecha</option>
+                <option value="consumo">Consumo</option>
+              </select>
+            </div>
+
+            {/* ⬆️⬇️ Dirección de orden */}
+            <div className="filter-group">
+              <label className="filter-label">Dirección</label>
+              <button 
+                className="filter-btn-toggle"
+                onClick={toggleSortOrder}
+                title={`${sortOrder === 'asc' ? 'Ascendente (menor a mayor)' : 'Descendente (mayor a menor)'}`}
+              >
+                <ArrowUpDown className="w-4 h-4" />
+                <span>{sortOrder === 'asc' ? 'Ascendente' : 'Descendente'}</span>
+              </button>
+            </div>
+
+            {/* Botones de acción */}
+            <div className="filter-actions-group">
+              {/* ❌ Limpiar filtros */}
+              <button 
+                className="filter-btn-action filter-btn-clear"
+                onClick={limpiarFiltros}
+                title="Limpiar todos los filtros"
+              >
+                <X className="w-4 h-4" />
+                <span>Limpiar</span>
+              </button>
+
+              {/* 🔄 Recargar */}
+              <button 
+                className="filter-btn-action filter-btn-reload"
+                onClick={handleRecargar}
+                disabled={loading}
+                title="Recargar lista"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                <span>Recargar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       {/* LISTA DE LECTURAS */}
-      <div className="periodo-historial-container">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
+      <div className="lecturas-container">
+        <div className="lecturas-header-row">
+          <div className="lecturas-header-title">
             <Droplet className="w-5 h-5 text-blue-600" />
             <h3 className="font-semibold text-lg">Registro de Lecturas</h3>
           </div>
-          <p className="text-sm text-gray-600">
+          <p className="lecturas-count-text">
             {filteredLecturas.length} {filteredLecturas.length === 1 ? 'lectura' : 'lecturas'}
           </p>
         </div>
 
         {filteredLecturas.length === 0 ? (
-          <div className="periodo-historial-empty">
+          <div className="lecturas-empty-state">
             <Droplet className="w-12 h-12 text-gray-300 mb-2" />
             <p>
-              {lecturas.length === 0 
-                ? 'No tienes lecturas registradas aún.' 
+              {lecturas.length === 0
+                ? 'No tienes lecturas registradas aún.'
                 : 'No hay lecturas que coincidan con los filtros aplicados.'}
             </p>
           </div>
         ) : (
-          <div className="periodo-historial-list">
+          <div className="lecturas-grid-list">
             {filteredLecturas.map(lectura => (
-              <button
+              <div
                 key={lectura.id_lectura}
-                onClick={() => verDetalle(lectura)}
-                className="periodo-historial-list-item"
+                className="lectura-card-item"
               >
-                <div className="periodo-historial-col-fecha">
-                  <Calendar className="w-4 h-4 text-gray-500" />
-                  <div className="flex flex-col">
-                    <span className="periodo-historial-mes-nombre">
+                {/* Columna 1: Fecha y Medidor */}
+                <div 
+                  className="lectura-info-section lectura-clickable"
+                  onClick={() => verDetalle(lectura)}
+                >
+                  <Calendar className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                  <div className="lectura-info-text">
+                    <span className="lectura-fecha">
                       {formatDateShort(lectura.fecha_lectura)}
                     </span>
-                    <span className="text-xs text-gray-500">
+                    <span className="lectura-medidor">
                       Medidor: {lectura.medidor?.num_medidor || 'N/A'}
                     </span>
                   </div>
                 </div>
 
-                <div className="periodo-historial-col-stats">
-                  <div className="periodo-historial-stat-item">
-                    <Gauge className="w-4 h-4 text-blue-500" />
-                    <span>{lectura.consumo_m3} m³</span>
-                  </div>                  
-                </div>
-                 <div className="periodo-historial-col-stats">
-                  
-                  <div className="periodo-historial-stat-item">
-                    <Activity className="w-4 h-4 text-gray-500" />
-                    <span>Lecturas • Actual: {lectura.lectura_actual} - Anterior: {lectura.lectura_anterior}</span>
+                {/* Columna 2: Consumo */}
+                <div 
+                  className="lectura-consumo-section lectura-clickable"
+                  onClick={() => verDetalle(lectura)}
+                >
+                  <div className="lectura-consumo-box">
+                    <Gauge className="w-5 h-5 text-blue-600" />
+                    <div className="lectura-consumo-text">
+                      <span className="lectura-consumo-valor">{lectura.consumo_m3} m³</span>
+                      <span className="lectura-consumo-label">Consumo</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="periodo-historial-col-estado">
+                {/* Columna 3: Lecturas (Actual y Anterior) */}
+                <div 
+                  className="lectura-valores-section lectura-clickable"
+                  onClick={() => verDetalle(lectura)}
+                >
+                  <div className="lectura-valor-item">
+                    <Activity className="w-4 h-4 text-green-600" />
+                    <div className="lectura-valor-text">
+                      <span className="lectura-valor-numero">{lectura.lectura_actual}</span>
+                      <span className="lectura-valor-label">Actual</span>
+                    </div>
+                  </div>
+                  <div className="lectura-separador">→</div>
+                  <div className="lectura-valor-item">
+                    <Activity className="w-4 h-4 text-gray-500" />
+                    <div className="lectura-valor-text">
+                      <span className="lectura-valor-numero">{lectura.lectura_anterior}</span>
+                      <span className="lectura-valor-label">Anterior</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Columna 4: Estado (Estimada/Real) */}
+                <div 
+                  className="lectura-estado-section lectura-clickable"
+                  onClick={() => verDetalle(lectura)}
+                >
                   {lectura.es_estimada ? (
-                    <div className="periodo-historial-badge incompleto">
-                      <AlertCircle className="w-4 h-4 text-red-600" />
+                    <div className="lectura-badge lectura-badge-estimada">
+                      <AlertCircle className="w-4 h-4" />
                       <span>Estimada</span>
                     </div>
                   ) : (
-                    <div className="periodo-historial-badge completo">
-                      <CheckCircle className="w-4 h-4 text-green-600" />
+                    <div className="lectura-badge lectura-badge-real">
+                      <CheckCircle className="w-4 h-4" />
                       <span>Real</span>
                     </div>
                   )}
                 </div>
 
-
-                <div className="periodo-historial-col-action">
-                  <Eye className="w-4 h-4" />
-                  <span>Ver</span>
+                {/* Columna 5: Ver Detalle */}
+                <div className="lectura-actions-section">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      verDetalle(lectura);
+                    }}
+                    className="lectura-btn-ver"
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span>Ver</span>
+                  </button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}

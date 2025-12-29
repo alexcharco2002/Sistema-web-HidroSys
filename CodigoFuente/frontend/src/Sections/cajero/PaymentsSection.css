@@ -481,3 +481,84 @@ textarea.form-input {
   color: #1e293b;
 }
 
+.iva-info-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: #eff6ff;
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.iva-label {
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.iva-value {
+  color: #2563eb;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.iva-desc {
+  color: #64748b;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Sección de desglose */
+.desglose-section {
+  margin: 12px 0;
+  padding: 12px;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.desglose-section.highlight {
+  background-color: #ecfdf5;
+  border-color: #10b981;
+}
+
+.desglose-section.multas-only {
+  background-color: #fef2f2;
+  border-color: #ef4444;
+}
+
+.desglose-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #374151;
+}
+
+.desglose-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.desglose-row.total {
+  border-top: 2px solid #d1d5db;
+  margin-top: 8px;
+  padding-top: 8px;
+  font-size: 15px;
+}
+
+.desglose-row.descuento {
+  color: #059669;
+}
+
+.multas-explicacion {
+  margin-top: 12px;
+  padding: 8px;
+  background-color: #eff6ff;
+  border-left: 3px solid #3b82f6;
+  border-radius: 4px;
+}
+

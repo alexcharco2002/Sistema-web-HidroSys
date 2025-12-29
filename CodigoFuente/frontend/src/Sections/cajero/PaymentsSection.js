@@ -36,7 +36,6 @@ const PaymentsSection = () => {
   // ESTADOS PRINCIPALES
   // ============================================================
   const [facturas, setFacturas] = useState([]); // ✅ NUEVO
-  const [, setPagos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -55,6 +54,7 @@ const PaymentsSection = () => {
   const [filterMetodo, setFilterMetodo] = useState('all');
   const [sortOption, setSortOption] = useState('fecha');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [montosFactura, setMontosFactura] = useState(null);
 
   // ============================================================
   // ESTADOS DE ESTADÍSTICAS
@@ -141,6 +141,7 @@ const PaymentsSection = () => {
   // ============================================================
   // FUNCIONES DE PERIODOS
   // ============================================================
+
   const fetchPeriodosDisponibles = useCallback(async () => {
     setLoadingPeriodos(true);
     try {
@@ -158,70 +159,8 @@ const PaymentsSection = () => {
     }
   }, []);
 
-  const fetchPagosByPeriodo = useCallback(async () => {
-    if (!periodoSeleccionado) return;
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
-      
-      const result = await paymentsServices.getPagos({
-        periodo: periodoStr,
-        limit: 1000
-      });
 
-      if (result.success && result.data) {
-        console.log('📦 Pagos cargados:', result.data.length);
-        setPagos(result.data);
-        
-        // Actualizar el periodo con los datos reales
-        const montoTotal = result.data.reduce((sum, p) => 
-          sum + parseFloat(p.monto_pago || 0), 0
-        );
-        
-        const montoEfectivo = result.data
-          .filter(p => p.metodo_pago === 'EFECTIVO')
-          .reduce((sum, p) => sum + parseFloat(p.monto_pago || 0), 0);
-        
-        const montoTransferencia = result.data
-          .filter(p => p.metodo_pago === 'TRANSFERENCIA')
-          .reduce((sum, p) => sum + parseFloat(p.monto_pago || 0), 0);
-
-        const montoTarjeta = result.data
-          .filter(p => p.metodo_pago === 'TARJETA')
-          .reduce((sum, p) => sum + parseFloat(p.monto_pago || 0), 0);
-        
-        setPeriodos(prevPeriodos => 
-          prevPeriodos.map(p => 
-            p.mes === periodoSeleccionado.mes && p.anio === periodoSeleccionado.anio 
-              ? {
-                  ...p,
-                  total_pagos: result.data.length,
-                  monto_total: montoTotal,
-                  monto_efectivo: montoEfectivo,
-                  monto_transferencia: montoTransferencia,
-                  monto_tarjeta: montoTarjeta,
-                  tiene_pagos: result.data.length > 0
-                }
-              : p
-          )
-        );
-      } else {
-        setError('No se pudieron cargar los pagos');
-        setPagos([]);
-      }
-      
-    } catch (err) {
-      setError('Error al cargar pagos del periodo');
-      console.error(err);
-      setPagos([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [periodoSeleccionado]);
-
-  // 
+  //  función para cargar estadísticas del periodo seleccionado
   const fetchStats = useCallback(async () => {
     if (!periodoSeleccionado) return;
 
@@ -242,10 +181,10 @@ const PaymentsSection = () => {
     setPeriodoSeleccionado({ mes, anio });
   };
 
-   // ============================================================
-    // FUNCIÓN PARA CARGAR TODAS LAS FACTURAS
-    // ============================================================
-    const fetchFacturasPeriodo = useCallback(async () => {
+  // ============================================================
+  // FUNCIÓN PARA CARGAR TODAS LAS FACTURAS
+  // ============================================================
+  const fetchFacturasPeriodo = useCallback(async () => {
         if (!periodoSeleccionado) return;
 
         setLoading(true);
@@ -323,7 +262,7 @@ const PaymentsSection = () => {
         } finally {
             setLoading(false);
         }
-    }, [periodoSeleccionado, filterStatus]);
+  }, [periodoSeleccionado, filterStatus]);
 
 
     // ============================================================
@@ -405,55 +344,94 @@ const PaymentsSection = () => {
   // ============================================================
   // FILTRADO Y ORDENAMIENTO DE FACTURAS
   // ============================================================
-// ============================================================
-// FILTRADO Y ORDENAMIENTO DE FACTURAS
-// ============================================================
-const toggleSortOrder = () => {
-  setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
-};
+  const toggleSortOrder = () => {
+    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
+  };
 
-const filteredFacturas = facturas.filter(factura => {
-  const searchLower = searchTerm.toLowerCase();
-  
-  // ✅ BÚSQUEDA: Solo por factura, afiliado, cédula, medidor, código
-  const matchesSearch =
-    factura.num_factura?.toLowerCase().includes(searchLower) ||
-    factura.usuario_afiliado?.cod_usuario_afi?.toString().includes(searchTerm) ||
-    factura.usuario_afiliado?.num_medidor?.toLowerCase().includes(searchLower) ||
-    factura.usuario_afiliado?.usuario_sistema?.nombres?.toLowerCase().includes(searchLower) ||
-    factura.usuario_afiliado?.usuario_sistema?.apellidos?.toLowerCase().includes(searchLower) ||
-    factura.usuario_afiliado?.usuario_sistema?.cedula?.includes(searchTerm);
+  const filteredFacturas = facturas.filter(factura => {
+    const searchLower = searchTerm.toLowerCase();
+    
+    // ✅ BÚSQUEDA: Solo por factura, afiliado, cédula, medidor, código
+    const matchesSearch =
+      factura.num_factura?.toLowerCase().includes(searchLower) ||
+      factura.usuario_afiliado?.cod_usuario_afi?.toString().includes(searchTerm) ||
+      factura.usuario_afiliado?.num_medidor?.toLowerCase().includes(searchLower) ||
+      factura.usuario_afiliado?.usuario_sistema?.nombres?.toLowerCase().includes(searchLower) ||
+      factura.usuario_afiliado?.usuario_sistema?.apellidos?.toLowerCase().includes(searchLower) ||
+      factura.usuario_afiliado?.usuario_sistema?.cedula?.includes(searchTerm);
 
-  // ✅ FILTRO DE ESTADO DE FACTURA
-  const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
+    // ✅ FILTRO DE ESTADO DE FACTURA
+    const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
 
-  // ✅ FILTRO DE MÉTODO DE PAGO
-  const matchesMetodo = filterMetodo === 'all' || 
-    (factura.pago && factura.pago.metodo_pago === filterMetodo);
+    // ✅ FILTRO DE MÉTODO DE PAGO
+    const matchesMetodo = filterMetodo === 'all' || 
+      (factura.pago && factura.pago.metodo_pago === filterMetodo);
 
-  return matchesSearch && matchesStatus && matchesMetodo;
-});
-
-const sortedFacturas = useMemo(() => {
-  return [...filteredFacturas].sort((a, b) => {
-    let comparison = 0;
-
-    if (sortOption === 'fecha') {
-      comparison = new Date(a.fecha_emision) - new Date(b.fecha_emision);
-    } else if (sortOption === 'monto') {
-      comparison = parseFloat(a.total) - parseFloat(b.total);
-    } else if (sortOption === 'metodo') {
-      // ✅ Ordenar por método de pago
-      const metodoA = a.pago?.metodo_pago || '';
-      const metodoB = b.pago?.metodo_pago || '';
-      comparison = metodoA.localeCompare(metodoB);
-    } else if (sortOption === 'estado') {
-      comparison = (a.estado_factura || '').localeCompare(b.estado_factura || '');
-    }
-
-    return sortOrder === 'asc' ? comparison : -comparison;
+    return matchesSearch && matchesStatus && matchesMetodo;
   });
-}, [filteredFacturas, sortOption, sortOrder]);
+
+  const sortedFacturas = useMemo(() => {
+    return [...filteredFacturas].sort((a, b) => {
+      let comparison = 0;
+
+      if (sortOption === 'fecha') {
+        comparison = new Date(a.fecha_emision) - new Date(b.fecha_emision);
+      } else if (sortOption === 'monto') {
+        comparison = parseFloat(a.total) - parseFloat(b.total);
+      } else if (sortOption === 'metodo') {
+        // ✅ Ordenar por método de pago
+        const metodoA = a.pago?.metodo_pago || '';
+        const metodoB = b.pago?.metodo_pago || '';
+        comparison = metodoA.localeCompare(metodoB);
+      } else if (sortOption === 'estado') {
+        // ✅ ORDEN PRIORITARIO: primero por estado, luego por fecha
+        const estadoA = a.estado_factura || '';
+        const estadoB = b.estado_factura || '';
+        
+        // Definir orden de prioridad de estados
+        const estadoPrioridad = {
+          'pendiente': 1,
+          'pagada': 2,
+          'anulada': 3,
+          'vencida': 4
+        };
+        
+        const prioridadA = estadoPrioridad[estadoA] || 999;
+        const prioridadB = estadoPrioridad[estadoB] || 999;
+        
+        // Primero comparar por estado
+        comparison = prioridadA - prioridadB;
+        
+        // Si tienen el mismo estado, ordenar por fecha (más reciente primero)
+        if (comparison === 0) {
+          comparison = new Date(b.fecha_emision) - new Date(a.fecha_emision);
+        }
+      } else if (sortOption === 'estado_fecha') {
+        // ✅ NUEVA OPCIÓN: Estado + Fecha explícita
+        const estadoA = a.estado_factura || '';
+        const estadoB = b.estado_factura || '';
+        
+        const estadoPrioridad = {
+          'pendiente': 1,
+          'pagada': 2,
+          'anulada': 3,
+          'vencida': 4
+        };
+        
+        const prioridadA = estadoPrioridad[estadoA] || 999;
+        const prioridadB = estadoPrioridad[estadoB] || 999;
+        
+        comparison = prioridadA - prioridadB;
+        
+        if (comparison === 0) {
+          comparison = new Date(b.fecha_emision) - new Date(a.fecha_emision);
+        }
+      }
+
+      return sortOrder === 'desc' ? comparison : -comparison;
+    });
+  }, [filteredFacturas, sortOption, sortOrder]);
+
 
   // ============================================================
   // FUNCIONES DE MODAL
@@ -499,25 +477,30 @@ const sortedFacturas = useMemo(() => {
     setShowCreateModal(true);
   };
 
-  // Función para abrir modal de pago CON factura específica
-  const openPaymentModal = (factura) => {
-    if (!permissions.canCreate) {
-      alert('❌ No tienes permiso para registrar pagos');
-      return;
-    }
+// Función para abrir modal de pago CON factura específica
+const openPaymentModal = async (factura) => {
+  if (!permissions.canCreate) {
+    alert('❌ No tienes permiso para registrar pagos');
+    return;
+  }
 
-    const saldoPendiente = calcularSaldoPendiente(factura);
+  const saldoPendiente = calcularSaldoPendiente(factura);
+  
+  // 🔥 CARGAR MONTOS CALCULADOS
+  await cargarMontosFactura(factura.id_factura);
+  
+  setNuevoPago({
+    id_factura: factura.id_factura,
+    id_usuario_afi: factura.id_usuario_afi,
+    monto_pago: saldoPendiente.toFixed(2),
+    metodo_pago: 'EFECTIVO',
+    observaciones: ''
+  });
+  
+  setSelectedFactura(factura); // Guardar referencia
+  setShowCreateModal(true);
+};
 
-    setNuevoPago({
-      id_factura: factura.id_factura,
-      id_usuario_afi: factura.id_usuario_afi,
-      monto_pago: saldoPendiente.toFixed(2), 
-      metodo_pago: 'EFECTIVO',
-      observaciones: ''
-    });
-    setSelectedFactura(factura); // Guardar referencia
-    setShowCreateModal(true);
-  };
 
   const closeCreateModal = () => {
     setShowCreateModal(false);
@@ -533,54 +516,100 @@ const sortedFacturas = useMemo(() => {
   };
 
 
-  const handleCreatePago = async () => {
-    // ============================================================
+  // ============================================================
+// FUNCIÓN PARA CARGAR MONTOS DE FACTURA
+// ============================================================
+const cargarMontosFactura = async (idFactura) => {
+  try {
+    console.log('🔍 Cargando montos de factura:', idFactura);
+    const result = await paymentsServices.getFacturaMontos(idFactura);
+    if (result.success) {
+      console.log('✅ Montos cargados:', result.data);
+      setMontosFactura(result.data);
+      return result.data;
+    } else {
+      console.error('❌ Error:', result.message);
+      setMontosFactura(null);
+    }
+  } catch (error) {
+    console.error('❌ Error cargando montos:', error);
+    setMontosFactura(null);
+  }
+  return null;
+};
+
+
+
+// ============================================================
+// FUNCIÓN PARA CREAR PAGO CON OPCIÓN DE MULTAS
+// ============================================================
+  const handleCreatePago = async (incluirMultas = true) => {
     // VALIDACIONES INICIALES
-    // ============================================================
     if (!nuevoPago.monto_pago || parseFloat(nuevoPago.monto_pago) <= 0) {
-      alert('⚠️ El monto debe ser mayor a 0');
+      alert('❌ El monto debe ser mayor a 0');
       return;
     }
 
-    // Si hay una factura seleccionada, validar que el monto no exceda el saldo
-    if (selectedFactura) {
-      const saldoPendiente = calcularSaldoPendiente(selectedFactura);
-      const montoPago = parseFloat(nuevoPago.monto_pago);
-      
-      if (montoPago > saldoPendiente) {
+    let montoAPagar = parseFloat(nuevoPago.monto_pago);
+    
+    // Si hay una factura seleccionada, validar y ajustar montos
+    if (selectedFactura && montosFactura) {
+      const totalSinMultas = montosFactura.total_sin_multas || 0;
+      const totalConMultas = montosFactura.total_factura || 0;
+      const totalMultas = montosFactura.total_multas || 0;
+
+      // ⭐ AJUSTAR MONTO AUTOMÁTICAMENTE SI NO INCLUYE MULTAS
+      if (!incluirMultas) {
+        // Usar el total sin multas como monto a pagar
+        montoAPagar = totalSinMultas;
+
+        // Confirmación con el monto correcto
         const confirmar = window.confirm(
-          `⚠️ El monto ($${montoPago.toFixed(2)}) excede el saldo pendiente ($${saldoPendiente.toFixed(2)}).\n\n¿Desea continuar de todas formas?`
+          `¿Confirma el pago de $${montoAPagar.toFixed(2)} SIN incluir multas?\n\n` +
+          `📊 Desglose:\n` +
+          `• Total sin multas: $${totalSinMultas.toFixed(2)}\n` +
+          `• Multas pendientes: $${totalMultas.toFixed(2)}\n\n` +
+          `⚠️ Las multas quedarán pendientes para la próxima factura.`
         );
+        
         if (!confirmar) return;
+      } else {
+        // Validar que el monto no exceda el total con multas
+        if (montoAPagar > totalConMultas) {
+          const confirmar = window.confirm(
+            `⚠️ El monto $${montoAPagar.toFixed(2)} excede el total de la factura $${totalConMultas.toFixed(2)}.\n\n` +
+            `¿Desea continuar de todas formas?`
+          );
+          if (!confirmar) return;
+        }
       }
     }
 
     setLoading(true);
     setError(null);
-    
+
     try {
       const currentUser = authService.getCurrentUser();
-      
       if (!currentUser || !currentUser.id_usuario_sistema) {
         throw new Error('No se pudo identificar al usuario actual');
       }
 
-      // ============================================================
-      // PASO 1: PREPARAR DATOS DEL PAGO
-      // ============================================================
+      // PREPARAR DATOS DEL PAGO CON EL MONTO AJUSTADO
       const pagoData = {
-        ...nuevoPago,
+        id_factura: nuevoPago.id_factura ? parseInt(nuevoPago.id_factura) : null,
+        monto_pago: montoAPagar,  // ⭐ USAR EL MONTO AJUSTADO
+        metodo_pago: nuevoPago.metodo_pago || 'EFECTIVO',
+        id_usuario_afi: nuevoPago.id_usuario_afi ? parseInt(nuevoPago.id_usuario_afi) : null,
         id_cajero: currentUser.id_usuario_sistema,
-        monto_pago: parseFloat(nuevoPago.monto_pago).toFixed(2)
+        observaciones: nuevoPago.observaciones || null,
+        incluir_multas: incluirMultas  // ⭐ PARÁMETRO CLAVE
       };
 
-      console.log('📝 Creando pago con datos:', pagoData);
+      console.log('📤 Creando pago:', pagoData);
 
-      // ============================================================
-      // PASO 2: CREAR EL PAGO EN LA BASE DE DATOS
-      // ============================================================
+      // CREAR EL PAGO
       const result = await paymentsServices.createPago(pagoData);
-      
+
       if (!result.success) {
         throw new Error(result.message || 'Error al crear el pago');
       }
@@ -588,77 +617,57 @@ const sortedFacturas = useMemo(() => {
       const pagoCreado = result.data;
       console.log('✅ Pago creado exitosamente:', pagoCreado);
 
-      // ============================================================
-      // PASO 3: GENERAR Y GUARDAR COMPROBANTE PDF
-      // ============================================================
-        let comprobanteGuardado = false;
-        let errorComprobante = null;
+      // GENERAR Y GUARDAR COMPROBANTE PDF
+      let comprobanteGuardado = false;
+      let errorComprobante = null;
 
-        try {
-          console.log('📄 Generando comprobante PDF...');
-          
-          // Generar el archivo PDF
-          const pdfFile = await generatePaymentPDF(pagoCreado, selectedFactura);
-          
-          if (!pdfFile || pdfFile.size === 0) {
-            throw new Error('El PDF generado está vacío');
-          }
-          
-          console.log('✅ PDF generado:', {
-            name: pdfFile.name,
-            size: `${(pdfFile.size / 1024).toFixed(2)} KB`,
-            type: pdfFile.type
-          });
-
-          // Guardar el comprobante en la base de datos
-          console.log('☁️ Guardando comprobante en la base de datos...');
-          
-          await paymentsServices.uploadComprobante(
-            pagoCreado.id_pago, 
-            pdfFile
-          );
-          
-          console.log('✅ Comprobante guardado exitosamente');
-          comprobanteGuardado = true;
-          
-        } catch (pdfError) {
-          errorComprobante = pdfError.message;
-          console.error('❌ Error con el comprobante:', pdfError);
+      try {
+        console.log('📄 Generando comprobante PDF...');
+        const pdfFile = await generatePaymentPDF(pagoCreado, selectedFactura);
+        
+        if (!pdfFile || pdfFile.size === 0) {
+          throw new Error('El PDF generado está vacío');
         }
 
-      // ============================================================
-      // PASO 4: ACTUALIZAR INTERFAZ Y MOSTRAR RESULTADO
-      // ============================================================
-      
-      // Cerrar modal de creación
+        console.log('📤 Subiendo comprobante...');
+        await paymentsServices.uploadComprobante(pagoCreado.id_pago, pdfFile);
+        console.log('✅ Comprobante guardado');
+        comprobanteGuardado = true;
+      } catch (pdfError) {
+        errorComprobante = pdfError.message;
+        console.error('⚠️ Error con el comprobante:', pdfError);
+      }
+
+      // CERRAR MODAL Y ACTUALIZAR
       closeCreateModal();
-      
-      // Preparar datos para mostrar comprobante
       setPagoRegistrado(pagoCreado);
       setFacturaDelPago(selectedFactura);
 
-      // Recargar datos actualizados
-      console.log('🔄 Recargando datos...');
-      await Promise.all([
-        fetchFacturasPeriodo(),
-        fetchStats()
-      ]);
+      // RECARGAR DATOS
+      await Promise.all([fetchFacturasPeriodo(), fetchStats()]);
       console.log('✅ Datos recargados');
 
-      // Mostrar mensaje de éxito
-      if (comprobanteGuardado) {
-        alert('✅ Pago registrado exitosamente\n📄 Comprobante guardado en la base de datos');
-      } else if (errorComprobante) {
-        alert(`✅ Pago registrado exitosamente\n⚠️ Advertencia: ${errorComprobante}\n\nPuede generar el comprobante más tarde desde la lista de pagos.`);
+      // MENSAJE DE ÉXITO
+      let mensaje = '✅ Pago registrado exitosamente\n\n';
+      mensaje += `💵 Monto: $${montoAPagar.toFixed(2)}\n`;
+      mensaje += `💳 Método: ${pagoData.metodo_pago}\n`;
+      
+      if (!incluirMultas && montosFactura && montosFactura.tiene_multas) {
+        mensaje += `\n⚠️ Las multas ($${montosFactura.total_multas.toFixed(2)}) quedaron pendientes para la próxima factura.`;
       }
-
-      // Mostrar comprobante visual en pantalla
+      
+      if (comprobanteGuardado) {
+        mensaje += '\n\n📄 Comprobante guardado correctamente.';
+      } else if (errorComprobante) {
+        mensaje += `\n\n⚠️ Advertencia: ${errorComprobante}`;
+      }
+      
+      alert(mensaje);
+      
+      // MOSTRAR COMPROBANTE VISUAL
       setShowReceipt(true);
 
     } catch (error) {
-      // ============================================================
-      // MANEJO DE ERRORES
-      // ============================================================
       console.error('❌ Error al registrar pago:', error);
       setError(error.message || 'Error al registrar el pago');
       alert(`❌ Error al registrar pago:\n${error.message || 'Error desconocido'}`);
@@ -666,6 +675,7 @@ const sortedFacturas = useMemo(() => {
       setLoading(false);
     }
   };
+
 
   // ============================================================
   // FUNCIONES DE ACCIONES
@@ -796,18 +806,31 @@ const handleAnularPagoConRegeneracion = async (factura) => {
     }).format(amount || 0);
   };
 
+  // 🔒 Parser seguro para fechas sin bug de zona horaria
+  const parseLocalDate = (dateString) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-');
+      return new Date(year, month - 1, day); // fecha LOCAL
+    }
+    return new Date(dateString);
+  };
+
+  // 📅 DD/MM/YYYY
   const formatDate = (dateString) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('es-EC', {
+    const date = parseLocalDate(dateString);
+    return date.toLocaleDateString('es-EC', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
     });
   };
 
+  // 📅 29 nov 2024
   const formatDateShort = (dateString) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('es-EC', {
+    const date = parseLocalDate(dateString);
+    return date.toLocaleDateString('es-EC', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
@@ -1397,18 +1420,6 @@ const handleAnularPagoConRegeneracion = async (factura) => {
                             <Ban className="w-4 h-4" />
                           </button>
                         )}
-
-                        {factura.estado_factura === 'pagada' && (
-                          <span className="text-xs text-green-600 font-semibold px-2">
-                            ✓ Completa
-                          </span>
-                        )}
-
-                        {factura.estado_factura === 'anulada' && (
-                          <span className="text-xs text-red-600 font-semibold px-2">
-                            ✗ Anulada
-                          </span>
-                        )}
                       </div>
 
                       </div>
@@ -1651,7 +1662,7 @@ const handleAnularPagoConRegeneracion = async (factura) => {
                 </div>
               )}
 
-              {/* SECCIÓN DE PAGO (único, no array) */}
+              {/* SECCIÓN DE PAGO */}
               {selectedPago.pago && (
                 <div className="factura-section">
                   <h4 className="section-title">
@@ -1659,7 +1670,6 @@ const handleAnularPagoConRegeneracion = async (factura) => {
                     Información del Pago
                   </h4>
                   <div className="pagos-list">
-                    {/* Ya no usamos .map porque es un solo objeto */}
                     <div 
                       className={`pago-item ${selectedPago.pago.estado_pago === 'ANULADO' ? 'pago-anulado' : ''}`}
                     >
@@ -1832,36 +1842,196 @@ const handleAnularPagoConRegeneracion = async (factura) => {
             </div>
 
             <div className="modal-body">
-              <div className="form-group">
-                <label>ID Factura (opcional):</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={nuevoPago.id_factura}
-                  onChange={(e) => setNuevoPago({...nuevoPago, id_factura: e.target.value})}
-                  placeholder="Ingrese ID de la factura"
-                />
-              </div>
+              {/* Información de la factura seleccionada */}
+              {selectedFactura && (
+                <div className="factura-info-card" style={{
+                  backgroundColor: '#f0f9ff',
+                  border: '1px solid #3b82f6',
+                  borderRadius: '8px',
+                  padding: '16px',
+                  marginBottom: '16px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                    <FileText className="w-5 h-5 text-blue-600" style={{ marginRight: '8px' }} />
+                    <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>
+                      Factura: {selectedFactura.num_factura}
+                    </h4>
+                  </div>
+                  <div style={{ fontSize: '14px', lineHeight: '1.6' }}>
+                    <p style={{ margin: '4px 0' }}>
+                      <strong>Afiliado:</strong>{' '}
+                      {selectedFactura.usuario_afiliado?.usuario_sistema?.nombres}{' '}
+                      {selectedFactura.usuario_afiliado?.usuario_sistema?.apellidos}
+                    </p>
+                    <p style={{ margin: '4px 0' }}>
+                      <strong>Total Factura:</strong>{' '}
+                      <span style={{ color: '#2563eb', fontWeight: '700' }}>
+                        {formatCurrency(selectedFactura.total)}
+                      </span>
+                    </p>
+                    <p style={{ margin: '4px 0' }}>
+                      <strong>Saldo Pendiente:</strong>{' '}
+                      <span style={{ color: '#dc2626', fontWeight: '700' }}>
+                        {formatCurrency(calcularSaldoPendiente(selectedFactura))}
+                      </span>
+                    </p>
 
+                    {/* ⭐ DESGLOSE DE MONTOS CON MULTAS */}
+                    {montosFactura && montosFactura.tiene_multas && (
+                      <div style={{
+                        marginTop: '16px',
+                        padding: '12px',
+                        backgroundColor: '#fef3c7',
+                        border: '1px solid #f59e0b',
+                        borderRadius: '6px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                          <AlertCircle className="w-4 h-4 text-orange-600" style={{ marginRight: '6px' }} />
+                          <span style={{ fontWeight: '600', color: '#d97706' }}>
+                            Esta factura incluye multas
+                          </span>
+                        </div>
+
+                        {/* Tabla de desglose */}
+                        <table style={{ width: '100%', fontSize: '13px', marginTop: '8px' }}>
+                          <tbody>
+                            {/* CON MULTAS */}
+                            <tr style={{ backgroundColor: '#e0f2fe' }}>
+                              <td colSpan="2" style={{ padding: '6px', fontWeight: '600' }}>
+                                📊 Opción 1: Pagar TODO (con multas)
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '4px 8px' }}>Subtotal:</td>
+                              <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                                {formatCurrency(montosFactura.resumen.con_multas.subtotal)}
+                              </td>
+                            </tr>
+                            {montosFactura.resumen.con_multas.descuento > 0 && (
+                              <tr>
+                                <td style={{ padding: '4px 8px', color: '#059669' }}>Descuento:</td>
+                                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#059669' }}>
+                                  - {formatCurrency(montosFactura.resumen.con_multas.descuento)}
+                                </td>
+                              </tr>
+                            )}
+                            <tr>
+                              <td style={{ padding: '4px 8px' }}>
+                                IVA ({montosFactura.tasa_impuesto.toFixed(1)}%):
+                              </td>
+                              <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                                {formatCurrency(montosFactura.resumen.con_multas.impuesto)}
+                              </td>
+                            </tr>
+                            <tr style={{ borderTop: '2px solid #3b82f6', fontWeight: '700' }}>
+                              <td style={{ padding: '6px 8px' }}>Total con Multas:</td>
+                              <td style={{ padding: '6px 8px', textAlign: 'right', color: '#2563eb' }}>
+                                {formatCurrency(montosFactura.resumen.con_multas.total)}
+                              </td>
+                            </tr>
+
+                            {/* SIN MULTAS */}
+                            <tr style={{ height: '8px' }}></tr>
+                            <tr style={{ backgroundColor: '#d1fae5' }}>
+                              <td colSpan="2" style={{ padding: '6px', fontWeight: '600' }}>
+                                ✨ Opción 2: Pagar SIN multas
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '4px 8px' }}>Subtotal:</td>
+                              <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                                {formatCurrency(montosFactura.resumen.sin_multas.subtotal)}
+                              </td>
+                            </tr>
+                            {montosFactura.resumen.sin_multas.descuento > 0 && (
+                              <tr>
+                                <td style={{ padding: '4px 8px', color: '#059669' }}>Descuento:</td>
+                                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#059669' }}>
+                                  - {formatCurrency(montosFactura.resumen.sin_multas.descuento)}
+                                </td>
+                              </tr>
+                            )}
+                            <tr>
+                              <td style={{ padding: '4px 8px' }}>
+                                IVA ({montosFactura.tasa_impuesto.toFixed(1)}%):
+                              </td>
+                              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#7c3aed' }}>
+                                {formatCurrency(montosFactura.resumen.sin_multas.impuesto)}
+                              </td>
+                            </tr>
+                            <tr style={{ borderTop: '2px solid #10b981', fontWeight: '700' }}>
+                              <td style={{ padding: '6px 8px' }}>Total sin Multas:</td>
+                              <td style={{ padding: '6px 8px', textAlign: 'right', color: '#059669' }}>
+                                {formatCurrency(montosFactura.resumen.sin_multas.total)}
+                              </td>
+                            </tr>
+
+                            {/* MULTAS PENDIENTES */}
+                            <tr style={{ height: '8px' }}></tr>
+                            <tr style={{ backgroundColor: '#fee2e2' }}>
+                              <td colSpan="2" style={{ padding: '6px', fontWeight: '600' }}>
+                                ⚠️ Multas (quedarían pendientes)
+                              </td>
+                            </tr>
+                            {montosFactura.detalles_multas.map((multa, idx) => (
+                              <tr key={idx}>
+                                <td style={{ padding: '4px 8px', fontSize: '12px' }}>
+                                  {multa.descripcion}
+                                </td>
+                                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#dc2626' }}>
+                                  {formatCurrency(multa.monto)}
+                                </td>
+                              </tr>
+                            ))}
+                            <tr style={{ borderTop: '2px solid #ef4444', fontWeight: '700' }}>
+                              <td style={{ padding: '6px 8px' }}>
+                                Total Multas (+ IVA):
+                              </td>
+                              <td style={{ padding: '6px 8px', textAlign: 'right', color: '#dc2626' }}>
+                                {formatCurrency(montosFactura.resumen.solo_multas.total)}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+
+                        <div style={{
+                          marginTop: '12px',
+                          padding: '8px',
+                          backgroundColor: '#eff6ff',
+                          borderLeft: '3px solid #3b82f6',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          color: '#1e40af'
+                        }}>
+                          💡 <strong>Nota:</strong> Al pagar sin multas, el IVA se recalcula solo sobre 
+                          consumo y servicios. Las multas quedan pendientes para la próxima factura.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Formulario de pago */}
               <div className="form-group">
-                <label>Monto: *</label>
+                <label>Monto a Pagar *</label>
                 <input
                   type="number"
                   step="0.01"
                   className="form-input"
                   value={nuevoPago.monto_pago}
-                  onChange={(e) => setNuevoPago({...nuevoPago, monto_pago: e.target.value})}
+                  onChange={(e) => setNuevoPago({ ...nuevoPago, monto_pago: e.target.value })}
                   placeholder="0.00"
                   required
                 />
               </div>
 
               <div className="form-group">
-                <label>Método de Pago: *</label>
+                <label>Método de Pago *</label>
                 <select
                   className="form-input"
                   value={nuevoPago.metodo_pago}
-                  onChange={(e) => setNuevoPago({...nuevoPago, metodo_pago: e.target.value})}
+                  onChange={(e) => setNuevoPago({ ...nuevoPago, metodo_pago: e.target.value })}
                 >
                   <option value="EFECTIVO">Efectivo</option>
                   <option value="TRANSFERENCIA">Transferencia</option>
@@ -1870,32 +2040,74 @@ const handleAnularPagoConRegeneracion = async (factura) => {
               </div>
 
               <div className="form-group">
-                <label>Observaciones:</label>
+                <label>Observaciones</label>
                 <textarea
                   className="form-input"
                   rows="3"
                   value={nuevoPago.observaciones}
-                  onChange={(e) => setNuevoPago({...nuevoPago, observaciones: e.target.value})}
+                  onChange={(e) => setNuevoPago({ ...nuevoPago, observaciones: e.target.value })}
                   placeholder="Observaciones adicionales..."
                 />
               </div>
             </div>
 
-            <div className="modal-footer">
+            {/* ⭐ BOTONES DINÁMICOS SEGÚN SI HAY MULTAS */}
+            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button className="btn-secondary" onClick={closeCreateModal}>
                 Cancelar
               </button>
-              <button 
-                className="btn-primary" 
-                onClick={handleCreatePago}
-                disabled={loading || !nuevoPago.monto_pago}
-              >
-                {loading ? 'Registrando...' : 'Registrar Pago'}
-              </button>
+
+              {montosFactura && montosFactura.tiene_multas ? (
+                <>
+                  <button
+                    className="btn-warning"
+                    onClick={() => handleCreatePago(false)}
+                    disabled={loading || !nuevoPago.monto_pago}
+                    title="Pagar solo consumo y servicios (sin multas)"
+                    style={{
+                      backgroundColor: '#f59e0b',
+                      color: 'white',
+                      padding: '10px 16px',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: '500',
+                      opacity: loading || !nuevoPago.monto_pago ? 0.5 : 1
+                    }}
+                  >
+                    <DollarSign className="w-4 h-4" />
+                    {loading ? 'Registrando...' : `Pagar Sin Multas ($${montosFactura.total_sin_multas.toFixed(2)})`}
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={() => handleCreatePago(true)}
+                    disabled={loading || !nuevoPago.monto_pago}
+                    title="Pagar todo (incluye multas)"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    {loading ? 'Registrando...' : `Pagar TODO ($${montosFactura.total_factura.toFixed(2)})`}
+                  </button>
+                </>
+              ) : (
+                // SI NO HAY MULTAS: Un solo botón
+                <button
+                  className="btn-primary"
+                  onClick={() => handleCreatePago(true)}
+                  disabled={loading || !nuevoPago.monto_pago}
+                >
+                  {loading ? 'Registrando...' : 'Registrar Pago'}
+                </button>
+              )}
+
             </div>
           </div>
         </div>
       )}
+
+
 
       {/* COMPROBANTE DE PAGO */}
       {showReceipt && pagoRegistrado && (

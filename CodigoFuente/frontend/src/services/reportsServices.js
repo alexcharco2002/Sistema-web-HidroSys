@@ -459,65 +459,88 @@ async getReporteFacturas(filtros = {}) {
   /**
  * Obtener periodos disponibles de Facturas
  */
-async getPeriodosFacturas() {
-  try {
-    const data = await this.makeRequest(API_CONFIG.endpoints.facturasPeriodos);
-    
-    console.log('📅 Periodos de facturas cargados:', data);
-    
-    return {
-      success: true,
-      data: Array.isArray(data) ? data : []
-    };
-  } catch (error) {
-    console.error('❌ Error obteniendo periodos de facturas:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al obtener periodos de facturas',
-      data: []
-    };
+  async getPeriodosFacturas() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.facturasPeriodos);
+      
+      console.log('📅 Periodos de facturas cargados:', data);
+      
+      return {
+        success: true,
+        data: Array.isArray(data) ? data : []
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo periodos de facturas:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener periodos de facturas',
+        data: []
+      };
+    }
   }
-}
+  /**
+   * 8. Obtener reporte de PAGOS - CORREGIDO
+   */
+  async getReportePagos(filtros = {}) {
+    try {
+      // ✅ AGREGAR TODOS LOS PARÁMETROS (igual que facturas)
+      const queryString = this.buildQueryString({
+        skip: filtros.skip || 0,
+        limit: filtros.limit || 1000,
+        search: filtros.search,           
+        periodo: filtros.periodo,          
+        mes: filtros.mes,                  
+        anio: filtros.anio,                
+        fecha_inicio: filtros.fecha_inicio,  
+        fecha_fin: filtros.fecha_fin,        
+        metodo_pago: filtros.metodo_pago,
+        estado_pago: filtros.estado_pago   
+      });
 
-/**
- * 8. Obtener reporte de PAGOS
- */
-async getReportePagos(filtros = {}) {
-  try {
-    const queryString = this.buildQueryString({
-      skip: filtros.skip || 0,
-      limit: filtros.limit || 1000,
-      fecha_desde: filtros.fecha_desde,
-      fecha_hasta: filtros.fecha_hasta,
-      metodo_pago: filtros.metodo_pago,
-      estado: filtros.estado
-    });
+      const url = queryString
+        ? `${API_CONFIG.endpoints.pagos}?${queryString}`
+        : API_CONFIG.endpoints.pagos;
 
-    const url = queryString
-      ? `${API_CONFIG.endpoints.pagos}?${queryString}`
-      : API_CONFIG.endpoints.pagos;
+      const response = await this.makeRequest(url);
 
-    const response = await this.makeRequest(url);
+      // ✅ FORMATO CONSISTENTE CON FACTURAS
+      if (response.success && response.data) {
+        return {
+          success: true,
+          data: response.data,
+          total: response.total || response.data.length,
+          pages: response.pages || 0
+        };
+      }
 
-    // Aseguramos consistencia igual que MULTAS
-    const data = Array.isArray(response.data) ? response.data : [];
-    const total = response.total || data.length;
+      // Fallback si viene array directo
+      if (Array.isArray(response)) {
+        return {
+          success: true,
+          data: response,
+          total: response.length
+        };
+      }
 
-    return {
-      success: true,
-      data: data,
-      total: total
-    };
-  } catch (error) {
-    console.error('❌ Error obteniendo reporte de pagos:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al obtener reporte de pagos',
-      data: [],
-      total: 0
-    };
+      // Error
+      return {
+        success: false,
+        message: 'Formato de respuesta inválido',
+        data: [],
+        total: 0
+      };
+
+    } catch (error) {
+      console.error('❌ Error obteniendo reporte de pagos:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener reporte de pagos',
+        data: [],
+        total: 0
+      };
+    }
   }
-}
+
 
 
   async getPeriodosPagos() {

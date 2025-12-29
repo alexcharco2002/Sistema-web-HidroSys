@@ -5,15 +5,16 @@ Router para gestión de facturas y pagos de afiliados
 
 import io
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, logger, status, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session, joinedload, load_only
+from sqlalchemy.orm import Session, joinedload, load_only, aliased
 from sqlalchemy import and_, desc, func, extract, or_, case
 from typing import List, Optional, Dict
 from datetime import date, datetime
 from pathlib import Path
 import shutil
 
+from models.detalle_factura import DetalleFactura
 from models.factura import Factura
 from models.pago import Pago
 from models.user import UsuarioSistema
@@ -145,240 +146,278 @@ def obtener_periodos_facturas_disponibles(
         "periodos": periodos_por_anio
     }
 
-
-# ============================================================
-# ENDPOINTS DE FACTURAS
-# ============================================================
-
-from sqlalchemy.orm import selectinload, contains_eager
-
 @router.get("/mis-facturas", response_model=List[dict])
-def listar_facturas_usuario_ligero(
+def listar_mis_facturas_completo(
     anio: Optional[int] = Query(None),
     mes: Optional[int] = Query(None, ge=1, le=12),
     estado_factura: Optional[str] = Query(None),
-    limit: int = Query(20, ge=1, le=50),
-    offset: int = Query(0, ge=0),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
-    Versión ULTRA LIGERA que solo incluye:
+    Obtener facturas del usuario afiliado actual con información completa:
     - Datos de la factura
-    - Nombre y cédula del usuario
-    - Sector
-    
-    Sin pagos ni medidores para máxima velocidad
+    - Información del afiliado (nombres, medidor)
+    - Detalles de factura
+    - Pago asociado (si existe)
     """
-    
     current_user = get_current_user(payload, db)
     afiliado = get_current_afiliado(current_user, db)
 
-    # ===============================
-    # FECHAS
-    # ===============================
-    fecha_inicio = fecha_fin = None
-    
-    if anio and mes:
-        fecha_inicio = date(anio, mes, 1)
-        fecha_fin = date(anio + 1, 1, 1) if mes == 12 else date(anio, mes + 1, 1)
-    elif anio:
-        fecha_inicio = date(anio, 1, 1)
-        fecha_fin = date(anio + 1, 1, 1)
-
-    # ===============================
-    # QUERY CON JOIN OPTIMIZADO
-    # ===============================
-    query = (
-        db.query(Factura)
-        .join(
-            UsuarioAfiliado,
-            Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi
-        )
-        .join(
-            UsuarioSistema,
-            UsuarioAfiliado.id_usuario_afi == UsuarioSistema.id_usuario_sistema
-        )
-        .outerjoin(
-            Sector,
-            UsuarioAfiliado.id_sector == Sector.id_sector
-        )
-        .with_entities(
-            # Datos de factura
-            Factura.id_factura,
-            Factura.num_factura,
-            Factura.periodo,
-            Factura.fecha_emision,
-            Factura.estado_factura,
-            Factura.total,
-            Factura.subtotal,
-            Factura.impuesto,
-            Factura.descuento,
-            Factura.consumo_m3,
-            # Datos de usuario
-            UsuarioSistema.cedula,
-            UsuarioSistema.nombres,
-            UsuarioSistema.apellidos,
-            UsuarioSistema.email,
-            UsuarioSistema.telefono,
-            # Datos de sector
-            Sector.nombre_sector,
-            # Agregar count de pagos
-            func.count(Pago.id_pago).label('total_pagos')
-        )
-        .outerjoin(
-            Pago,
-            and_(
-                Pago.id_factura == Factura.id_factura,
-                Pago.estado_pago == 'aprobado'
+    try:
+        # ✅ Crear alias para el cajero
+        Cajero = aliased(UsuarioSistema)
+        
+        # ========================================
+        # 🔥 QUERY PRINCIPAL - FACTURAS DEL AFILIADO
+        # ========================================
+        query = (
+            db.query(
+                # Factura
+                Factura.id_factura,
+                Factura.num_factura,
+                Factura.periodo,
+                Factura.fecha_emision,
+                Factura.estado_factura,
+                Factura.consumo_m3,
+                Factura.exceso_m3,
+                Factura.valor_consumo,
+                Factura.valor_exceso,
+                Factura.subtotal,
+                Factura.descuento,
+                Factura.impuesto,
+                Factura.total,
+                # Afiliado
+                UsuarioAfiliado.id_usuario_afi,
+                UsuarioAfiliado.cod_usuario_afi,
+                UsuarioAfiliado.num_medidor,
+                # Usuario sistema (del afiliado)
+                UsuarioSistema.nombres,
+                UsuarioSistema.apellidos,
+                UsuarioSistema.cedula,
+                UsuarioSistema.direccion,
+                UsuarioSistema.telefono,
+                UsuarioSistema.email,
+                # Sector
+                Sector.nombre_sector,
+                # ✅ PAGO (relación 1:1)
+                Pago.id_pago,
+                Pago.monto_pago,
+                Pago.fecha_pago,
+                Pago.metodo_pago,
+                Pago.estado_pago,
+                Pago.observaciones,
+                # ✅ COMPROBANTE
+                Pago.nombre_archivo,
+                Pago.tipo_mime,
+                case(
+                    (Pago.comprobante_pdf.isnot(None), True),
+                    else_=False
+                ).label('tiene_comprobante'),
+                # ✅ CAJERO (usando alias)
+                Cajero.nombres.label('cajero_nombres'),
+                Cajero.apellidos.label('cajero_apellidos')
             )
-        )
-        .filter(
-            Factura.id_usuario_afi == afiliado.id_usuario_afi
-        )
-        .group_by(
-            Factura.id_factura,
-            UsuarioSistema.cedula,
-            UsuarioSistema.nombres,
-            UsuarioSistema.apellidos,
-            UsuarioSistema.email,
-            UsuarioSistema.telefono,
-            Sector.nombre_sector
-        )
-    )
-
-    # ===============================
-    # FILTROS
-    # ===============================
-    if estado_factura and estado_factura != "todos":
-        query = query.filter(Factura.estado_factura == estado_factura)
-    
-    if fecha_inicio and fecha_fin:
-        query = query.filter(
-            Factura.fecha_emision >= fecha_inicio,
-            Factura.fecha_emision < fecha_fin
+            .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
+            .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
+            # ✅ JOIN con pagos (puede no tener pago)
+            .outerjoin(Pago, Factura.id_factura == Pago.id_factura)
+            # ✅ JOIN con cajero usando alias
+            .outerjoin(Cajero, Pago.id_cajero == Cajero.id_usuario_sistema)
+            # ✅ FILTRAR POR AFILIADO ACTUAL
+            .filter(Factura.id_usuario_afi == afiliado.id_usuario_afi)
         )
 
-    # ===============================
-    # PAGINACIÓN
-    # ===============================
-    resultados = (
-        query
-        .order_by(Factura.fecha_emision.desc())
-        .limit(limit)
-        .offset(offset)
-        .all()
-    )
+        # ===============================
+        # FILTROS
+        # ===============================
+        if anio and mes:
+            fecha_inicio = date(anio, mes, 1)
+            fecha_fin = date(anio + 1, 1, 1) if mes == 12 else date(anio, mes + 1, 1)
+            query = query.filter(
+                Factura.fecha_emision >= fecha_inicio,
+                Factura.fecha_emision < fecha_fin
+            )
+        elif anio:
+            fecha_inicio = date(anio, 1, 1)
+            fecha_fin = date(anio + 1, 1, 1)
+            query = query.filter(
+                Factura.fecha_emision >= fecha_inicio,
+                Factura.fecha_emision < fecha_fin
+            )
 
-    # ===============================
-    # RESPUESTA ESTRUCTURADA
-    # ===============================
-    return [
-        {
-            "id_factura": r.id_factura,
-            "numero_factura": r.num_factura,
-            "periodo": r.periodo,
-            "fecha_emision": r.fecha_emision.strftime("%Y-%m-%d") if r.fecha_emision else None,
-            "estado_factura": r.estado_factura,
-            "total": float(r.total) if r.total else 0,
-            "subtotal": float(r.subtotal) if r.subtotal else 0,
-            "impuesto": float(r.impuesto) if r.impuesto else 0,
-            "descuento": float(r.descuento) if r.descuento else 0,
-            "consumo_m3": r.consumo_m3,
-            # Datos del usuario
-            "usuario": {
-                "cedula": r.cedula,
-                "nombre_completo": f"{r.nombres} {r.apellidos}",
-                "nombre": r.nombres,
-                "apellido": r.apellidos,
-                "email": r.email,
-                "telefono": r.telefono
-            },
-            # Datos del sector
-            "sector": r.nombre_sector,
-            # Información de pagos
-            "tiene_pagos": r.total_pagos > 0,
-            "total_pagos": r.total_pagos
-        }
-        for r in resultados
-    ]
+        if estado_factura and estado_factura != "todos":
+            query = query.filter(Factura.estado_factura == estado_factura)
 
-@router.get("/factura/{id_factura}", response_model=dict)
-def obtener_detalle_factura(
-    id_factura: int,
-    db: Session = Depends(get_db),
-    payload: dict = Depends(verify_token)
-):
-    """
-    Obtiene el detalle completo de una factura específica
-    OPTIMIZADO: Carga todo en una sola consulta
-    """
-    current_user = get_current_user(payload, db)
-    afiliado = get_current_afiliado(current_user, db)
-
-    # ✅ Cargar todo en una sola query
-    factura = (
-        db.query(Factura)
-        .options(
-            selectinload(Factura.pagos).joinedload(Pago.cajero),  # ✅ Cargar pagos con cajero
-            joinedload(Factura.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema),
-            joinedload(Factura.usuario_afiliado).joinedload(UsuarioAfiliado.sector),
-            selectinload(Factura.detalles)  # ✅ Si necesitas los detalles
+        # Ordenar
+        estado_orden = case(
+            (Factura.estado_factura == 'pendiente', 1),
+            (Factura.estado_factura == 'vencida', 2),
+            (Factura.estado_factura == 'pagada', 3),
+            (Factura.estado_factura == 'anulada', 4),
+            else_=5
         )
-        .filter(
-            Factura.id_factura == id_factura,
-            Factura.id_usuario_afi == afiliado.id_usuario_afi
-        )
-        .first()
-    )
 
-    if not factura:
+        facturas = (
+            query
+            .order_by(estado_orden, Factura.fecha_emision.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+        if not facturas:
+            return []
+
+        ids_facturas = [f.id_factura for f in facturas]
+
+        # ========================================
+        # 🔥 QUERY: DETALLES
+        # ========================================
+        detalles_query = (
+            db.query(
+                DetalleFactura.id_detalle,
+                DetalleFactura.id_factura,
+                DetalleFactura.tipo_detalle,
+                DetalleFactura.descripcion,
+                DetalleFactura.subtotal_detalle,
+            )
+            .filter(DetalleFactura.id_factura.in_(ids_facturas))
+            .order_by(
+                DetalleFactura.id_factura,
+                case(
+                    (DetalleFactura.tipo_detalle == 'consumo', 1),
+                    (DetalleFactura.tipo_detalle == 'multa', 2),
+                    (DetalleFactura.tipo_detalle == 'servicio', 3),
+                    else_=4
+                ),
+                DetalleFactura.id_detalle
+            )
+            .all()
+        )
+        
+        detalles_por_factura = {}
+        for d in detalles_query:
+            if d.id_factura not in detalles_por_factura:
+                detalles_por_factura[d.id_factura] = []
+            detalles_por_factura[d.id_factura].append({
+                "id_detalle": d.id_detalle,
+                "tipo_detalle": d.tipo_detalle,
+                "descripcion": d.descripcion or "Sin descripción",
+                "subtotal_detalle": float(d.subtotal_detalle) if d.subtotal_detalle else 0.0,
+            })
+
+        print(f"✅ Facturas: {len(facturas)} | Detalles: {len(detalles_query)}")
+
+        # ========================================
+        # 🔄 FORMATEAR RESPUESTA
+        # ========================================
+        resultado = []
+        
+        for f in facturas:
+            detalles_factura = detalles_por_factura.get(f.id_factura, [])
+            
+            # ✅ Construir nombre del cajero
+            cajero_nombre = None
+            if f.cajero_nombres and f.cajero_apellidos:
+                cajero_nombre = f"{f.cajero_nombres} {f.cajero_apellidos}"
+            elif f.cajero_nombres:
+                cajero_nombre = f.cajero_nombres
+            elif f.cajero_apellidos:
+                cajero_nombre = f.cajero_apellidos
+            
+            # ✅ PAGO (puede ser None si no tiene pago)
+            pago = None
+            if f.id_pago:
+                pago = {
+                    "id_pago": f.id_pago,
+                    "monto_pago": float(f.monto_pago) if f.monto_pago else 0.0,
+                    "fecha_pago": f.fecha_pago.isoformat() if f.fecha_pago else None,
+                    "metodo_pago": f.metodo_pago or "No especificado",
+                    "estado_pago": f.estado_pago,
+                    "observaciones": f.observaciones,
+                    "cajero": cajero_nombre or "Sin cajero",
+                    # ✅ COMPROBANTE
+                    "tiene_comprobante": f.tiene_comprobante,
+                    
+                    "nombre_archivo": f.nombre_archivo,
+                    "tipo_mime": f.tipo_mime or "application/pdf"
+                }
+            
+            # Calcular totales
+            monto_pagado = float(f.monto_pago) if f.monto_pago else 0.0
+            saldo_pendiente = float(f.total) - monto_pagado
+            
+            resultado.append({
+                "id_factura": f.id_factura,
+                "num_factura": f.num_factura,
+                "periodo": f.periodo,
+                "fecha_emision": f.fecha_emision.isoformat(),
+                "estado_factura": f.estado_factura,
+                
+                "consumo_m3": f.consumo_m3 or 0,
+                "exceso_m3": f.exceso_m3 or 0,
+                "valor_consumo": float(f.valor_consumo) if f.valor_consumo else 0.0,
+                "valor_exceso": float(f.valor_exceso) if f.valor_exceso else 0.0,
+                
+                "subtotal": float(f.subtotal) if f.subtotal else 0.0,
+                "descuento": float(f.descuento) if f.descuento else 0.0,
+                "impuesto": float(f.impuesto) if f.impuesto else 0.0,
+                "total": float(f.total),
+                
+                "usuario_afiliado": {
+                    "id_usuario_afi": f.id_usuario_afi,
+                    "cod_usuario_afi": f.cod_usuario_afi,
+                    "num_medidor": f.num_medidor or "N/A",
+                    
+                    "usuario_sistema": {
+                        "nombres": f.nombres,
+                        "apellidos": f.apellidos,
+                        "cedula": f.cedula,
+                        "direccion": f.direccion,
+                        "telefono": f.telefono,
+                        "email": f.email,
+                    },
+                    
+                    "sector": {
+                        "nombre_sector": f.nombre_sector or "Sin sector"
+                    }
+                },
+                
+                "detalles": detalles_factura,
+                
+                "resumen_detalles": {
+                    "total_conceptos": len(detalles_factura),
+                    "consumo": len([d for d in detalles_factura if d['tipo_detalle'] == 'consumo']),
+                    "multas": len([d for d in detalles_factura if d['tipo_detalle'] == 'multa']),
+                    "servicios": len([d for d in detalles_factura if d['tipo_detalle'] == 'servicio']),
+                },
+                
+                # ✅ UN SOLO PAGO (no array)
+                "pago": pago,
+                
+                # ✅ RESUMEN SIMPLIFICADO
+                "tiene_pago": pago is not None,
+                "monto_pagado": monto_pagado,
+                "saldo_pendiente": saldo_pendiente,
+                "esta_totalmente_pagada": saldo_pendiente <= 0,
+                "tiene_comprobante": f.tiene_comprobante if f.id_pago else False
+            })
+
+        return resultado
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Factura no encontrada"
+            status_code=500,
+            detail=f"Error al obtener mis facturas: {str(e)}"
         )
 
-    # ✅ Los pagos ya están cargados, NO hacemos query adicional
-    pagos_data = [
-        {
-            "id_pago": pago.id_pago,
-            "monto": float(pago.monto_pago),
-            "fecha_pago": pago.fecha_pago.strftime('%Y-%m-%d') if pago.fecha_pago else None,
-            "metodo_pago": pago.metodo_pago,
-            "referencia": None,
-            "comprobante_url": None,
-            "estado": pago.estado_pago,
-            "observacion": pago.observaciones,
-            "cajero": {
-                "nombres": pago.cajero.nombres if pago.cajero else None,
-                "apellidos": pago.cajero.apellidos if pago.cajero else None
-            }
-        }
-        for pago in factura.pagos
-        if pago.estado_pago == 'REGISTRADO'
-    ]
 
-    usuario = factura.usuario_afiliado.usuario_sistema if factura.usuario_afiliado else None
-
-    return {
-        "id_factura": factura.id_factura,
-        "numero_factura": factura.num_factura,
-        "periodo": factura.periodo,
-        "fecha_emision": factura.fecha_emision.strftime('%Y-%m-%d') if factura.fecha_emision else None,
-        "estado_factura": factura.estado_factura,
-        "subtotal": float(factura.subtotal) if factura.subtotal else 0,
-        "impuestos": float(factura.impuesto) if factura.impuesto else 0,
-        "descuentos": float(factura.descuento) if factura.descuento else 0,
-        "total": float(factura.total) if factura.total else 0,
-        "consumo_m3": float(factura.consumo_m3) if factura.consumo_m3 else None,
-        "usuario": {
-            "nombres": usuario.nombres if usuario else None,
-            "apellidos": usuario.apellidos if usuario else None,
-            "cedula": usuario.cedula if usuario else None
-        },
-        "sector": factura.usuario_afiliado.sector.nombre_sector if factura.usuario_afiliado and factura.usuario_afiliado.sector else None,
-        "pagos": pagos_data
-    }
 
 
 
@@ -593,11 +632,49 @@ async def subir_comprobante_pago(
     }
 
 
-# ============================================================
-# EXPORTACIÓN
-# ============================================================
-
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
-
+@router.get("/comprobante/{id_pago}", status_code=status.HTTP_200_OK)
+def descargar_comprobante_afiliado(
+    id_pago: int,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Descargar comprobante PDF de un pago (solo del afiliado actual)
+    """
+    from fastapi.responses import Response
+    
+    current_user = get_current_user(payload, db)
+    afiliado = get_current_afiliado(current_user, db)
+    
+    # Buscar el pago
+    pago = db.query(Pago).filter(Pago.id_pago == id_pago).first()
+    if not pago:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pago con ID {id_pago} no encontrado"
+        )
+    
+    # ✅ VALIDAR QUE EL PAGO PERTENECE AL AFILIADO ACTUAL
+    factura = db.query(Factura).filter(Factura.id_factura == pago.id_factura).first()
+    if not factura or factura.id_usuario_afi != afiliado.id_usuario_afi:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para acceder a este comprobante"
+        )
+    
+    # Verificar que tenga comprobante
+    if not pago.comprobante_pdf:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Este pago no tiene comprobante PDF"
+        )
+    
+    # Retornar el PDF
+    return Response(
+        content=pago.comprobante_pdf,
+        media_type=pago.tipo_mime or "application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename={pago.nombre_archivo or f'comprobante_{id_pago}.pdf'}",
+            "Cache-Control": "no-cache"
+        }
+    )

@@ -8,7 +8,7 @@ import {
   FileText, Calendar, Search, BarChart3, Users, Droplet,
   DollarSign, AlertCircle, CheckCircle,
   RefreshCw, Loader, Settings, Database, MapPin, CreditCard
-  , Shield, Activity, Clock, ArrowLeft, Eraser, XCircle, User, TrendingUp
+  , Shield, Activity, Clock, ArrowLeft, Eraser, XCircle, User, TrendingUp,FileSpreadsheet, Printer
 } from 'lucide-react';
 
 import { ReportExport } from '../../components/ReportExport';
@@ -329,21 +329,85 @@ const ReportsSection = () => {
         );
         break;
 
+        case 'Pagos':
+          // 💰 MONTOS Y PROMEDIOS
+          const totalRecaudado = reporteData.reduce((sum, p) => sum + (parseFloat(p.monto_pagado) || 0), 0);
+          const promedioPago = reporteData.length > 0 ? (totalRecaudado / reporteData.length).toFixed(2) : 0;
+          const pagoMayor = Math.max(...reporteData.map(p => parseFloat(p.monto_pagado) || 0));
+          // 💳 MÉTODOS DE PAGO
+          const efectivo = reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('efectivo')).length;
+          const transferencia = reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('transferencia')).length;
+          
+        
+          
+          // 🧾 COMPROBANTES
+          const conComprobante = reporteData.filter(p => p.tiene_comprobante === true).length;
+          const sinComprobante = reporteData.filter(p => p.tiene_comprobante === false).length;
+          
+          // ✅ PAGOS COMPLETOS
+          const pagosParciales = reporteData.filter(p => p.pago_completo === false).length;
+          
+          // 💵 SALDOS
+          const saldoPendiente = reporteData.reduce((sum, p) => sum + (parseFloat(p.saldo) || 0), 0);
+          
+          // 📅 PAGOS HOY (si tienes fecha)
+          
+          // 🎯 PORCENTAJES
+          const porcentajeEfectivo = reporteData.length > 0 
+            ? ((efectivo / reporteData.length) * 100).toFixed(1) 
+            : 0;
+          const porcentajeTransferencia = reporteData.length > 0 
+            ? ((transferencia / reporteData.length) * 100).toFixed(1) 
+            : 0;
+          const porcentajeComprobantes = reporteData.length > 0 
+            ? ((conComprobante / reporteData.length) * 100).toFixed(1) 
+            : 0;
 
-      case 'Pagos':
-        const totalRecaudado = reporteData.reduce((sum, p) => sum + (parseFloat(p.monto || p.valor) || 0), 0);
-        const promedioPago = (totalRecaudado / reporteData.length).toFixed(2);
-        const efectivo = reporteData.filter(p => p.metodo_pago?.toLowerCase() === 'efectivo').length;
-        const transferencia = reporteData.filter(p => p.metodo_pago?.toLowerCase() === 'transferencia').length;
-
-        stats.push(
-          { label: 'Total Recaudado', value: `$${totalRecaudado.toFixed(2)}`, icon: 'DollarSign', color: 'text-green-600' },
-          { label: 'Promedio', value: `$${promedioPago}`, icon: 'TrendingUp', color: 'text-blue-600' },
-          { label: 'Efectivo', value: efectivo, icon: 'CreditCard', color: 'text-purple-600' },
-          { label: 'Transferencia', value: transferencia, icon: 'CreditCard', color: 'text-indigo-600' }
-        );
+            stats.push(
+            { 
+              label: 'Total Recaudado', 
+              value: `$${totalRecaudado.toFixed(2)}`, 
+              icon: 'DollarSign', 
+              color: 'text-green-600',
+              subtitle: `${reporteData.length} pagos`
+            },
+            { 
+              label: 'Promedio por Pago', 
+              value: `$${promedioPago}`, 
+              icon: 'TrendingUp', 
+              color: 'text-blue-600',
+              subtitle: `Mayor: $${pagoMayor.toFixed(2)}`
+            },
+            { 
+              label: 'Efectivo', 
+              value: `${efectivo} (${porcentajeEfectivo}%)`, 
+              icon: 'Banknote', 
+              color: 'text-purple-600',
+              subtitle: `$${reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('efectivo')).reduce((sum, p) => sum + parseFloat(p.monto_pagado || 0), 0).toFixed(2)}`
+            },
+            { 
+              label: 'Transferencia', 
+              value: `${transferencia} (${porcentajeTransferencia}%)`, 
+              icon: 'ArrowRightLeft', 
+              color: 'text-indigo-600',
+              subtitle: `$${reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('transferencia')).reduce((sum, p) => sum + parseFloat(p.monto_pagado || 0), 0).toFixed(2)}`
+            },
+            { 
+              label: 'Con Comprobante', 
+              value: `${conComprobante} (${porcentajeComprobantes}%)`, 
+              icon: 'FileCheck', 
+              color: 'text-emerald-600',
+              subtitle: `Sin: ${sinComprobante}`
+            },
+            { 
+              label: 'Saldo Pendiente', 
+              value: `$${saldoPendiente.toFixed(2)}`, 
+              icon: 'AlertCircle', 
+              color: 'text-orange-600',
+              subtitle: `${pagosParciales} parciales`
+            }
+          );
         break;
-
       case 'Multas':
         const totalMultas = reporteData.reduce((sum, m) => sum + (parseFloat(m.monto || m.valor) || 0), 0);
         const multasPagadas = reporteData.filter(m => m.pagado === true || m.estado === 'pagada').length;
@@ -1007,12 +1071,24 @@ const formatTooltip = (key, value) => {
             <div className="actions">
               {reporteData.length > 0 && (
                 <>
-                  <button onClick={exportarExcel} className="btn-secondary" title="Exportar a CSV">
-                    <FileText className="w-4 h-4" />
-                  </button>
-                  <button onClick={imprimirReporte} className="btn-secondary" title="Imprimir">
-                    <FileText className="w-4 h-4" />
-                  </button>
+
+                <button
+                  onClick={exportarExcel}
+                  className="btn-secondary"
+                  title="Exportar a excel"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={imprimirReporte}
+                  className="btn-secondary"
+                  title="Imprimir"
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
+
+
                 </>
               )}
               {/* Botón de refrescar/actualizar */}
@@ -1135,12 +1211,8 @@ const formatTooltip = (key, value) => {
                 <Eraser  className="w-4 h-4" />
               </button>
 
-              <button onClick={limpiarFiltrosSinModulo} className="btn-secondary" title="Limpiar filtros">
-                <Eraser className="w-4 h-4" />
-              </button>
-
-              {/* BOTÓN TOGGLE ESTADÍSTICAS */}
-              {reporteData.length > 0 && (
+              {/* BOTÓN TOGGLE ESTADÍSTICAS - Solo Lecturas, Facturas y Pagos */}
+              {['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo) && reporteData.length > 0 && (
                 <button 
                   className={`btn-filter ${mostrarEstadisticas ? 'active' : ''}`}
                   onClick={() => setMostrarEstadisticas(!mostrarEstadisticas)}

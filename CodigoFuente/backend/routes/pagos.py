@@ -13,6 +13,7 @@ from decimal import Decimal
 
 from models.detalle_factura import DetalleFactura
 from models.meter import Medidor
+from models.multa_afiliado import MultaAfiliado
 from models.pago import Pago
 from models.factura import Factura
 from models.affiliate import UsuarioAfiliado
@@ -906,10 +907,8 @@ def obtener_pagos_por_afiliado(
     
     pagos = query.order_by(Pago.fecha_pago.desc()).all()
     return pagos
-
-
 # ========================================
-# CREAR NUEVO PAGO
+# CREAR NUEVO PAGO 
 # ========================================
 @router.post("/", response_model=PagoResponse, status_code=status.HTTP_201_CREATED)
 def crear_pago(
@@ -918,10 +917,22 @@ def crear_pago(
     payload: dict = Depends(verify_token)
 ):
     """
-    Registra un nuevo pago
+    Registra un nuevo pago con opción de incluir o excluir multas
+    USA IVA DINÁMICO de la configuración
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "pagos", "crear")
+    
+    # ✅ OBTENER CONFIGURACIÓN DE IVA
+    from utils.facturacion import obtener_configuracion_iva
+    tasa_impuesto, iva_config = obtener_configuracion_iva(db)
+    
+    print(f"📊 IVA aplicado: {float(tasa_impuesto * 100):.2f}%")
+    
+    factura = None
+    monto_sin_multas = None
+    multas_en_factura = []
+    multas_liberadas = 0  # ✅ Inicializar fuera del bloque
     
     # Validar que la factura existe (si se proporciona)
     if pago.id_factura:
@@ -935,14 +946,62 @@ def crear_pago(
                 detail="Factura no encontrada"
             )
         
-        # Validar que la factura esté pendiente o vencida
+        # Validar estado de factura
         if factura.estado_factura not in ['pendiente', 'vencida']:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"No se puede registrar pago para factura en estado '{factura.estado_factura}'"
             )
+        
+        # ✅ CALCULAR MONTOS CON IVA DINÁMICO
+        detalles = db.query(DetalleFactura).filter(
+            DetalleFactura.id_factura == pago.id_factura
+        ).all()
+        
+        monto_multas_subtotal = Decimal('0.00')
+        subtotal_sin_multas = Decimal('0.00')
+        
+        for detalle in detalles:
+            if detalle.tipo_detalle == 'multa':
+                multas_en_factura.append(detalle)
+                monto_multas_subtotal += detalle.subtotal_detalle
+            else:
+                subtotal_sin_multas += detalle.subtotal_detalle
+        
+        # Calcular descuento proporcional
+        descuento_sin_multas = Decimal('0.00')
+        if factura.descuento and factura.descuento > 0 and factura.subtotal > 0:
+            proporcion = subtotal_sin_multas / factura.subtotal
+            descuento_sin_multas = factura.descuento * proporcion
+        
+        # Calcular total sin multas con IVA dinámico
+        base_sin_multas = subtotal_sin_multas - descuento_sin_multas
+        impuesto_sin_multas = base_sin_multas * tasa_impuesto
+        monto_sin_multas = base_sin_multas + impuesto_sin_multas
+        
+        # Calcular total de multas con IVA
+        impuesto_multas = monto_multas_subtotal * tasa_impuesto
+        total_multas = monto_multas_subtotal + impuesto_multas
+        
+        print(f"\n📊 ANÁLISIS DE FACTURA {factura.num_factura}")
+        print(f"   IVA Configurado: {float(tasa_impuesto * 100):.2f}%")
+        print(f"   Total factura: ${factura.total}")
+        print(f"   Subtotal multas: ${monto_multas_subtotal}")
+        print(f"   Impuesto multas: ${impuesto_multas}")
+        print(f"   Total multas con IVA: ${total_multas}")
+        print(f"   Total sin multas: ${monto_sin_multas}")
+        print(f"   Incluir multas: {pago.incluir_multas}")
+        print(f"   Monto a pagar: ${pago.monto_pago}\n")
+        
+        # ✅ VALIDAR MONTO SEGÚN OPCIÓN
+        if not pago.incluir_multas:
+            if pago.monto_pago > monto_sin_multas:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El monto ${pago.monto_pago} excede el total sin multas ${monto_sin_multas:.2f}"
+                )
     
-    # Validar que el afiliado existe (si se proporciona)
+    # Validar afiliado
     if pago.id_usuario_afi:
         afiliado = db.query(UsuarioAfiliado).filter(
             UsuarioAfiliado.id_usuario_afi == pago.id_usuario_afi
@@ -955,6 +1014,7 @@ def crear_pago(
             )
     
     try:
+        # Crear pago
         nuevo_pago = Pago(
             id_factura=pago.id_factura,
             monto_pago=pago.monto_pago,
@@ -968,41 +1028,133 @@ def crear_pago(
         )
         
         db.add(nuevo_pago)
-        db.flush()  # Para obtener el ID antes del commit
+        db.flush()  # ✅ Persistir pago primero
         
-        # Si hay factura asociada, verificar si se debe marcar como pagada
-        if pago.id_factura:
-            factura = db.query(Factura).filter(
-                Factura.id_factura == pago.id_factura
-            ).first()
-            
-            # Calcular total pagado de la factura
+        # ✅ PROCESAR FACTURA Y MULTAS
+        if pago.id_factura and factura:
+            # Calcular total pagado
             total_pagado = db.query(func.sum(Pago.monto_pago)).filter(
                 Pago.id_factura == pago.id_factura,
                 Pago.estado_pago == 'REGISTRADO'
             ).scalar() or Decimal('0.00')
             
-            # Si el pago cubre el total, marcar factura como pagada
-            if total_pagado >= factura.total:
-                factura.estado_factura = 'pagada'
-                print(f"✅ Factura {factura.num_factura} marcada como PAGADA")
-        
+            if pago.incluir_multas:
+                # ✅ PAGO COMPLETO (con multas)
+                if total_pagado >= factura.total:
+                    factura.estado_factura = 'pagada'
+                    
+                    print(f"\n{'='*60}")
+                    print(f"✅ PROCESANDO PAGO COMPLETO (CON MULTAS)")
+                    print(f"{'='*60}")
+                    
+                    # Marcar multas como pagadas
+                    for detalle in multas_en_factura:
+                        if detalle.id_multa_afiliados:
+                            multa = db.query(MultaAfiliado).filter(
+                                MultaAfiliado.id_multa_afi == detalle.id_multa_afiliados
+                            ).first()
+                            
+                            if multa and multa.estado != 'pagada':
+                                print(f"   Multa #{multa.id_multa_afi} ANTES → estado='{multa.estado}', facturado={multa.facturado}")
+                                
+                                multa.estado = 'pagada'
+                                multa.fecha_pago = datetime.now().date()
+                                multa.facturado = True
+                                
+                                db.flush()
+                                
+                                print(f"   Multa #{multa.id_multa_afi} DESPUÉS → estado='pagada', facturado=True ✅")
+                    
+                    print(f"✅ Factura {factura.num_factura} PAGADA COMPLETA")
+                    print(f"{'='*60}\n")
+                    
+            else:
+                # ✅ PAGO PARCIAL (sin multas) - LIBERAR MULTAS
+                if total_pagado >= monto_sin_multas:
+                    print(f"\n{'='*60}")
+                    print(f"⚠️  PROCESANDO PAGO PARCIAL (SIN MULTAS)")
+                    print(f"{'='*60}")
+                    print(f"   Total pagado: ${total_pagado}")
+                    print(f"   Monto sin multas: ${monto_sin_multas}")
+                    print(f"   Multas en factura: {len(multas_en_factura)}")
+                    print(f"{'='*60}")
+                    
+                    # ⚠️ IMPORTANTE: Liberar multas para próximas facturas
+                    for detalle in multas_en_factura:
+                        if detalle.id_multa_afiliados:
+                            multa = db.query(MultaAfiliado).filter(
+                                MultaAfiliado.id_multa_afi == detalle.id_multa_afiliados
+                            ).first()
+                            
+                            if multa:
+                                print(f"\n   Multa #{multa.id_multa_afi} ANTES:")
+                                print(f"      estado: '{multa.estado}'")
+                                print(f"      facturado: {multa.facturado}")
+                                print(f"      fecha_pago: {multa.fecha_pago}")
+                                
+                                # ✅ LIBERAR MULTA
+                                multa.estado = 'pendiente'
+                                multa.facturado = False
+                                multa.fecha_pago = None
+                                
+                                # ✅ CRITICAL: Flush individual para cada multa
+                                db.flush()
+                                
+                                # Verificar cambio inmediatamente
+                                db.refresh(multa)
+                                
+                                print(f"   Multa #{multa.id_multa_afi} DESPUÉS:")
+                                print(f"      estado: '{multa.estado}' ✅")
+                                print(f"      facturado: {multa.facturado} ✅")
+                                print(f"      fecha_pago: {multa.fecha_pago} ✅")
+                                
+                                multas_liberadas += 1
+                    
+                    # ✅ AGREGAR OBSERVACIONES AL PAGO (NO A LA FACTURA)
+                    obs_pago_parcial = f"[PAGO PARCIAL SIN MULTAS] Pagado: ${total_pagado}. " \
+                                    f"{multas_liberadas} multa(s) liberada(s) (Total multas: ${total_multas}). " \
+                                    f"Multas pendientes para próxima facturación."
+                    
+                    # Combinar con observaciones existentes si las hay
+                    if nuevo_pago.observaciones:
+                        nuevo_pago.observaciones = f"{nuevo_pago.observaciones}\n{obs_pago_parcial}"
+                    else:
+                        nuevo_pago.observaciones = obs_pago_parcial
+                    
+                    print(f"\n{'='*60}")
+                    print(f"⚠️  RESUMEN PAGO PARCIAL:")
+                    print(f"   Factura: {factura.num_factura}")
+                    print(f"   Multas liberadas: {multas_liberadas}")
+                    print(f"   Total multas pendientes: ${total_multas}")
+                    print(f"   Se incluirán en próxima facturación")
+                    print(f"{'='*60}\n")
+
+        # ✅ COMMIT FINAL - todos los cambios persistidos
         db.commit()
         db.refresh(nuevo_pago)
+
         
         # Auditoría
+        descripcion_pago = f"Pago #{nuevo_pago.id_pago} registrado - Monto: ${pago.monto_pago} - Método: {pago.metodo_pago}"
+        if not pago.incluir_multas and multas_liberadas > 0:
+            descripcion_pago += f" (SIN MULTAS - {multas_liberadas} multa(s) liberada(s))"
+        
         registrar_auditoria(
             db=db,
             accion="CREATE",
-            descripcion=f"Pago #{nuevo_pago.id_pago} registrado - Monto: ${pago.monto_pago} - Método: {pago.metodo_pago}",
+            descripcion=descripcion_pago,
             id_usuario=current_user.id_usuario_sistema
         )
+        
+        mensaje_notif = f"Pago de ${pago.monto_pago} registrado correctamente"
+        if not pago.incluir_multas and multas_liberadas > 0:
+            mensaje_notif += f" (sin multas). {multas_liberadas} multa(s) pendiente(s) para próxima facturación"
         
         registrar_notificacion(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
             titulo="Pago registrado",
-            mensaje=f"Pago de ${pago.monto_pago} registrado correctamente",
+            mensaje=mensaje_notif,
             tipo="exito"
         )
         
@@ -1012,14 +1164,169 @@ def crear_pago(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Error de integridad: verifique las relaciones (factura, afiliado, cajero)"
+            detail="Error de integridad: verifique las relaciones"
         )
     except Exception as e:
         db.rollback()
+        print(f"❌ ERROR CRÍTICO: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear pago: {str(e)}"
         )
+
+
+# ========================================
+# CALCULAR MONTOS DE FACTURA CON IVA DINÁMICO
+# ========================================
+@router.get("/factura/{id_factura}/montos", response_model=dict)
+def obtener_montos_factura(
+    id_factura: int,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Obtiene el desglose de montos de una factura (con y sin multas)
+    USA IVA DINÁMICO de la configuración del sistema
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "pagos", "lectura")
+    
+    factura = db.query(Factura).filter(
+        Factura.id_factura == id_factura
+    ).first()
+    
+    if not factura:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Factura no encontrada"
+        )
+    
+    # ✅ OBTENER IVA DINÁMICO
+    from utils.facturacion import obtener_configuracion_iva  # Ajustar ruta según tu proyecto
+    
+    tasa_impuesto, iva_config = obtener_configuracion_iva(db)
+    
+    if not iva_config:
+        print("⚠️ Advertencia: No hay configuración de IVA activa, usando 0%")
+        tasa_impuesto = Decimal('0.00')
+    
+    print(f"📊 IVA Configurado: {float(tasa_impuesto * 100):.2f}%")
+    
+    # Obtener detalles
+    detalles = db.query(DetalleFactura).filter(
+        DetalleFactura.id_factura == id_factura
+    ).all()
+    
+    # ✅ SEPARAR MONTOS POR TIPO
+    monto_multas = Decimal('0.00')
+    subtotal_sin_multas = Decimal('0.00')
+    detalles_multas = []
+    detalles_consumo = []
+    
+    for detalle in detalles:
+        if detalle.tipo_detalle == 'multa':
+            monto_multas += detalle.subtotal_detalle
+            detalles_multas.append({
+                'id_detalle': detalle.id_detalle,
+                'id_multa_afiliados': detalle.id_multa_afiliados,
+                'descripcion': detalle.descripcion,
+                'monto': float(detalle.subtotal_detalle)
+            })
+        else:
+            # Consumo, servicios, etc.
+            subtotal_sin_multas += detalle.subtotal_detalle
+            detalles_consumo.append({
+                'id_detalle': detalle.id_detalle,
+                'tipo': detalle.tipo_detalle,
+                'descripcion': detalle.descripcion,
+                'monto': float(detalle.subtotal_detalle)
+            })
+    
+    # ✅ CALCULAR DESCUENTO PROPORCIONAL
+    descuento_sin_multas = Decimal('0.00')
+    if factura.descuento and factura.descuento > 0 and factura.subtotal > 0:
+        proporcion_sin_multas = subtotal_sin_multas / factura.subtotal
+        descuento_sin_multas = factura.descuento * proporcion_sin_multas
+    
+    # ✅ CALCULAR MONTOS SIN MULTAS
+    base_imponible_sin_multas = subtotal_sin_multas - descuento_sin_multas
+    impuesto_sin_multas = base_imponible_sin_multas * tasa_impuesto
+    total_sin_multas = base_imponible_sin_multas + impuesto_sin_multas
+    
+    # ✅ CALCULAR MONTOS SOLO MULTAS
+    base_imponible_multas = monto_multas
+    impuesto_multas = base_imponible_multas * tasa_impuesto
+    total_multas_con_iva = monto_multas + impuesto_multas
+    
+    # ✅ INFORMACIÓN DE IVA
+    iva_info = None
+    if iva_config:
+        iva_info = {
+            'id_iva': iva_config.id_iva,
+            'porcentaje': float(iva_config.porcentaje),
+            'descripcion': iva_config.descripcion,
+            'activo': iva_config.activo,
+            'es_aplicable': iva_config.es_aplicable
+        }
+    
+    return {
+        'id_factura': factura.id_factura,
+        'num_factura': factura.num_factura,
+        
+        # Totales de la factura completa
+        'total_factura': float(factura.total),
+        'subtotal_factura': float(factura.subtotal),
+        'impuesto_factura': float(factura.impuesto or 0),
+        'descuento_factura': float(factura.descuento or 0),
+        
+        # Desglose de multas
+        'subtotal_multas': float(monto_multas),
+        'impuesto_multas': float(impuesto_multas),
+        'total_multas': float(total_multas_con_iva),
+        'cantidad_multas': len(detalles_multas),
+        'detalles_multas': detalles_multas,
+        
+        # Desglose sin multas (CORRECTO con recalculo de IVA)
+        'subtotal_sin_multas': float(subtotal_sin_multas),
+        'descuento_sin_multas': float(descuento_sin_multas),
+        'base_imponible_sin_multas': float(base_imponible_sin_multas),
+        'impuesto_sin_multas': float(impuesto_sin_multas),
+        'total_sin_multas': float(total_sin_multas),
+        'detalles_consumo': detalles_consumo,
+        
+        # Flags
+        'tiene_multas': monto_multas > 0,
+        'tasa_impuesto': float(tasa_impuesto * 100),  # Como porcentaje
+        'iva_aplicado': tasa_impuesto > 0,
+        
+        # Configuración de IVA
+        'iva_config': iva_info,
+        
+        # Resumen completo
+        'resumen': {
+            'con_multas': {
+                'subtotal': float(factura.subtotal),
+                'descuento': float(factura.descuento or 0),
+                'base_imponible': float((factura.subtotal or 0) - (factura.descuento or 0)),
+                'impuesto': float(factura.impuesto or 0),
+                'total': float(factura.total)
+            },
+            'sin_multas': {
+                'subtotal': float(subtotal_sin_multas),
+                'descuento': float(descuento_sin_multas),
+                'base_imponible': float(base_imponible_sin_multas),
+                'impuesto': float(impuesto_sin_multas),
+                'total': float(total_sin_multas)
+            },
+            'solo_multas': {
+                'subtotal': float(monto_multas),
+                'impuesto': float(impuesto_multas),
+                'total': float(total_multas_con_iva)
+            }
+        }
+    }
 
 
 # ========================================
@@ -1182,25 +1489,34 @@ def regenerar_factura_desde_factura_anulada(
         print(f"   Total: ${nueva_factura.total}")
         
         # ============================================
-        # PASO 4: COPIAR DETALLES
+        # PASO 4: COPIAR DETALLES (CORREGIDO)
         # ============================================
         detalles_originales = db.query(DetalleFactura).filter(
             DetalleFactura.id_factura == factura_original.id_factura
         ).all()
-        
+
         detalles_creados = 0
         for detalle_orig in detalles_originales:
+            # ✅ COPIAR TODOS LOS CAMPOS NECESARIOS
             nuevo_detalle = DetalleFactura(
                 id_factura=nueva_factura.id_factura,
                 tipo_detalle=detalle_orig.tipo_detalle,
-                descripcion=detalle_orig.descripcion,
-                subtotal_detalle=detalle_orig.subtotal_detalle
-                # activo ya no existe en el modelo
+                id_servicio=detalle_orig.id_servicio,           # ✅ AGREGAR
+                id_multa_afiliados=detalle_orig.id_multa_afiliados,  # ✅ AGREGAR
+                subtotal_detalle=detalle_orig.subtotal_detalle,
+                descripcion=detalle_orig.descripcion
             )
             db.add(nuevo_detalle)
             detalles_creados += 1
-        
+            
+            # Debug opcional
+            print(f"   📋 Detalle copiado: {detalle_orig.tipo_detalle} - "
+                f"id_servicio={detalle_orig.id_servicio}, "
+                f"id_multa_afi={detalle_orig.id_multa_afiliados}")
+
         print(f"✅ {detalles_creados} detalle(s) copiado(s)")
+
+
         
         # ============================================
         # PASO 5: MARCAR FACTURA ORIGINAL COMO ANULADA

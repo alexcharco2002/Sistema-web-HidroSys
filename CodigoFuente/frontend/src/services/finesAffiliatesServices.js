@@ -13,6 +13,8 @@ const API_CONFIG = {
     stats: '/multas/afiliados/stats',
     pagar: (id) => `/multas/afiliados/${id}/pagar`,
     anular: (id) => `/multas/afiliados/${id}/anular`,
+    anios: '/multas/afiliados/periodos/anios',  // ⭐ NUEVO
+    mesesPorAnio: (anio) => `/multas/afiliados/periodos/meses/${anio}`,  // ⭐ NUEVO
   }
 };
 
@@ -118,43 +120,92 @@ class FinesAffiliatesServices {
   }
 
 
-
-  /**
-   * Obtener lista de multas con filtros opcionales
-   */
-  async getMultas(filters = {}) {
+/**
+ * Obtener años disponibles con multas registradas
+ */
+async getAnios() {
     try {
-      const params = new URLSearchParams();
-
-      if (filters.id_usuario_afi) params.append('id_usuario_afi', filters.id_usuario_afi);
-      if (filters.estado) params.append('estado', filters.estado);
-      if (filters.activo !== undefined) params.append('activo', filters.activo);
-      if (filters.fecha_desde) params.append('fecha_desde', filters.fecha_desde);
-      if (filters.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta);
-      if (filters.skip) params.append('skip', filters.skip);
-      if (filters.limit) params.append('limit', filters.limit);
-
-      const queryString = params.toString();
-      const endpoint = queryString
-        ? `${API_CONFIG.endpoints.multas}?${queryString}`
-        : API_CONFIG.endpoints.multas;
-
-      const data = await this.makeRequest(endpoint);
-
-      return {
-        success: true,
-        data: Array.isArray(data) ? data : []
-      };
-
+        const data = await this.makeRequest(API_CONFIG.endpoints.anios);
+        return {
+            success: true,
+            data: Array.isArray(data) ? data : []
+        };
     } catch (error) {
-      console.error('❌ Error obteniendo multas:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener multas',
-        data: []
-      };
+        console.error('❌ Error obteniendo años:', error);
+        return {
+            success: false,
+            message: error.message || 'Error al obtener años',
+            data: []
+        };
     }
-  }
+}
+
+/**
+ * Obtener meses disponibles para un año específico
+ */
+async getMesesPorAnio(anio) {
+    try {
+        const data = await this.makeRequest(API_CONFIG.endpoints.mesesPorAnio(anio));
+        return {
+            success: true,
+            data: Array.isArray(data) ? data : []
+        };
+    } catch (error) {
+        console.error('❌ Error obteniendo meses:', error);
+        return {
+            success: false,
+            message: error.message || 'Error al obtener meses',
+            data: []
+        };
+    }
+}
+
+/**
+ * Obtener lista de multas con filtros opcionales (MODIFICADO)
+ */
+async getMultas(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.id_usuario_afi) params.append('id_usuario_afi', filters.id_usuario_afi);
+        if (filters.estado) params.append('estado', filters.estado);
+        if (filters.activo !== undefined) params.append('activo', filters.activo);
+        
+        // ⭐ NUEVO: Filtros de año y mes
+        if (filters.anio) {
+            params.append('anio', filters.anio);
+            if (filters.mes) {
+                params.append('mes', filters.mes);
+            }
+        } else {
+            // Solo usar fecha_desde y fecha_hasta si no hay año/mes
+            if (filters.fecha_desde) params.append('fecha_desde', filters.fecha_desde);
+            if (filters.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta);
+        }
+        
+        if (filters.skip) params.append('skip', filters.skip);
+        if (filters.limit) params.append('limit', filters.limit);
+
+        const queryString = params.toString();
+        const endpoint = queryString
+            ? `${API_CONFIG.endpoints.multas}?${queryString}`
+            : API_CONFIG.endpoints.multas;
+
+        const data = await this.makeRequest(endpoint);
+        return {
+            success: true,
+            data: Array.isArray(data) ? data : []
+        };
+    } catch (error) {
+        console.error('❌ Error obteniendo multas:', error);
+        return {
+            success: false,
+            message: error.message || 'Error al obtener multas',
+            data: []
+        };
+    }
+}
+
+
 
   /**
    * Obtener una multa específica por ID
@@ -175,25 +226,41 @@ class FinesAffiliatesServices {
     }
   }
 
-  /**
-   * Obtener estadísticas de multas
-   */
-  async getMultasStats() {
+/**
+ * Obtener estadísticas de multas con filtros opcionales
+ */
+async getMultasStats(filters = {}) {
     try {
-      const data = await this.makeRequest(API_CONFIG.endpoints.stats);
-      this.cachedStats = data;
-      return {
-        success: true,
-        data: data
-      };
+        const params = new URLSearchParams();
+        
+        // ⭐ NUEVO: Agregar filtros de período
+        if (filters.anio) {
+            params.append('anio', filters.anio);
+            if (filters.mes) {
+                params.append('mes', filters.mes);
+            }
+        }
+        
+        const queryString = params.toString();
+        const endpoint = queryString
+            ? `${API_CONFIG.endpoints.stats}?${queryString}`
+            : API_CONFIG.endpoints.stats;
+        
+        const data = await this.makeRequest(endpoint);
+        this.cachedStats = data;
+        return {
+            success: true,
+            data: data
+        };
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener estadísticas'
-      };
+        console.error('❌ Error obteniendo estadísticas:', error);
+        return {
+            success: false,
+            message: error.message || 'Error al obtener estadísticas'
+        };
     }
-  }
+}
+
 
   /**
    * Crear una nueva multa
@@ -346,6 +413,35 @@ class FinesAffiliatesServices {
       };
     }
   }
+  /**
+   * Eliminar una multa (solo si está anulada)
+   */
+  async deleteMulta(multaId) {
+    if (!multaId || isNaN(multaId)) {
+      throw new Error('ID de multa inválido');
+    }
+
+    try {
+      const data = await this.makeRequest(`${API_CONFIG.endpoints.multas}/${multaId}`, {
+        method: 'DELETE'
+      });
+
+      this.clearCache();
+
+      return {
+        success: data.success !== false,
+        accion: data.accion || 'eliminado',
+        message: data.message || 'Multa eliminada exitosamente',
+        data: data
+      };
+    } catch (error) {
+      console.error('❌ Error eliminando multa:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al eliminar multa'
+      };
+    }
+  }
 
   /**
    * Validar datos de multa
@@ -363,6 +459,7 @@ class FinesAffiliatesServices {
       throw new Error('El monto debe ser mayor a 0');
     }
   }
+
 
   /**
    * Obtener el badge de color según el estado

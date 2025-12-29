@@ -2,7 +2,7 @@
 // MÓDULO DE MULTAS DE AFILIADOS - VERSIÓN MEJORADA CON ESTILOS MODERNOS
 
 import React, { useState, useEffect, useCallback } from 'react';
-//import './AffiliatesSection.css';
+import './FinesSection.css';
 import finesAffiliatesServices from '../../services/finesAffiliatesServices';
 
 import fineService from '../../services/fineServices';
@@ -11,7 +11,7 @@ import {
   DollarSign, Search, Edit, Eye, Calendar, X, Save,
   RefreshCw, AlertCircle, CheckCircle, XCircle, Ban,
   FileText, UserCheck, Clock, ArrowUpDown, Receipt, 
-  User, IdCard, MapPin, MessageSquare
+  User, IdCard, MapPin, MessageSquare, Trash2
 } from 'lucide-react';
 
 const FinesAffiliatesSection = () => {
@@ -24,16 +24,6 @@ const FinesAffiliatesSection = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // ============================================================
-  // ESTADOS DE FILTROS Y BÚSQUEDA
-  // ============================================================
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterEstado, setFilterEstado] = useState('all');
-  const [filterAfiliado, setFilterAfiliado] = useState('all');
-  const [filterTipoMulta, setFilterTipoMulta] = useState('all');
-  const [sortOrder, setSortOrder] = useState('desc');
-  const [sortBy, setSortBy] = useState('fecha');
 
   // ============================================================
   // ESTADOS DE MODAL Y FORMULARIOS
@@ -73,6 +63,78 @@ const FinesAffiliatesSection = () => {
   ];
 
   // ============================================================
+  // ESTADOS DE FILTROS Y BÚSQUEDA (agregar al componente)
+  // ============================================================
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterEstado, setFilterEstado] = useState('all');
+  const [filterAfiliado, setFilterAfiliado] = useState('all');
+  const [filterTipoMulta, setFilterTipoMulta] = useState('all');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [sortBy, setSortBy] = useState('fecha');
+  const [filterAnio, setFilterAnio] = useState(''); // ⭐ NUEVO
+  const [filterMes, setFilterMes] = useState(''); // ⭐ NUEVO
+  const [aniosDisponibles, setAniosDisponibles] = useState([]); // ⭐ NUEVO
+  const [mesesDisponibles, setMesesDisponibles] = useState([]); // ⭐ NUEVO
+
+// ============================================================
+// FUNCIÓN PARA OBTENER AÑO Y MES ACTUAL
+// ============================================================
+const getCurrentYearMonth = () => {
+    const now = new Date();
+    return {
+        year: now.getFullYear(),
+        month: now.getMonth() + 1 // getMonth() retorna 0-11
+    };
+};
+
+// ============================================================
+// CARGAR AÑOS DISPONIBLES
+// ============================================================
+const loadAnios = async () => {
+    try {
+        const result = await finesAffiliatesServices.getAnios();
+        if (result.success) {
+            setAniosDisponibles(result.data);
+        }
+    } catch (error) {
+        console.error('Error cargando años:', error);
+    }
+};
+
+// ============================================================
+// CARGAR MESES SEGÚN EL AÑO SELECCIONADO
+// ============================================================
+const loadMesesPorAnio = async (anio) => {
+    if (!anio) {
+        setMesesDisponibles([]);
+        return;
+    }
+    
+    try {
+        const result = await finesAffiliatesServices.getMesesPorAnio(anio);
+        if (result.success) {
+            setMesesDisponibles(result.data);
+        }
+    } catch (error) {
+        console.error('Error cargando meses:', error);
+        setMesesDisponibles([]);
+    }
+};
+
+// ============================================================
+// MANEJAR CAMBIO DE AÑO
+// ============================================================
+const handleAnioChange = (anio) => {
+    setFilterAnio(anio);
+    setFilterMes(''); // Resetear mes cuando cambia el año
+    if (anio) {
+        loadMesesPorAnio(anio);
+    } else {
+        setMesesDisponibles([]);
+    }
+};
+
+  // ============================================================
   // ESTADOS DE PERMISOS
   // ============================================================
   const [permissions, setPermissions] = useState({
@@ -82,6 +144,50 @@ const FinesAffiliatesSection = () => {
     canDelete: false
   });
 
+
+  // ============================================================
+  // MODIFICAR fetchMultas para incluir filtro de período
+  // ============================================================
+const fetchMultas = useCallback(async () => {
+    if (!permissions.canRead) {
+        setError('No tienes permiso para ver multas');
+        setLoading(false);
+        return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+        const filters = {};
+        
+        if (filterEstado !== 'all') {
+            filters.estado = filterEstado;
+        }
+        
+        if (filterAfiliado !== 'all') {
+            filters.id_usuario_afi = parseInt(filterAfiliado);
+        }
+        
+        // ⭐ NUEVO: Filtros de año y mes
+        if (filterAnio) {
+            filters.anio = parseInt(filterAnio);
+            if (filterMes) {
+                filters.mes = parseInt(filterMes);
+            }
+        }
+
+        const result = await finesAffiliatesServices.getMultas(filters);
+        if (result.success) {
+            setMultas(result.data);
+        } else {
+            setError(result.message);
+        }
+    } catch (err) {
+        setError('Error al cargar multas desde el servidor');
+    } finally {
+        setLoading(false);
+    }
+}, [filterEstado, filterAfiliado, filterAnio, filterMes, permissions.canRead]);
   
 
   // Función separada para tipos de multa
@@ -127,67 +233,95 @@ const FinesAffiliatesSection = () => {
     }
   };
 
+  const fetchStats = useCallback(async () => {
+      try {
+          const filters = {};
+          
+          // ⭐ Aplicar los mismos filtros de período que en las multas
+          if (filterAnio) {
+              filters.anio = parseInt(filterAnio);
+              if (filterMes) {
+                  filters.mes = parseInt(filterMes);
+              }
+          }
+          
+          const result = await finesAffiliatesServices.getMultasStats(filters);
+          if (result.success) {
+              setStats(result.data);
+          }
+      } catch (error) {
+          console.error('Error cargando estadísticas:', error);
+      }
+  }, [filterAnio, filterMes]); 
 
-  const fetchMultas = useCallback(async () => {
-    if (!permissions.canRead) {
-      setError('No tienes permiso para ver multas');
-      setLoading(false);
+  // ============================================================
+  // ELIMINAR MULTA (Solo anuladas)
+  // ============================================================
+  const handleEliminar = async (multa) => {
+    if (multa.estado !== 'anulada') {
+      alert('⚠️ Solo se pueden eliminar multas anuladas');
       return;
     }
 
-    setLoading(true);
-    setError(null);
-
-    try {
-      const filters = {};
-
-      if (filterEstado !== 'all') {
-        filters.estado = filterEstado;
-      }
-
-      if (filterAfiliado !== 'all') {
-        filters.id_usuario_afi = parseInt(filterAfiliado);
-      }
-
-      const result = await finesAffiliatesServices.getMultas(filters);
-      
-      if (result.success) {
-        setMultas(result.data);
-      } else {
-        setError(result.message);
-      }
-    } catch (err) {
-      setError('Error al cargar multas desde el servidor');
-    } finally {
-      setLoading(false);
+    if (!permissions.canDelete) {
+      alert('❌ No tienes permiso para eliminar multas');
+      return;
     }
-  }, [filterEstado, filterAfiliado, permissions.canRead]);
 
-  const fetchStats = async () => {
+    const confirmacion = window.confirm(
+      `⚠️ ¿Estás seguro de eliminar permanentemente la multa #${multa.id_multa_afi}?\n\n` +
+      `Afiliado: ${getAfiliadoNombre(multa)}\n` +
+      `Tipo: ${getTipoMultaNombre(multa)}\n` +
+      `Monto: ${formatCurrency(multa.monto)}\n\n` +
+      `Esta acción NO se puede deshacer.`
+    );
+
+    if (!confirmacion) return;
+
     try {
-      const result = await finesAffiliatesServices.getMultasStats();
+      const result = await finesAffiliatesServices.deleteMulta(multa.id_multa_afi);
+
       if (result.success) {
-        setStats(result.data);
+        // ✅ Eliminación exitosa
+        alert(`✅ Multa eliminada correctamente.\n\nMulta ID: ${multa.id_multa_afi}\nAfiliado: ${getAfiliadoNombre(multa)}\nMonto: ${formatCurrency(multa.monto)}`);
+        await fetchMultas();
+        await fetchStats();
+      } else {
+        // ⚠️ No se pudo eliminar (tiene relaciones)
+        alert(result.message || '⚠️ No se puede eliminar la multa');
       }
     } catch (error) {
-      console.error('Error cargando estadísticas:', error);
+      console.error('❌ Error eliminando multa:', error);
+      alert('❌ Error al eliminar la multa: ' + error.message);
     }
   };
+
+
   // ============================================================
   // EFECTOS DE INICIALIZACIÓN
   // ============================================================
   useEffect(() => {
-    loadUserPermissions();
-    loadTiposMulta();
-    fetchStats();
-  }, []);
+      loadUserPermissions();
+      loadTiposMulta();
+      loadAnios(); // ⭐ NUEVO
+      fetchStats();
+      
+      // ⭐ NUEVO: Establecer año y mes actual por defecto
+      const { year, month } = getCurrentYearMonth();
+      setFilterAnio(year.toString());
+      setFilterMes(month.toString());
+      
+      // Cargar meses del año actual
+      loadMesesPorAnio(year);
+  }, [ fetchStats]);
 
   useEffect(() => {
-    if (permissions.canRead) {
-      fetchMultas();
-      fetchStats();
-    }
-  }, [filterEstado, filterAfiliado, permissions.canRead, fetchMultas]);
+      if (permissions.canRead) {
+          fetchMultas();
+          fetchStats();
+      }
+  }, [filterEstado, filterAfiliado, filterAnio, filterMes, permissions.canRead, fetchMultas, fetchStats]);
+
 
   // ============================================================
   // FUNCIONES AUXILIARES DE DATOS
@@ -261,26 +395,39 @@ const FinesAffiliatesSection = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('es-EC', {
+
+    const [year, month, day] = dateString.split('-');
+    const date = new Date(year, month - 1, day); // fecha LOCAL
+
+    return date.toLocaleDateString('es-EC', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
     });
   };
 
-  // ============================================================
-  // FUNCIONES DE FILTRADO Y ORDENAMIENTO
-  // ============================================================
-  
-  const filteredAffiliates = affiliates.filter(aff => {
-  if (!affiliateSearchTerm) return true;
-  const searchLower = affiliateSearchTerm.toLowerCase();
-  // Corregido: acceder directamente a las propiedades sin .usuario
-  const nombreCompleto = `${aff.nombres || ''} ${aff.apellidos || ''}`.toLowerCase();
-  const cedula = aff.cedula || '';
-  return nombreCompleto.includes(searchLower) || cedula.includes(searchLower);
-});
 
+  // ============================================================
+  // FILTRAR AFILIADOS POR BÚSQUEDA
+  // ============================================================
+  const filteredAffiliates = affiliates.filter(aff => {
+    if (!affiliateSearchTerm.trim()) return true;
+    
+    const searchLower = affiliateSearchTerm.toLowerCase().trim();
+    const nombreCompleto = `${aff.nombres} ${aff.apellidos}`.toLowerCase();
+    const cedula = aff.cedula?.toLowerCase() || '';
+    const codigo = String(aff.cod_usuario_afi || '');
+    
+    return (
+      nombreCompleto.includes(searchLower) ||
+      cedula.includes(searchLower) ||
+      codigo.includes(searchLower)
+    );
+  });
+
+  // ============================================================
+  // FILTRAR Y ORDENAR MULTAS
+  // ============================================================
 
   const filteredMultas = multas
     .filter(multa => {
@@ -353,6 +500,17 @@ const FinesAffiliatesSection = () => {
     setSortOrder('desc');
     fetchMultas();
   };
+
+  // ⭐ AGREGAR ESTA FUNCIÓN AQUÍ
+  const getMesNombre = (mes) => {
+    const meses = {
+      1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
+      5: 'Mayo', 6: 'Junio', 7: 'Julio', 8: 'Agosto',
+      9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    };
+    return meses[parseInt(mes)] || '';
+  };
+
 
   // ============================================================
   // FUNCIONES DE MODAL
@@ -607,13 +765,19 @@ const FinesAffiliatesSection = () => {
       {stats && (
         <div className="periodo-stats-container">
 
-          {/* Header */}
+          {/* Header con información del período */}
           <div className="periodo-stats-header">
             <FileText className="w-5 h-5 text-blue-600 mr-2" />
             <h3>Resumen de Multas</h3>
+            {filterAnio && (
+              <span className="periodo-badge">
+                <Calendar size={14} />
+                {filterMes ? `${getMesNombre(filterMes)} ` : ''}{filterAnio}
+              </span>
+            )}
           </div>
 
-          {/* Cards */}
+          {/* Primera Fila: Estados Generales */}
           <div className="users-stats">
 
             {/* 📄 Total multas */}
@@ -622,6 +786,9 @@ const FinesAffiliatesSection = () => {
               <div>
                 <p className="stat-label">Total Multas</p>
                 <p className="stat-value">{stats.total_multas || 0}</p>
+                <span className="stat-detail">
+                  {formatCurrency(stats.monto_total)}
+                </span>
               </div>
             </div>
 
@@ -632,7 +799,7 @@ const FinesAffiliatesSection = () => {
                 <p className="stat-label">Pendientes</p>
                 <p className="stat-value">{stats.pendientes || 0}</p>
                 <span className="stat-detail">
-                  {formatCurrency(stats.monto_total_pendiente)}
+                  {formatCurrency(stats.monto_pendiente)}
                 </span>
               </div>
             </div>
@@ -644,7 +811,7 @@ const FinesAffiliatesSection = () => {
                 <p className="stat-label">Pagadas</p>
                 <p className="stat-value">{stats.pagadas || 0}</p>
                 <span className="stat-detail">
-                  {formatCurrency(stats.monto_total_pagado)}
+                  {formatCurrency(stats.monto_pagado)}
                 </span>
               </div>
             </div>
@@ -658,9 +825,114 @@ const FinesAffiliatesSection = () => {
               </div>
             </div>
 
+            {/* 📋 Exoneradas */}
+            <div className="stat-item active purple">
+              <Ban className="stat-icon text-purple-600" />
+              <div>
+                <p className="stat-label">Exoneradas</p>
+                <p className="stat-value">{stats.exoneradas || 0}</p>
+              </div>
+            </div>
+
           </div>
+
+          {/* Segunda Fila: Facturación */}
+          <div className="periodo-stats-header" style={{ marginTop: '1.5rem', borderTop: '1px solid #e5e7eb', paddingTop: '1rem' }}>
+            <Receipt className="w-5 h-5 text-indigo-600 mr-2" />
+            <h3>Estado de Facturación</h3>
+          </div>
+
+          <div className="users-stats">
+
+            {/* 📝 Facturadas */}
+            <div className="stat-item active blue">
+              <Receipt className="stat-icon text-blue-600" />
+              <div>
+                <p className="stat-label">Facturadas</p>
+                <p className="stat-value">{stats.facturadas || 0}</p>
+                <span className="stat-detail">
+                  {formatCurrency(stats.monto_facturado)}
+                </span>
+              </div>
+            </div>
+
+            {/* ⏰ Pendientes de Facturación */}
+            <div className="stat-item active amber">
+              <AlertCircle className="stat-icon text-amber-600" />
+              <div>
+                <p className="stat-label">Pendientes Facturación</p>
+                <p className="stat-value">{stats.pendientes_facturacion || 0}</p>
+                <span className="stat-detail">
+                  {formatCurrency(stats.monto_pendiente_facturacion)}
+                </span>
+              </div>
+            </div>
+
+            {/* 💰 Monto Total */}
+            <div className="stat-item active indigo">
+              <DollarSign className="stat-icon text-indigo-600" />
+              <div>
+                <p className="stat-label">Monto Total</p>
+                <p className="stat-value">{formatCurrency(stats.monto_total)}</p>
+                <span className="stat-detail" style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                  {stats.total_multas} multas
+                </span>
+              </div>
+            </div>
+
+          </div>
+
         </div>
       )}
+
+
+      {/* FILTROS DE PERÍODO */}
+      <div className="filters-section">
+
+        <div className="filters-right">
+
+          {/* HEADER – primera línea */}
+          <div className="periodo-stats-header">
+            <FileText className="w-5 h-5 text-blue-600 mr-2" />
+            <h3>Filtrar por período</h3>
+          </div>
+
+          {/* SALTO DE LÍNEA FORZADO */}
+          <div style={{ width: '40%' }} />
+
+          {/* SELECTS – segunda línea */}
+          <select
+            className="filter-select"
+            value={filterAnio}
+            onChange={(e) => handleAnioChange(e.target.value)}
+          >
+            <option value="">Todos los años</option>
+            {aniosDisponibles.map((anio) => (
+              <option key={anio} value={anio}>
+                {anio}
+              </option>
+            ))}
+          </select>
+
+          {filterAnio && (
+            <select
+              className="filter-select"
+              value={filterMes}
+              onChange={(e) => setFilterMes(e.target.value)}
+            >
+              <option value="">Todo el año</option>
+              {mesesDisponibles.map((mes) => (
+                <option key={mes.mes} value={mes.mes}>
+                  {mes.mes_nombre}
+                </option>
+              ))}
+            </select>
+          )}
+
+        </div>
+
+      </div>
+
 
       {/* FILTROS Y BÚSQUEDA */}
       <div className="filters-section">
@@ -668,7 +940,7 @@ const FinesAffiliatesSection = () => {
           <Search className="search-icon" />
           <input
             type="text"
-            placeholder="Buscar por ID, nombre, cédula, sector..."
+            placeholder="Buscar por nombre, codigo, cédula, sector..."
             className="search-input"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -730,6 +1002,10 @@ const FinesAffiliatesSection = () => {
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
+
+
+
+
       </div>
 
       {/* GRID DE MULTAS */}
@@ -834,6 +1110,17 @@ const FinesAffiliatesSection = () => {
                         title="Anular multa"
                       >
                         <Ban className="w-4 h-4" />
+                      </button>
+                    )}
+
+                    {/* Botón Eliminar - Solo si está anulada */}
+                    {permissions.canDelete && multa.estado === 'anulada' && (
+                      <button
+                        onClick={() => handleEliminar(multa)}
+                        className="action-btn delete"
+                        title="Eliminar multa permanentemente"
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </div>
@@ -1059,7 +1346,7 @@ const FinesAffiliatesSection = () => {
                           <Search className="w-4 h-4 text-gray-400" />
                           <input
                             type="text"
-                            placeholder="Buscar afiliado por nombre o cédula..."
+                            placeholder="Buscar por código, nombre o cédula..."
                             value={affiliateSearchTerm}
                             onChange={(e) => setAffiliateSearchTerm(e.target.value)}
                           />
@@ -1081,9 +1368,9 @@ const FinesAffiliatesSection = () => {
                         required
                       >
                         <option value="">Seleccionar afiliado</option>
-                          {filteredAffiliates.map(aff => (
+                        {filteredAffiliates.map(aff => (
                           <option key={aff.id_usuario_afi} value={aff.id_usuario_afi}>
-                            {`${aff.nombres} ${aff.apellidos} - ${aff.cedula}`}
+                            {`${aff.cod_usuario_afi} - ${aff.nombres} ${aff.apellidos} - CI: ${aff.cedula}`}
                           </option>
                         ))}
                       </select>
@@ -1095,8 +1382,12 @@ const FinesAffiliatesSection = () => {
                             Información del Afiliado
                           </h4>
                           <div className="meter-info-content">
+                            <p><strong>Código:</strong> {selectedAffiliateInfo.cod_usuario_afi}</p>
                             <p><strong>Nombre:</strong> {selectedAffiliateInfo.usuario.nombres} {selectedAffiliateInfo.usuario.apellidos}</p>
                             <p><strong>Cédula:</strong> {selectedAffiliateInfo.usuario.cedula}</p>
+                            {selectedAffiliateInfo.num_medidor && (
+                              <p><strong>Medidor:</strong> {selectedAffiliateInfo.num_medidor}</p>
+                            )}
                             {selectedAffiliateInfo.usuario.email && (
                               <p><strong>Email:</strong> {selectedAffiliateInfo.usuario.email}</p>
                             )}
@@ -1177,6 +1468,7 @@ const FinesAffiliatesSection = () => {
                   </div>
                 </form>
               )}
+
 
               {/* MODAL EDIT */}
               {modalType === 'edit' && selectedMulta && (

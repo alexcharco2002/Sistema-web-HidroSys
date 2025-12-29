@@ -376,14 +376,28 @@ const FinesSection = () => {
     }).format(value);
   };
 
+  // Función para parsear fechas en formato local
+  const parseLocalDate = (dateString) => {
+    // Maneja YYYY-MM-DD como fecha local
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-');
+      return new Date(year, month - 1, day);
+    }
+    // Para fechas con hora o timezone
+    return new Date(dateString);
+  };
+
+  // Formatear fecha a formato legible
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('es-EC', {
+    const date = parseLocalDate(dateString);
+    return date.toLocaleDateString('es-EC', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
     });
   };
+
 
   // SIN PERMISOS DE LECTURA
   if (!permissions.canRead) {

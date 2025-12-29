@@ -523,12 +523,18 @@ const TarifasSection = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('es-EC', {
+
+    const safeDate = dateString.includes('T')
+      ? new Date(dateString)
+      : new Date(dateString + 'T00:00:00');
+
+    return safeDate.toLocaleDateString('es-EC', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
     });
   };
+
 
   // función para activar tarifa con confirmación:
   const activarVigencia = async (tarifaId, nombreTarifa, tipoTarifa) => {

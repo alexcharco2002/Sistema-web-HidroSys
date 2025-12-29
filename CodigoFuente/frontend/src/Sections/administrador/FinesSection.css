@@ -384,3 +384,189 @@
 .fine-spacing-lg {
   gap: 1rem;
 }
+
+
+
+/* Grupo de filtro individual */
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Labels de los filtros */
+.filter-group label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.filter-group label svg {
+    stroke-width: 2.5;
+}
+
+/* Select inputs */
+.filter-group .form-control {
+    padding: 0.65rem 1rem;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.95);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #2d3748;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    outline: none;
+}
+
+.filter-group .form-control:hover {
+    border-color: rgba(255, 255, 255, 0.6);
+    background: #ffffff;
+    transform: translateY(-1px);
+}
+
+.filter-group .form-control:focus {
+    border-color: #4299e1;
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+}
+
+.filter-group .form-control:disabled {
+    background: rgba(255, 255, 255, 0.5);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Options dentro del select */
+.filter-group .form-control option {
+    padding: 0.5rem;
+    background: #ffffff;
+    color: #2d3748;
+}
+
+/* Animación de entrada */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.filter-group {
+    animation: slideIn 0.3s ease-out;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .filters-section {
+        grid-template-columns: 1fr;
+        padding: 1rem;
+    }
+}
+
+/* ============================================================
+   ESTADÍSTICAS - MEJORA VISUAL
+   ============================================================ */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+    border-left: 4px solid;
+}
+
+.stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+}
+
+.stat-card.total {
+    border-left-color: #667eea;
+}
+
+.stat-card.pendientes {
+    border-left-color: #f6ad55;
+}
+
+.stat-card.pagadas {
+    border-left-color: #48bb78;
+}
+
+.stat-card.anuladas {
+    border-left-color: #f56565;
+}
+
+.stat-card h4 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #718096;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+
+.stat-card .value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 0.25rem;
+}
+
+.stat-card .subvalue {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #48bb78;
+}
+
+.periodo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 4px 10px;
+  margin-left: auto;
+
+  font-size: 0.85rem;
+  font-weight: 500;
+
+  color: #1e40af; /* azul oscuro */
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  
+  border: 1px solid #93c5fd;
+  border-radius: 999px; /* estilo píldora */
+
+  box-shadow: 0 1px 3px rgba(59, 130, 246, 0.15);
+}
+
+.periodo-badge svg {
+  color: #2563eb;
+}
+
+.filter-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151; /* gris oscuro */
+
+  margin-right: 8px;
+  white-space: nowrap;
+
+  display: flex;
+  align-items: center;
+}

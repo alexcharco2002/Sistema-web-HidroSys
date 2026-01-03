@@ -13,6 +13,7 @@ class EstadoMulta(str, Enum):
     PAGADA = "pagada"
     ANULADA = "anulada"
     EXONERADA = "exonerada"
+    FACTURADO = "facturado"
 
 
 # ============================================================================
@@ -131,6 +132,7 @@ class MultaAfiliadoStats(BaseModel):
     pagadas: int
     anuladas: int
     exoneradas: int
+    facturado: int
     
     # Contadores de facturación
     facturadas: int

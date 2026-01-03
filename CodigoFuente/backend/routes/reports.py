@@ -138,7 +138,6 @@ def export_to_csv(data: List[dict], filename: str) -> StreamingResponse:
 # 1. REPORTE DE USUARIOS
 # ============================================================================
 
-
 @router.get("/usuarios")
 def get_reporte_usuarios(
     skip: int = 0,
@@ -146,8 +145,6 @@ def get_reporte_usuarios(
     search: Optional[str] = None,
     rol: Optional[str] = None,
     activo: Optional[bool] = None,
-    fecha_desde: Optional[date] = None,
-    fecha_hasta: Optional[date] = None,
     payload: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
@@ -189,12 +186,6 @@ def get_reporte_usuarios(
     if activo is not None:
         filtros.append(UsuarioSistema.activo == activo)
 
-    if fecha_desde:
-        filtros.append(UsuarioSistema.fecha_registro >= fecha_desde)
-
-    if fecha_hasta:
-        filtros.append(UsuarioSistema.fecha_registro <= fecha_hasta)
-
     if filtros:
         query = query.filter(*filtros)
 
@@ -215,9 +206,12 @@ def get_reporte_usuarios(
             "email": u.email,
             "telefono": u.telefono,
             "direccion": u.direccion,
-            "sexo": u.sexo,
+            "sexo": (
+                "Masculino" if u.sexo == "M"
+                else "Femenino" if u.sexo == "F"
+                else "Otro"
+            ),
             "rol": u.rol,
-            "activo": u.activo,
             "fecha_registro": (
                 u.fecha_registro.strftime("%d/%m/%Y")
                 if u.fecha_registro else None
@@ -225,7 +219,8 @@ def get_reporte_usuarios(
             "ultimo_acceso": (
                 u.ultimo_acceso.strftime("%d/%m/%Y")
                 if u.ultimo_acceso else None
-            )
+            ),
+            "activo": u.activo
         }
         for u in usuarios
     ]
@@ -316,10 +311,6 @@ def get_reporte_roles(
 
     return resultado
 
-
-# ============================================================================
-# 3. REPORTE DE AFILIADOS
-# ============================================================================
 # ============================================================================
 # 3. REPORTE DE AFILIADOS
 # ============================================================================
@@ -432,7 +423,8 @@ def get_reporte_medidores(
     skip: int = 0,
     limit: int = 1000,
     search: Optional[str] = None,
-    estado: Optional[str] = None,  # ✅ Cambio: de activo a estado
+    estado: Optional[str] = None,
+    sector: Optional[str] = None,  # ✅ NUEVO: Filtro por sector
     payload: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
@@ -484,20 +476,23 @@ def get_reporte_medidores(
             )
         )
     
-    # ✅ Filtro de estado corregido
+    # ✅ Filtro de estado (activo/inactivo)
     if estado == "activos":
         query = query.filter(Medidor.activo == True)
     elif estado == "inactivos":
         query = query.filter(Medidor.activo == False)
     
-     # ✅ Ordenamiento: cod_usuario_afi ascendente, NULL al final
+    # ✅ NUEVO: Filtro por sector
+    if sector:
+        query = query.filter(Sector.nombre_sector == sector)
+    
+    # ✅ Ordenamiento: cod_usuario_afi ascendente, NULL al final
     query = query.order_by(
         UsuarioAfiliado.cod_usuario_afi.asc().nullslast(),
         Medidor.num_medidor.asc()
     )
 
     results = query.offset(skip).limit(limit).all()
-
 
     return [
         {
@@ -509,7 +504,6 @@ def get_reporte_medidores(
             "longitud": float(row.longitud) if row.longitud is not None else None,
             "altitud": float(row.altitud) if row.altitud is not None else None,
             "activo": row.activo,
-
         }
         for row in results
     ]
@@ -592,8 +586,6 @@ def get_reporte_lecturas(
     skip: int = 0,
     limit: int = 1000,
     search: Optional[str] = None,
-    fecha_desde: Optional[date] = None,
-    fecha_hasta: Optional[date] = None,
     mes: Optional[int] = None,
     anio: Optional[int] = None,
     activo: Optional[bool] = None,
@@ -625,13 +617,6 @@ def get_reporte_lecturas(
                 cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern)
             )
         )
-    
-    # Filtros de fecha
-    if fecha_desde:
-        query = query.filter(Lectura.fecha_lectura >= fecha_desde)
-    
-    if fecha_hasta:
-        query = query.filter(Lectura.fecha_lectura <= fecha_hasta)
     
     # Filtro por mes y año
     if mes and anio:
@@ -920,7 +905,6 @@ def get_reporte_facturas(
             
             factura_dict = {
                 # 📌 IDENTIFICACIÓN
-                "id_factura": f.id_factura,
                 "num_factura": f.num_factura,
                 "periodo": f.periodo,
                 
@@ -930,9 +914,7 @@ def get_reporte_facturas(
                 
                 # 👤 DATOS DEL USUARIO
                 "cedula": f.cedula,
-                "Nombre": nombre_completo,  # ✅ Mantener formato "Nombre" para consistencia
-                "nombres": f.nombres,
-                "apellidos": f.apellidos,
+                "Nombres": nombre_completo,  # ✅ Mantener formato "Nombre" para consistencia
                 "direccion": f.direccion,
                 "telefono": f.telefono,
                 "email": f.email,
@@ -954,10 +936,11 @@ def get_reporte_facturas(
                 
                 # 📅 FECHAS Y ESTADO
                 "fecha_emision": f.fecha_emision.strftime("%d/%m/%Y") if f.fecha_emision else None,
-                "estado": f.estado_factura,
                 
                 # 🧾 CONCEPTOS
-                "conceptos_facturacion": conceptos_texto
+                "conceptos_facturacion": conceptos_texto,
+                "estado": f.estado_factura
+
             }
             
             facturas_formateadas.append(factura_dict)
@@ -1042,16 +1025,15 @@ def get_periodos_facturas(
 
     return resultado
 
-
-# ============================================================================
-# 8. REPORTE DE PAGOS 
-# ============================================================================
-
+#===========================================================================
+# 8. REPORTE DE PAGOS
+# ===========================================================================
 @router.get("/pagos")
 def get_reporte_pagos(
     periodo: Optional[str] = Query(None, description="Formato: YYYY-MM"),
     metodo_pago: Optional[str] = Query(None),
     estado_pago: Optional[str] = Query(None),
+    pago_completo: Optional[bool] = Query(None),  # ✅ NUEVO
     search: Optional[str] = Query(None, description="Buscar por nombre, cédula, cod_afiliado, medidor"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -1073,7 +1055,7 @@ def get_reporte_pagos(
     
     try:
         from datetime import datetime
-        from sqlalchemy import cast, String  # ✅ IMPORTAR cast y String
+        from sqlalchemy import cast, String
         
         # ========================================
         # 🔥 ALIAS
@@ -1135,7 +1117,6 @@ def get_reporte_pagos(
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
             .outerjoin(Cajero, Pago.id_cajero == Cajero.id_usuario_sistema)
-            .filter(Pago.activo == True) 
         )
         
         # ========================================
@@ -1152,12 +1133,25 @@ def get_reporte_pagos(
             query = query.filter(Pago.metodo_pago.ilike(f"%{metodo_pago}%"))
             print(f"🔍 Filtrando por método: {metodo_pago}")
         
-        # Filtro por estado de pago
-        if estado_pago and estado_pago.lower() != 'todos':
-            query = query.filter(Pago.estado_pago == estado_pago)
-            print(f"🔍 Filtrando por estado: {estado_pago}")
+        # ✅ MEJOR - Maneja cualquier formato
+        if estado_pago:
+            estado_upper = estado_pago.upper()
+            if estado_upper != 'TODOS':
+                query = query.filter(Pago.estado_pago == estado_upper)
+                print(f"🔍 Filtrando por estado: {estado_upper}")
+
         
-        # ✅ BÚSQUEDA GENERAL (CORREGIDA)
+        # ✅ NUEVO: Filtro por pago completo
+        if pago_completo is not None:
+            if pago_completo:
+                # Pagos completos: monto_pago >= total_factura
+                query = query.filter(Pago.monto_pago >= Factura.total)
+            else:
+                # Pagos parciales: monto_pago < total_factura
+                query = query.filter(Pago.monto_pago < Factura.total)
+            print(f"🔍 Filtrando por pago_completo: {pago_completo}")
+        
+        # ✅ BÚSQUEDA GENERAL
         if search:
             search_pattern = f"%{search}%"
             query = query.filter(
@@ -1199,6 +1193,7 @@ def get_reporte_pagos(
                 "pages": 0
             }
         
+        # [... resto del código sin cambios ...]
         # IDs de facturas para obtener detalles
         ids_facturas = list(set([p.id_factura for p in pagos]))
         
@@ -1323,6 +1318,7 @@ def get_reporte_pagos(
             status_code=500,
             detail=f"Error al generar reporte de pagos: {str(e)}"
         )
+
 
 # ============================================================================
 # 8.1 ESTADÍSTICAS DE PAGOS 
@@ -1452,24 +1448,36 @@ def get_reporte_multas(
     tipo: Optional[str] = None,
     activo: Optional[bool] = None,
     vigente: Optional[bool] = None,
+    search: Optional[str] = None,  # ⭐ NUEVO: Búsqueda por texto
     payload: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
-    """📊 Reporte completo de multas con versionamiento y filtros"""
+    """📊 Reporte completo de multas con versionamiento, filtros y búsqueda"""
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "reportes", "lectura")
     
     query = db.query(TipoMulta)
     
-    # Filtros
+    # ⭐ BÚSQUEDA POR TEXTO
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            or_(
+                # Buscar en nombre de la multa
+                TipoMulta.nombre_multa.ilike(search_pattern),
+                # Buscar en descripción
+                TipoMulta.descripcion.ilike(search_pattern),
+                # Buscar por ID (si es numérico)
+                cast(TipoMulta.id_tipo_multa, String).ilike(search_pattern)
+            )
+        )
+    
+    # Filtros adicionales
     if fecha_desde:
         query = query.filter(TipoMulta.fecha_creacion >= fecha_desde)
     
     if fecha_hasta:
         query = query.filter(TipoMulta.fecha_creacion <= fecha_hasta)
-    
-    if estado:
-        query = query.filter(TipoMulta.estado == estado)
     
     if tipo:
         query = query.filter(TipoMulta.tipo.ilike(f"%{tipo}%"))
@@ -1479,6 +1487,9 @@ def get_reporte_multas(
     
     if vigente is not None:
         query = query.filter(TipoMulta.es_vigente == vigente)
+    
+    # ⭐ Obtener total ANTES de paginar
+    total = query.count()
     
     # Ordenar por vigencia y fecha de creación
     query = query.order_by(
@@ -1500,8 +1511,8 @@ def get_reporte_multas(
             "fecha_creacion": m.fecha_creacion.strftime('%d/%m/%Y') if m.fecha_creacion else None,
             "vigencia_desde": m.vigencia_desde.strftime('%d/%m/%Y') if m.vigencia_desde else None,
             "vigencia_hasta": m.vigencia_hasta.strftime('%d/%m/%Y') if m.vigencia_hasta else None,
-            "es_vigente": m.es_vigente,
-            "activo": m.activo,
+            "es_vigente": "Sí" if m.es_vigente else "No",  # ⭐ Formato legible
+            "activo": m.activo
         }
         for m in multas
     ]
@@ -1509,16 +1520,17 @@ def get_reporte_multas(
     return {
         "success": True,
         "data": multas_formateadas,
-        "total": len(multas),
+        "total": total,  # ⭐ Usar el total real
         "skip": skip,
         "limit": limit,
         "estadisticas": {
-            "total_multas": len(multas),
+            "total_multas": total,
             "total_vigentes": sum(1 for m in multas if m.es_vigente),
             "total_activos": sum(1 for m in multas if m.activo),
             "total_inactivos": sum(1 for m in multas if not m.activo)
         }
     }
+
 
 # ============================================================================
 # 11. REPORTE DE MULTAS AFILIADOS
@@ -1533,25 +1545,64 @@ def get_reporte_multas_afiliados(
     estado: Optional[str] = None,
     facturado: Optional[bool] = None,
     activo: Optional[bool] = None,
+    search: Optional[str] = None,  
+    mes: Optional[int] = None,
+    anio: Optional[int] = None,
     payload: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
-    """📊 Reporte de multas asignadas a afiliados"""
+    """📊 Reporte de multas asignadas a afiliados con búsqueda"""
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "reportes", "lectura")
     
+    # Query base con eager loading
     query = db.query(MultaAfiliado).options(
         joinedload(MultaAfiliado.tipo_multa),
-        joinedload(MultaAfiliado.usuario)
+        joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.usuario_sistema)
     )
     
-    # Filtros
+    #BÚSQUEDA POR TEXTO
+    if search:
+        search_pattern = f"%{search}%"
+        
+        # joins necesarios 
+        query = query.join(MultaAfiliado.usuario).join(UsuarioAfiliado.usuario_sistema)
+        query = query.join(MultaAfiliado.tipo_multa)
+        
+        query = query.filter(
+            or_(
+                # Buscar por código de afiliado
+                cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
+                
+                # Buscar por nombre completo del afiliado
+                func.concat(
+                    UsuarioSistema.nombres, ' ', UsuarioSistema.apellidos
+                ).ilike(search_pattern),
+                
+                # Buscar por cédula del afiliado
+                UsuarioSistema.cedula.ilike(search_pattern),
+                
+                # Buscar por tipo de multa
+                TipoMulta.nombre_multa.ilike(search_pattern),
+                
+                # Buscar en observaciones
+                MultaAfiliado.observaciones.ilike(search_pattern)
+            )
+        )
+    
+    # Filtros adicionales
+    if mes and anio:
+        query = query.filter(
+            extract('month', MultaAfiliado.fecha_multa) == mes,
+            extract('year', MultaAfiliado.fecha_multa) == anio
+        )
+        print(f"🔍 Filtrando por período: {mes}/{anio}")
+
     if id_usuario_afi:
         query = query.filter(MultaAfiliado.id_usuario_afi == id_usuario_afi)
     
     if id_tipo_multa:
         query = query.filter(MultaAfiliado.id_tipo_multa == id_tipo_multa)
-
     
     if estado:
         query = query.filter(MultaAfiliado.estado == estado)
@@ -1561,6 +1612,9 @@ def get_reporte_multas_afiliados(
     
     if activo is not None:
         query = query.filter(MultaAfiliado.activo == activo)
+    
+    # Obtener total ANTES de paginar
+    total = query.count()
     
     # Ordenar por fecha de multa descendente
     query = query.order_by(
@@ -1574,14 +1628,18 @@ def get_reporte_multas_afiliados(
     # Formatear respuesta
     multas_formateadas = [
         {
+            "cod_usuario_afi": m.usuario.cod_usuario_afi if m.usuario else "N/A",
             "nombre_afiliado": f"{m.usuario.usuario_sistema.nombres} {m.usuario.usuario_sistema.apellidos}" if m.usuario and m.usuario.usuario_sistema else "N/A",
+            "cedula": m.usuario.usuario_sistema.cedula if m.usuario and m.usuario.usuario_sistema else "N/A",
             "nombre_multa": m.tipo_multa.nombre_multa if m.tipo_multa else "N/A",
             "monto": float(m.monto),
             "fecha_multa": m.fecha_multa.isoformat() if m.fecha_multa else None,
             "fecha_pago": m.fecha_pago.isoformat() if m.fecha_pago else None,
             "observaciones": m.observaciones,
             "estado": m.estado,
+            "facturado": "Sí" if m.facturado else "No" ,
             "activo": m.activo,
+
         }
         for m in multas
     ]
@@ -1589,17 +1647,56 @@ def get_reporte_multas_afiliados(
     return {
         "success": True,
         "data": multas_formateadas,
-        "total": len(multas),
+        "total": total,  
         "skip": skip,
         "limit": limit,
         "estadisticas": {
-            "total_multas": len(multas),
+            "total_multas": total,
             "total_pendientes": sum(1 for m in multas if m.estado == 'pendiente'),
             "total_pagadas": sum(1 for m in multas if m.estado == 'pagada'),
             "total_facturadas": sum(1 for m in multas if m.facturado),
             "total_activas": sum(1 for m in multas if m.activo)
         }
     }
+
+# ============================================================================
+# 11.1 PERIODOS DE MULTAS AFILIADOS
+# ============================================================================
+@router.get("/multas-afiliados/periodos")
+def get_periodos_multas_afiliados(
+    payload: dict = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """📅 Obtiene los periodos (mes/año) disponibles de multas a afiliados"""
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "reportes", "lectura")
+    
+    periodos = db.query(
+        extract('year', MultaAfiliado.fecha_multa).label('anio'),
+        extract('month', MultaAfiliado.fecha_multa).label('mes')
+    ).filter(
+        MultaAfiliado.fecha_multa.isnot(None),
+        MultaAfiliado.activo == True
+    ).distinct().order_by(
+        desc(extract('year', MultaAfiliado.fecha_multa)),
+        desc(extract('month', MultaAfiliado.fecha_multa))
+    ).all()
+    
+    meses_nombres = {
+        1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
+        5: 'Mayo', 6: 'Junio', 7: 'Julio', 8: 'Agosto',
+        9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    }
+    
+    return [
+        {
+            "anio": int(p.anio),
+            "mes": int(p.mes),
+            "mes_nombre": meses_nombres.get(int(p.mes), 'Desconocido'),
+            "periodo": f"{meses_nombres.get(int(p.mes), 'Mes')} {int(p.anio)}"
+        }
+        for p in periodos if p.anio and p.mes
+    ]
 
 
 # ============================================================================

@@ -102,11 +102,14 @@
 }
 
 .sidebar-nav {
-  flex: 1; /* : Ocupa todo el espacio disponible */
-  overflow-y: auto; /* : Scroll vertical independiente */
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
   overflow-x: hidden;
   padding: 1rem;
 }
+
 
 .nav-item {
   width: 100%;
@@ -1289,7 +1292,7 @@
   }
 
   .sidebar-close-btn-mobile:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(197, 12, 12, 0.3);
   }
 
   /* Sidebar oculto por defecto en móvil */
@@ -1683,34 +1686,6 @@
   margin-bottom: 1.5rem;
 }
 
-/* Estilos adicionales para Dashboard.js con permisos dinámicos */
-
-/* ============================================================================
-   SIDEBAR FOOTER - Información de permisos
-   ============================================================================ */
-.sidebar-footer {
-  position: relative; /* 🔥 CAMBIO: De absolute a relative */
-  padding: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.2);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  flex-shrink: 0; /* : No se reduce */
-}
-
-.user-permissions-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 0.5rem;
-}
-
-.user-permissions-info span {
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.7);
-}
 
 /* ============================================================================
    BANNERS DE INFORMACIÓN Y ERROR
@@ -1795,84 +1770,6 @@
 }
 
 
-
-/* ============================================================================
-   QUICK ACTIONS - Mejoras visuales
-   ============================================================================ */
-.quick-actions-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1rem;
-  padding: 1rem;
-}
-
-.quick-action-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1.5rem 1rem;
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-  overflow: hidden;
-}
-
-.quick-action-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.quick-action-btn:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px -8px rgba(59, 130, 246, 0.3);
-  border-color: #3b82f6;
-}
-
-.quick-action-btn:hover::before {
-  opacity: 0.05;
-}
-
-.quick-action-btn:active {
-  transform: translateY(-2px);
-}
-
-.quick-action-icon {
-  width: 2rem;
-  height: 2rem;
-  color: #3b82f6;
-  position: relative;
-  z-index: 1;
-  transition: color 0.2s;
-}
-
-.quick-action-btn:hover .quick-action-icon {
-  color: #2563eb;
-}
-
-.quick-action-text {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #1f2937;
-  text-align: center;
-  position: relative;
-  z-index: 1;
-  transition: color 0.2s;
-}
-
-.quick-action-btn:hover .quick-action-text {
-  color: #2563eb;
-}
 
 /* ============================================================================
    NAV ITEM - Mejoras para indicar permisos
@@ -2297,45 +2194,6 @@
   font-weight: 600;
 }
 
-/* ============================================================================
-   SIDEBAR FOOTER
-   ============================================================================ */
-
-.sidebar-footer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.2);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
-
-.user-permissions-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 0.5rem;
-  transition: all 0.2s;
-}
-
-.user-permissions-info:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.user-permissions-info svg {
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.user-permissions-info span {
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.7);
-  font-weight: 500;
-}
 
 /* ============================================================================
    RESPONSIVE - SIDEBAR COLAPSABLE EN MÓVIL

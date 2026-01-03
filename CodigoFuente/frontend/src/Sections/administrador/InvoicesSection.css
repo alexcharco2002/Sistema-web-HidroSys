@@ -1472,11 +1472,7 @@ input:checked + .slider:before {
   }
 }
 
-.action-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
+
 
 .action-text {
   font-size: 0.95rem;

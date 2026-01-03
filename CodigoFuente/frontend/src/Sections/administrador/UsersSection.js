@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
 import './UserSection.css';
-import usersService from '../../services/userServices';
+import usersService from '../../services/userServices'; // 🔑 Importar usersService
 import authService from '../../services/authServices'; // 🔑 Importar authService
-import * as   XLSX from "xlsx";
+import * as   XLSX from "xlsx"; // Librería para leer Excel
 
 import { 
   Users, Plus, Search, Edit, Trash2, Eye, UserCheck, UserX,
@@ -677,6 +677,19 @@ const UsersSection = () => {
     return 'Sin rol';
   };
 
+  // función para calcular edad a partir de fecha de nacimiento
+  const calculateAge = (fechaNac) => {
+    if (!fechaNac) return '';
+    const birthDate = new Date(fechaNac);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
   /**
    * 🎨 Genera el badge visual del rol con colores específicos
    */
@@ -750,6 +763,7 @@ const UsersSection = () => {
     );
   }
 
+  // Renderizado principal
   return (
     <div className="users-section">
       {/* ==================== ENCABEZADO ==================== */}
@@ -842,71 +856,71 @@ const UsersSection = () => {
         </div>
       </div>
 
+      {/* ==================== FILTROS ==================== */}
+      <div className="filters-section">
 
-     <div className="filters-section">
+        {/* IZQUIERDA — Barra de búsqueda */}
+        <div className="search-container">
+          <Search className="search-icon" />
+          <input
+            type="text"
+            placeholder="Buscar por nombre o cédula..."
+            className="search-input"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
 
-      {/* IZQUIERDA — Barra de búsqueda */}
-      <div className="search-container">
-        <Search className="search-icon" />
-        <input
-          type="text"
-          placeholder="Buscar por nombre o cédula..."
-          className="search-input"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-      </div>
+        {/* DERECHA — Agrupamos todos los filtros */}
+        <div className="filters-right">
+          
+          {/* 🏷️ Filtro por rol */}
+          <select 
+            className="filter-select"
+            value={filterRole}
+            onChange={(e) => setFilterRole(e.target.value)}
+          >
+            <option value="all">Todos los roles</option>
+            {roles.map(rol => (
+              <option key={rol.id_rol} value={rol.id_rol}>
+                {rol.nombre_rol}
+              </option>
+            ))}
+          </select>
 
-      {/* DERECHA — Agrupamos todos los filtros */}
-      <div className="filters-right">
-        
-        {/* 🏷️ Filtro por rol */}
-        <select 
-          className="filter-select"
-          value={filterRole}
-          onChange={(e) => setFilterRole(e.target.value)}
-        >
-          <option value="all">Todos los roles</option>
-          {roles.map(rol => (
-            <option key={rol.id_rol} value={rol.id_rol}>
-              {rol.nombre_rol}
-            </option>
-          ))}
-        </select>
+          {/* 🔀 Ordenamiento */}
+          <select
+            className="filter-select"
+            value={sortOption}
+            onChange={(e) => setSortOption(e.target.value)}
+          >
+            <option value="rol">Ordenar por Rol</option>
+            <option value="nombre">Ordenar por Nombre</option>
+            <option value="fecha">Ordenar por Fecha</option>
+          </select>
 
-        {/* 🔀 Ordenamiento */}
-        <select
-          className="filter-select"
-          value={sortOption}
-          onChange={(e) => setSortOption(e.target.value)}
-        >
-          <option value="rol">Ordenar por Rol</option>
-          <option value="nombre">Ordenar por Nombre</option>
-          <option value="fecha">Ordenar por Fecha</option>
-        </select>
+          {/* ⬆⬇ Botón orden */}
+          <button 
+            className="btn-secondary"
+            onClick={toggleSortOrder}
+            title={sortOrder === 'asc' ? 'Orden Ascendente' : 'Orden Descendente'}
+          >
+            <ArrowUpDown className="w-4 h-4" />
+            <span className="ml-1 text-xs">
+              {sortOrder === 'asc' ? '↑' : '↓'}
+            </span>
+          </button>
 
-        {/* ⬆⬇ Botón orden */}
-        <button 
-          className="btn-secondary"
-          onClick={toggleSortOrder}
-          title={sortOrder === 'asc' ? 'Orden Ascendente' : 'Orden Descendente'}
-        >
-          <ArrowUpDown className="w-4 h-4" />
-          <span className="ml-1 text-xs">
-            {sortOrder === 'asc' ? '↑' : '↓'}
-          </span>
-        </button>
+          {/* 🔄 Recargar */}
+          <button 
+            className="btn-secondary"
+            onClick={fetchUsers}
+            title="Recargar lista"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
 
-        {/* 🔄 Recargar */}
-        <button 
-          className="btn-secondary"
-          onClick={fetchUsers}
-          title="Recargar lista"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
-
-      </div>
+        </div>
      </div>
 
      
@@ -1374,6 +1388,10 @@ const UsersSection = () => {
                   <div className="detail-group">
                     <label>Fecha Nacimiento:</label>
                     <p>{selectedUser.fecha_nac}</p>
+                  </div>
+                  <div className="detail-group">
+                    <label>Edad:</label>
+                    <p>{calculateAge(selectedUser.fecha_nac)} años</p>
                   </div>
                   <div className="detail-group">
                     <label>Email:</label>

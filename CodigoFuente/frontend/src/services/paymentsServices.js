@@ -18,6 +18,7 @@ const API_CONFIG = {
     statsFacturasPeriodo: '/pagos/stats/facturas-periodo', 
     facturasPeriodo: '/pagos/facturas-periodo',
     facturasmontos: '/pagos/facturas-montos',
+    calcularResumen: (facturaId) => `/pagos/calcular-resumen/${facturaId}`,
   }
 };
 
@@ -338,54 +339,74 @@ async getFacturaMontos(idFactura) {
     }
   }
 
-// ========================================
-// CREAR Y ACTUALIZAR PAGOS
-// ========================================
+  // ========================================
+  // CREAR Y ACTUALIZAR PAGOS
+  // ========================================
 
-/**
- * Registrar un nuevo pago
- */
-async createPago(pagoData) {
-  try {
-    const data = await this.makeRequest(API_CONFIG.endpoints.pagos, {
-      method: 'POST',
-      body: {
-        id_factura: pagoData.id_factura ? parseInt(pagoData.id_factura) : null,
-        monto_pago: parseFloat(pagoData.monto_pago),
-        fecha_pago: pagoData.fecha_pago || new Date().toISOString(),
-        metodo_pago: pagoData.metodo_pago || 'EFECTIVO',
-        id_usuario_afi: pagoData.id_usuario_afi ? parseInt(pagoData.id_usuario_afi) : null,
-        id_cajero: pagoData.id_cajero ? parseInt(pagoData.id_cajero) : null,
-        observaciones: pagoData.observaciones || null,
-        estado_pago: pagoData.estado_pago || 'REGISTRADO',
-        incluir_multas: pagoData.incluir_multas !== undefined ? pagoData.incluir_multas : true  // ✅ AGREGAR
-      }
-    });
-
-    console.log('📤 Datos enviados al backend:', {
-      monto_pago: parseFloat(pagoData.monto_pago),
-      incluir_multas: pagoData.incluir_multas,
-      id_factura: pagoData.id_factura
-    });
-
-    // Limpiar cachés
-    this.cachedPagos = null;
-    this.cachedStats = null;
-
-    return {
-      success: true,
-      data: data,
-      message: 'Pago registrado exitosamente'
-    };
-    
-  } catch (error) {
-    console.error('❌ Error registrando pago:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al registrar pago'
-    };
+  /**
+   * Calcular resumen de pago con mora (ANTES de registrar)
+   */
+  async calcularResumenPago(facturaId) {
+    try {
+      const data = await this.makeRequest(`${API_CONFIG.endpoints.calcularResumen(facturaId)}`);
+      return {
+        success: true,
+        data: data
+      };
+    } catch (error) {
+      console.error('❌ Error calculando resumen de pago:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al calcular el resumen',
+        data: null
+      };
+    }
   }
-}
+
+  /**
+   * Registrar un nuevo pago
+   */
+  async createPago(pagoData) {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.pagos, {
+        method: 'POST',
+        body: {
+          id_factura: pagoData.id_factura ? parseInt(pagoData.id_factura) : null,
+          monto_pago: parseFloat(pagoData.monto_pago),
+          fecha_pago: pagoData.fecha_pago || new Date().toISOString(),
+          metodo_pago: pagoData.metodo_pago || 'EFECTIVO',
+          id_usuario_afi: pagoData.id_usuario_afi ? parseInt(pagoData.id_usuario_afi) : null,
+          id_cajero: pagoData.id_cajero ? parseInt(pagoData.id_cajero) : null,
+          observaciones: pagoData.observaciones || null,
+          estado_pago: pagoData.estado_pago || 'REGISTRADO',
+          incluir_multas: pagoData.incluir_multas !== undefined ? pagoData.incluir_multas : true  // ✅ AGREGAR
+        }
+      });
+
+      console.log('📤 Datos enviados al backend:', {
+        monto_pago: parseFloat(pagoData.monto_pago),
+        incluir_multas: pagoData.incluir_multas,
+        id_factura: pagoData.id_factura
+      });
+
+      // Limpiar cachés
+      this.cachedPagos = null;
+      this.cachedStats = null;
+
+      return {
+        success: true,
+        data: data,
+        message: 'Pago registrado exitosamente'
+      };
+      
+    } catch (error) {
+      console.error('❌ Error registrando pago:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al registrar pago'
+      };
+    }
+  }
 
 
 

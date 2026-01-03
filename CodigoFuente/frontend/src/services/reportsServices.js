@@ -29,7 +29,10 @@ const API_CONFIG = {
     pagos: '/reportes/pagos',
     pagosPeriodos: '/reportes/pagos/periodos',
     multas: '/reportes/multas',
+    
     multasAfiliados: '/reportes/multas-afiliados',
+    multasAfiliadosPeriodos: '/reportes/multas-afiliados/periodos',
+    
     configuracion: '/reportes/configuracion',
     notificaciones: '/reportes/notificaciones',
     estadisticas: '/reportes/estadisticas',
@@ -154,9 +157,7 @@ class ReportsServices {
         limit: filtros.limit || 1000,
         search: filtros.search,
         rol: filtros.rol,
-        activo: filtros.activo,
-        fecha_desde: filtros.fecha_desde,
-        fecha_hasta: filtros.fecha_hasta
+        activo: filtros.activo
       });
 
       const url = queryString 
@@ -395,8 +396,8 @@ async getReporteFacturas(filtros = {}) {
       search: filtros.search,
       fecha_desde: filtros.fecha_desde,
       fecha_hasta: filtros.fecha_hasta,
-      mes: filtros.mes,           // ✅ AGREGAR
-      anio: filtros.anio,         // ✅ AGREGAR
+      mes: filtros.mes,           
+      anio: filtros.anio,         
       estado: filtros.estado
     });
 
@@ -478,8 +479,9 @@ async getReporteFacturas(filtros = {}) {
       };
     }
   }
+
   /**
-   * 8. Obtener reporte de PAGOS - CORREGIDO
+   * 8. Obtener reporte de PAGOS 
    */
   async getReportePagos(filtros = {}) {
     try {
@@ -494,7 +496,8 @@ async getReporteFacturas(filtros = {}) {
         fecha_inicio: filtros.fecha_inicio,  
         fecha_fin: filtros.fecha_fin,        
         metodo_pago: filtros.metodo_pago,
-        estado_pago: filtros.estado_pago   
+        estado_pago: filtros.estado_pago,
+        pago_completo: filtros.pago_completo
       });
 
       const url = queryString
@@ -604,6 +607,30 @@ async getReporteMultas(filtros = {}) {
     };
   }
 }
+/**
+ * Obtener periodos disponibles de Multas Afiliados
+ */
+async getPeriodosMultasAfiliados() {
+  try {
+    const data = await this.makeRequest(API_CONFIG.endpoints.multasAfiliadosPeriodos);
+    
+    console.log('📅 Periodos de multas afiliados cargados:', data);
+    
+    return {
+      success: true,
+      data: data
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo periodos de multas afiliados:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener periodos de multas afiliados',
+      data: []
+    };
+  }
+}
+
+
 
 /**
  * 11. Obtener reporte de MULTAS AFILIADOS
@@ -619,7 +646,9 @@ async getReporteMultasAfiliados(filtros = {}) {
       fecha_hasta: filtros.fecha_hasta,
       estado: filtros.estado,
       facturado: filtros.facturado,
-      activo: filtros.activo
+      activo: filtros.activo,
+      mes: filtros.mes,
+      anio: filtros.anio
     });
 
     const url = queryString 

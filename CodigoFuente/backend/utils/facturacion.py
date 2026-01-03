@@ -18,6 +18,7 @@ from datetime import date
 from typing import Dict, Optional, Tuple, List
 
 
+dias_vencimientos: int = 30  # Días por defecto para vencimiento de facturas
 
 # ============================================
 # 1. VALIDACIONES
@@ -889,7 +890,7 @@ def obtener_estadisticas_facturacion(
     }
 
 
-def marcar_facturas_vencidas(db: Session, dias_vencimiento: int = 30) -> int:
+def marcar_facturas_vencidas(db: Session, dias_vencimiento: int = dias_vencimientos) -> int:
     """
     Marca como vencidas las facturas pendientes que superan los días de vencimiento
     Retorna: cantidad de facturas marcadas

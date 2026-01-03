@@ -175,7 +175,7 @@ const MiniMapaBurbuja = () => {
             const popupContent = `
               <div style="text-align: center;">
                 <b>${meter.num_medidor}</b><br>
-                <small>${meter.usuario_afiliado?.nombre_afiliado || 'Sin propietario'}</small><br>
+                <small>${meter.nombre_afiliado || 'Sin propietario'}</small><br>
                 <small>${(meter.distance * 1000).toFixed(0)}m de distancia</small>
               </div>
             `;
@@ -344,11 +344,11 @@ const MiniMapaBurbuja = () => {
                               </div>
                               <div className="meter-item-owner">
                                 <User className="w-3 h-3" />
-                                {meter.usuario_afiliado?.nombre_afiliado || 'Sin propietario'}
+                                {meter.nombre_afiliado || 'Sin propietario'}
                               </div>
-                              {meter.usuario_afiliado?.cod_usuario_afi && (
+                              {meter.cod_usuario_afi && (
                                 <div className="meter-item-code">
-                                  Código: {meter.usuario_afiliado.cod_usuario_afi}
+                                  Código: {meter.cod_usuario_afi}
                                 </div>
                               )}
                               <div className="meter-item-distance">

@@ -467,6 +467,60 @@ def toggle_rol_status(
 # ========================================
 # CRUD ROL_ACCIONES
 # ========================================
+def normalize_tipo_accion(tipo: str) -> str:
+    """
+    Normaliza el tipo de acción a minúsculas para almacenamiento en BD
+    """
+    if not tipo:
+        return "operaciones crud"  # Valor por defecto
+    
+    # Limpiar y normalizar
+    normalized_lower = tipo.strip().lower()
+    
+    # Mapeo de variaciones a valores estándar (en minúsculas)
+    tipo_mapping = {
+        # CRUD
+        "crud": "operaciones crud",
+        "operaciones crud": "operaciones crud",
+        "operacionescrud": "operaciones crud",
+        "todas": "operaciones crud",
+        
+        # Lectura
+        "lectura": "lectura",
+        "read": "lectura",
+        "ver": "lectura",
+        "listar": "lectura",
+        "Lectura": "lectura",
+        
+        # Crear
+        "crear": "crear",
+        "create": "crear",
+        "nuevo": "crear",
+        "agregar": "crear",
+        
+        # Actualizar
+        "actualizar": "actualizar",
+        "update": "actualizar",
+        "editar": "actualizar",
+        "modificar": "actualizar",
+        
+        # Eliminar
+        "eliminar": "eliminar",
+        "delete": "eliminar",
+        "borrar": "eliminar",
+    }
+    
+    # Buscar coincidencia
+    resultado = tipo_mapping.get(normalized_lower)
+    
+    if resultado:
+        return resultado
+    
+    # Si no encuentra coincidencia, devolver en minúsculas
+    print(f"⚠️ Tipo de acción no reconocido: '{tipo}', guardando en minúsculas")
+    return normalized_lower
+
+
 @router.get("/{id_rol}/acciones", response_model=List[RolAccionResponse])
 def listar_acciones_rol(
     id_rol: int,
@@ -507,21 +561,24 @@ def agregar_accion_rol(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Rol no encontrado"
         )
-    
-    # Verificar que no exista la misma acción
+
+    accion_data = accion.dict()
+    accion_data["tipo_accion"] = normalize_tipo_accion(accion_data["tipo_accion"])
+
     existe = db.query(RolAccion).filter(
         RolAccion.id_rol == id_rol,
-        RolAccion.nombre_accion == accion.nombre_accion,
-        RolAccion.tipo_accion == accion.tipo_accion
+        RolAccion.nombre_accion == accion_data["nombre_accion"],
+        RolAccion.tipo_accion == accion_data["tipo_accion"]
     ).first()
-    
+
     if existe:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Esta acción ya existe para este rol"
         )
-    
-    nueva_accion = RolAccion(id_rol=id_rol, **accion.dict())
+
+    nueva_accion = RolAccion(id_rol=id_rol, **accion_data)
+
     
     try:
         db.add(nueva_accion)
@@ -545,7 +602,6 @@ def agregar_accion_rol(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al agregar la acción"
         )
-
 @router.put("/acciones/{id_rol_accion}", response_model=RolAccionResponse)
 def actualizar_accion(
     id_rol_accion: int,
@@ -560,6 +616,7 @@ def actualizar_accion(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "roles", "actualizar")
     
+    # Buscar la acción
     accion = db.query(RolAccion).filter(
         RolAccion.id_rol_accion == id_rol_accion
     ).first()
@@ -570,8 +627,20 @@ def actualizar_accion(
             detail="Acción no encontrada"
         )
     
-    for key, value in accion_update.dict(exclude_unset=True).items():
+    # Obtener solo los campos que se están actualizando
+    update_data = accion_update.dict(exclude_unset=True)
+    
+    # 🔥 Normalizar tipo_accion si se está actualizando
+    if "tipo_accion" in update_data:
+        tipo_original = update_data["tipo_accion"]
+        tipo_normalizado = normalize_tipo_accion(tipo_original)
+        update_data["tipo_accion"] = tipo_normalizado
+        
+    
+    # 🔥 APLICAR los cambios al objeto accion
+    for key, value in update_data.items():
         setattr(accion, key, value)
+        print(f"✅ Actualizado {key} = {value}")
     
     try:
         db.commit()
@@ -585,6 +654,7 @@ def actualizar_accion(
             id_usuario=current_user.id_usuario_sistema
         )
         
+        print(f"✅ Acción actualizada exitosamente: {accion.nombre_accion} - {accion.tipo_accion}")
         return accion
     
     except Exception as e:
@@ -592,8 +662,9 @@ def actualizar_accion(
         print(f"❌ Error al actualizar acción: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al actualizar la acción"
+            detail=f"Error al actualizar la acción: {str(e)}"
         )
+
 
 @router.delete("/acciones/{id_rol_accion}", status_code=status.HTTP_200_OK)
 def eliminar_accion(

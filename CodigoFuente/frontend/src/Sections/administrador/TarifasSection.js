@@ -993,10 +993,6 @@ const TarifasSection = () => {
               {modalType === 'view' && selectedTarifa && (
                 <div className="user-details">
                   <div className="detail-group">
-                    <label>ID Tarifa:</label>
-                    <p>{selectedTarifa.id_tarifa}</p>
-                  </div>
-                  <div className="detail-group">
                     <label>Nombre:</label>
                     <p>{selectedTarifa.nombre}</p>
                   </div>

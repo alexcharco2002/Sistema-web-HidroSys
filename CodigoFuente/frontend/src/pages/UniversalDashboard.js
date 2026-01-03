@@ -68,6 +68,7 @@ import ReadingsSection from '../sections/lector/ReadingsSection';
 // ============================================================================
 import HistorialConsumos from '../sections/Affiliates/HistorialConsumos';     // 📈 Historial de consumo
 import AffiliateBillingSection from '../sections/Affiliates/AffiliateBillingSection'; // 🧾 Facturación afiliado
+import MiMedidorSection from '../sections/Affiliates/MiMedidorSection';
 
 // ============================================================================
 // 💰 COMPONENTES DE SECCIÓN - CAJERO
@@ -113,7 +114,8 @@ const COMPONENT_MAP = {
   HistorialConsumos,
   PaymentsSection,
   ReportsSection,
-  AffiliateBillingSection
+  AffiliateBillingSection,
+  MiMedidorSection
 };
  // ============================================================================
   // COMPONENTE: RENDERIZADOR DINÁMICO DE MÓDULOS
@@ -178,8 +180,7 @@ const COMPONENT_MAP = {
       );
     }
 
-    // Verificar si el usuario tiene acceso al módulo
-    // Asegúrate de que organizedModules esté definido y sea un array
+    // Verificar si el usuario tiene acceso al módul
     const hasAccess = organizedModules && organizedModules
       .flatMap(cat => cat.modules)
       .some(mod => mod.path === modulePath);
@@ -233,7 +234,7 @@ const UniversalDashboard = () => {
   const [notifications] = useState([]);
   const [loading] = useState(false);
   const [user, setUser] = useState(null);
-  const [userPermissions, setUserPermissions] = useState([]);
+  const [, setUserPermissions] = useState([]);
   const [organizedModules, setOrganizedModules] = useState([]);
   const [expandedCategories, setExpandedCategories] = useState({});
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -345,8 +346,6 @@ const toggleSidebar = () => {
     try {
       setDataLoading(true);
 
-      //  Aquí puedes cargar datos reales desde tu API
-      // Por ahora uso datos de ejemplo
       const mockStats = {
         administrador: {
           totalUsers: 156,
@@ -705,16 +704,6 @@ const toggleSidebar = () => {
           ))}
         </nav>
 
-
-        {/* Footer del Sidebar */}
-        {!sidebarCollapsed && (
-          <div className="sidebar-footer">
-            <div className="user-permissions-info">
-              <Shield size={16} />
-              <span>{userPermissions.length} permisos activos</span>
-            </div>
-          </div>
-        )}
       </aside>
 
       {/* MAIN CONTENT */}
@@ -733,7 +722,7 @@ const toggleSidebar = () => {
             </button>
             <div className="header-title">
               <h1>Panel de {user?.rol?.nombre_rol || 'Usuario'}</h1>
-              <p>Bienvenido 👋, {user.nombres} {user.apellidos}</p>
+              <p>Bienvenido 👋</p>
             </div>
 
             <div className="header-actions">
@@ -828,8 +817,6 @@ const toggleSidebar = () => {
             </div>
           </footer>
         </div>
-              
-
         
       </main>
 

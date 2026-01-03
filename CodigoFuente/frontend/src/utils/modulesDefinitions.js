@@ -5,7 +5,7 @@
  */
 import {
   BarChart3, Users, FileText, DollarSign, Gauge, UserCircle,
-  Calendar, Settings, Package, Bell, BookOpen, UserX,
+  Calendar, Settings, Bell, BookOpen, UserX,
   TrendingUp, Home, Briefcase, PieChart, Cog, AlertTriangle, MapPin, Layers, ShieldCheck, Handshake, UserCheck
 } from "lucide-react";
 
@@ -186,17 +186,18 @@ export const MODULE_DEFINITIONS = {
     componentName: "SectorsSection",
     description: "Gestión de sectores geográficos."
   },
-  inventario: {
-    id: "inventory",
-    path: "inventory",
-    label: "Inventario",
-    icon: Package,
-    color: "amber",
+  mi_medidor: {
+    id: "my_meter",
+    path: "my-meter",
+    label: "Mi Medidor",
+    icon: Home,
+    color: "blue",
     category: "OPERATIONS",
     order: 5,
-    componentName: "InventorySection",
-    description: "Control de materiales, equipos y existencias."
+    componentName: "MiMedidorSection",
+    description: "Visualización y gestión del medidor personal."
   },
+
 
   // 💰 FINANCIERO
   facturas: {
@@ -321,7 +322,7 @@ export const MODULE_DEFINITIONS = {
     componentName: "StatisticsSection",
     description: "Análisis visual de datos y rendimiento."
   },
-  facturasypagos: {
+  facturas_pagos: {
     id: "facturas-pagos",
     path: "facturas-pagos",
     label: "Facturas y Pagos",

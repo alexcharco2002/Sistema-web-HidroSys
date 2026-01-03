@@ -990,17 +990,16 @@ const AffiliatesSection = () => {
                   <Eye className="w-4 h-4 icon-view" />
                 </button>
 
-                {permissions.canUpdate && (
+                {permissions.canUpdate && !affiliate.num_medidor && (
                   <button 
                     className="action-btn view"
                     onClick={() => openModal('assignMeter', affiliate)}
-                    title={hasMeter(affiliate) ? "Ya tiene medidor asignado" : "Asignar medidor"}
-                    disabled={hasMeter(affiliate)}
-                    style={hasMeter(affiliate) ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                    title="Asignar medidor"
                   >
                     <Gauge className="w-4 h-4" />
                   </button>
                 )}
+
 
                 {permissions.canUpdate && (
                   <button 

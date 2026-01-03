@@ -10,6 +10,7 @@ import './RolesSection.css';
 import rolesService from '../../services/rolesServices';
 import authService from '../../services/authServices'; // 🔑 Importar authService
 
+import { isPermanentPermission, getPermanentPermissionsForRole } from '../../utils/permanentPermissions';  // 🔑 Importar utilidades de permisos permanentes
 import {
   ShieldCheck, Plus, Search, Edit,
   Trash2,
@@ -80,7 +81,6 @@ const RolesSection = () => {
     { value: 'Tarifas', label: 'Tarifas' },
     { value: 'Geolocalizacion', label: 'Geolocalización' },
     { value: 'Servicios', label: 'Servicios' },
-
     { value: 'Lecturas', label: 'Lecturas' },
     { value: 'Facturas', label: 'Facturas' },
     { value: 'Pagos', label: 'Pagos' },
@@ -88,12 +88,11 @@ const RolesSection = () => {
     { value: 'MultasAfiliados', label: 'Multas a Afiliados' },
     { value: 'Configuracion', label: 'Configuración' },
     { value: 'Notificaciones', label: 'Notificaciones' },
-    { value: 'Notificaciones', label: 'Notificaciones' },
     { value: 'Estadisticas', label: 'Estadísticas' },
-    { value: 'reportes', label: 'Reportes' },
-    { value: 'Facturasypagos', label: 'Facturas y pagos' },
-    { value: 'HistorialConsumo', label: 'HistorialConsumo' }
-
+    { value: 'Reportes', label: 'Reportes' },
+    { value: 'Facturas_pagos', label: 'Facturas y pagos' },
+    { value: 'HistorialConsumo', label: 'Historial de Consumo' },
+    { value: 'Mi_Medidor', label: 'Mi Medidor' }
   ];
 
   // 🔑 Cargar permisos al montar el componente
@@ -248,11 +247,35 @@ const RolesSection = () => {
       });
       setShowModal(true);
     } else if (type === 'edit-action' && item) {
+      if (isActionPermanent(item)) {
+        alert("🔒 Esta acción es permanente y no puede ser editada");
+        return;
+      }
       setSelectedAction(item);
-      setActionFormData({
+      
+      // Normalizar tipo_accion para que coincida con los valores del select
+      const normalizarTipoAccion = (tipo) => {
+        if (!tipo) return 'Operaciones CRUD';
+        
+        const tipoLower = tipo.toLowerCase().trim();
+        
+        // Mapeo de posibles variaciones a valores correctos
+        const mapeo = {
+          'operaciones crud': 'Operaciones CRUD',
+          'crud': 'Operaciones CRUD',
+          'lectura': 'Lectura',
+          'crear': 'Crear',
+          'actualizar': 'Actualizar',
+          'eliminar': 'Eliminar'
+        };
+        
+        return mapeo[tipoLower] || tipo; // Si no encuentra coincidencia, devolver original
+      };
+      
+      setActionFormData({ 
         nombre_accion: item.nombre_accion,
-        tipo_accion: item.tipo_accion,
-        activo: item.activo
+        tipo_accion: normalizarTipoAccion(item.tipo_accion), // Normalizar 
+        activo: item.activo 
       });
       setShowModal(true);
     }
@@ -274,6 +297,42 @@ const RolesSection = () => {
       activo: true
     });
   };
+
+  // Verificar si una acción es permanente para el rol seleccionado
+  const isActionPermanent = useCallback ((action) => {
+    if (!selectedRole) return false;
+    return isPermanentPermission(
+      selectedRole.nombre_rol,
+      action.nombre_accion,
+      action.tipo_accion
+    );
+  }, [selectedRole]);
+
+
+  // Ordenar acciones: Permanentes > Activos > Inactivos
+  const sortedRoleActions = useMemo(() => {
+    return [...roleActions].sort((a, b) => {
+      const aIsPermanent = isActionPermanent(a);
+      const bIsPermanent = isActionPermanent(b);
+      
+      // 1️⃣ Permanentes primero
+      if (aIsPermanent && !bIsPermanent) return -1;
+      if (!aIsPermanent && bIsPermanent) return 1;
+      
+      // 2️⃣ Si ambos son permanentes o ninguno lo es, ordenar por estado activo
+      if (aIsPermanent === bIsPermanent) {
+        if (a.activo && !b.activo) return -1;
+        if (!a.activo && b.activo) return 1;
+        
+        // 3️⃣ Si tienen el mismo estado, ordenar alfabéticamente por nombre
+        return a.nombre_accion.localeCompare(b.nombre_accion);
+      }
+      
+      return 0;
+    });
+  }, [roleActions, isActionPermanent]);
+
+
 
   const handleSubmitRole = async (e) => {
     e.preventDefault();
@@ -402,10 +461,19 @@ const RolesSection = () => {
     }
   };
 
+
+
   const handleDeleteAction = async (actionId) => {
     // 🔑 Verificar permiso
     if (!permissions.canDelete) {
       alert("❌ No tienes permiso para eliminar acciones");
+      return;
+    }
+
+    // 🔥 Verificar si es permanente
+    const action = roleActions.find(a => a.id_rol_accion === actionId);
+    if (action && isActionPermanent(action)) {
+      alert("🔒 Esta acción es permanente y no puede ser eliminada");
       return;
     }
 
@@ -437,6 +505,13 @@ const RolesSection = () => {
     // 🔑 Verificar permiso antes de cambiar estado
     if (!permissions.canToggleStatus) {
       alert('❌ No tienes permiso para cambiar el estado de acciones');
+      return;
+    }
+
+    // 🔥 Verificar si es permanente
+    const action = roleActions.find(a => a.id_rol_accion === actionId);
+    if (action && isActionPermanent(action)) {
+      alert("🔒 Esta acción es permanente y no puede ser eliminada");
       return;
     }
 
@@ -499,8 +574,11 @@ const RolesSection = () => {
       </div>
     );
   }
-  
+ 
 
+  // ============================================
+  // RENDER PRINCIPAL
+  // ============================================
   return (
     <div className="roles-section">
       {/* Header */}
@@ -733,74 +811,89 @@ const RolesSection = () => {
                 </div>
               ) : (
                 <div className="actions-grid">
-                  {roleActions.map(action => (
-                    <div
-                      key={action.id_rol_accion}
-                      className={`action-card ${!action.activo ? 'inactive' : ''}`}
-                    >
-                      <div className="action-card-header">
-                        <div className="action-info">
-                          <div className="action-name">{action.nombre_accion}</div>
-                          <div className="action-type">{action.tipo_accion}</div>
+                  {sortedRoleActions.map(action => {
+                    const isPermanent = isActionPermanent(action); 
+                    
+                    return (
+                      <div 
+                        key={action.id_rol_accion} 
+                        className={`action-card ${!action.activo ? 'inactive' : ''} ${isPermanent ? 'permanent' : ''}`}
+                      >
+                        <div className="action-card-header">
+                          <div className="action-info">
+                            <div className="action-name">{action.nombre_accion}</div>
+                            <div className="action-type">{action.tipo_accion}</div>
+                            
+                            {/* 🔥 Badge de PERMANENTE */}
+                            {isPermanent && (
+                              <span className="permanent-badge">
+                                <Lock className="w-3 h-3" />
+                                PERMANENTE
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className="action-buttons">
+                            {/* Botón Toggle Status - deshabilitado si es permanente */}
+                            {permissions.canToggleStatus && (
+                              <button
+                                className={`action-btn toggle ${isPermanent ? 'disabled' : ''}`}
+                                onClick={() => !isPermanent && handleToggleActionStatus(action.id_rol_accion)}
+                                title={isPermanent ? "Acción permanente" : (action.activo ? 'Desactivar' : 'Activar')}
+                                disabled={isPermanent}
+                              >
+                                {action.activo ? 
+                                  <Lock className="w-4 h-4" /> : 
+                                  <Unlock className="w-4 h-4" />
+                                }
+                              </button>
+                            )}
+                            
+                            {/* Botón Editar - deshabilitado si es permanente */}
+                            {permissions.canUpdate && (
+                              <button
+                                className={`action-btn edit ${isPermanent ? 'disabled' : ''}`}
+                                onClick={() => !isPermanent && openModal('edit-action', action)}
+                                title={isPermanent ? "Acción permanente" : "Editar acción"}
+                                disabled={isPermanent}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                            )}
+                            
+                            {/* Botón Eliminar - deshabilitado si es permanente */}
+                            {permissions.canDelete && (
+                              <button
+                                className={`action-btn delete ${isPermanent ? 'disabled' : ''}`}
+                                onClick={() => !isPermanent && handleDeleteAction(action.id_rol_accion)}
+                                title={isPermanent ? "Acción permanente" : "Eliminar acción"}
+                                disabled={isPermanent}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="action-buttons">
-                          {/* 🔑 Botón "Toggle Status" - solo si tiene permiso */}
-                          {permissions.canToggleStatus && (
-                            <button
-                              className="action-btn toggle"
-                              onClick={() => handleToggleActionStatus(action.id_rol_accion)}
-                              title={action.activo ? 'Desactivar' : 'Activar'}
-                            >
-                              {action.activo ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
-                            </button>
-                          )}
-                          {/* 🔑 Botón "Editar" - solo si tiene permiso de actualizar */}
-                          {permissions.canUpdate && (
-                            <button
-                              className="action-btn edit"
-                              onClick={() => openModal('edit-action', action)}
-                              title="Editar acción"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                          )}
-                          {/* 🔑 Botón "Eliminar" - solo si tiene permiso de eliminar */}
-                          {permissions.canDelete && (
-                            <button
-                              className="action-btn delete"
-                              onClick={() => handleDeleteAction(action.id_rol_accion)}
-                              title="Eliminar acción"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="action-card-footer">
-                        <span className={`status-badge ${action.activo ? 'active' : 'inactive'}`}>
-                          {action.activo ? (
-                            <>
-                              <CheckCircle className="w-3 h-3" />
-                              Activo
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-3 h-3" />
-                              Inactivo
-                            </>
-                          )}
-                        </span>
-                        {action.fecha_asignacion && (
-                          <span className="date-badge">
-                            <Calendar className="w-3 h-3" />
-                            {new Date(action.fecha_asignacion).toLocaleDateString()}
+                        
+                        <div className="action-card-footer">
+                          <span className={`status-badge ${action.activo ? 'active' : 'inactive'}`}>
+                            {action.activo ? 
+                              <><CheckCircle className="w-3 h-3" /> Activo</> : 
+                              <><XCircle className="w-3 h-3" /> Inactivo</>
+                            }
                           </span>
-                        )}
+                          {action.fecha_asignacion && (
+                            <span className="date-badge">
+                              <Calendar className="w-3 h-3" />
+                              {new Date(action.fecha_asignacion).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+
               )}
             </>
           ) : (
@@ -819,10 +912,10 @@ const RolesSection = () => {
           <div className="modal">
             <div className="modal-header">
               <h3>
-                {modalType === 'create-role' && '➕ Crear Nuevo Rol'}
-                {modalType === 'edit-role' && '✏️ Editar Rol'}
-                {modalType === 'create-action' && '➕ Crear Nueva Acción'}
-                {modalType === 'edit-action' && '✏️ Editar Acción'}
+                {modalType === 'create-role' && 'Crear Nuevo Rol'}
+                {modalType === 'edit-role' && 'Editar Rol'}
+                {modalType === 'create-action' && 'Crear Nueva Acción'}
+                {modalType === 'edit-action' && 'Editar Acción'}
               </h3>
               <button className="modal-close" onClick={closeModal}>
                 <X className="w-5 h-5" />

@@ -84,7 +84,7 @@ const MetersSection = () => {
     const canDelete = authService.hasPermission('medidores', 'eliminar') || 
                      authService.hasPermission('medidores', 'crud');
 
-    const canRead = authService.hasPermission('medidores', 'leer') || canCreate || canUpdate || canDelete ||
+    const canRead = authService.hasPermission('medidores', 'lectura') || canCreate || canUpdate || canDelete ||
                    authService.hasPermission('medidores', 'crud');
 
     const canToggleStatus = canUpdate;

@@ -644,6 +644,106 @@ def exportar_lecturas_excel(
         )
 
 
+@router.get("/mi-medidor")
+def obtener_mi_medidor(
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Obtiene la información del medidor asignado al usuario logueado.
+    No requiere permisos especiales, solo autenticación.
+    Endpoint de solo lectura para usuarios afiliados.
+    """
+    # Obtener usuario actual
+    current_user = get_current_user(payload, db)
+    
+    # Buscar el usuario afiliado asociado
+    usuario_afiliado = db.query(UsuarioAfiliado).filter(
+        UsuarioAfiliado.id_usuario_sistema == current_user.id_usuario_sistema,
+        UsuarioAfiliado.activo == True
+    ).first()
+    
+    if not usuario_afiliado:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No tienes un perfil de afiliado registrado"
+        )
+    
+    # Buscar el medidor asignado
+    medidor = db.query(Medidor).filter(
+        Medidor.id_usuario_afi == usuario_afiliado.id_usuario_afi
+    ).first()
+    
+    if not medidor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No tienes un medidor asignado"
+        )
+    
+    # Obtener información del sector del medidor
+    sector_info = None
+    if medidor.sector:
+        sector_info = {
+            "id_sector": medidor.sector.id_sector,
+            "nombre_sector": medidor.sector.nombre_sector,
+            "descripcion": getattr(medidor.sector, 'descripcion', None),
+            "activo": getattr(medidor.sector, 'activo', True)
+        }
+    
+    # Obtener información del usuario sistema (datos personales)
+    usuario_sistema_info = None
+    if usuario_afiliado.usuario_sistema:
+        us = usuario_afiliado.usuario_sistema
+        usuario_sistema_info = {
+            "id_usuario_sistema": us.id_usuario_sistema,
+            "nombres": us.nombres,
+            "apellidos": us.apellidos,
+            "cedula": us.cedula,
+            "email": us.email if hasattr(us, 'email') else None,
+            "telefono": us.telefono if hasattr(us, 'telefono') else None,
+            "direccion": us.direccion if hasattr(us, 'direccion') else None
+        }
+    
+    # Obtener información del sector del afiliado (si es diferente al del medidor)
+    sector_afiliado_info = None
+    if usuario_afiliado.sector:
+        sector_afiliado_info = {
+            "id_sector": usuario_afiliado.sector.id_sector,
+            "nombre_sector": usuario_afiliado.sector.nombre_sector
+        }
+    
+    # Construir respuesta completa
+    response = {
+        # Información del medidor
+        "medidor": {
+            "id_medidor": medidor.id_medidor,
+            "num_medidor": medidor.num_medidor,
+            "activo": medidor.activo,
+            "latitud": float(medidor.latitud) if medidor.latitud else None,
+            "longitud": float(medidor.longitud) if medidor.longitud else None,
+            "altitud": float(medidor.altitud) if medidor.altitud else None,
+            "sector": sector_info
+        },
+        
+        # Información del afiliado
+        "afiliado": {
+            "id_usuario_afi": usuario_afiliado.id_usuario_afi,
+            "cod_usuario_afi": usuario_afiliado.cod_usuario_afi,
+            "fecha_afiliacion": (
+                usuario_afiliado.fecha_afiliacion.strftime("%Y-%m-%d") 
+                if usuario_afiliado.fecha_afiliacion 
+                else None
+            ),
+            "activo": usuario_afiliado.activo,
+            "num_medidor": usuario_afiliado.num_medidor,
+            "sector": sector_afiliado_info,
+            "usuario_sistema": usuario_sistema_info
+        }
+    }
+    
+    return response
+
+
 def obtener_nombre_mes(mes: int) -> str:
     """Retorna el nombre del mes en español"""
     meses = {

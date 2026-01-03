@@ -83,12 +83,16 @@ const HomeSection = ({ user, stats, dataLoading }) => {
   // Handler para navegar a un módulo
   const handleModuleClick = (module) => {
     console.log('🎯 Navegando al módulo:', module.label);
-    const targetPath = `/administrador/${module.path}`;
-    console.log('📍 Ruta:', targetPath);
+    
+    // 🔥 Obtener el nombre del rol y convertirlo a minúsculas para la URL
+    const rolePath = user?.rol?.nombre_rol?.toLowerCase() || 'usuario';
+    const targetPath = `/${rolePath}/${module.path}`;
+    
+    console.log('📍 Ruta dinámica:', targetPath);
+    console.log('👤 Rol del usuario:', user?.rol?.nombre_rol);
+    
     navigate(targetPath);
   };
-
-
 
 
   if (loading) {

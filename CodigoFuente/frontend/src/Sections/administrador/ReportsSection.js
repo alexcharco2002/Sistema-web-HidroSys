@@ -30,6 +30,15 @@ const ReportsSection = () => {
 
   const [filterEstado, setFilterEstado] = useState('todos');
   const [searchTerm, setSearchTerm] = useState('');
+
+    // ====== FILTROS ESPECÍFICOS POR MÓDULO ======
+  const [filterSector, setFilterSector] = useState('todos');        // Para Medidores
+  const [filterTipoLectura, setFilterTipoLectura] = useState('todos'); // Para Lecturas (real/estimada)
+  const [filterPagoCompleto, setFilterPagoCompleto] = useState('todos'); // Para Pagos
+  const [sectoresDisponibles, setSectoresDisponibles] = useState([]); // Lista de sectores
+  // Después de filterEstado
+  const [filterActivoMultas, setFilterActivoMultas] = useState('todos');  // ✅ NUEVO
+
   
   // ============================================================
   // ESTADOS DE DATOS
@@ -480,63 +489,87 @@ const ReportsSection = () => {
     setPermissions({ canRead });
   };
 
-useEffect(() => {
-  const cargarPeriodos = async () => {
-    if (!['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo)) {
-      setPeriodos([]);
-      setPeriodoSeleccionado('');
-      return;
-    }
-
-    let result;
-    switch (selectedModulo) {
-      case 'Lecturas':
-        result = await reportsServices.getPeriodosLecturas();
-        break;
-      case 'Facturas':
-        result = await reportsServices.getPeriodosFacturas();
-        break;
-      case 'Pagos':
-        result = await reportsServices.getPeriodosPagos();
-        break;
-      default:
+  useEffect(() => {
+    const cargarPeriodos = async () => {
+      if (!['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo)) {
+        setPeriodos([]);
+        setPeriodoSeleccionado('');
         return;
-    }
-
-    if (result.success && result.data.length > 0) {
-      setPeriodos(result.data);
-
-      const fechaActual = new Date();
-      const mesActual = fechaActual.getMonth() + 1;
-      const anioActual = fechaActual.getFullYear();
-
-      const periodoActual = result.data.find(
-        p => p.mes === mesActual && p.anio === anioActual
-      );
-
-      let periodoValue;
-      if (periodoActual) {
-        periodoValue = `${periodoActual.mes}-${periodoActual.anio}`;
-      } else {
-        const masReciente = result.data[0];
-        periodoValue = `${masReciente.mes}-${masReciente.anio}`;
       }
 
-      // Solo setear el periodo, NO llamar a generarReporte aquí
-      setPeriodoSeleccionado(periodoValue);
+      let result;
+      switch (selectedModulo) {
+        case 'Lecturas':
+          result = await reportsServices.getPeriodosLecturas();
+          break;
+        case 'Facturas':
+          result = await reportsServices.getPeriodosFacturas();
+          break;
+        case 'Pagos':
+          result = await reportsServices.getPeriodosPagos();
+          break;
+        case 'MultasAfiliados':
+          result = await reportsServices.getPeriodosMultasAfiliados();
+          break;
+        default:
+          return;
+      }
+
+      if (result.success && result.data.length > 0) {
+        setPeriodos(result.data);
+
+        const fechaActual = new Date();
+        const mesActual = fechaActual.getMonth() + 1;
+        const anioActual = fechaActual.getFullYear();
+
+        const periodoActual = result.data.find(
+          p => p.mes === mesActual && p.anio === anioActual
+        );
+
+        let periodoValue;
+        if (periodoActual) {
+          periodoValue = `${periodoActual.mes}-${periodoActual.anio}`;
+        } else {
+          const masReciente = result.data[0];
+          periodoValue = `${masReciente.mes}-${masReciente.anio}`;
+        }
+
+        // Solo setear el periodo, NO llamar a generarReporte aquí
+        setPeriodoSeleccionado(periodoValue);
+      } else {
+        setPeriodos([]);
+        setPeriodoSeleccionado('');
+      }
+    };
+
+    if (['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo)) {
+      cargarPeriodos();
     } else {
       setPeriodos([]);
       setPeriodoSeleccionado('');
     }
-  };
+  }, [selectedModulo]);
 
-  if (['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo)) {
-    cargarPeriodos();
-  } else {
-    setPeriodos([]);
-    setPeriodoSeleccionado('');
-  }
-}, [selectedModulo]);
+  // Cargar sectores cuando se selecciona Medidores
+  useEffect(() => {
+    const cargarSectores = async () => {
+      if (selectedModulo !== 'Medidores') {
+        setSectoresDisponibles([]);
+        return;
+      }
+      
+      try {
+        const result = await reportsServices.getReporteSectores({ skip: 0, limit: 100 });
+        if (result.success && result.data) {
+          setSectoresDisponibles(result.data);
+        }
+      } catch (error) {
+        console.error('Error cargando sectores:', error);
+      }
+    };
+    
+    cargarSectores();
+  }, [selectedModulo]);
 
 
   // ============================================================
@@ -563,7 +596,7 @@ useEffect(() => {
         limit: 1000
       };
       // Agregar mes y año si hay periodo seleccionado
-      if (periodoSeleccionado && ['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo)) {
+      if (periodoSeleccionado && ['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo)) {
         const [mes, anio] = periodoSeleccionado.split('-');
         filtros.mes = parseInt(mes);
         filtros.anio = parseInt(anio);
@@ -589,39 +622,66 @@ useEffect(() => {
           break;
 
         case 'Medidores':
-          result = await reportsServices.getReporteMedidores(filtros);
+          result = await reportsServices.getReporteMedidores({
+            ...filtros,
+            activo: filterEstado === 'activos' ? true : (filterEstado === 'inactivos' ? false : undefined),
+            sector: filterSector !== 'todos' ? filterSector : undefined
+          });
           break;
 
         case 'Sectores':
-          result = await reportsServices.getReporteSectores(filtros);
+          result = await reportsServices.getReporteSectores({
+            ...filtros,
+            activo: filtros.estado === 'activos' ? true : (filtros.estado === 'inactivos' ? false : undefined)
+          });
           break;
 
         case 'Lecturas':
-          result = await reportsServices.getReporteLecturas(filtros);
-          break;
+        result = await reportsServices.getReporteLecturas({
+          ...filtros,
+          es_estimada: filterTipoLectura === 'estimadas' ? true : (filterTipoLectura === 'reales' ? false : undefined)
+        });
+        break;
 
         case 'Facturas':
-          result = await reportsServices.getReporteFacturas(filtros);
-          break;
-
+          result = await reportsServices.getReporteFacturas({
+            ...filtros,
+            estado: filterEstado !== 'todos' ? filterEstado : undefined
+          });
+        break;
         case 'Pagos':
-          result = await reportsServices.getReportePagos(filtros);
-          break;
+                result = await reportsServices.getReportePagos({
+                  ...filtros,
+                  estado_pago: filterEstado !== 'todos' ? filterEstado : undefined,
+                  pago_completo: filterPagoCompleto === 'completos' ? true : (filterPagoCompleto === 'parciales' ? false : undefined)
+                });
+                break;
 
         case 'Multas':
-          result = await reportsServices.getReporteMultas(filtros);
+          result = await reportsServices.getReporteMultas({
+            ...filtros,
+            activo: filtros.estado === 'activos' ? true : (filtros.estado === 'inactivos' ? false : undefined)
+          });
           break;
-
         case 'Tarifas':
-          result = await reportsServices.getReporteTarifas(filtros);
+          result = await reportsServices.getReporteTarifas({
+            ...filtros,
+            activo: filtros.estado === 'activos' ? true : (filtros.estado === 'inactivos' ? false : undefined)
+          });
           break;
 
         case 'Roles':
-          result = await reportsServices.getReporteRoles(filtros);
+          result = await reportsServices.getReporteRoles({
+            ...filtros,
+            activo: filtros.estado === 'activos' ? true : (filtros.estado === 'inactivos' ? false : undefined)
+          });
           break;
 
         case 'Servicios':
-          result = await reportsServices.getReporteServicios(filtros);
+          result = await reportsServices.getReporteServicios({
+            ...filtros,
+            activo: filtros.estado === 'activos' ? true : (filtros.estado === 'inactivos' ? false : undefined)
+          });
           break;
 
         case 'Notificaciones':
@@ -633,8 +693,15 @@ useEffect(() => {
           break;
 
         case 'MultasAfiliados':
-          result = await reportsServices.getReporteMultasAfiliados(filtros);
+          result = await reportsServices.getReporteMultasAfiliados({
+            ...filtros,  // ✅ Incluye mes, anio, search, skip, limit
+            estado: filterEstado !== 'todos' ? filterEstado : undefined,
+            activo: filterActivoMultas === 'activos' ? true : (filterActivoMultas === 'inactivos' ? false : undefined)
+          });
           break;
+
+
+
 
         case 'Configuracion':
           result = await reportsServices.getReporteConfiguracion(filtros);
@@ -672,20 +739,18 @@ useEffect(() => {
         } finally {
           setLoading(false);
         }
-  }, [selectedModulo, filterEstado, searchTerm, modulosSistema, periodoSeleccionado]);
-
- 
+  }, [selectedModulo, filterEstado, searchTerm, modulosSistema, periodoSeleccionado, filterSector, filterPagoCompleto, filterTipoLectura, filterActivoMultas]);
 
   useEffect(() => {
-  if (reporteData.length > 0) {
-    const todasColumnas = Object.keys(reporteData[0]);
-    const columnasIniciales = {};
-    todasColumnas.forEach(col => {
-      columnasIniciales[col] = true; // Todas visibles por defecto
-    });
-    setColumnasVisibles(columnasIniciales);
-  }
-}, [reporteData]);
+    if (reporteData.length > 0) {
+      const todasColumnas = Object.keys(reporteData[0]);
+      const columnasIniciales = {};
+      todasColumnas.forEach(col => {
+        columnasIniciales[col] = true; // Todas visibles por defecto
+      });
+      setColumnasVisibles(columnasIniciales);
+    }
+  }, [reporteData]);
 
   // ============================================================
   // GENERAR REPORTE CUANDO CAMBIA EL PERIODO SELECCIONADO
@@ -732,31 +797,31 @@ const columnasActivas = useMemo(() => {
     );
   }, [reporteData, selectedModulo, modulosSistema, columnasActivas]);
 
-/**
- * Imprimir reporte con columnas seleccionadas
- */
-const imprimirReporte = useCallback(() => {
-  if (reporteData.length === 0) {
-    alert('No hay datos para imprimir');
-    return;
-  }
+  /**
+   * Imprimir reporte con columnas seleccionadas
+   */
+  const imprimirReporte = useCallback(() => {
+    if (reporteData.length === 0) {
+      alert('No hay datos para imprimir');
+      return;
+    }
 
-  // Filtrar datos para incluir solo columnas visibles
-  const datosFiltrados = reporteData.map(row => {
-    const rowFiltrada = {};
-    columnasActivas.forEach(col => {
-      rowFiltrada[col] = row[col];
+    // Filtrar datos para incluir solo columnas visibles
+    const datosFiltrados = reporteData.map(row => {
+      const rowFiltrada = {};
+      columnasActivas.forEach(col => {
+        rowFiltrada[col] = row[col];
+      });
+      return rowFiltrada;
     });
-    return rowFiltrada;
-  });
 
-  const moduloInfo = modulosSistema.find(m => m.value === selectedModulo);
-  ReportExport.imprimirReporte(
-    datosFiltrados, 
-    moduloInfo?.label || selectedModulo, 
-    moduloInfo?.description
-  );
-}, [reporteData, selectedModulo, modulosSistema, columnasActivas]);
+    const moduloInfo = modulosSistema.find(m => m.value === selectedModulo);
+    ReportExport.imprimirReporte(
+      datosFiltrados, 
+      moduloInfo?.label || selectedModulo, 
+      moduloInfo?.description
+    );
+  }, [reporteData, selectedModulo, modulosSistema, columnasActivas]);
 
   // ============================================================
   // FUNCIONES DE LIMPIEZA DE FILTROS
@@ -766,12 +831,15 @@ const imprimirReporte = useCallback(() => {
    * Limpiar filtros SIN cambiar el módulo
    */
   const limpiarFiltrosSinModulo = useCallback(() => {
-
     setFilterEstado('todos');
     setSearchTerm('');
-    setPeriodoSeleccionado('');  
+    setPeriodoSeleccionado('');
+    setFilterSector('todos');
+    setFilterTipoLectura('todos');
+    setFilterPagoCompleto('todos');
     setError(null);
   }, []);
+
 
   /**
    * Volver a la selección (limpia TODO)
@@ -1178,25 +1246,94 @@ const formatTooltip = (key, value) => {
               />
             </div>
        
+          <div className="filters-right">
+            {/* FILTRO PARA MEDIDORES: Sector */}
+            {selectedModulo === 'Medidores' && (
+              <select
+                className="filter-select"
+                value={filterSector}
+                onChange={(e) => setFilterSector(e.target.value)}
+              >
+                <option value="todos">Todos los sectores</option>
+                {sectoresDisponibles.map((sector) => (
+                  <option key={sector.id_sector} value={sector.nombre_sector}>
+                    {sector.nombre_sector}
+                  </option>
+                ))}
+              </select>
+            )}
 
-            <div className="filters-right">
-              {/* Selector de Periodo - Solo para Lecturas, Facturas y Pagos */}
-              {['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo) && (
+            {/* FILTRO PARA LECTURAS: Tipo (Real/Estimada) */}
+            {selectedModulo === 'Lecturas' && (
+              <select
+                className="filter-select"
+                value={filterTipoLectura}
+                onChange={(e) => setFilterTipoLectura(e.target.value)}
+              >
+                <option value="todos">Todos los tipos</option>
+                <option value="reales">Reales</option>
+                <option value="estimadas">Estimadas</option>
+              </select>
+            )}
+
+            {/* FILTRO PARA FACTURAS: Estado */}
+            {selectedModulo === 'Facturas' && (
+              <select
+                className="filter-select"
+                value={filterEstado}
+                onChange={(e) => setFilterEstado(e.target.value)}
+              >
+                <option value="todos">Todos los estados</option>
+                <option value="pendiente">Pendiente</option>
+                <option value="pagada">Pagada</option>
+                <option value="vencida">Vencida</option>
+                <option value="anulada">Anulada</option>
+              </select>
+            )}
+
+            {/* FILTRO PARA PAGOS: Estado */}
+            {selectedModulo === 'Pagos' && (
+              <>
+                <select
+                className="filter-select"
+                value={filterEstado}
+                onChange={(e) => setFilterEstado(e.target.value)}
+              >
+                <option value="todos">Todos los estados</option>
+                <option value="REGISTRADO">Registrado</option>
+                <option value="ANULADO">Anulado</option>
+              </select>
+
                 <select
                   className="filter-select"
-                  value={periodoSeleccionado}
-                  onChange={(e) => setPeriodoSeleccionado(e.target.value)}
-                  title="Seleccionar periodo"
+                  value={filterPagoCompleto}
+                  onChange={(e) => setFilterPagoCompleto(e.target.value)}
                 >
-                  <option value="">Todos los periodos</option>
-                  {periodos.map((p, i) => (
-                    <option key={i} value={`${p.mes}-${p.anio}`}>
-                      {p.periodo}
-                    </option>
-                  ))}
+                  <option value="todos">Tipo de pago</option>
+                  <option value="completos">Pagos completos</option>
+                  <option value="parciales">Pagos parciales</option>
                 </select>
-              )}
+              </>
+            )}
 
+            {/* FILTRO PARA MULTAS AFILIADOS: Estado */}
+            {selectedModulo === 'MultasAfiliados' && (
+              <select
+                className="filter-select"
+                value={filterEstado}
+                onChange={(e) => setFilterEstado(e.target.value)}
+              >
+                <option value="todos">Todos los estados</option>
+                <option value="pendiente">Pendiente</option>
+                <option value="pagada">Pagada</option>
+                <option value="anulada">Anulada</option>
+                <option value="exonerada">Exonerada</option>
+                <option value="facturado">Facturado</option>
+              </select>
+            )}
+
+            {/* FILTRO GENÉRICO PARA OTROS MÓDULOS: Activo/Inactivo */}
+            {['Usuarios', 'Roles', 'Sectores', 'Tarifas', 'Afiliados', 'Medidores', 'Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo) && (
               <select
                 className="filter-select"
                 value={filterEstado}
@@ -1206,36 +1343,36 @@ const formatTooltip = (key, value) => {
                 <option value="activos">Activos</option>
                 <option value="inactivos">Inactivos</option>
               </select>
+            )}
 
-              <button onClick={limpiarFiltrosSinModulo} className="btn-secondary" title="Limpiar filtros">
-                <Eraser  className="w-4 h-4" />
-              </button>
+            {/* Selector de período */}
+            {['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo) && (
+              <select
+                className="filter-select"
+                value={periodoSeleccionado}
+                onChange={(e) => setPeriodoSeleccionado(e.target.value)}
+                title="Seleccionar periodo"
+              >
+                <option value="">Todos los periodos</option>
+                {periodos.map((p, i) => (
+                  <option key={i} value={`${p.mes}-${p.anio}`}>
+                    {p.periodo}
+                  </option>
+                ))}
+              </select>
+            )}
 
-              {/* BOTÓN TOGGLE ESTADÍSTICAS - Solo Lecturas, Facturas y Pagos */}
-              {['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo) && reporteData.length > 0 && (
-                <button 
-                  className={`btn-filter ${mostrarEstadisticas ? 'active' : ''}`}
-                  onClick={() => setMostrarEstadisticas(!mostrarEstadisticas)}
-                  title="Ver estadísticas avanzadas"
-                >
-                  <BarChart3 className="w-4 h-4" />
-                  <span>Estadísticas</span>
-                </button>
-              )}
+            {/* Botón limpiar filtros */}
+            <button
+              onClick={limpiarFiltrosSinModulo}
+              className="btn-secondary"
+              title="Limpiar filtros"
+            >
+              <Eraser className="w-4 h-4" />
+            </button>
+          </div>
 
-              {/* BOTÓN TOGGLE COLUMNAS */}
-              {reporteData.length > 0 && (
-                <button 
-                  className={`btn-filter ${mostrarSelectorColumnas ? 'active' : ''}`}
-                  onClick={() => setMostrarSelectorColumnas(!mostrarSelectorColumnas)}
-                  title="Seleccionar columnas"
-                >
-                  <Settings className="w-4 h-4" />
-                  <span>Columnas ({columnasActivas.length})</span>
-                </button>
-              )}
-              
-            </div>
+
           </div>
           {/* SELECTOR DE COLUMNAS - PANEL EXPANDIBLE */}
           {reporteData.length > 0 && mostrarSelectorColumnas && (

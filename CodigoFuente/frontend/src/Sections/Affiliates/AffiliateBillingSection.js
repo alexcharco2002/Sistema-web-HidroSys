@@ -20,14 +20,13 @@ import {
   Clock,
   Receipt,
   Paperclip,
-  Info,
   User,
   MapPin,
   Activity,
   CreditCard,
   Ban,
   BarChart3,
-  TrendingDown,
+  TrendingDown, XCircle, Gauge,
   ArrowUpDown, FileCheck , Search, SlidersHorizontal
 } from 'lucide-react';
 
@@ -98,12 +97,12 @@ const AffiliateBillingSection = () => {
 
   const loadUserPermissions = () => {
     const canRead =
-      authService.hasPermission('Facturasypagos', 'lectura') ||
-      authService.hasPermission('Facturasypagos', 'crud');
+      authService.hasPermission('Facturas_pagos', 'lectura') ||
+      authService.hasPermission('Facturas_pagos', 'crud');
 
     const canUpload =
-      authService.hasPermission('Facturasypagos', 'escritura') ||
-      authService.hasPermission('Facturasypagos', 'crud');
+      authService.hasPermission('Facturas_pagos', 'escritura') ||
+      authService.hasPermission('Facturas_pagos', 'crud');
 
     console.log('🔐 Permisos cargados:', { canRead, canUpload });
     setPermissions({ canRead, canUpload });
@@ -115,6 +114,26 @@ const AffiliateBillingSection = () => {
       setCurrentUser(user);
     }
   };
+
+  const getStatusBadge = (estado) => {
+    const configs = {
+      pendiente: { icon: Clock, texto: 'Pendiente' },
+      pagada: { icon: CheckCircle, texto: 'Pagada' },
+      vencida: { icon: XCircle, texto: 'Vencida' },
+      anulada: { icon: Ban, texto: 'Anulada' }
+    };
+
+    const config = configs[estado] || configs.pendiente;
+    const IconComponent = config.icon;
+
+    return (
+      <span className={`status-badge ${estado}`}>
+        <IconComponent className="status-icon" />
+        {config.texto}
+      </span>
+    );
+  };
+
 
   // ============================================================
   // FUNCIONES DE PERIODOS (AÑOS Y MESES DISPONIBLES)
@@ -482,40 +501,6 @@ const AffiliateBillingSection = () => {
   };
 
 
-
-  const getStatusBadge = (estado) => {
-    switch (estado?.toUpperCase()) {
-      case 'APROBADO':
-        return (
-          <span className="status-badge active">
-            <CheckCircle className="w-3 h-3" />
-            Aprobado
-          </span>
-        );
-      case 'PENDIENTE':
-        return (
-          <span className="status-badge" style={{backgroundColor: '#fef3c7', color: '#92400e'}}>
-            <Clock className="w-3 h-3" />
-            Pendiente
-          </span>
-        );
-      case 'ANULADO':
-        return (
-          <span className="status-badge inactive">
-            <Ban className="w-3 h-3" />
-            Anulado
-          </span>
-        );
-      default:
-        return (
-          <span className="status-badge">
-            <Info className="w-3 h-3" />
-            {estado}
-          </span>
-        );
-    }
-  };
-
   const getMetodoIcon = (metodo) => {
     switch (metodo?.toLowerCase()) {
       case 'efectivo':
@@ -853,7 +838,7 @@ const AffiliateBillingSection = () => {
                     </span>
                   </div>
                   <div className="factura-stat-box">
-                    <MapPin className="w-4 h-4 text-gray-500" />
+                    <Gauge className="w-4 h-4 text-gray-500" />
                     <span className="factura-medidor-text">
                       Medidor: {factura.usuario_afiliado?.num_medidor || 'N/A'}
                     </span>
@@ -865,8 +850,11 @@ const AffiliateBillingSection = () => {
                   className="factura-estado-section factura-clickable"
                   onClick={() => verDetalle(factura)}
                 >
-                  {factura.estado_factura}
+                  <div className="status-wrapper">
+                    {getStatusBadge(factura.estado_factura)}
+                  </div>
                 </div>
+
 
                 {/* ✅ Columna 5: Comprobante */}
                 <div className="factura-comprobante-section">

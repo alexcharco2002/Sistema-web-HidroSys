@@ -561,10 +561,7 @@ useEffect(() => {
 
               {modalType === 'view' && selectedSector && (
                 <div className="sector-details">
-                  <div className="detail-group">
-                    <label>ID Sector:</label>
-                    <p>{selectedSector.id_sector}</p>
-                  </div>
+         
                   <div className="detail-group">
                     <label>Nombre del Sector:</label>
                     <p>{selectedSector.nombre_sector}</p>

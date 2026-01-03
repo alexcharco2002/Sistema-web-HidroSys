@@ -303,6 +303,25 @@ async getPeriodosMisLecturas() {
   }
 }
 
+/**
+ * Obtener información del medidor del usuario logueado
+ */
+async getMiMedidor() {
+  try {
+    const data = await this.makeRequest('/afiliados/mi-medidor');
+    return {
+      success: true,
+      data
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo información del medidor:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener información del medidor'
+    };
+  }
+}
+
 
   /**
    * Obtener nombre del mes en español

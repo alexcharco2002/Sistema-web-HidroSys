@@ -53,7 +53,7 @@ class FacturaBase(BaseModel):
     @field_validator('estado_factura')
     @classmethod
     def validar_estado(cls, v: str) -> str:
-        estados_validos = ['pendiente', 'pagada', 'anulada', 'vencida']
+        estados_validos = ['pendiente', 'pagada', 'anulada', 'vencida', 'facturado']
         v_lower = v.lower().strip()
         if v_lower not in estados_validos:
             raise ValueError(f'Estado inválido. Debe ser uno de: {", ".join(estados_validos)}')
@@ -88,7 +88,7 @@ class FacturaUpdate(BaseModel):
     def validar_estado(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
-        estados_validos = ['pendiente', 'pagada', 'anulada', 'vencida']
+        estados_validos = ['pendiente', 'pagada', 'anulada', 'vencida', 'facturado']
         v_lower = v.lower().strip()
         if v_lower not in estados_validos:
             raise ValueError(f'Estado inválido. Debe ser uno de: {", ".join(estados_validos)}')

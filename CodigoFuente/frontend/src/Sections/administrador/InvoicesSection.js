@@ -315,26 +315,41 @@ const InvoicesSection = () => {
   ]);
 
   // ============================================================
-// FUNCIONES DE FILTRADO Y ORDENAMIENTO
-// ============================================================
-const filteredFacturas = facturas.filter(factura => {
-  const searchLower = searchTerm.toLowerCase();
-  
-  // Buscar en múltiples campos
-  const matchesSearch =
-    factura.num_factura?.toLowerCase().includes(searchLower) ||
-    factura.id_factura?.toString().includes(searchTerm) ||
-    factura.usuario_afiliado?.cod_usuario_afi?.toLowerCase().includes(searchLower) ||
-    factura.usuario_afiliado?.usuario_sistema?.nombres?.toLowerCase().includes(searchLower) ||
-    factura.usuario_afiliado?.usuario_sistema?.apellidos?.toLowerCase().includes(searchLower) ||
-    factura.usuario_afiliado?.usuario_sistema?.cedula?.includes(searchTerm);
-  
-  const matchesStatus =
-    filterStatus === 'all' ||
-    factura.estado_factura === filterStatus;
-  
-  return matchesSearch && matchesStatus;
-});
+  // FUNCIONES DE FILTRADO Y ORDENAMIENTO
+  // ============================================================
+  const filteredFacturas = facturas.filter(factura => {
+    const searchLower = searchTerm.toLowerCase();
+    
+    // 🔥 Helper para convertir valores a string de forma segura
+    const toString = (value) => {
+      if (value === null || value === undefined) return '';
+      return String(value).toLowerCase();
+    };
+    
+    // Buscar en múltiples campos
+    const matchesSearch = 
+      // Número de factura
+      toString(factura.num_factura).includes(searchLower) ||
+      toString(factura.id_factura).includes(searchTerm) ||
+      
+      // 🔥 Código de afiliado (convertido a string)
+      toString(factura.usuario_afiliado?.cod_usuario_afi).includes(searchLower) ||
+      
+      // 🔥 Número de medidor
+      toString(factura.usuario_afiliado?.num_medidor).includes(searchLower) ||
+      
+      // Nombres del afiliado
+      toString(factura.usuario_afiliado?.usuario_sistema?.nombres).includes(searchLower) ||
+      toString(factura.usuario_afiliado?.usuario_sistema?.apellidos).includes(searchLower) ||
+      
+      // Cédula
+      toString(factura.usuario_afiliado?.usuario_sistema?.cedula).includes(searchTerm);
+    
+    const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
+    
+    return matchesSearch && matchesStatus;
+  });
+
 
 // Función auxiliar para determinar prioridad de estado
 const getEstadoPrioridad = (estado) => {
@@ -1263,115 +1278,117 @@ const agruparDetallesPorTipo = (detalles) => {
           </div>
           
           {/* SECCIÓN DE SERVICIOS MASIVOS CON TOGGLE */}
-          <div className="services-bulk-section">
-            <div className="services-toggle-header">
-              <div className="toggle-left">
-                <Package className="w-5 h-5 text-indigo-600" />
-                <span className="toggle-title">Servicios Masivos</span>
-                {serviciosSeleccionados.length > 0 && (
-                  <span className="counter-badge animate-pop">
-                    {serviciosSeleccionados.length}
-                  </span>
-                )}
+          {permissions.canUpdate && (
+            <div className="services-bulk-section">
+              <div className="services-toggle-header">
+                <div className="toggle-left">
+                  <Package className="w-5 h-5 text-indigo-600" />
+                  <span className="toggle-title">Servicios Masivos</span>
+                  {serviciosSeleccionados.length > 0 && (
+                    <span className="counter-badge animate-pop">
+                      {serviciosSeleccionados.length}
+                    </span>
+                  )}
+                </div>
+                
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={showServicios}
+                    onChange={(e) => setShowServicios(e.target.checked)}
+                    disabled={loading}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
               </div>
-              
-              <label className="toggle-switch">
-                <input
-                  type="checkbox"
-                  checked={showServicios}
-                  onChange={(e) => setShowServicios(e.target.checked)}
-                  disabled={loading}
-                />
-                <span className="toggle-slider"></span>
-              </label>
-            </div>
 
-            {/* CONTENIDO EXPANDIBLE */}
-            {showServicios && (
-              <div className="services-content">
-                {serviciosDisponibles.length === 0 ? (
-                  <div className="services-empty">
-                    <Package className="w-12 h-12 text-gray-300" />
-                    <p className="text-gray-500">No hay servicios disponibles</p>
-                  </div>
-                ) : (
-                  <>
-                    {/* PILLS DE SERVICIOS */}
-                    <div className="services-pills-container">
-                      {serviciosDisponibles.map((servicio) => (
-                        <button
-                          key={servicio.id_servicio}
-                          className={`service-pill ${
-                            serviciosSeleccionados.includes(servicio.id_servicio) ? 'active' : ''
-                          }`}
-                          onClick={() => {
-                            if (loading) return; // Prevenir cambios durante carga
-                            
-                            if (serviciosSeleccionados.includes(servicio.id_servicio)) {
-                              setServiciosSeleccionados(
-                                serviciosSeleccionados.filter(id => id !== servicio.id_servicio)
-                              );
-                            } else {
-                              setServiciosSeleccionados([...serviciosSeleccionados, servicio.id_servicio]);
-                            }
-                          }}
-                          disabled={loading}
-                        >
-                          <span className="pill-name">{servicio.nombre}</span>
-                          <span className="pill-price">${parseFloat(servicio.precio_base).toFixed(2)}</span>
-                          {serviciosSeleccionados.includes(servicio.id_servicio) && (
-                            <span className="pill-check">✓</span>
-                          )}
-                        </button>
-                      ))}
+              {/* CONTENIDO EXPANDIBLE */}
+              {showServicios && (
+                <div className="services-content">
+                  {serviciosDisponibles.length === 0 ? (
+                    <div className="services-empty">
+                      <Package className="w-12 h-12 text-gray-300" />
+                      <p className="text-gray-500">No hay servicios disponibles</p>
                     </div>
-
-                    {/* BARRA DE ACCIONES */}
-                    {serviciosSeleccionados.length > 0 && (
-                      <div className="services-action-bar">
-                        <div className="action-info">
-                          <span className="action-text">
-                            <strong>{serviciosSeleccionados.length}</strong> servicio{serviciosSeleccionados.length !== 1 ? 's' : ''} seleccionado{serviciosSeleccionados.length !== 1 ? 's' : ''}
-                          </span>
-                          {periodoSeleccionado && (
-                            <span className="period-badge">
-                              📅 {formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}
-                            </span>
-                          )}
-                        </div>
-                        <div className="action-buttons">
+                  ) : (
+                    <>
+                      {/* PILLS DE SERVICIOS */}
+                      <div className="services-pills-container">
+                        {serviciosDisponibles.map((servicio) => (
                           <button
-                            className="btn-clear"
-                            onClick={() => setServiciosSeleccionados([])}
+                            key={servicio.id_servicio}
+                            className={`service-pill ${
+                              serviciosSeleccionados.includes(servicio.id_servicio) ? 'active' : ''
+                            }`}
+                            onClick={() => {
+                              if (loading) return; // Prevenir cambios durante carga
+                              
+                              if (serviciosSeleccionados.includes(servicio.id_servicio)) {
+                                setServiciosSeleccionados(
+                                  serviciosSeleccionados.filter(id => id !== servicio.id_servicio)
+                                );
+                              } else {
+                                setServiciosSeleccionados([...serviciosSeleccionados, servicio.id_servicio]);
+                              }
+                            }}
                             disabled={loading}
                           >
-                            Limpiar
-                          </button>
-                          <button
-                            className="btn-apply"
-                            onClick={handleAplicarServiciosMasivo}
-                            disabled={loading}
-                          >
-                            {loading ? (
-                              <>
-                                <span className="spinner"></span>
-                                <span>Aplicando...</span>
-                              </>
-                            ) : (
-                              <>
-                                <span>Aplicar a Todas</span>
-                                <span className="arrow">→</span>
-                              </>
+                            <span className="pill-name">{servicio.nombre}</span>
+                            <span className="pill-price">${parseFloat(servicio.precio_base).toFixed(2)}</span>
+                            {serviciosSeleccionados.includes(servicio.id_servicio) && (
+                              <span className="pill-check">✓</span>
                             )}
                           </button>
-                        </div>
+                        ))}
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+
+                      {/* BARRA DE ACCIONES */}
+                      {serviciosSeleccionados.length > 0 && (
+                        <div className="services-action-bar">
+                          <div className="action-info">
+                            <span className="action-text">
+                              <strong>{serviciosSeleccionados.length}</strong> servicio{serviciosSeleccionados.length !== 1 ? 's' : ''} seleccionado{serviciosSeleccionados.length !== 1 ? 's' : ''}
+                            </span>
+                            {periodoSeleccionado && (
+                              <span className="period-badge">
+                                📅 {formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="action-buttons">
+                            <button
+                              className="btn-clear"
+                              onClick={() => setServiciosSeleccionados([])}
+                              disabled={loading}
+                            >
+                              Limpiar
+                            </button>
+                            <button
+                              className="btn-apply"
+                              onClick={handleAplicarServiciosMasivo}
+                              disabled={loading}
+                            >
+                              {loading ? (
+                                <>
+                                  <span className="spinner"></span>
+                                  <span>Aplicando...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span>Aplicar a Todas</span>
+                                  <span className="arrow">→</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
 
           {/* MENSAJE DE ERROR */}

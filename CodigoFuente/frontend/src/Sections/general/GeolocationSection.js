@@ -10,7 +10,7 @@ import "leaflet/dist/leaflet.css";
 import { 
   MapPin, Search, CheckCircle, XCircle,
   RefreshCw, AlertCircle, Layers, Navigation, 
-  X, User, Navigation2, Maximize2
+  X, User, Navigation2
 } from 'lucide-react';
 
 const GeolocationSection = () => {
@@ -42,11 +42,11 @@ const GeolocationSection = () => {
   });
 
   useEffect(() => {
-    const canRead = authService.hasPermission('medidores', 'lectura') ||
-                    authService.hasPermission('medidores', 'operaciones crud');
+    const canRead = authService.hasPermission('geolocalizacion', 'lectura') ||
+                    authService.hasPermission('geolocalizacion', 'operaciones crud');
     
-    const canUpdate = authService.hasPermission('medidores', 'actualizar') ||
-                      authService.hasPermission('medidores', 'operaciones crud');
+    const canUpdate = authService.hasPermission('geolocalizacion', 'actualizar') ||
+                      authService.hasPermission('geolocalizacion', 'operaciones crud');
 
     setPermissions({ canRead, canUpdate });
     // Obtener usuario actual
@@ -373,8 +373,6 @@ const GeolocationSection = () => {
 
   useEffect(() => {
     if (mapReady && medidores.length > 0) {
-      // Solo hacer fitBounds si NO hay medidor seleccionado
-      //shouldFitBoundsRef.current = !selectedMedidor;
       const timeout = setTimeout(() => {
         renderMarkers();
       }, 100);
@@ -402,13 +400,6 @@ const GeolocationSection = () => {
     fetchData();
   };
 
-  const fitAllMarkers = () => {
-    if (mapRef.current && markersRef.current.length > 0) {
-      shouldFitBoundsRef.current = true;
-      const group = L.featureGroup(markersRef.current);
-      mapRef.current.fitBounds(group.getBounds().pad(0.1));
-    }
-  };
 
   if (!permissions.canRead) {
     return (
@@ -454,13 +445,6 @@ const GeolocationSection = () => {
             <Layers className="w-4 h-4" />
           </button>
 
-          <button 
-            className="btn-secondary"
-            onClick={fitAllMarkers}
-            title="Ver todos los medidores"
-          >
-            <Maximize2 className="w-4 h-4" />
-          </button>
 
           <button 
             className="btn-secondary"
@@ -472,8 +456,8 @@ const GeolocationSection = () => {
         </div>
       </div>
 
-      {/* ==================== ESTADÍSTICAS DE GEOLOCALIZACIÓN ==================== */}
-      {estadisticas && (
+     {/* ==================== ESTADÍSTICAS DE GEOLOCALIZACIÓN ==================== */}
+      {estadisticas && permissions.canUpdate && (
         <div className="periodo-stats-container">
 
           {/* Header */}
@@ -536,9 +520,9 @@ const GeolocationSection = () => {
         </div>
       )}
 
-
       {/* FILTROS */}
       <div className="filters-section">
+        {/* Búsqueda - Visible para todos */}
         <div className="search-container">
           <Search className="search-icon" />
           <input
@@ -550,58 +534,63 @@ const GeolocationSection = () => {
           />
         </div>
 
-        <div className="filters-right">
-          <select 
-            className="filter-select"
-            value={filterSector}
-            onChange={(e) => setFilterSector(e.target.value)}
-          >
-            <option value="all">Todos los sectores</option>
-            {sectores
-              .filter(s => s.activo)
-              .map(sector => (
-                <option key={sector.id_sector} value={sector.id_sector}>
-                  {sector.nombre_sector}
-                </option>
-              ))
-            }
-          </select>
+        {/* Filtros avanzados - Solo con permiso de actualización */}
+        {permissions.canUpdate && (
+          <div className="filters-right">
+            <select 
+              className="filter-select"
+              value={filterSector}
+              onChange={(e) => setFilterSector(e.target.value)}
+            >
+              <option value="all">Todos los sectores</option>
+              {sectores
+                .filter(s => s.activo)
+                .map(sector => (
+                  <option key={sector.id_sector} value={sector.id_sector}>
+                    {sector.nombre_sector}
+                  </option>
+                ))
+              }
+            </select>
 
-          <select 
-            className="filter-select"
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="all">Todos los estados</option>
-            <option value="active">Activos</option>
-            <option value="inactive">Inactivos</option>
-          </select>
+            <select 
+              className="filter-select"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+            >
+              <option value="all">Todos los estados</option>
+              <option value="active">Activos</option>
+              <option value="inactive">Inactivos</option>
+            </select>
 
-          <select 
-            className="filter-select"
-            value={filterAsignacion}
-            onChange={(e) => setFilterAsignacion(e.target.value)}
-          >
-            <option value="all">Todas las asignaciones</option>
-            <option value="assigned">Asignados</option>
-            <option value="unassigned">Sin asignar</option>
-          </select>
+            <select 
+              className="filter-select"
+              value={filterAsignacion}
+              onChange={(e) => setFilterAsignacion(e.target.value)}
+            >
+              <option value="all">Todas las asignaciones</option>
+              <option value="assigned">Asignados</option>
+              <option value="unassigned">Sin asignar</option>
+            </select>
 
-          <button 
-            className="btn-secondary"
-            onClick={() => {
-              setSearchTerm('');
-              setFilterSector('all');
-              setFilterStatus('all');
-              setFilterAsignacion('all');
-              shouldFitBoundsRef.current = true;
-            }}
-            title="Limpiar filtros"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+            <button 
+              className="btn-secondary"
+              onClick={() => {
+                setSearchTerm('');
+                setFilterSector('all');
+                setFilterStatus('all');
+                setFilterAsignacion('all');
+                shouldFitBoundsRef.current = true;
+              }}
+              title="Limpiar filtros"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
+      
+
 
 
       {error && (
@@ -688,15 +677,17 @@ const GeolocationSection = () => {
         </div>
       )}
 
-        {/* MAPA */}
-        <div ref={mapContainerRef} className="geo-map-container">
-          {!mapReady && (
-            <div className="loading-map">
-              <div className="spinner" />
-              <p>Inicializando mapa...</p>
-            </div>
-          )}
+      {/* MAPA */}
+      <div ref={mapContainerRef} className="geo-map-container">
+        {!mapReady && (
+          <div className="loading-map">
+            <div className="spinner" />
+            <p>Inicializando mapa...</p>
+          </div>
+        )}
 
+        {/* Leyenda - Solo visible con permiso de actualización */}
+        {permissions.canUpdate && (
           <div className="map-legend">
             <div className="legend-title">Leyenda</div>
             <div className="legend-item">
@@ -716,7 +707,9 @@ const GeolocationSection = () => {
               <span>Inactivo</span>
             </div>
           </div>
-        </div>
+        )}
+      </div>
+
       </div>
 
       {/* PANEL DE DETALLES */}

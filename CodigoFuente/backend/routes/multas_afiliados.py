@@ -159,7 +159,7 @@ def listar_afiliados_para_multas(
 
 
 # ============================================
-# NUEVO ENDPOINT: OBTENER AÑOS DISPONIBLES
+#  OBTENER AÑOS DISPONIBLES
 # ============================================
 @router.get("/periodos/anios", response_model=List[int])
 def obtener_anios_disponibles(
@@ -191,7 +191,7 @@ def obtener_anios_disponibles(
 
 
 # ============================================
-# NUEVO ENDPOINT: OBTENER MESES DE UN AÑO
+#  OBTENER MESES DE UN AÑO
 # ============================================
 @router.get("/periodos/meses/{anio}", response_model=List[dict])
 def obtener_meses_por_anio(
@@ -213,7 +213,7 @@ def obtener_meses_por_anio(
                 func.extract('year', MultaAfiliado.fecha_multa) == anio
             )
             .distinct()
-            .order_by(func.extract('month', MultaAfiliado.fecha_multa).asc())
+            .order_by(func.extract('month', MultaAfiliado.fecha_multa).desc())  # ⭐ CAMBIO: .asc() → .desc()
             .all()
         )
         
@@ -239,7 +239,7 @@ def obtener_meses_por_anio(
 
 
 # ============================================
-# MODIFICAR ENDPOINT LISTAR MULTAS
+#  ENDPOINT LISTAR MULTAS
 # ============================================
 @router.get("/", response_model=List[MultaAfiliadoCompleto])
 def listar_multas_afiliados(
@@ -248,8 +248,8 @@ def listar_multas_afiliados(
     activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
     fecha_desde: Optional[date] = Query(None, description="Fecha multa desde"),
     fecha_hasta: Optional[date] = Query(None, description="Fecha multa hasta"),
-    anio: Optional[int] = Query(None, description="Filtrar por año"),  # ⭐ NUEVO
-    mes: Optional[int] = Query(None, ge=1, le=12, description="Filtrar por mes"),  # ⭐ NUEVO
+    anio: Optional[int] = Query(None, description="Filtrar por año"), 
+    mes: Optional[int] = Query(None, ge=1, le=12, description="Filtrar por mes"),  
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
@@ -330,9 +330,6 @@ def listar_multas_afiliados(
     return resultado
 
 
-# ==========================
-# ESTADÍSTICAS CON FILTROS DE PERÍODO 
-# ==========================
 @router.get("/stats", response_model=MultaAfiliadoStats)
 def obtener_estadisticas_multas(
     anio: Optional[int] = Query(None, description="Filtrar estadísticas por año"),
@@ -342,98 +339,88 @@ def obtener_estadisticas_multas(
 ):
     """
     Obtiene estadísticas de multas con filtros opcionales de período
-    Si se proporciona año, filtra por ese año
-    Si además se proporciona mes, filtra por ese mes específico
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "multasafiliados", "lectura")
     
-    # ⭐ Crear query base con filtro de período
-    base_query = db.query(MultaAfiliado)
-    
-    # ⭐ Aplicar filtros de período
-    if anio:
-        base_query = base_query.filter(
-            func.extract('year', MultaAfiliado.fecha_multa) == anio
-        )
-        if mes:
-            base_query = base_query.filter(
-                func.extract('month', MultaAfiliado.fecha_multa) == mes
-            )
-    
-    # ========================================
-    # ESTADÍSTICAS POR ESTADO (solo activas)
-    # ========================================
-    total = base_query.filter(MultaAfiliado.activo == True).count()
-    
-    pendientes = base_query.filter(
-        MultaAfiliado.estado == "pendiente",
-        MultaAfiliado.activo == True
-    ).count()
-    
-    pagadas = base_query.filter(
-        MultaAfiliado.estado == "pagada",
-        MultaAfiliado.activo == True  
-    ).count()
-    
-    anuladas = base_query.filter(
-        MultaAfiliado.estado == "anulada",
-        MultaAfiliado.activo == True   
-    ).count()
-    
-    exoneradas = base_query.filter(
-        MultaAfiliado.estado == "exonerada",
-        MultaAfiliado.activo == True  
-    ).count()
+    # ⭐ FUNCIÓN HELPER PARA CREAR QUERY BASE LIMPIA
+    def get_base_query():
+        """Retorna un query base fresco con filtros de período"""
+        query = db.query(MultaAfiliado).filter(MultaAfiliado.activo == True)
+        
+        if anio:
+            query = query.filter(func.extract('year', MultaAfiliado.fecha_multa) == anio)
+            if mes:
+                query = query.filter(func.extract('month', MultaAfiliado.fecha_multa) == mes)
+        
+        return query
     
     # ========================================
-    # ESTADÍSTICAS DE FACTURACIÓN
+    # ESTADÍSTICAS POR ESTADO
     # ========================================
-    # Multas facturadas (independiente del estado)
-    facturadas = base_query.filter(
-        MultaAfiliado.facturado == True,
-        MultaAfiliado.activo == True  
+    total = get_base_query().count()
+    
+    pendientes = get_base_query().filter(
+        MultaAfiliado.estado == "pendiente"
     ).count()
     
-    # Multas pendientes de facturación (activas, no facturadas)
-    pendientes_facturacion = base_query.filter(
+    pagadas = get_base_query().filter(
+        MultaAfiliado.estado == "pagada"
+    ).count()
+    
+    anuladas = get_base_query().filter(
+        MultaAfiliado.estado == "anulada"
+    ).count()
+    
+    exoneradas = get_base_query().filter(
+        MultaAfiliado.estado == "exonerada"
+    ).count()
+    
+    # ⭐ IMPORTANTE: Estado "facturado"
+    facturado = get_base_query().filter(
+        MultaAfiliado.estado == "facturado"
+    ).count()
+    
+    # ========================================
+    # ESTADÍSTICAS DE FACTURACIÓN (campo booleano)
+    # ========================================
+    facturadas = get_base_query().filter(
+        MultaAfiliado.facturado == True
+    ).count()
+    
+    pendientes_facturacion = get_base_query().filter(
         MultaAfiliado.facturado == False,
-        MultaAfiliado.activo == True,
-        MultaAfiliado.estado.in_(["pendiente", "pagada"])  # Solo pendientes o pagadas se pueden facturar
+        MultaAfiliado.estado.in_(["pendiente", "pagada", "exonerada", "anulada"]),
     ).count()
     
     # ========================================
     # MONTOS
     # ========================================
-    # Monto pendiente de pago
-    monto_pendiente = base_query.filter(
-        MultaAfiliado.estado == "pendiente",
-        MultaAfiliado.activo == True
+    monto_pendiente = get_base_query().filter(
+        MultaAfiliado.estado == "pendiente"
     ).with_entities(func.sum(MultaAfiliado.monto)).scalar() or Decimal("0.00")
     
-    # Monto pagado
-    monto_pagado = base_query.filter(
-        MultaAfiliado.estado == "pagada",
-        MultaAfiliado.activo == True  
+    monto_pagado = get_base_query().filter(
+        MultaAfiliado.estado == "pagada"
     ).with_entities(func.sum(MultaAfiliado.monto)).scalar() or Decimal("0.00")
     
-    # Monto total (todas las multas activas)
-    monto_total = base_query.filter(
-        MultaAfiliado.activo == True
+    monto_total = get_base_query().with_entities(
+        func.sum(MultaAfiliado.monto)
+    ).scalar() or Decimal("0.00")
+    
+    monto_facturado = get_base_query().filter(
+        MultaAfiliado.facturado == True
     ).with_entities(func.sum(MultaAfiliado.monto)).scalar() or Decimal("0.00")
     
-    # Monto facturado
-    monto_facturado = base_query.filter(
-        MultaAfiliado.facturado == True,
-        MultaAfiliado.activo == True
-    ).with_entities(func.sum(MultaAfiliado.monto)).scalar() or Decimal("0.00")
-    
-    # Monto pendiente de facturación
-    monto_pendiente_facturacion = base_query.filter(
+    monto_pendiente_facturacion = get_base_query().filter(
         MultaAfiliado.facturado == False,
-        MultaAfiliado.activo == True,
         MultaAfiliado.estado.in_(["pendiente", "pagada"])
     ).with_entities(func.sum(MultaAfiliado.monto)).scalar() or Decimal("0.00")
+    
+    # ⭐ VERIFICACIÓN DE CONSISTENCIA (opcional, para debug)
+    suma_estados = pendientes + pagadas + anuladas + exoneradas + facturado
+    if suma_estados != total:
+        print(f"⚠️ WARNING: Suma de estados ({suma_estados}) no coincide con total ({total})")
     
     return {
         # Contadores por estado
@@ -442,8 +429,9 @@ def obtener_estadisticas_multas(
         "pagadas": pagadas,
         "anuladas": anuladas,
         "exoneradas": exoneradas,
+        "facturado": facturado,  # ⭐ DEBE ESTAR AQUÍ
         
-        # Contadores de facturación
+        # Contadores de facturación (campo booleano)
         "facturadas": facturadas,
         "pendientes_facturacion": pendientes_facturacion,
         

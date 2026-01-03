@@ -71,68 +71,67 @@ const FinesAffiliatesSection = () => {
   const [filterTipoMulta, setFilterTipoMulta] = useState('all');
   const [sortOrder, setSortOrder] = useState('desc');
   const [sortBy, setSortBy] = useState('fecha');
-  const [filterAnio, setFilterAnio] = useState(''); // ⭐ NUEVO
-  const [filterMes, setFilterMes] = useState(''); // ⭐ NUEVO
-  const [aniosDisponibles, setAniosDisponibles] = useState([]); // ⭐ NUEVO
-  const [mesesDisponibles, setMesesDisponibles] = useState([]); // ⭐ NUEVO
+  const [filterAnio, setFilterAnio] = useState(''); 
+  const [filterMes, setFilterMes] = useState(''); 
+  const [aniosDisponibles, setAniosDisponibles] = useState([]); 
+  const [mesesDisponibles, setMesesDisponibles] = useState([]); 
 
-// ============================================================
-// FUNCIÓN PARA OBTENER AÑO Y MES ACTUAL
-// ============================================================
-const getCurrentYearMonth = () => {
-    const now = new Date();
-    return {
-        year: now.getFullYear(),
-        month: now.getMonth() + 1 // getMonth() retorna 0-11
-    };
-};
-
-// ============================================================
-// CARGAR AÑOS DISPONIBLES
-// ============================================================
-const loadAnios = async () => {
+  // ============================================================
+  // CARGAR AÑOS DISPONIBLES
+  // ============================================================
+  const loadAnios = async () => {
     try {
-        const result = await finesAffiliatesServices.getAnios();
-        if (result.success) {
-            setAniosDisponibles(result.data);
-        }
+      const result = await finesAffiliatesServices.getAnios();
+      if (result.success) {
+        setAniosDisponibles(result.data);
+        // Retornar el año más reciente (el primero si está ordenado DESC)
+        return result.data.length > 0 ? result.data[0] : null;
+      }
+      return null;
     } catch (error) {
-        console.error('Error cargando años:', error);
+      console.error('Error cargando años:', error);
+      return null;
     }
-};
+  };
 
-// ============================================================
-// CARGAR MESES SEGÚN EL AÑO SELECCIONADO
-// ============================================================
-const loadMesesPorAnio = async (anio) => {
+
+  // ============================================================
+  // CARGAR MESES SEGÚN EL AÑO SELECCIONADO
+  // ============================================================
+  const loadMesesPorAnio = async (anio) => {
     if (!anio) {
-        setMesesDisponibles([]);
-        return;
+      setMesesDisponibles([]);
+      return null;
     }
     
     try {
-        const result = await finesAffiliatesServices.getMesesPorAnio(anio);
-        if (result.success) {
-            setMesesDisponibles(result.data);
-        }
+      const result = await finesAffiliatesServices.getMesesPorAnio(anio);
+      if (result.success) {
+        setMesesDisponibles(result.data);
+        // Retornar el mes más reciente (el primero si está ordenado DESC)
+        return result.data.length > 0 ? result.data[0].mes : null;
+      }
+      return null;
     } catch (error) {
-        console.error('Error cargando meses:', error);
-        setMesesDisponibles([]);
+      console.error('Error cargando meses:', error);
+      setMesesDisponibles([]);
+      return null;
     }
-};
+  };
 
-// ============================================================
-// MANEJAR CAMBIO DE AÑO
-// ============================================================
-const handleAnioChange = (anio) => {
-    setFilterAnio(anio);
-    setFilterMes(''); // Resetear mes cuando cambia el año
-    if (anio) {
-        loadMesesPorAnio(anio);
-    } else {
-        setMesesDisponibles([]);
-    }
-};
+
+  // ============================================================
+  // MANEJAR CAMBIO DE AÑO
+  // ============================================================
+  const handleAnioChange = (anio) => {
+      setFilterAnio(anio);
+      setFilterMes(''); // Resetear mes cuando cambia el año
+      if (anio) {
+          loadMesesPorAnio(anio);
+      } else {
+          setMesesDisponibles([]);
+      }
+  };
 
   // ============================================================
   // ESTADOS DE PERMISOS
@@ -148,47 +147,47 @@ const handleAnioChange = (anio) => {
   // ============================================================
   // MODIFICAR fetchMultas para incluir filtro de período
   // ============================================================
-const fetchMultas = useCallback(async () => {
-    if (!permissions.canRead) {
-        setError('No tienes permiso para ver multas');
-        setLoading(false);
-        return;
-    }
+  const fetchMultas = useCallback(async () => {
+      if (!permissions.canRead) {
+          setError('No tienes permiso para ver multas');
+          setLoading(false);
+          return;
+      }
 
-    setLoading(true);
-    setError(null);
-    try {
-        const filters = {};
-        
-        if (filterEstado !== 'all') {
-            filters.estado = filterEstado;
-        }
-        
-        if (filterAfiliado !== 'all') {
-            filters.id_usuario_afi = parseInt(filterAfiliado);
-        }
-        
-        // ⭐ NUEVO: Filtros de año y mes
-        if (filterAnio) {
-            filters.anio = parseInt(filterAnio);
-            if (filterMes) {
-                filters.mes = parseInt(filterMes);
-            }
-        }
+      setLoading(true);
+      setError(null);
+      try {
+          const filters = {};
+          
+          if (filterEstado !== 'all') {
+              filters.estado = filterEstado;
+          }
+          
+          if (filterAfiliado !== 'all') {
+              filters.id_usuario_afi = parseInt(filterAfiliado);
+          }
+          
+          // Filtros de año y mes
+          if (filterAnio) {
+              filters.anio = parseInt(filterAnio);
+              if (filterMes) {
+                  filters.mes = parseInt(filterMes);
+              }
+          }
 
-        const result = await finesAffiliatesServices.getMultas(filters);
-        if (result.success) {
-            setMultas(result.data);
-        } else {
-            setError(result.message);
-        }
-    } catch (err) {
-        setError('Error al cargar multas desde el servidor');
-    } finally {
-        setLoading(false);
-    }
-}, [filterEstado, filterAfiliado, filterAnio, filterMes, permissions.canRead]);
-  
+          const result = await finesAffiliatesServices.getMultas(filters);
+          if (result.success) {
+              setMultas(result.data);
+          } else {
+              setError(result.message);
+          }
+      } catch (err) {
+          setError('Error al cargar multas desde el servidor');
+      } finally {
+          setLoading(false);
+      }
+  }, [filterEstado, filterAfiliado, filterAnio, filterMes, permissions.canRead]);
+    
 
   // Función separada para tipos de multa
   const loadTiposMulta = async () => {
@@ -297,30 +296,44 @@ const fetchMultas = useCallback(async () => {
   };
 
 
-  // ============================================================
-  // EFECTOS DE INICIALIZACIÓN
-  // ============================================================
-  useEffect(() => {
-      loadUserPermissions();
-      loadTiposMulta();
-      loadAnios(); // ⭐ NUEVO
-      fetchStats();
+// ============================================================
+// EFECTOS DE INICIALIZACIÓN
+// ============================================================
+useEffect(() => {
+  const initializeComponent = async () => {
+    loadUserPermissions();
+    loadTiposMulta();
+    
+    // ⭐ Cargar el período más reciente con datos
+    const anioReciente = await loadAnios();
+    
+    if (anioReciente) {
+      // Cargar meses del año más reciente
+      const mesReciente = await loadMesesPorAnio(anioReciente);
       
-      // ⭐ NUEVO: Establecer año y mes actual por defecto
-      const { year, month } = getCurrentYearMonth();
-      setFilterAnio(year.toString());
-      setFilterMes(month.toString());
+      // Establecer filtros con el período más reciente
+      setFilterAnio(anioReciente.toString());
+      setFilterMes(mesReciente ? mesReciente.toString() : '');
       
-      // Cargar meses del año actual
-      loadMesesPorAnio(year);
-  }, [ fetchStats]);
+      console.log('📅 Período inicial:', { anio: anioReciente, mes: mesReciente });
+    } else {
+      // Si no hay datos, dejar vacío
+      setFilterAnio('');
+      setFilterMes('');
+      console.log('⚠️ No hay datos de multas registradas');
+    }
+  };
+  
+  initializeComponent();
+}, []);
 
-  useEffect(() => {
-      if (permissions.canRead) {
-          fetchMultas();
-          fetchStats();
-      }
-  }, [filterEstado, filterAfiliado, filterAnio, filterMes, permissions.canRead, fetchMultas, fetchStats]);
+// Segundo useEffect para cargar datos cuando los filtros estén listos
+useEffect(() => {
+  if (permissions.canRead) {
+    fetchMultas();
+    fetchStats();
+  }
+}, [filterEstado, filterAfiliado, filterAnio, filterMes, permissions.canRead, fetchMultas, fetchStats]);
 
 
   // ============================================================
@@ -491,17 +504,29 @@ const fetchMultas = useCallback(async () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
   };
 
-  const limpiarFiltros = () => {
+  const limpiarFiltros = async () => {
     setSearchTerm('');
     setFilterEstado('all');
     setFilterAfiliado('all');
     setFilterTipoMulta('all');
     setSortBy('fecha');
     setSortOrder('desc');
+    
+    // ⭐ Volver al período más reciente en lugar de fecha actual
+    const anioReciente = await loadAnios();
+    if (anioReciente) {
+      const mesReciente = await loadMesesPorAnio(anioReciente);
+      setFilterAnio(anioReciente.toString());
+      setFilterMes(mesReciente ? mesReciente.toString() : '');
+    } else {
+      setFilterAnio('');
+      setFilterMes('');
+    }
+    
     fetchMultas();
   };
 
-  // ⭐ AGREGAR ESTA FUNCIÓN AQUÍ
+  // 
   const getMesNombre = (mes) => {
     const meses = {
       1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
@@ -867,6 +892,15 @@ const fetchMultas = useCallback(async () => {
                 </span>
               </div>
             </div>
+            {/* Facturado (estado) */}
+            <div className="stat-item active indigo">
+              <Receipt className="stat-icon text-indigo-600" />
+              <div>
+                <p className="stat-label">Facturado (Estado)</p>
+                <p className="stat-value">{stats.facturado || 0}</p>
+              </div>
+            </div>
+
 
             {/* 💰 Monto Total */}
             <div className="stat-item active indigo">
@@ -899,11 +933,9 @@ const fetchMultas = useCallback(async () => {
 
           {/* SALTO DE LÍNEA FORZADO */}
           <div style={{ width: '40%' }} />
-
-          {/* SELECTS – segunda línea */}
           <select
             className="filter-select"
-            value={filterAnio}
+            value={filterAnio}  // ✅ Esto debe estar presente
             onChange={(e) => handleAnioChange(e.target.value)}
           >
             <option value="">Todos los años</option>
@@ -917,7 +949,7 @@ const fetchMultas = useCallback(async () => {
           {filterAnio && (
             <select
               className="filter-select"
-              value={filterMes}
+              value={filterMes}  // ✅ Esto debe estar presente
               onChange={(e) => setFilterMes(e.target.value)}
             >
               <option value="">Todo el año</option>
@@ -928,6 +960,7 @@ const fetchMultas = useCallback(async () => {
               ))}
             </select>
           )}
+
 
         </div>
 
@@ -958,6 +991,8 @@ const fetchMultas = useCallback(async () => {
             <option value="pagada">Pagada</option>
             <option value="anulada">Anulada</option>
             <option value="exonerada">Exonerada</option>
+            <option value="facturado">Facturado</option>
+
           </select>
 
           <select 

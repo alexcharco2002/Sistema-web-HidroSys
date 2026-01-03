@@ -101,6 +101,24 @@ def require_permission(user: UsuarioSistema, db: Session, module: str, action: s
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"No tienes permisos para {action or 'acceder a'} {module}"
         )
+    
+
+def require_any_permission(
+    user: UsuarioSistema,
+    db: Session,
+    permissions: list[tuple[str, str | None]]
+):
+    """
+    Permite acceso si el usuario tiene AL MENOS uno de los permisos indicados
+    """
+    for module, action in permissions:
+        if check_permission(user, db, module, action):
+            return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="No tienes permisos para acceder a este recurso"
+    )
+
 
 # ============================================================================
 # NUEVO ENDPOINT: Validar ubicación antes de guardar
@@ -157,11 +175,20 @@ def listar_sectores_para_medidores(
 ):
     """
     Lista sectores disponibles para asignar a medidores.
-    Requiere solo permiso de medidores (no requiere permiso de sectores).
-    Endpoint optimizado para formularios de medidores.
+    Requiere permiso de medidores o geolocalizacion (no requiere permiso de sectores).
+    Endpoint optimizado para formularios de medidores y geolocalización.
     """
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "medidores", "lectura")
+    
+    # 🔥 Permitir acceso con permiso de medidores O geolocalizacion
+    require_any_permission(
+        current_user,
+        db,
+        [
+            ("medidores", "lectura"),
+            ("geolocalizacion", "lectura"),
+        ]
+    )
     
     query = db.query(Sector.id_sector, Sector.nombre_sector, Sector.descripcion)
     
@@ -192,7 +219,18 @@ def listar_medidores(
     payload: dict = Depends(verify_token)
 ):
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "medidores", "lectura")
+    
+   
+    require_any_permission(
+        current_user,
+        db,
+        [
+            ("medidores", "lectura"),
+            ("medidores", "crud"),
+            ("geolocalizacion", "lectura"),
+            ("geolocalizacion", "crud"),
+        ]
+    )
 
     query = (
         db.query(
@@ -207,7 +245,7 @@ def listar_medidores(
             Sector.nombre_sector.label("nombre_sector"),
             
             Medidor.id_usuario_afi,
-            UsuarioAfiliado.cod_usuario_afi,  # ✅ Corregido: viene de UsuarioAfiliado
+            UsuarioAfiliado.cod_usuario_afi,
             
             func.concat(
                 UsuarioSistema.nombres,
@@ -475,7 +513,7 @@ def crear_medidor(
 
     # ========================================================================
     
-    # Verificar que no exista el número de medidor
+     # Verificar que no exista el número de medidor
     existe = db.query(Medidor).filter(
         Medidor.num_medidor == medidor.num_medidor
     ).first()
@@ -511,14 +549,20 @@ def crear_medidor(
     
     try:
         db.add(nuevo_medidor)
-        db.commit()
-        db.refresh(nuevo_medidor)
+        db.flush()  # 🔥 Ejecuta el INSERT pero NO hace commit
         
-        # Cargar las relaciones después del refresh
-        db.query(Medidor).options(
-            joinedload(Medidor.sector),
-            joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
-        ).filter(Medidor.id_medidor == nuevo_medidor.id_medidor).first()
+        # 🆕 SINCRONIZAR: Actualizar num_medidor en t_usuario_afiliado
+        if nuevo_medidor.id_usuario_afi:
+            afiliado = db.query(UsuarioAfiliado).filter(
+                UsuarioAfiliado.id_usuario_afi == nuevo_medidor.id_usuario_afi
+            ).first()
+            
+            if afiliado:
+                afiliado.num_medidor = nuevo_medidor.num_medidor
+                db.flush()  # Actualizar afiliado
+        
+        db.commit()  # ✅ Commit de ambas operaciones juntas
+        db.refresh(nuevo_medidor)
         
         # Registrar auditoría
         registrar_auditoria(
@@ -648,8 +692,7 @@ def actualizar_medidor(
             )
 
     # ========================================================================
-    
-    # Validar número de medidor único
+      # Validar número de medidor único
     if medidor_update.num_medidor and medidor_update.num_medidor != medidor.num_medidor:
         existe = db.query(Medidor).filter(
             Medidor.num_medidor == medidor_update.num_medidor,
@@ -673,20 +716,51 @@ def actualizar_medidor(
                 detail="El afiliado ya tiene un medidor asignado"
             )
     
+    datos_actualizacion = medidor_update.dict(exclude_unset=True)
+    
+    # 🆕 Variables para tracking de cambios
+    id_usuario_afi_anterior = medidor.id_usuario_afi
+    num_medidor_anterior = medidor.num_medidor
+    
     # Actualizar solo los campos enviados
     for key, value in datos_actualizacion.items():
         setattr(medidor, key, value)
     
     try:
-        db.commit()
+        db.flush()  # 🔥 Ejecuta el UPDATE pero NO hace commit
+        
+        # 🆕 SINCRONIZAR: Actualizar num_medidor en t_usuario_afiliado
+        
+        # CASO 1: Cambió el num_medidor
+        if 'num_medidor' in datos_actualizacion:
+            if medidor.id_usuario_afi:  # Si tiene afiliado actual
+                afiliado = db.query(UsuarioAfiliado).filter(
+                    UsuarioAfiliado.id_usuario_afi == medidor.id_usuario_afi
+                ).first()
+                if afiliado:
+                    afiliado.num_medidor = medidor.num_medidor
+        
+        # CASO 2: Cambió el id_usuario_afi
+        if 'id_usuario_afi' in datos_actualizacion:
+            # Limpiar afiliado anterior
+            if id_usuario_afi_anterior:
+                afiliado_anterior = db.query(UsuarioAfiliado).filter(
+                    UsuarioAfiliado.id_usuario_afi == id_usuario_afi_anterior
+                ).first()
+                if afiliado_anterior:
+                    afiliado_anterior.num_medidor = None
+            
+            # Asignar a nuevo afiliado
+            if medidor.id_usuario_afi:
+                afiliado_nuevo = db.query(UsuarioAfiliado).filter(
+                    UsuarioAfiliado.id_usuario_afi == medidor.id_usuario_afi
+                ).first()
+                if afiliado_nuevo:
+                    afiliado_nuevo.num_medidor = medidor.num_medidor
+        
+        db.commit()  # ✅ Commit de ambas operaciones juntas
         db.refresh(medidor)
-        
-        # Recargar con las relaciones después del commit
-        medidor = db.query(Medidor).options(
-            joinedload(Medidor.sector),
-            joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
-        ).filter(Medidor.id_medidor == id_medidor).first()
-        
+
         # Registrar auditoría
         registrar_auditoria(
             db=db,
@@ -714,8 +788,6 @@ def actualizar_medidor(
             detail="Error al actualizar el medidor"
         )
 
-
-
 @router.delete("/{id_medidor}", status_code=status.HTTP_200_OK)
 def eliminar_medidor(
     id_medidor: int,
@@ -738,11 +810,22 @@ def eliminar_medidor(
             detail="Medidor no encontrado"
         )
     
+     # 🆕 Guardar información del afiliado antes de eliminar
+    id_usuario_afi = medidor.id_usuario_afi
+    
     try:
+        # 🆕 SINCRONIZAR: Limpiar num_medidor del afiliado ANTES de eliminar
+        if id_usuario_afi:
+            afiliado = db.query(UsuarioAfiliado).filter(
+                UsuarioAfiliado.id_usuario_afi == id_usuario_afi
+            ).first()
+            if afiliado:
+                afiliado.num_medidor = None
+                db.flush()
+        
         # Intentar eliminar físicamente
         db.delete(medidor)
-        db.commit()
-        
+        db.commit()  # ✅ Commit de ambas operaciones
         # Auditoría
         registrar_auditoria(
             db=db,
@@ -873,3 +956,4 @@ def toggle_medidor_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al cambiar el estado del medidor"
         )
+

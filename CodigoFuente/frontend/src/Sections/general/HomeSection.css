@@ -1,6 +1,5 @@
 /* ========================================
    ESTILOS PARA HOME SECTION
-   Inspirado en el módulo de reportes
    ======================================== */
 
 /* ========================================
@@ -79,12 +78,6 @@
   position: absolute;
   inset: -6px;
   border-radius: inherit;
-  background: linear-gradient(
-    135deg,
-    rgba(59, 130, 246, 0.25),
-    rgba(14, 165, 233, 0.15),
-    rgba(99, 102, 241, 0.25)
-  );
   filter: blur(22px);
   opacity: 0.55;
   z-index: -1;
@@ -189,7 +182,7 @@
 }
 
 .action-card-home:hover::after {
-  color: var(--hover-color, #2563eb);
+  color: var(--hover-color, #e8e9ec);
 }
 
 /* ========================================

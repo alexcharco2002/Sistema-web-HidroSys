@@ -35,7 +35,7 @@ const PaymentsSection = () => {
   // ============================================================
   // ESTADOS PRINCIPALES
   // ============================================================
-  const [facturas, setFacturas] = useState([]); // ✅ NUEVO
+  const [facturas, setFacturas] = useState([]); 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -109,6 +109,10 @@ const PaymentsSection = () => {
 
   // Estados para comprobante
   const [, setComprobanteFile] = useState(null);
+
+  // Estados para resumen de pago
+  const [resumenPago, setResumenPago] = useState(null);
+  const [loadingResumen, setLoadingResumen] = useState(false);
 
 
   // ============================================================
@@ -432,6 +436,24 @@ const PaymentsSection = () => {
     });
   }, [filteredFacturas, sortOption, sortOrder]);
 
+/**
+ * Obtiene un valor seguro, retornando un default si es null/undefined/NaN
+ */
+const getSafeValue = (value, defaultValue = 0) => {
+  if (value === null || value === undefined || isNaN(value)) {
+    return defaultValue;
+  }
+  return parseFloat(value);
+};
+
+/**
+ * Formatea un valor como moneda de forma segura
+ */
+const formatCurrencySafe = (value) => {
+  const safeValue = getSafeValue(value, 0);
+  return `$${safeValue.toFixed(2)}`;
+};
+
 
   // ============================================================
   // FUNCIONES DE MODAL
@@ -477,29 +499,56 @@ const PaymentsSection = () => {
     setShowCreateModal(true);
   };
 
-// Función para abrir modal de pago CON factura específica
+  // Función para abrir modal de pago CON factura específica
 const openPaymentModal = async (factura) => {
   if (!permissions.canCreate) {
-    alert('❌ No tienes permiso para registrar pagos');
+    alert('No tienes permiso para registrar pagos');
     return;
   }
 
   const saldoPendiente = calcularSaldoPendiente(factura);
-  
-  // 🔥 CARGAR MONTOS CALCULADOS
-  await cargarMontosFactura(factura.id_factura);
-  
+
+  // ⭐ CALCULAR RESUMEN CON MORA
+  if (factura) {
+    setLoadingResumen(true);
+    const resultado = await paymentsServices.calcularResumenPago(factura.id_factura);
+    
+    if (resultado.success) {
+      console.log('✅ Resumen de pago cargado:', resultado.data);
+      
+      // 🔍 VALIDAR ESTRUCTURA
+      if (!resultado.data.totales) {
+        console.error('❌ Falta propiedad "totales" en el resumen');
+      }
+      if (!resultado.data.totales?.opcion_completa) {
+        console.error('❌ Falta propiedad "opcion_completa" en totales');
+      }
+      if (!resultado.data.totales?.opcion_sin_multas) {
+        console.error('❌ Falta propiedad "opcion_sin_multas" en totales');
+      }
+      
+      setResumenPago(resultado.data);
+    } else {
+      console.error('❌ Error al cargar resumen:', resultado.message);
+      alert('No se pudo calcular el resumen del pago: ' + resultado.message);
+      setResumenPago(null);
+    }
+    setLoadingResumen(false);
+  }
+
   setNuevoPago({
     id_factura: factura.id_factura,
     id_usuario_afi: factura.id_usuario_afi,
-    monto_pago: saldoPendiente.toFixed(2),
+    monto_pago: getSafeValue(saldoPendiente, 0).toFixed(2),
     metodo_pago: 'EFECTIVO',
     observaciones: ''
   });
-  
-  setSelectedFactura(factura); // Guardar referencia
+
+  setSelectedFactura(factura);
   setShowCreateModal(true);
 };
+
+
 
 
   const closeCreateModal = () => {
@@ -515,166 +564,141 @@ const openPaymentModal = async (factura) => {
     });
   };
 
-
   // ============================================================
-// FUNCIÓN PARA CARGAR MONTOS DE FACTURA
-// ============================================================
-const cargarMontosFactura = async (idFactura) => {
-  try {
-    console.log('🔍 Cargando montos de factura:', idFactura);
-    const result = await paymentsServices.getFacturaMontos(idFactura);
-    if (result.success) {
-      console.log('✅ Montos cargados:', result.data);
-      setMontosFactura(result.data);
-      return result.data;
-    } else {
-      console.error('❌ Error:', result.message);
-      setMontosFactura(null);
-    }
-  } catch (error) {
-    console.error('❌ Error cargando montos:', error);
-    setMontosFactura(null);
-  }
-  return null;
-};
+  // FUNCIÓN PARA CREAR PAGO CON OPCIÓN DE MULTAS
+  // ============================================================
+    const handleCreatePago = async (incluirMultas = true) => {
+      // VALIDACIONES INICIALES
+      if (!nuevoPago.monto_pago || parseFloat(nuevoPago.monto_pago) <= 0) {
+        alert('❌ El monto debe ser mayor a 0');
+        return;
+      }
 
+      let montoAPagar = parseFloat(nuevoPago.monto_pago);
+      
+      // Si hay una factura seleccionada, validar y ajustar montos
+      if (selectedFactura && montosFactura) {
+        const totalSinMultas = montosFactura.total_sin_multas || 0;
+        const totalConMultas = montosFactura.total_factura || 0;
+        const totalMultas = montosFactura.total_multas || 0;
 
+        // ⭐ AJUSTAR MONTO AUTOMÁTICAMENTE SI NO INCLUYE MULTAS
+        if (!incluirMultas) {
+          // Usar el total sin multas como monto a pagar
+          montoAPagar = totalSinMultas;
 
-// ============================================================
-// FUNCIÓN PARA CREAR PAGO CON OPCIÓN DE MULTAS
-// ============================================================
-  const handleCreatePago = async (incluirMultas = true) => {
-    // VALIDACIONES INICIALES
-    if (!nuevoPago.monto_pago || parseFloat(nuevoPago.monto_pago) <= 0) {
-      alert('❌ El monto debe ser mayor a 0');
-      return;
-    }
-
-    let montoAPagar = parseFloat(nuevoPago.monto_pago);
-    
-    // Si hay una factura seleccionada, validar y ajustar montos
-    if (selectedFactura && montosFactura) {
-      const totalSinMultas = montosFactura.total_sin_multas || 0;
-      const totalConMultas = montosFactura.total_factura || 0;
-      const totalMultas = montosFactura.total_multas || 0;
-
-      // ⭐ AJUSTAR MONTO AUTOMÁTICAMENTE SI NO INCLUYE MULTAS
-      if (!incluirMultas) {
-        // Usar el total sin multas como monto a pagar
-        montoAPagar = totalSinMultas;
-
-        // Confirmación con el monto correcto
-        const confirmar = window.confirm(
-          `¿Confirma el pago de $${montoAPagar.toFixed(2)} SIN incluir multas?\n\n` +
-          `📊 Desglose:\n` +
-          `• Total sin multas: $${totalSinMultas.toFixed(2)}\n` +
-          `• Multas pendientes: $${totalMultas.toFixed(2)}\n\n` +
-          `⚠️ Las multas quedarán pendientes para la próxima factura.`
-        );
-        
-        if (!confirmar) return;
-      } else {
-        // Validar que el monto no exceda el total con multas
-        if (montoAPagar > totalConMultas) {
+          // Confirmación con el monto correcto
           const confirmar = window.confirm(
-            `⚠️ El monto $${montoAPagar.toFixed(2)} excede el total de la factura $${totalConMultas.toFixed(2)}.\n\n` +
-            `¿Desea continuar de todas formas?`
+            `¿Confirma el pago de $${montoAPagar.toFixed(2)} SIN incluir multas?\n\n` +
+            `📊 Desglose:\n` +
+            `• Total sin multas: $${totalSinMultas.toFixed(2)}\n` +
+            `• Multas pendientes: $${totalMultas.toFixed(2)}\n\n` +
+            `⚠️ Las multas quedarán pendientes para la próxima factura.`
           );
+          
           if (!confirmar) return;
+        } else {
+          // Validar que el monto no exceda el total con multas
+          if (montoAPagar > totalConMultas) {
+            const confirmar = window.confirm(
+              `⚠️ El monto $${montoAPagar.toFixed(2)} excede el total de la factura $${totalConMultas.toFixed(2)}.\n\n` +
+              `¿Desea continuar de todas formas?`
+            );
+            if (!confirmar) return;
+          }
         }
       }
-    }
 
-    setLoading(true);
-    setError(null);
-
-    try {
-      const currentUser = authService.getCurrentUser();
-      if (!currentUser || !currentUser.id_usuario_sistema) {
-        throw new Error('No se pudo identificar al usuario actual');
-      }
-
-      // PREPARAR DATOS DEL PAGO CON EL MONTO AJUSTADO
-      const pagoData = {
-        id_factura: nuevoPago.id_factura ? parseInt(nuevoPago.id_factura) : null,
-        monto_pago: montoAPagar,  // ⭐ USAR EL MONTO AJUSTADO
-        metodo_pago: nuevoPago.metodo_pago || 'EFECTIVO',
-        id_usuario_afi: nuevoPago.id_usuario_afi ? parseInt(nuevoPago.id_usuario_afi) : null,
-        id_cajero: currentUser.id_usuario_sistema,
-        observaciones: nuevoPago.observaciones || null,
-        incluir_multas: incluirMultas  // ⭐ PARÁMETRO CLAVE
-      };
-
-      console.log('📤 Creando pago:', pagoData);
-
-      // CREAR EL PAGO
-      const result = await paymentsServices.createPago(pagoData);
-
-      if (!result.success) {
-        throw new Error(result.message || 'Error al crear el pago');
-      }
-
-      const pagoCreado = result.data;
-      console.log('✅ Pago creado exitosamente:', pagoCreado);
-
-      // GENERAR Y GUARDAR COMPROBANTE PDF
-      let comprobanteGuardado = false;
-      let errorComprobante = null;
+      setLoading(true);
+      setError(null);
 
       try {
-        console.log('📄 Generando comprobante PDF...');
-        const pdfFile = await generatePaymentPDF(pagoCreado, selectedFactura);
-        
-        if (!pdfFile || pdfFile.size === 0) {
-          throw new Error('El PDF generado está vacío');
+        const currentUser = authService.getCurrentUser();
+        if (!currentUser || !currentUser.id_usuario_sistema) {
+          throw new Error('No se pudo identificar al usuario actual');
         }
 
-        console.log('📤 Subiendo comprobante...');
-        await paymentsServices.uploadComprobante(pagoCreado.id_pago, pdfFile);
-        console.log('✅ Comprobante guardado');
-        comprobanteGuardado = true;
-      } catch (pdfError) {
-        errorComprobante = pdfError.message;
-        console.error('⚠️ Error con el comprobante:', pdfError);
+        // PREPARAR DATOS DEL PAGO CON EL MONTO AJUSTADO
+        const pagoData = {
+          id_factura: nuevoPago.id_factura ? parseInt(nuevoPago.id_factura) : null,
+          monto_pago: montoAPagar,  // ⭐ USAR EL MONTO AJUSTADO
+          metodo_pago: nuevoPago.metodo_pago || 'EFECTIVO',
+          id_usuario_afi: nuevoPago.id_usuario_afi ? parseInt(nuevoPago.id_usuario_afi) : null,
+          id_cajero: currentUser.id_usuario_sistema,
+          observaciones: nuevoPago.observaciones || null,
+          incluir_multas: incluirMultas  // ⭐ PARÁMETRO CLAVE
+        };
+
+        console.log('📤 Creando pago:', pagoData);
+
+        // CREAR EL PAGO
+        const result = await paymentsServices.createPago(pagoData);
+
+        if (!result.success) {
+          throw new Error(result.message || 'Error al crear el pago');
+        }
+
+        const pagoCreado = result.data;
+        console.log('✅ Pago creado exitosamente:', pagoCreado);
+
+        // GENERAR Y GUARDAR COMPROBANTE PDF
+        let comprobanteGuardado = false;
+        let errorComprobante = null;
+
+        try {
+          console.log('📄 Generando comprobante PDF...');
+          const pdfFile = await generatePaymentPDF(pagoCreado, selectedFactura);
+          
+          if (!pdfFile || pdfFile.size === 0) {
+            throw new Error('El PDF generado está vacío');
+          }
+
+          console.log('📤 Subiendo comprobante...');
+          await paymentsServices.uploadComprobante(pagoCreado.id_pago, pdfFile);
+          console.log('✅ Comprobante guardado');
+          comprobanteGuardado = true;
+        } catch (pdfError) {
+          errorComprobante = pdfError.message;
+          console.error('⚠️ Error con el comprobante:', pdfError);
+        }
+
+        // CERRAR MODAL Y ACTUALIZAR
+        closeCreateModal();
+        setPagoRegistrado(pagoCreado);
+        setFacturaDelPago(selectedFactura);
+
+        // RECARGAR DATOS
+        await Promise.all([fetchFacturasPeriodo(), fetchStats()]);
+        console.log('✅ Datos recargados');
+
+        // MENSAJE DE ÉXITO
+        let mensaje = '✅ Pago registrado exitosamente\n\n';
+        mensaje += `💵 Monto: $${montoAPagar.toFixed(2)}\n`;
+        mensaje += `💳 Método: ${pagoData.metodo_pago}\n`;
+        
+        if (!incluirMultas && montosFactura && montosFactura.tiene_multas) {
+          mensaje += `\n⚠️ Las multas ($${montosFactura.total_multas.toFixed(2)}) quedaron pendientes para la próxima factura.`;
+        }
+        
+        if (comprobanteGuardado) {
+          mensaje += '\n\n📄 Comprobante guardado correctamente.';
+        } else if (errorComprobante) {
+          mensaje += `\n\n⚠️ Advertencia: ${errorComprobante}`;
+        }
+        
+        alert(mensaje);
+        
+        // MOSTRAR COMPROBANTE VISUAL
+        setShowReceipt(true);
+
+      } catch (error) {
+        console.error('❌ Error al registrar pago:', error);
+        setError(error.message || 'Error al registrar el pago');
+        alert(`❌ Error al registrar pago:\n${error.message || 'Error desconocido'}`);
+      } finally {
+        setLoading(false);
       }
-
-      // CERRAR MODAL Y ACTUALIZAR
-      closeCreateModal();
-      setPagoRegistrado(pagoCreado);
-      setFacturaDelPago(selectedFactura);
-
-      // RECARGAR DATOS
-      await Promise.all([fetchFacturasPeriodo(), fetchStats()]);
-      console.log('✅ Datos recargados');
-
-      // MENSAJE DE ÉXITO
-      let mensaje = '✅ Pago registrado exitosamente\n\n';
-      mensaje += `💵 Monto: $${montoAPagar.toFixed(2)}\n`;
-      mensaje += `💳 Método: ${pagoData.metodo_pago}\n`;
-      
-      if (!incluirMultas && montosFactura && montosFactura.tiene_multas) {
-        mensaje += `\n⚠️ Las multas ($${montosFactura.total_multas.toFixed(2)}) quedaron pendientes para la próxima factura.`;
-      }
-      
-      if (comprobanteGuardado) {
-        mensaje += '\n\n📄 Comprobante guardado correctamente.';
-      } else if (errorComprobante) {
-        mensaje += `\n\n⚠️ Advertencia: ${errorComprobante}`;
-      }
-      
-      alert(mensaje);
-      
-      // MOSTRAR COMPROBANTE VISUAL
-      setShowReceipt(true);
-
-    } catch (error) {
-      console.error('❌ Error al registrar pago:', error);
-      setError(error.message || 'Error al registrar el pago');
-      alert(`❌ Error al registrar pago:\n${error.message || 'Error desconocido'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
 
   // ============================================================
@@ -682,79 +706,79 @@ const cargarMontosFactura = async (idFactura) => {
   // ============================================================
 
   /**
- * Anula un pago y regenera la factura
- */
-const handleAnularPagoConRegeneracion = async (factura) => {
-  if (!permissions.canDelete) {
-    alert('❌ No tienes permiso para anular pagos');
-    return;
-  }
+   * Anula un pago y regenera la factura
+   */
+  const handleAnularPagoConRegeneracion = async (factura) => {
+    if (!permissions.canDelete) {
+      alert('❌ No tienes permiso para anular pagos');
+      return;
+    }
 
-  if (!factura.pago) {
-    alert('❌ Esta factura no tiene pago registrado');
-    return;
-  }
+    if (!factura.pago) {
+      alert('❌ Esta factura no tiene pago registrado');
+      return;
+    }
 
-  // Confirmación
-  const confirmar = window.confirm(
-    `⚠️ ¿Estás seguro de anular el pago de la factura ${factura.num_factura}?\n\n` +
-    `• Monto: ${formatCurrency(factura.pago.monto_pago)}\n` +
-    `• Método: ${factura.pago.metodo_pago}\n` +
-    `• Cajero: ${factura.pago.cajero}\n\n` +
-    `Se generará una nueva factura con los mismos datos.`
-  );
-
-  if (!confirmar) return;
-
-  // Solicitar motivo
-  const motivo = window.prompt(
-    'Motivo de anulación (requerido):',
-    'Anulación solicitada por cliente'
-  );
-
-  if (motivo === null) return;
-  
-  if (!motivo || motivo.trim() === '') {
-    alert('❌ Debes especificar un motivo de anulación');
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    console.log('🔄 Anulando pago y regenerando factura...');
-    
-    const result = await paymentsServices.anularPagoConRegeneracion(
-      factura.pago.id_pago,
-      motivo.trim()
+    // Confirmación
+    const confirmar = window.confirm(
+      `⚠️ ¿Estás seguro de anular el pago de la factura ${factura.num_factura}?\n\n` +
+      `• Monto: ${formatCurrency(factura.pago.monto_pago)}\n` +
+      `• Método: ${factura.pago.metodo_pago}\n` +
+      `• Cajero: ${factura.pago.cajero}\n\n` +
+      `Se generará una nueva factura con los mismos datos.`
     );
+
+    if (!confirmar) return;
+
+    // Solicitar motivo
+    const motivo = window.prompt(
+      'Motivo de anulación (requerido):',
+      'Anulación solicitada por cliente'
+    );
+
+    if (motivo === null) return;
     
-    if (result.success) {
-      alert(
-        `✅ Pago anulado correctamente\n\n` +
-        `Nueva factura generada: ${result.data.nueva_factura.num_factura}\n` +
-        `Periodo: ${result.data.nueva_factura.periodo}`
+    if (!motivo || motivo.trim() === '') {
+      alert('❌ Debes especificar un motivo de anulación');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      console.log('🔄 Anulando pago y regenerando factura...');
+      
+      const result = await paymentsServices.anularPagoConRegeneracion(
+        factura.pago.id_pago,
+        motivo.trim()
       );
       
-      closeModal();
-      
-      // Recargar datos
-      await Promise.all([
-        fetchFacturasPeriodo(),
-        fetchStats()
-      ]);
-      
-      console.log('✅ Datos recargados');
-    } else {
-      alert(`❌ Error: ${result.message}`);
+      if (result.success) {
+        alert(
+          `✅ Pago anulado correctamente\n\n` +
+          `Nueva factura generada: ${result.data.nueva_factura.num_factura}\n` +
+          `Periodo: ${result.data.nueva_factura.periodo}`
+        );
+        
+        closeModal();
+        
+        // Recargar datos
+        await Promise.all([
+          fetchFacturasPeriodo(),
+          fetchStats()
+        ]);
+        
+        console.log('✅ Datos recargados');
+      } else {
+        alert(`❌ Error: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('❌ Error al anular pago:', error);
+      alert(`❌ Error al anular pago: ${error.message || 'Error desconocido'}`);
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error('❌ Error al anular pago:', error);
-    alert(`❌ Error al anular pago: ${error.message || 'Error desconocido'}`);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
 
   // Función simplificada para descargar
@@ -1827,285 +1851,350 @@ const handleAnularPagoConRegeneracion = async (factura) => {
       )}
 
 
-      {/* ==================== MODAL CREAR PAGO ==================== */}
-      {showCreateModal && (
-        <div className="modal-overlay">
-          <div className="modal modal-payment">
-            <div className="modal-header">
-              <h3>
-                <Plus className="w-5 h-5 inline mr-2" />
-                Registrar Nuevo Pago
-              </h3>
-              <button className="modal-close" onClick={closeCreateModal}>
-                <X className="w-5 h-5" />
-              </button>
+{/* ==================== MODAL CREAR PAGO CON MORA ==================== */}
+{showCreateModal && (
+  <div className="modal-overlay">
+    <div className="modal modal-payment">
+      <div className="modal-header">
+        <h3>
+          <Plus className="w-5 h-5 inline mr-2" />
+          Registrar Nuevo Pago
+        </h3>
+        <button className="modal-close" onClick={closeCreateModal}>
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="modal-body">
+        {/* Información de la factura */}
+        {selectedFactura && (
+          <div className="factura-info-card">
+            <div className="factura-info-header">
+              <FileText className="w-5 h-5 text-blue-600" style={{ marginRight: '8px' }} />
+              <h4>Factura: {selectedFactura.num_factura}</h4>
             </div>
 
-            <div className="modal-body">
-              {/* Información de la factura seleccionada */}
-              {selectedFactura && (
-                <div className="factura-info-card" style={{
-                  backgroundColor: '#f0f9ff',
-                  border: '1px solid #3b82f6',
-                  borderRadius: '8px',
-                  padding: '16px',
-                  marginBottom: '16px'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
-                    <FileText className="w-5 h-5 text-blue-600" style={{ marginRight: '8px' }} />
-                    <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>
-                      Factura: {selectedFactura.num_factura}
-                    </h4>
+            {loadingResumen ? (
+              <div className="resumen-loading">
+                <RefreshCw className="w-6 h-6 animate-spin" style={{ margin: '0 auto' }} />
+                <p>Calculando resumen...</p>
+              </div>
+            ) : resumenPago ? (
+              <>
+                {/* ⭐ INFORMACIÓN DE MORA */}
+                {resumenPago?.mora?.aplica && getSafeValue(resumenPago.mora?.monto) > 0 && (
+                  <div className="mora-card">
+                    <div className="mora-card-header">
+                      <AlertCircle className="w-4 h-4 text-orange-600" style={{ marginRight: '6px' }} />
+                      <span>⚠️ Mora por Pago Tardío</span>
+                    </div>
+                    <div className="mora-card-body">
+                      <p><strong>Monto de mora:</strong> {formatCurrencySafe(resumenPago.mora.monto)}</p>
+                      <p><strong>Días transcurridos:</strong> {getSafeValue(resumenPago.mora.dias_transcurridos, 0)} días desde emisión</p>
+                      <p><strong>Días de mora:</strong> {getSafeValue(resumenPago.mora.dias_mora_efectivos, 0)} días efectivos</p>
+                      <p className="mora-detalle">{resumenPago.mora.detalle || 'Sin detalles'}</p>
+                    </div>
                   </div>
-                  <div style={{ fontSize: '14px', lineHeight: '1.6' }}>
-                    <p style={{ margin: '4px 0' }}>
-                      <strong>Afiliado:</strong>{' '}
-                      {selectedFactura.usuario_afiliado?.usuario_sistema?.nombres}{' '}
-                      {selectedFactura.usuario_afiliado?.usuario_sistema?.apellidos}
-                    </p>
-                    <p style={{ margin: '4px 0' }}>
-                      <strong>Total Factura:</strong>{' '}
-                      <span style={{ color: '#2563eb', fontWeight: '700' }}>
-                        {formatCurrency(selectedFactura.total)}
-                      </span>
-                    </p>
-                    <p style={{ margin: '4px 0' }}>
-                      <strong>Saldo Pendiente:</strong>{' '}
-                      <span style={{ color: '#dc2626', fontWeight: '700' }}>
-                        {formatCurrency(calcularSaldoPendiente(selectedFactura))}
-                      </span>
-                    </p>
+                )}
 
-                    {/* ⭐ DESGLOSE DE MONTOS CON MULTAS */}
-                    {montosFactura && montosFactura.tiene_multas && (
-                      <div style={{
-                        marginTop: '16px',
-                        padding: '12px',
-                        backgroundColor: '#fef3c7',
-                        border: '1px solid #f59e0b',
-                        borderRadius: '6px'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                          <AlertCircle className="w-4 h-4 text-orange-600" style={{ marginRight: '6px' }} />
-                          <span style={{ fontWeight: '600', color: '#d97706' }}>
-                            Esta factura incluye multas
-                          </span>
+                {/* ⭐ DETALLES DE MULTAS */}
+                {resumenPago.multas?.tiene_multas && resumenPago.multas?.detalles?.length > 0 && (
+                  <div className="multas-card">
+                    <div className="multas-card-header">
+                      <AlertCircle className="w-4 h-4 text-red-600" style={{ marginRight: '6px' }} />
+                      <span>Multas Incluidas ({resumenPago.multas.cantidad || 0})</span>
+                    </div>
+                    <div className="multas-list">
+                      {resumenPago.multas.detalles.map((multa, idx) => (
+                        <div key={idx} className="multa-item">
+                          <span>{multa.descripcion || 'Multa'}</span>
+                          <span>{formatCurrencySafe(multa.subtotal)}</span>
                         </div>
-
-                        {/* Tabla de desglose */}
-                        <table style={{ width: '100%', fontSize: '13px', marginTop: '8px' }}>
-                          <tbody>
-                            {/* CON MULTAS */}
-                            <tr style={{ backgroundColor: '#e0f2fe' }}>
-                              <td colSpan="2" style={{ padding: '6px', fontWeight: '600' }}>
-                                📊 Opción 1: Pagar TODO (con multas)
-                              </td>
-                            </tr>
-                            <tr>
-                              <td style={{ padding: '4px 8px' }}>Subtotal:</td>
-                              <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                                {formatCurrency(montosFactura.resumen.con_multas.subtotal)}
-                              </td>
-                            </tr>
-                            {montosFactura.resumen.con_multas.descuento > 0 && (
-                              <tr>
-                                <td style={{ padding: '4px 8px', color: '#059669' }}>Descuento:</td>
-                                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#059669' }}>
-                                  - {formatCurrency(montosFactura.resumen.con_multas.descuento)}
-                                </td>
-                              </tr>
-                            )}
-                            <tr>
-                              <td style={{ padding: '4px 8px' }}>
-                                IVA ({montosFactura.tasa_impuesto.toFixed(1)}%):
-                              </td>
-                              <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                                {formatCurrency(montosFactura.resumen.con_multas.impuesto)}
-                              </td>
-                            </tr>
-                            <tr style={{ borderTop: '2px solid #3b82f6', fontWeight: '700' }}>
-                              <td style={{ padding: '6px 8px' }}>Total con Multas:</td>
-                              <td style={{ padding: '6px 8px', textAlign: 'right', color: '#2563eb' }}>
-                                {formatCurrency(montosFactura.resumen.con_multas.total)}
-                              </td>
-                            </tr>
-
-                            {/* SIN MULTAS */}
-                            <tr style={{ height: '8px' }}></tr>
-                            <tr style={{ backgroundColor: '#d1fae5' }}>
-                              <td colSpan="2" style={{ padding: '6px', fontWeight: '600' }}>
-                                ✨ Opción 2: Pagar SIN multas
-                              </td>
-                            </tr>
-                            <tr>
-                              <td style={{ padding: '4px 8px' }}>Subtotal:</td>
-                              <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                                {formatCurrency(montosFactura.resumen.sin_multas.subtotal)}
-                              </td>
-                            </tr>
-                            {montosFactura.resumen.sin_multas.descuento > 0 && (
-                              <tr>
-                                <td style={{ padding: '4px 8px', color: '#059669' }}>Descuento:</td>
-                                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#059669' }}>
-                                  - {formatCurrency(montosFactura.resumen.sin_multas.descuento)}
-                                </td>
-                              </tr>
-                            )}
-                            <tr>
-                              <td style={{ padding: '4px 8px' }}>
-                                IVA ({montosFactura.tasa_impuesto.toFixed(1)}%):
-                              </td>
-                              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#7c3aed' }}>
-                                {formatCurrency(montosFactura.resumen.sin_multas.impuesto)}
-                              </td>
-                            </tr>
-                            <tr style={{ borderTop: '2px solid #10b981', fontWeight: '700' }}>
-                              <td style={{ padding: '6px 8px' }}>Total sin Multas:</td>
-                              <td style={{ padding: '6px 8px', textAlign: 'right', color: '#059669' }}>
-                                {formatCurrency(montosFactura.resumen.sin_multas.total)}
-                              </td>
-                            </tr>
-
-                            {/* MULTAS PENDIENTES */}
-                            <tr style={{ height: '8px' }}></tr>
-                            <tr style={{ backgroundColor: '#fee2e2' }}>
-                              <td colSpan="2" style={{ padding: '6px', fontWeight: '600' }}>
-                                ⚠️ Multas (quedarían pendientes)
-                              </td>
-                            </tr>
-                            {montosFactura.detalles_multas.map((multa, idx) => (
-                              <tr key={idx}>
-                                <td style={{ padding: '4px 8px', fontSize: '12px' }}>
-                                  {multa.descripcion}
-                                </td>
-                                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#dc2626' }}>
-                                  {formatCurrency(multa.monto)}
-                                </td>
-                              </tr>
-                            ))}
-                            <tr style={{ borderTop: '2px solid #ef4444', fontWeight: '700' }}>
-                              <td style={{ padding: '6px 8px' }}>
-                                Total Multas (+ IVA):
-                              </td>
-                              <td style={{ padding: '6px 8px', textAlign: 'right', color: '#dc2626' }}>
-                                {formatCurrency(montosFactura.resumen.solo_multas.total)}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-
-                        <div style={{
-                          marginTop: '12px',
-                          padding: '8px',
-                          backgroundColor: '#eff6ff',
-                          borderLeft: '3px solid #3b82f6',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          color: '#1e40af'
-                        }}>
-                          💡 <strong>Nota:</strong> Al pagar sin multas, el IVA se recalcula solo sobre 
-                          consumo y servicios. Las multas quedan pendientes para la próxima factura.
-                        </div>
+                      ))}
+                      <div className="multas-total">
+                        <span>Total Multas (+ IVA {getSafeValue(resumenPago.iva?.porcentaje, 0).toFixed(1)}%):</span>
+                        <span>{formatCurrencySafe(resumenPago.multas.total_con_iva)}</span>
                       </div>
-                    )}
+                    </div>
                   </div>
+                )}
+
+                {/* ⭐ RESUMEN DE OPCIONES */}
+                <div className="opciones-pago-container">
+                  <h5 className="opciones-pago-title">💰 Opciones de Pago</h5>
+
+                  <table className="resumen-table">
+                    <tbody>
+                      {/* OPCIÓN 1: TODO */}
+                      <tr>
+                        <td colSpan="2" className="opcion-header-completa">
+                          📊 Opción 1: Pagar TODO {resumenPago.multas?.tiene_multas && '(incluye multas)'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>Subtotal:</td>
+                        <td>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.subtotal)}</td>
+                      </tr>
+                      {getSafeValue(resumenPago.totales?.opcion_completa?.descuento) > 0 && (
+                        <tr className="descuento-row">
+                          <td>- Descuento:</td>
+                          <td>{formatCurrencySafe(resumenPago.totales.opcion_completa.descuento)}</td>
+                        </tr>
+                      )}
+                      <tr>
+                        <td>Base imponible:</td>
+                        <td>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.base)}</td>
+                      </tr>
+                      <tr>
+                        <td>+ IVA ({getSafeValue(resumenPago.iva?.porcentaje, 0).toFixed(1)}%):</td>
+                        <td>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.iva)}</td>
+                      </tr>
+                      <tr className="subtotal-row">
+                        <td>= Subtotal con IVA:</td>
+                        <td>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.subtotal_con_iva)}</td>
+                      </tr>
+                      {resumenPago.mora?.aplica && getSafeValue(resumenPago.mora?.monto) > 0 && (
+                        <tr className="mora-row">
+                          <td>+ Mora:</td>
+                          <td>{formatCurrencySafe(resumenPago.mora.monto)}</td>
+                        </tr>
+                      )}
+                      <tr className="total-final-completa">
+                        <td>TOTAL A PAGAR:</td>
+                        <td>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.total_final)}</td>
+                      </tr>
+
+                      {/* OPCIÓN 2: SIN MULTAS */}
+                      {resumenPago.multas?.tiene_multas && (
+                        <>
+                          <tr className="table-separator"></tr>
+                          <tr>
+                            <td colSpan="2" className="opcion-header-parcial">
+                              ✨ Opción 2: Pagar SIN multas
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Subtotal (sin multas):</td>
+                            <td>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.subtotal)}</td>
+                          </tr>
+                          {getSafeValue(resumenPago.totales?.opcion_sin_multas?.descuento) > 0 && (
+                            <tr className="descuento-row">
+                              <td>- Descuento:</td>
+                              <td>{formatCurrencySafe(resumenPago.totales.opcion_sin_multas.descuento)}</td>
+                            </tr>
+                          )}
+                          <tr>
+                            <td>Base imponible:</td>
+                            <td>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.base)}</td>
+                          </tr>
+                          <tr>
+                            <td>+ IVA ({getSafeValue(resumenPago.iva?.porcentaje, 0).toFixed(1)}%):</td>
+                            <td>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.iva)}</td>
+                          </tr>
+                          <tr className="subtotal-row">
+                            <td>= Subtotal con IVA:</td>
+                            <td>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.subtotal_con_iva)}</td>
+                          </tr>
+                          {resumenPago.mora?.aplica && getSafeValue(resumenPago.mora?.monto) > 0 && (
+                            <tr className="mora-row">
+                              <td>+ Mora:</td>
+                              <td>{formatCurrencySafe(resumenPago.mora.monto)}</td>
+                            </tr>
+                          )}
+                          <tr className="total-final-parcial">
+                            <td>TOTAL A PAGAR:</td>
+                            <td>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.total_final)}</td>
+                          </tr>
+                          <tr>
+                            <td colSpan="2" className="multas-pendientes-info">
+                              💡 Multas pendientes: {formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.multas_pendientes)}
+                            </td>
+                          </tr>
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+
+                  {resumenPago.recomendacion?.mostrar_opciones && (
+                    <div className="recomendacion-box">
+                      💡 {resumenPago.recomendacion?.mensaje || 'Seleccione una opción de pago'}
+                    </div>
+                  )}
                 </div>
-              )}
 
-              {/* Formulario de pago */}
-              <div className="form-group">
-                <label>Monto a Pagar *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="form-input"
-                  value={nuevoPago.monto_pago}
-                  onChange={(e) => setNuevoPago({ ...nuevoPago, monto_pago: e.target.value })}
-                  placeholder="0.00"
-                  required
-                />
-              </div>
+              
+              </>
+            ) : (
+              <p className="resumen-error">No se pudo cargar el resumen del pago</p>
+            )}
+          </div>
+        )}
+        {/*  MONTO PERSONALIZADO */}
+        <div className="form-group">
+          <label>
+            <DollarSign className="w-4 h-4 mr-1" />
+            Monto a Pagar *
+          </label>
 
-              <div className="form-group">
-                <label>Método de Pago *</label>
-                <select
-                  className="form-input"
-                  value={nuevoPago.metodo_pago}
-                  onChange={(e) => setNuevoPago({ ...nuevoPago, metodo_pago: e.target.value })}
-                >
-                  <option value="EFECTIVO">Efectivo</option>
-                  <option value="TRANSFERENCIA">Transferencia</option>
-                  <option value="TARJETA">Tarjeta</option>
-                </select>
-              </div>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            className={`form-input ${
+              parseFloat(nuevoPago.monto_pago) >
+              getSafeValue(resumenPago.totales?.opcion_completa?.total_final, 0)
+                ? 'error'
+                : ''
+            }`}
+            value={nuevoPago.monto_pago}
+            onChange={(e) =>
+              setNuevoPago({ ...nuevoPago, monto_pago: e.target.value })
+            }
+            placeholder="0.00"
+          />
 
-              <div className="form-group">
-                <label>Observaciones</label>
-                <textarea
-                  className="form-input"
-                  rows="3"
-                  value={nuevoPago.observaciones}
-                  onChange={(e) => setNuevoPago({ ...nuevoPago, observaciones: e.target.value })}
-                  placeholder="Observaciones adicionales..."
-                />
-              </div>
-            </div>
+          {parseFloat(nuevoPago.monto_pago) >
+            getSafeValue(resumenPago.totales?.opcion_completa?.total_final, 0) && (
+            <p className="form-error">
+              ⚠️ El monto excede el total de la factura
+            </p>
+          )}
 
-            {/* ⭐ BOTONES DINÁMICOS SEGÚN SI HAY MULTAS */}
-            <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button className="btn-secondary" onClick={closeCreateModal}>
-                Cancelar
-              </button>
+          <small className="form-helper">
+            💡 Puede ingresar un monto personalizado o usar los botones de abajo
+          </small>
+        </div>
 
-              {montosFactura && montosFactura.tiene_multas ? (
+
+
+        {/* Método de pago */}
+        <div className="form-group">
+          <label>Método de Pago *</label>
+          <select
+            className="form-input"
+            value={nuevoPago.metodo_pago}
+            onChange={(e) => setNuevoPago({ ...nuevoPago, metodo_pago: e.target.value })}
+          >
+            <option value="EFECTIVO">Efectivo</option>
+            <option value="TRANSFERENCIA">Transferencia</option>
+            <option value="TARJETA">Tarjeta</option>
+          </select>
+        </div>
+
+        {/* Observaciones */}
+        <div className="form-group">
+          <label>Observaciones</label>
+          <textarea
+            className="form-input"
+            rows="2"
+            value={nuevoPago.observaciones}
+            onChange={(e) => setNuevoPago({ ...nuevoPago, observaciones: e.target.value })}
+            placeholder="Observaciones adicionales..."
+          />
+        </div>
+      </div>
+
+      {/* ⭐ BOTONES */}
+      <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+        <button className="btn-secondary" onClick={closeCreateModal}>
+          Cancelar
+        </button>
+          {resumenPago && resumenPago.totales ? (
+            <>
+              {resumenPago.multas?.tiene_multas ? (
                 <>
+                  {/* 👉 SOLO aparece si el monto sin multas es mayor a 0 */}
+                  {getSafeValue(
+                    resumenPago.totales.opcion_sin_multas?.total_final,
+                    0
+                  ) > 0 && (
+                    <button
+                      className="btn-primary"
+                      onClick={() => {
+                        const montoSinMultas = getSafeValue(
+                          resumenPago.totales.opcion_sin_multas?.total_final,
+                          0
+                        );
+                        setNuevoPago({
+                          ...nuevoPago,
+                          monto_pago: montoSinMultas.toFixed(2),
+                          incluir_multas: false
+                        });
+                        handleCreatePago(false);
+                      }}
+                      disabled={loading || !resumenPago.totales.opcion_sin_multas}
+                    >
+                      <DollarSign className="w-4 h-4" />
+                      {loading
+                        ? 'Registrando...'
+                        : `Pagar Sin Multas (${formatCurrencySafe(
+                            resumenPago.totales.opcion_sin_multas?.total_final
+                          )})`}
+                    </button>
+                  )}
+
+                  {/* 👉 Botón pagar TODO */}
                   <button
-                    className="btn-warning"
-                    onClick={() => handleCreatePago(false)}
-                    disabled={loading || !nuevoPago.monto_pago}
-                    title="Pagar solo consumo y servicios (sin multas)"
-                    style={{
-                      backgroundColor: '#f59e0b',
-                      color: 'white',
-                      padding: '10px 16px',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      fontWeight: '500',
-                      opacity: loading || !nuevoPago.monto_pago ? 0.5 : 1
+                    className="btn-pagar-sin-multas"
+                    onClick={() => {
+                      const montoCompleto = getSafeValue(
+                        resumenPago.totales.opcion_completa?.total_final,
+                        0
+                      );
+                      setNuevoPago({
+                        ...nuevoPago,
+                        monto_pago: montoCompleto.toFixed(2),
+                        incluir_multas: true
+                      });
+                      handleCreatePago(true);
                     }}
-                  >
-                    <DollarSign className="w-4 h-4" />
-                    {loading ? 'Registrando...' : `Pagar Sin Multas ($${montosFactura.total_sin_multas.toFixed(2)})`}
-                  </button>
-                  <button
-                    className="btn-primary"
-                    onClick={() => handleCreatePago(true)}
-                    disabled={loading || !nuevoPago.monto_pago}
-                    title="Pagar todo (incluye multas)"
+                    disabled={loading || !resumenPago.totales.opcion_completa}
                   >
                     <CheckCircle className="w-4 h-4 mr-2" />
-                    {loading ? 'Registrando...' : `Pagar TODO ($${montosFactura.total_factura.toFixed(2)})`}
+                    {loading
+                      ? 'Registrando...'
+                      : `Pagar TODO (${formatCurrencySafe(
+                          resumenPago.totales.opcion_completa?.total_final
+                        )})`}
                   </button>
                 </>
               ) : (
-                // SI NO HAY MULTAS: Un solo botón
                 <button
                   className="btn-primary"
-                  onClick={() => handleCreatePago(true)}
-                  disabled={loading || !nuevoPago.monto_pago}
+                  onClick={() => {
+                    const montoCompleto = getSafeValue(
+                      resumenPago.totales.opcion_completa?.total_final,
+                      0
+                    );
+                    setNuevoPago({
+                      ...nuevoPago,
+                      monto_pago: montoCompleto.toFixed(2),
+                      incluir_multas: true
+                    });
+                    handleCreatePago(true);
+                  }}
+                  disabled={loading || !resumenPago.totales.opcion_completa}
                 >
-                  {loading ? 'Registrando...' : 'Registrar Pago'}
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  {loading
+                    ? 'Registrando...'
+                    : `Registrar Pago (${formatCurrencySafe(
+                        resumenPago.totales.opcion_completa?.total_final
+                      )})`}
                 </button>
               )}
+            </>
+          ) : (
+            <button className="btn-secondary" disabled>
+              Cargando opciones...
+            </button>
+          )}
 
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
+    </div>
+  </div>
+)}
+
 
 
 

@@ -1066,50 +1066,50 @@ const TarifasSection = () => {
                     </div>
 
                    <div className="form-group">
-  <label>Tipo de Tarifa *</label>
-  {modalType === 'create' ? (
-    <select
-      required
-      value={formData.tipo_tarifa}
-      onChange={(e) => setFormData({ ...formData, tipo_tarifa: e.target.value })}
-      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-    >
-      <option value="">Seleccionar tipo</option>
-      {TIPOS_TARIFA_PERMITIDOS.map(tipo => (
-        <option key={tipo.value} value={tipo.value}>
-          {tipo.label}
-          {TIPOS_TARIFA_OBLIGATORIOS.includes(tipo.value) ? ' ⭐ (Obligatorio)' : ''}
-        </option>
-      ))}
-    </select>
-  ) : (
-    <input
-      type="text"
-      value={formData.tipo_tarifa}
-      disabled
-      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-      title="El tipo de tarifa no se puede cambiar al editar"
-    />
-  )}
+                <label>Tipo de Tarifa *</label>
+                {modalType === 'create' ? (
+                  <select
+                    required
+                    value={formData.tipo_tarifa}
+                    onChange={(e) => setFormData({ ...formData, tipo_tarifa: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Seleccionar tipo</option>
+                    {TIPOS_TARIFA_PERMITIDOS.map(tipo => (
+                      <option key={tipo.value} value={tipo.value}>
+                        {tipo.label}
+                        {TIPOS_TARIFA_OBLIGATORIOS.includes(tipo.value) ? ' ⭐ (Obligatorio)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={formData.tipo_tarifa}
+                    disabled
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                    title="El tipo de tarifa no se puede cambiar al editar"
+                  />
+                )}
   
-  {/* Advertencia para tipos obligatorios */}
-  {TIPOS_TARIFA_OBLIGATORIOS.includes(formData.tipo_tarifa) && (
-    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
-      <AlertTriangle size={14} />
-      Solo puede existir una tarifa activa de tipo "{formData.tipo_tarifa}". 
-      Si creas una nueva, deberás activarla manualmente.
-    </p>
-  )}
-  
-  {/* Información adicional */}
-  {formData.tipo_tarifa && (
-    <p className="text-xs text-gray-500 mt-1">
-      {TIPOS_TARIFA_OBLIGATORIOS.includes(formData.tipo_tarifa) 
-        ? '💡 Esta tarifa es necesaria para la facturación y no se puede eliminar cuando está activa.'
-        : '💡 Este tipo de tarifa es opcional y puede tener múltiples versiones activas.'}
-    </p>
-  )}
-</div>
+                {/* Advertencia para tipos obligatorios */}
+                {TIPOS_TARIFA_OBLIGATORIOS.includes(formData.tipo_tarifa) && (
+                  <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                    <AlertTriangle size={14} />
+                    Solo puede existir una tarifa activa de tipo "{formData.tipo_tarifa}". 
+                    Si creas una nueva, deberás activarla manualmente.
+                  </p>
+                )}
+                
+                {/* Información adicional */}
+                {formData.tipo_tarifa && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {TIPOS_TARIFA_OBLIGATORIOS.includes(formData.tipo_tarifa) 
+                      ? '💡 Esta tarifa es necesaria para la facturación y no se puede eliminar cuando está activa.'
+                      : '💡 Este tipo de tarifa es opcional y puede tener múltiples versiones activas.'}
+                  </p>
+                )}
+              </div>
 
 
                     <div className="form-group form-group-full">

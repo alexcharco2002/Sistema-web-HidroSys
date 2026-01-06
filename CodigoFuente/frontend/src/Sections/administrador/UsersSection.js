@@ -11,7 +11,7 @@ import {
   Users, Plus, Search, Edit, Trash2, Eye, UserCheck, UserX,
   Mail, Phone, MapPin, Calendar, X, Save, RefreshCw, Key,
   Image as ImageIcon, AlertCircle, ArrowUpDown, IdCard, CheckCircle, XCircle,
-  UserCog, Wallet, BookOpen, User, FileSpreadsheet, Download 
+  UserCog, Wallet, BookOpen, User, FileSpreadsheet, Download, Unlock
 } from 'lucide-react';
 
 const UsersSection = () => {
@@ -665,6 +665,45 @@ const UsersSection = () => {
     }
   };
 
+  /**
+ * 🔓 Desbloquear usuario
+ */
+const handleUnlockUser = async (userId, usuario) => {
+  // 🔑 Verificar permiso
+  if (!permissions.canUpdate) {
+    alert('❌ No tienes permiso para desbloquear usuarios');
+    return;
+  }
+
+  const confirmado = window.confirm(
+    `¿Estás seguro de que deseas desbloquear al usuario '${usuario}'?\n\n` +
+    `Esto reseteará:\n` +
+    `- Intentos fallidos\n` +
+    `- Bloqueo temporal\n` +
+    `- Bloqueo permanente`
+  );
+  
+  if (!confirmado) return;
+
+  try {
+    setLoading(true);
+    const result = await usersService.unlockUser(userId);
+    
+    if (result.success) {
+      alert(`✅ ${result.message}`);
+      await fetchUsers(); // Recargar lista
+    } else {
+      alert(`❌ Error: ${result.message}`);
+    }
+  } catch (error) {
+    alert(`❌ Error al desbloquear usuario: ${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
   // ==================== FUNCIONES AUXILIARES ====================
   
   /**
@@ -723,6 +762,55 @@ const UsersSection = () => {
       </span>
     );
   };
+
+  /**
+ * 🔐 Verificar si un usuario está bloqueado
+ */
+const isUserBlocked = (user) => {
+  if (!user) return false;
+  
+  // Bloqueado permanentemente
+  if (user.bloqueado_permanente) {
+    return true;
+  }
+  
+  // Bloqueado temporalmente
+  if (user.bloqueado_hasta) {
+    const ahora = new Date();
+    const bloqueadoHasta = new Date(user.bloqueado_hasta);
+    return bloqueadoHasta > ahora;
+  }
+  
+  return false;
+};
+
+/**
+ * 🏷️ Obtener texto del estado de bloqueo
+ */
+const getBlockStatusText = (user) => {
+  if (!user) return '';
+  
+  if (user.bloqueado_permanente) {
+    return '🔒 Bloqueado Permanente';
+  }
+  
+  if (user.bloqueado_hasta) {
+    const ahora = new Date();
+    const bloqueadoHasta = new Date(user.bloqueado_hasta);
+    
+    if (bloqueadoHasta > ahora) {
+      const minutos = Math.ceil((bloqueadoHasta - ahora) / 60000);
+      return `⏱️ Bloqueado (${minutos} min)`;
+    }
+  }
+  
+  if (user.intentos_fallidos > 0) {
+    return `⚠️ ${user.intentos_fallidos} intentos fallidos`;
+  }
+  
+  return '';
+};
+
 
   // ==================== RENDERIZADO ====================
   
@@ -967,8 +1055,20 @@ const UsersSection = () => {
                         </>
                       )}
                     </span>
+                    {/* ✅ AGREGAR BADGE DE BLOQUEO */}
+                    {isUserBlocked(user) && (
+                      <span className="status-badge" style={{
+                        backgroundColor: '#fef2f2',
+                        color: '#dc2626',
+                        border: '1px solid #fca5a5'
+                      }}>
+                        <AlertCircle className="w-3 h-3" />
+                        {getBlockStatusText(user)}
+                      </span>
+                    )}
                   </div>
                 </div>
+                
               </div>
               
               {/* Botones de acción */}
@@ -1034,6 +1134,17 @@ const UsersSection = () => {
                     title="Eliminar usuario"
                   >
                     <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+
+                {/* 🔐 Botón "Desbloquear" si el usuario está bloqueado */}
+                {isUserBlocked(user) && permissions.canUpdate && (
+                  <button
+                    className="action-btn unlock"
+                    onClick={() => handleUnlockUser(user.id, user.usuario)}
+                    title="Desbloquear usuario"
+                  >
+                    <Unlock className="w-4 h-4" />
                   </button>
                 )}
               </div>

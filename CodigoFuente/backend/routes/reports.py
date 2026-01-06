@@ -4,6 +4,7 @@ Router centralizado para generación de reportes y estadísticas del sistema
 Maneja todos los módulos de reportes de forma unificada
 """
 
+import math
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload, aliased
@@ -658,7 +659,7 @@ def get_reporte_lecturas(
 
 
 # ============================================================================
-# 6.1. OBTENER PERIODOS DISPONIBLES (MES/AÑO)
+# 6.1. OBTENER PERIODOS DISPONIBLES LECTURAS (MES/AÑO)
 # ============================================================================
 @router.get("/lecturas/periodos")
 def get_periodos_lecturas(
@@ -700,6 +701,7 @@ def get_periodos_lecturas(
 # ============================================================================
 # 7. REPORTE DE FACTURAS
 # ============================================================================
+
 @router.get("/facturas")
 def get_reporte_facturas(
     skip: int = Query(0, ge=0),
@@ -713,27 +715,32 @@ def get_reporte_facturas(
     payload: dict = Depends(verify_token)
 ):
     """
-    📊 REPORTE DE FACTURAS 
-    
-    Genera un reporte completo de facturas con:
-    - Información del usuario y afiliado
-    - Datos de consumo y facturación
-    - Número de medidor
-    
-    Búsqueda por: nombre, apellido, cédula, código afiliado, medidor, num_factura
+    📊 REPORTE DE FACTURAS CON INFORMACIÓN DE MORA
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "reportes", "lectura")
     
     try:
-        from sqlalchemy import cast, String
+        import math
+        from sqlalchemy import cast, String, func as sql_func
+        from models.mora import MoraFactura
         
-        # ========================================
-        # 🔥 QUERY OPTIMIZADO CON COLUMNAS DIRECTAS
-        # ========================================
+        # SUBQUERY: SUMA DE MORAS POR FACTURA
+        mora_subquery = (
+            db.query(
+                MoraFactura.id_factura,
+                sql_func.sum(MoraFactura.monto_mora).label('total_mora'),
+                sql_func.max(MoraFactura.dias_mora).label('max_dias_mora'),
+                sql_func.count(MoraFactura.id_mora).label('cantidad_moras')
+            )
+            .filter(MoraFactura.aplicada == True)
+            .group_by(MoraFactura.id_factura)
+            .subquery()
+        )
+        
+        # QUERY OPTIMIZADO
         query = (
             db.query(
-                # 📄 FACTURA
                 Factura.id_factura,
                 Factura.num_factura,
                 Factura.periodo,
@@ -747,41 +754,32 @@ def get_reporte_facturas(
                 Factura.descuento,
                 Factura.impuesto,
                 Factura.total,
-                
-                # 🏠 AFILIADO
                 UsuarioAfiliado.cod_usuario_afi,
                 UsuarioAfiliado.num_medidor,
-                
-                # 👤 USUARIO SISTEMA
                 UsuarioSistema.nombres,
                 UsuarioSistema.apellidos,
                 UsuarioSistema.cedula,
                 UsuarioSistema.direccion,
                 UsuarioSistema.telefono,
                 UsuarioSistema.email,
-                
-                # 📍 SECTOR
-                Sector.nombre_sector
+                Sector.nombre_sector,
+                mora_subquery.c.total_mora,
+                mora_subquery.c.max_dias_mora,
+                mora_subquery.c.cantidad_moras
             )
             .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
+            .outerjoin(mora_subquery, Factura.id_factura == mora_subquery.c.id_factura)
         )
         
-        # ============================================================
-        # 🔍 FILTRO POR MES Y AÑO (PRIORIDAD)
-        # ============================================================
+        # FILTROS
         if mes and anio:
             periodo_buscado = f"{anio}-{mes:02d}"
             query = query.filter(Factura.periodo == periodo_buscado)
-            print(f"🔍 Filtrando facturas por periodo: {periodo_buscado}")
         elif periodo:
             query = query.filter(Factura.periodo == periodo)
-            print(f"🔍 Filtrando facturas por periodo: {periodo}")
         
-        # ============================================================
-        # 🔍 FILTRO DE BÚSQUEDA
-        # ============================================================
         if search:
             search_pattern = f"%{search}%"
             query = query.filter(
@@ -794,29 +792,14 @@ def get_reporte_facturas(
                     Factura.num_factura.ilike(search_pattern)
                 )
             )
-            print(f"🔍 Búsqueda activa: '{search}'")
         
-        # ============================================================
-        # 🔍 FILTRO POR ESTADO
-        # ============================================================
         if estado and estado.lower() != 'todos':
             query = query.filter(Factura.estado_factura == estado.lower())
-            print(f"🔍 Filtrando por estado: {estado}")
         
-        # ============================================================
-        # 📊 ORDENAR
-        # ============================================================
         query = query.order_by(Factura.fecha_emision.desc(), Factura.num_factura.desc())
         
-        # ============================================================
-        # 📊 CONTAR TOTAL
-        # ============================================================
         total_count = query.count()
-        print(f"📊 Total de facturas encontradas: {total_count}")
         
-        # ============================================================
-        # 📊 PAGINAR
-        # ============================================================
         facturas = query.offset(skip).limit(limit).all()
         
         if not facturas:
@@ -832,13 +815,13 @@ def get_reporte_facturas(
                     "total_facturado": 0.0,
                     "total_pagado": 0.0,
                     "total_pendiente": 0.0,
-                    "total_vencido": 0.0
+                    "total_vencido": 0.0,
+                    "facturas_con_mora": 0,
+                    "total_mora": 0.0
                 }
             }
         
-        # ============================================================
-        # 🧾 OBTENER DETALLES DE FACTURAS
-        # ============================================================
+        # OBTENER DETALLES DE FACTURAS
         ids_facturas = [f.id_factura for f in facturas]
         
         detalles_query = (
@@ -861,7 +844,6 @@ def get_reporte_facturas(
             .all()
         )
         
-        # Agrupar detalles por factura
         detalles_por_factura = {}
         for d in detalles_query:
             if d.id_factura not in detalles_por_factura:
@@ -872,27 +854,28 @@ def get_reporte_facturas(
                 "monto": float(d.subtotal_detalle) if d.subtotal_detalle else 0.0
             })
         
-        # ============================================================
-        # 📋 FORMATEAR RESPUESTA
-        # ============================================================
+        # ========================================
+        # 📋 FORMATEAR RESPUESTA + CALCULAR ESTADÍSTICAS
+        # ========================================
         facturas_formateadas = []
+        
+        # ✅ VARIABLES PARA ESTADÍSTICAS
         total_facturado = 0.0
         total_pagado = 0.0
         total_pendiente = 0.0
         total_vencido = 0.0
+        facturas_con_mora = 0
+        total_mora_acumulado = 0.0
         
         for f in facturas:
-            # Consolidar conceptos de facturación
             detalles = detalles_por_factura.get(f.id_factura, [])
             conceptos_texto = " | ".join([
                 f"{d['tipo'].upper()} (${d['monto']:.2f})"
                 for d in detalles
             ]) if detalles else "Sin conceptos"
             
-            # Nombre completo
             nombre_completo = f"{f.nombres} {f.apellidos}".strip()
             
-            # Calcular totales
             total_factura = float(f.total) if f.total else 0.0
             total_facturado += total_factura
             
@@ -903,53 +886,53 @@ def get_reporte_facturas(
             elif f.estado_factura == 'vencida':
                 total_vencido += total_factura
             
+            # CALCULAR DATOS DE MORA
+            valor_mora = float(f.total_mora) if f.total_mora else 0.0
+            dias_mora = int(f.max_dias_mora) if f.max_dias_mora else 0
+            tiene_mora = valor_mora > 0
+            
+            meses_adeudo = math.ceil(dias_mora / 30) if dias_mora > 0 else 0
+            total_con_mora = total_factura + valor_mora
+            
+            # ✅ ACUMULAR ESTADÍSTICAS DE MORA
+            if tiene_mora:
+                facturas_con_mora += 1
+                total_mora_acumulado += valor_mora
+            
             factura_dict = {
-                # 📌 IDENTIFICACIÓN
                 "num_factura": f.num_factura,
                 "periodo": f.periodo,
-                
-                # 🏠 DATOS DEL AFILIADO
                 "cod_usuario_afi": f.cod_usuario_afi,
                 "num_medidor": f.num_medidor or "N/A",
-                
-                # 👤 DATOS DEL USUARIO
                 "cedula": f.cedula,
-                "Nombres": nombre_completo,  # ✅ Mantener formato "Nombre" para consistencia
+                "Nombres": nombre_completo,
                 "direccion": f.direccion,
                 "telefono": f.telefono,
                 "email": f.email,
-                
-                # 📍 SECTOR
                 "sector": f.nombre_sector or "Sin sector",
-                
-                # 📊 DATOS DE CONSUMO
                 "consumo_m3": f.consumo_m3 or 0,
                 "exceso_m3": f.exceso_m3 or 0,
-                
-                # 💰 VALORES MONETARIOS
                 "valor_consumo": float(f.valor_consumo) if f.valor_consumo else 0.0,
                 "valor_exceso": float(f.valor_exceso) if f.valor_exceso else 0.0,
                 "descuento": float(f.descuento) if f.descuento else 0.0,
                 "subtotal": float(f.subtotal) if f.subtotal else 0.0,
                 "impuesto": float(f.impuesto) if f.impuesto else 0.0,
-                "total": total_factura,
-                
-                # 📅 FECHAS Y ESTADO
+                "total_factura": total_factura,
+                "tiene_mora": tiene_mora,
+                "meses_adeudo": meses_adeudo,
+                "valor_mora": valor_mora,
+                "total_con_mora": total_con_mora,
                 "fecha_emision": f.fecha_emision.strftime("%d/%m/%Y") if f.fecha_emision else None,
-                
-                # 🧾 CONCEPTOS
-                "conceptos_facturacion": conceptos_texto,
-                "estado": f.estado_factura
-
+                "estado": f.estado_factura,
+                "conceptos_facturacion": conceptos_texto
             }
             
             facturas_formateadas.append(factura_dict)
         
         print(f"✅ Reporte generado: {len(facturas_formateadas)} de {total_count} facturas")
+        print(f"📊 Estadísticas: {facturas_con_mora} facturas con mora, total mora: ${total_mora_acumulado:.2f}")
         
-        # ============================================================
-        # 📊 RESPUESTA CON ESTADÍSTICAS
-        # ============================================================
+        # ✅ RESPUESTA CON ESTADÍSTICAS DE MORA
         return {
             "success": True,
             "data": facturas_formateadas,
@@ -962,7 +945,9 @@ def get_reporte_facturas(
                 "total_facturado": round(total_facturado, 2),
                 "total_pagado": round(total_pagado, 2),
                 "total_pendiente": round(total_pendiente, 2),
-                "total_vencido": round(total_vencido, 2)
+                "total_vencido": round(total_vencido, 2),
+                "facturas_con_mora": facturas_con_mora,
+                "total_mora": round(total_mora_acumulado, 2)
             }
         }
         
@@ -975,7 +960,6 @@ def get_reporte_facturas(
             status_code=500,
             detail=f"Error al generar reporte de facturas: {str(e)}"
         )
-
 
 
 # ============================================================================
@@ -1028,12 +1012,13 @@ def get_periodos_facturas(
 #===========================================================================
 # 8. REPORTE DE PAGOS
 # ===========================================================================
+
 @router.get("/pagos")
 def get_reporte_pagos(
     periodo: Optional[str] = Query(None, description="Formato: YYYY-MM"),
     metodo_pago: Optional[str] = Query(None),
     estado_pago: Optional[str] = Query(None),
-    pago_completo: Optional[bool] = Query(None),  # ✅ NUEVO
+    pago_completo: Optional[bool] = Query(None),
     search: Optional[str] = Query(None, description="Buscar por nombre, cédula, cod_afiliado, medidor"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -1041,46 +1026,44 @@ def get_reporte_pagos(
     payload: dict = Depends(verify_token)
 ):
     """
-    📊 REPORTE DE PAGOS
-    
-    Genera un reporte completo de pagos con:
-    - Información del usuario y afiliado
-    - Datos de factura y pago
-    - Conceptos de facturación consolidados
-    
-    Búsqueda por: nombre, apellido, cédula, código afiliado, medidor, num_factura
+    📊 REPORTE DE PAGOS CON INFORMACIÓN DE MORA
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "pagos", "lectura")
     
     try:
+        import math
         from datetime import datetime
-        from sqlalchemy import cast, String
+        from sqlalchemy import cast, String, func as sql_func
+        from models.mora import MoraFactura
         
-        # ========================================
-        # 🔥 ALIAS
-        # ========================================
         Cajero = aliased(UsuarioSistema)
         
-        # ========================================
-        # 🔥 QUERY PRINCIPAL
-        # ========================================
+        # SUBQUERY: SUMA DE MORAS POR FACTURA
+        mora_subquery = (
+            db.query(
+                MoraFactura.id_factura,
+                sql_func.sum(MoraFactura.monto_mora).label('total_mora'),
+                sql_func.max(MoraFactura.dias_mora).label('max_dias_mora'),
+                sql_func.count(MoraFactura.id_mora).label('cantidad_moras')
+            )
+            .filter(MoraFactura.aplicada == True)
+            .group_by(MoraFactura.id_factura)
+            .subquery()
+        )
+        
+        # QUERY PRINCIPAL
         query = (
             db.query(
-                # 👤 USUARIO
                 UsuarioSistema.cedula,
                 UsuarioSistema.nombres,
                 UsuarioSistema.apellidos,
                 UsuarioSistema.direccion,
                 UsuarioSistema.telefono,
                 UsuarioSistema.email,
-                
-                # 🏠 AFILIADO
                 UsuarioAfiliado.cod_usuario_afi,
                 UsuarioAfiliado.num_medidor,
                 Sector.nombre_sector,
-                
-                # 📄 FACTURA
                 Factura.id_factura,
                 Factura.num_factura,
                 Factura.periodo,
@@ -1092,66 +1075,49 @@ def get_reporte_pagos(
                 Factura.impuesto,
                 Factura.total,
                 Factura.estado_factura,
-                
-                # 💰 PAGO
                 Pago.id_pago,
                 Pago.monto_pago,
                 Pago.fecha_pago,
                 Pago.metodo_pago,
                 Pago.estado_pago,
                 Pago.observaciones,
-                
-                # 👨‍💼 CAJERO
                 Cajero.nombres.label('cajero_nombres'),
                 Cajero.apellidos.label('cajero_apellidos'),
-                
-                # 📎 COMPROBANTE
                 Pago.nombre_archivo,
                 case(
                     (Pago.comprobante_pdf.isnot(None), True),
                     else_=False
-                ).label('tiene_comprobante')
+                ).label('tiene_comprobante'),
+                mora_subquery.c.total_mora,
+                mora_subquery.c.max_dias_mora,
+                mora_subquery.c.cantidad_moras
             )
             .join(Factura, Pago.id_factura == Factura.id_factura)
             .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
             .outerjoin(Cajero, Pago.id_cajero == Cajero.id_usuario_sistema)
+            .outerjoin(mora_subquery, Factura.id_factura == mora_subquery.c.id_factura)
         )
         
-        # ========================================
-        # 🔍 FILTROS
-        # ========================================
-        
-        # Filtro por periodo de factura
+        # FILTROS
         if periodo:
             query = query.filter(Factura.periodo == periodo)
-            print(f"🔍 Filtrando por periodo: {periodo}")
         
-        # Filtro por método de pago
         if metodo_pago:
             query = query.filter(Pago.metodo_pago.ilike(f"%{metodo_pago}%"))
-            print(f"🔍 Filtrando por método: {metodo_pago}")
         
-        # ✅ MEJOR - Maneja cualquier formato
         if estado_pago:
             estado_upper = estado_pago.upper()
             if estado_upper != 'TODOS':
                 query = query.filter(Pago.estado_pago == estado_upper)
-                print(f"🔍 Filtrando por estado: {estado_upper}")
-
         
-        # ✅ NUEVO: Filtro por pago completo
         if pago_completo is not None:
             if pago_completo:
-                # Pagos completos: monto_pago >= total_factura
                 query = query.filter(Pago.monto_pago >= Factura.total)
             else:
-                # Pagos parciales: monto_pago < total_factura
                 query = query.filter(Pago.monto_pago < Factura.total)
-            print(f"🔍 Filtrando por pago_completo: {pago_completo}")
         
-        # ✅ BÚSQUEDA GENERAL
         if search:
             search_pattern = f"%{search}%"
             query = query.filter(
@@ -1164,17 +1130,9 @@ def get_reporte_pagos(
                     Factura.num_factura.ilike(search_pattern)
                 )
             )
-            print(f"🔍 Búsqueda activa: '{search}'")
         
-        # ========================================
-        # 📊 CONTAR TOTAL (para paginación)
-        # ========================================
         total_registros = query.count()
-        print(f"📊 Total de registros encontrados: {total_registros}")
         
-        # ========================================
-        # 📊 ORDENAR Y EJECUTAR
-        # ========================================
         pagos = (
             query
             .order_by(Pago.fecha_pago.desc())
@@ -1190,16 +1148,19 @@ def get_reporte_pagos(
                 "total": 0,
                 "skip": skip,
                 "limit": limit,
-                "pages": 0
+                "pages": 0,
+                "estadisticas": {
+                    "total_pagos": 0,
+                    "total_facturado": 0.0,
+                    "total_pagado": 0.0,
+                    "facturas_con_mora": 0,
+                    "total_mora": 0.0
+                }
             }
         
-        # [... resto del código sin cambios ...]
-        # IDs de facturas para obtener detalles
+        # Obtener detalles de facturas
         ids_facturas = list(set([p.id_factura for p in pagos]))
         
-        # ========================================
-        # 🧾 OBTENER DETALLES DE FACTURAS
-        # ========================================
         detalles_query = (
             db.query(
                 DetalleFactura.id_factura,
@@ -1220,7 +1181,6 @@ def get_reporte_pagos(
             .all()
         )
         
-        # Agrupar detalles por factura
         detalles_por_factura = {}
         for d in detalles_query:
             if d.id_factura not in detalles_por_factura:
@@ -1232,22 +1192,25 @@ def get_reporte_pagos(
             })
         
         # ========================================
-        # 📋 FORMATEAR RESPUESTA PARA REPORTE
+        # 📋 FORMATEAR RESPUESTA + CALCULAR ESTADÍSTICAS
         # ========================================
         resultado = []
         
+        # ✅ VARIABLES PARA ESTADÍSTICAS
+        total_facturado = 0.0
+        total_pagado = 0.0
+        facturas_con_mora = 0
+        total_mora_acumulado = 0.0
+        
         for p in pagos:
-            # Consolidar conceptos de facturación en texto (solo tipo y precio)
             detalles = detalles_por_factura.get(p.id_factura, [])
             conceptos_texto = " | ".join([
                 f"{d['tipo'].upper()} (${d['monto']:.2f})"
                 for d in detalles
             ]) if detalles else "Sin conceptos"
 
-            # Nombre completo del usuario
             nombre_completo = f"{p.nombres} {p.apellidos}".strip()
             
-            # Nombre completo del cajero
             cajero_nombre = None
             if p.cajero_nombres and p.cajero_apellidos:
                 cajero_nombre = f"{p.cajero_nombres} {p.cajero_apellidos}"
@@ -1256,8 +1219,23 @@ def get_reporte_pagos(
             elif p.cajero_apellidos:
                 cajero_nombre = p.cajero_apellidos
             
+            # CALCULAR DATOS DE MORA
+            total_factura = float(p.total)
+            valor_mora = float(p.total_mora) if p.total_mora else 0.0
+            dias_mora = int(p.max_dias_mora) if p.max_dias_mora else 0
+            tiene_mora = valor_mora > 0
+            
+            meses_adeudo = math.ceil(dias_mora / 30) if dias_mora > 0 else 0
+            total_con_mora = total_factura + valor_mora
+            
+            # ✅ ACUMULAR ESTADÍSTICAS
+            total_facturado += total_factura
+            total_pagado += float(p.monto_pago)
+            if tiene_mora:
+                facturas_con_mora += 1
+                total_mora_acumulado += valor_mora
+            
             resultado.append({
-                # 📌 COLUMNAS PRINCIPALES PARA VISUALIZACIÓN
                 "cod_afiliado": p.cod_usuario_afi,
                 "num_medidor": p.num_medidor or "N/A",
                 "cedula": p.cedula,
@@ -1265,48 +1243,46 @@ def get_reporte_pagos(
                 "direccion": p.direccion,
                 "telefono": p.telefono,
                 "email": p.email,
-                
-                # 📄 FACTURA
                 "num_factura": p.num_factura,
                 "fecha_emision": p.fecha_emision.strftime("%d/%m/%Y") if p.fecha_emision else None,
-                "total_factura": float(p.total),
-                
-                # 💰 PAGO
+                "total_factura": total_factura,
+                "tiene_mora": tiene_mora,
+                "meses_adeudo": meses_adeudo,
+                "valor_mora": valor_mora,
+                "total_con_mora": total_con_mora,
                 "monto_pagado": float(p.monto_pago),
                 "fecha_pago": p.fecha_pago.strftime("%d/%m/%Y") if p.fecha_pago else None,
                 "metodo_pago": p.metodo_pago or "No especificado",
                 "estado_factura": p.estado_factura,
                 "estado_pago": p.estado_pago,
                 "observaciones": p.observaciones,
-                
-                # 🧾 CONCEPTOS CONSOLIDADOS (para visualización)
                 "conceptos_facturacion": conceptos_texto,
-                
-                # 📊 DETALLES DESGLOSADOS (para análisis)
                 "descuento": float(p.descuento) if p.descuento else 0.0,
                 "impuesto": float(p.impuesto) if p.impuesto else 0.0,
-                
-                # 📎 COMPROBANTE
                 "tiene_comprobante": p.tiene_comprobante,
-                
-                # 📍 INFO ADICIONAL
                 "cajero": cajero_nombre or "Sin cajero",
-                
-                # 💵 CÁLCULOS
-                "saldo": float(p.total) - float(p.monto_pago),
-                "pago_completo": float(p.monto_pago) >= float(p.total)
+                "saldo": total_con_mora - float(p.monto_pago),
+                "pago_completo": float(p.monto_pago) >= total_con_mora
             })
         
         print(f"✅ Reporte generado: {len(resultado)} de {total_registros} pagos")
+        print(f"📊 Estadísticas: {facturas_con_mora} facturas con mora, total mora: ${total_mora_acumulado:.2f}")
         
-        # ✅ RESPUESTA CON METADATA DE PAGINACIÓN
+        # ✅ RESPUESTA CON ESTADÍSTICAS DE MORA
         return {
             "success": True,
             "data": resultado,
             "total": total_registros,
             "skip": skip,
             "limit": limit,
-            "pages": (total_registros + limit - 1) // limit
+            "pages": (total_registros + limit - 1) // limit,
+            "estadisticas": {
+                "total_pagos": len(resultado),
+                "total_facturado": round(total_facturado, 2),
+                "total_pagado": round(total_pagado, 2),
+                "facturas_con_mora": facturas_con_mora,
+                "total_mora": round(total_mora_acumulado, 2)
+            }
         }
         
     except HTTPException:
@@ -1318,6 +1294,7 @@ def get_reporte_pagos(
             status_code=500,
             detail=f"Error al generar reporte de pagos: {str(e)}"
         )
+
 
 
 # ============================================================================

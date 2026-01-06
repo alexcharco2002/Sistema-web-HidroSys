@@ -108,62 +108,149 @@ class PaymentsServices {
     }
   }
 
+  // ✅ La función getFacturasPeriodo ya está bien, solo asegúrate de que use el endpoint correcto
+  async getFacturasPeriodo(filters = {}) {
+    try {
+      const params = new URLSearchParams();
+      
+      if (filters.periodo) params.append('periodo', filters.periodo);
+      if (filters.search) params.append('search', filters.search);
+      if (filters.estado_factura) params.append('estado_factura', filters.estado_factura);
+      if (filters.skip) params.append('skip', filters.skip);
+      if (filters.limit) params.append('limit', filters.limit);
 
-// ✅ La función getFacturasPeriodo ya está bien, solo asegúrate de que use el endpoint correcto
-async getFacturasPeriodo(filters = {}) {
-  try {
-    const params = new URLSearchParams();
-    
-    if (filters.periodo) params.append('periodo', filters.periodo);
-    if (filters.search) params.append('search', filters.search);
-    if (filters.estado_factura) params.append('estado_factura', filters.estado_factura);
-    if (filters.skip) params.append('skip', filters.skip);
-    if (filters.limit) params.append('limit', filters.limit);
+      const queryString = params.toString();
+      const endpoint = queryString 
+        ? `${API_CONFIG.endpoints.facturasPeriodo}?${queryString}` 
+        : API_CONFIG.endpoints.facturasPeriodo;
 
-    const queryString = params.toString();
-    const endpoint = queryString 
-      ? `${API_CONFIG.endpoints.facturasPeriodo}?${queryString}` 
-      : API_CONFIG.endpoints.facturasPeriodo;
-
-    console.log('🔍 Fetching facturas desde:', endpoint);  // ✅ AGREGAR LOG
-    const data = await this.makeRequest(endpoint);
-    
-    console.log('✅ Facturas recibidas:', data.length);  // ✅ AGREGAR LOG
-    console.log('📋 Primera factura:', data[0]);  // ✅ AGREGAR LOG
-    console.log('📝 Detalles de primera factura:', data[0]?.detalles);  // ✅ AGREGAR LOG
-    
-    return { 
-      success: true, 
-      data: data 
-    };
-  } catch (error) {
-    console.error('❌ Error obteniendo facturas del periodo:', error);
-    return { 
-      success: false, 
-      message: error.message || 'Error al obtener facturas' 
-    };
+      console.log('🔍 Fetching facturas desde:', endpoint); 
+      const data = await this.makeRequest(endpoint);
+      
+      return { 
+        success: true, 
+        data: data 
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo facturas del periodo:', error);
+      return { 
+        success: false, 
+        message: error.message || 'Error al obtener facturas' 
+      };
+    }
   }
-}
 
-/**
- * Obtener desglose de montos de una factura (con y sin multas)
- */
-async getFacturaMontos(idFactura) {
-  try {
-    const endpoint = `/pagos/factura/${idFactura}/montos`;
-    const data = await this.makeRequest(endpoint);
-    return {
-      success: true,
-      data: data
-    };
-  } catch (error) {
-    console.error('❌ Error obteniendo montos de factura:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al obtener montos'
-    };
+  /**
+   * Obtener desglose de montos de una factura (con y sin multas)
+   */
+  async getFacturaMontos(idFactura) {
+    try {
+      const endpoint = `/pagos/factura/${idFactura}/montos`;
+      const data = await this.makeRequest(endpoint);
+      return {
+        success: true,
+        data: data
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo montos de factura:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener montos'
+      };
+    }
   }
-}
+
+ async getFacturasPendientesAfiliado(idUsuarioAfi, periodoActual, aplicarMora = false) {
+    // ✅ Validación de parámetros
+    if (!idUsuarioAfi) {
+      console.error('❌ idUsuarioAfi es requerido');
+      return { 
+        success: false, 
+        message: 'ID de afiliado es requerido' 
+      };
+    }
+
+    if (!periodoActual) {
+      console.error('❌ periodoActual es requerido');
+      return { 
+        success: false, 
+        message: 'Periodo actual es requerido' 
+      };
+    }
+
+    // ✅ Validar formato del periodo (YYYY-MM)
+    const periodoRegex = /^\d{4}-(0[1-9]|1[0-2])$/;
+    if (!periodoRegex.test(periodoActual)) {
+      console.error('❌ Formato de periodo inválido:', periodoActual);
+      return { 
+        success: false, 
+        message: 'Formato de periodo inválido. Use YYYY-MM (ej: 2026-01)' 
+      };
+    }
+
+    try {
+      // Construir URL con parámetros
+      const params = new URLSearchParams();
+      params.append('periodo_actual', periodoActual);
+      
+      if (aplicarMora) {
+        params.append('aplicar_mora', 'true');
+      }
+      
+      const endpoint = `/pagos/afiliado/${idUsuarioAfi}/facturas-pendientes?${params.toString()}`;
+      
+      console.log('🔍 Consultando facturas pendientes:', {
+        idUsuarioAfi,
+        periodoActual,
+        aplicarMora,
+        endpoint
+      });
+      
+      const data = await this.makeRequest(endpoint);
+      
+      console.log('✅ Facturas pendientes obtenidas:', {
+        afiliado: idUsuarioAfi,
+        tiene_deuda: data.tiene_deuda,
+        meses_adeudo: data.meses_adeudo,
+        total_adeudado: data.total_adeudado,
+        facturas: data.total_facturas_pendientes
+      });
+      
+      return { 
+        success: true, 
+        data: data 
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo facturas pendientes del afiliado:', {
+        idUsuarioAfi,
+        periodoActual,
+        error: error.message
+      });
+      
+      return { 
+        success: false, 
+        message: error.message || 'Error al obtener facturas pendientes' 
+      };
+    }
+  }
+
+  /**
+   * Helper: Obtener periodo actual en formato YYYY-MM
+   */
+  static getPeriodoActual() {
+    const hoy = new Date();
+    const anio = hoy.getFullYear();
+    const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+    return `${anio}-${mes}`;
+  }
+
+  /**
+   * Helper: Validar formato de periodo
+   */
+  static validarPeriodo(periodo) {
+    const regex = /^\d{4}-(0[1-9]|1[0-2])$/;
+    return regex.test(periodo);
+  }
 
 
   // ========================================
@@ -407,6 +494,40 @@ async getFacturaMontos(idFactura) {
       };
     }
   }
+
+// paymentsServices.js
+
+/**
+ * Crear pago masivo (múltiples facturas)
+ */
+async createPagoMasivo(pagoMasivoData) {
+  try {
+    const endpoint = '/pagos/pago-masivo';
+    const data = await this.makeRequest(endpoint, {
+      method: 'POST',
+      body: pagoMasivoData
+    });
+
+    console.log('✅ Pago masivo creado:', data);
+
+    // Limpiar cachés
+    this.cachedPagos = null;
+    this.cachedStats = null;
+
+    return {
+      success: true,
+      data: data,
+      message: 'Pago masivo registrado exitosamente'
+    };
+  } catch (error) {
+    console.error('❌ Error en pago masivo:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al registrar pago masivo'
+    };
+  }
+}
+
 
 
 

@@ -332,8 +332,12 @@ def restaurar_backup(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "configuracion", "actualizar")
     
+    # ✅ CRÍTICO: Guardar ID del usuario ANTES de cerrar la sesión
+    user_id = current_user.id_usuario_sistema
+    username = current_user.usuario
+    
     backup_path = BACKUP_DIR / restore_data.filename
-
+    
     # Verificar que el archivo existe
     if not backup_path.exists():
         raise HTTPException(
@@ -348,28 +352,45 @@ def restaurar_backup(
             detail="Solo se pueden restaurar archivos .dump"
         )
     
-    # Configurar entorno con contraseña
-    env = os.environ.copy()
-    env["PGPASSWORD"] = DB_PASSWORD
-
-    # Comando de restauración
-    comando = [
-    PG_RESTORE_PATH,
-    "-h", DB_HOST,
-    "-p", str(DB_PORT),
-    "-U", DB_USER,
-    "-d", DB_NAME,
-    "-c",  # limpia la base
-    "--if-exists",
-    "--disable-triggers",
-    str(backup_path),
-]
-
-
-
-
     try:
-        # Ejecutar pg_restore
+        # ✅ PASO 1: Registrar auditoría ANTES de cerrar conexiones
+        registrar_auditoria(
+            db=db,
+            accion="RESTORE_BACKUP_INICIADO",
+            descripcion=f"Iniciando restauración desde: {restore_data.filename}",
+            id_usuario=user_id  # ✅ Usar el ID guardado
+        )
+        
+        # ✅ PASO 2: Cerrar TODAS las conexiones activas
+        print(f"🔄 Cerrando conexiones activas a {DB_NAME}...")
+        try:
+            cerrar_conexiones(DB_NAME, db)
+        except Exception as e:
+            print(f"⚠️ Advertencia al cerrar conexiones: {e}")
+        
+        # ✅ PASO 3: Cerrar la sesión de SQLAlchemy ANTES de restaurar
+        db.close()
+        
+        # ✅ PASO 4: Configurar entorno con contraseña
+        env = os.environ.copy()
+        env["PGPASSWORD"] = DB_PASSWORD
+        
+        # ✅ PASO 5: Comando de restauración
+        comando = [
+            PG_RESTORE_PATH,
+            "-h", DB_HOST,
+            "-p", str(DB_PORT),
+            "-U", DB_USER,
+            "-d", DB_NAME,
+            "-c",  # limpia la base
+            "--if-exists",
+            "--disable-triggers",  # evita errores de FK
+            str(backup_path),
+        ]
+        
+        print(f"🔄 Restaurando backup: {restore_data.filename}")
+        
+        # ✅ PASO 6: Ejecutar pg_restore
         result = subprocess.run(
             comando,
             env=env,
@@ -377,46 +398,100 @@ def restaurar_backup(
             text=True,
             timeout=600  # 10 minutos
         )
-
-        # Revisar si hubo errores reales
-        if result.returncode != 0 and "ERROR" in result.stderr.upper():
+        
+        # ✅ PASO 7: Evaluar resultado
+        if result.returncode == 0 or "ERROR" not in result.stderr.upper():
+            print(f"✅ Base de datos restaurada exitosamente")
+            
+            # ✅ PASO 8: Crear NUEVA sesión para registrar éxito
+            new_db = SessionLocal()
+            try:
+                registrar_auditoria(
+                    db=new_db,
+                    accion="RESTORE_BACKUP",
+                    descripcion=f"Base de datos restaurada desde: {restore_data.filename} por {username}",
+                    id_usuario=user_id  # ✅ Usar el ID guardado, no current_user
+                )
+                
+                registrar_notificacion(
+                    db=new_db,
+                    id_usuario=user_id,  # ✅ Usar el ID guardado
+                    titulo="✅ Backup Restaurado",
+                    mensaje=f"La base de datos fue restaurada exitosamente desde '{restore_data.filename}'.",
+                    tipo="info"
+                )
+                
+                new_db.commit()  # ✅ Confirmar los cambios
+                
+            except Exception as e:
+                print(f"⚠️ Error al registrar auditoría final: {e}")
+                new_db.rollback()
+            finally:
+                new_db.close()
+            
+            return {
+                "success": True,
+                "message": f"Base de datos restaurada exitosamente desde: {restore_data.filename}",
+                "filename": restore_data.filename
+            }
+        else:
+            # Error real en la restauración
+            print(f"❌ Error al restaurar: {result.stderr}")
             raise Exception(result.stderr)
-
-        # Registrar auditoría
-        registrar_auditoria(
-            db=db,
-            accion="RESTORE_BACKUP",
-            descripcion=f"Base de datos restaurada desde: {restore_data.filename}",
-            id_usuario=current_user.id_usuario_sistema
-        )
-
-        # Crear notificación
-        registrar_notificacion(
-            db=db,
-            id_usuario=current_user.id_usuario_sistema,
-            titulo="Backup restaurado",
-            mensaje=f"La base de datos fue restaurada desde '{restore_data.filename}'.",
-            tipo="info"
-        )
-
-        return {
-            "success": True,
-            "message": f"Base de datos restaurada exitosamente desde: {restore_data.filename}",
-            "filename": restore_data.filename
-        }
-
+    
     except subprocess.TimeoutExpired:
+        print("❌ Timeout en la restauración")
+        
+        # Registrar timeout en nueva sesión
+        try:
+            new_db = SessionLocal()
+            registrar_auditoria(
+                db=new_db,
+                accion="RESTORE_BACKUP_TIMEOUT",
+                descripcion=f"Timeout al restaurar {restore_data.filename}",
+                id_usuario=user_id
+            )
+            new_db.commit()
+            new_db.close()
+        except:
+            pass
+        
         raise HTTPException(
             status_code=status.HTTP_408_REQUEST_TIMEOUT,
             detail="La restauración del backup tardó demasiado tiempo"
         )
+    
     except Exception as e:
-        print(f"❌ Error al restaurar backup: {e}")
+        error_msg = str(e)
+        print(f"❌ Error al restaurar backup: {error_msg}")
+        
+        # Intentar registrar el error en nueva sesión
+        try:
+            new_db = SessionLocal()
+            registrar_auditoria(
+                db=new_db,
+                accion="RESTORE_BACKUP_ERROR",
+                descripcion=f"Error al restaurar {restore_data.filename}: {error_msg}",
+                id_usuario=user_id
+            )
+            
+            registrar_notificacion(
+                db=new_db,
+                id_usuario=user_id,
+                titulo="❌ Error en Restauración",
+                mensaje=f"Error al restaurar '{restore_data.filename}': {error_msg}",
+                tipo="error"
+            )
+            
+            new_db.commit()
+            new_db.close()
+        except Exception as audit_error:
+            print(f"⚠️ No se pudo registrar error en auditoría: {audit_error}")
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al restaurar backup: {str(e)}"
+            detail=f"Error al restaurar backup: {error_msg}"
         )
-
 
 
 @router.delete("/{filename}", response_model=BackupResponse)

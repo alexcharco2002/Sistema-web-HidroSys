@@ -1,7 +1,6 @@
 /**
  * src/services/notificationsService.js
- * Servicio de Gestión de Notificaciones
- * Tabla: t_notificaciones
+ * Servicio de Gestión de Notificaciones + Usuarios
  */
 
 import authService from './authServices';
@@ -14,6 +13,9 @@ const API_CONFIG = {
     markAsRead: (id) => `/notifications/${id}/marcar-leida`,
     markAllAsRead: '/notifications/marcar-todas-leidas',
     unreadCount: '/notifications/no-leidas/count',
+    createMaintenance: '/notifications/mantenimiento',
+    createNotification: '/notifications',
+    users: '/notifications/usuarios', 
   }
 };
 
@@ -29,14 +31,14 @@ class NotificationsService {
    */
   async makeRequest(endpoint, options = {}) {
     const url = `${API_CONFIG.baseURL}${endpoint}`;
-
+    
     const defaultOptions = {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 10000,
+      timeout: 50000,
     };
 
     const finalOptions = {
@@ -58,20 +60,21 @@ class NotificationsService {
 
     try {
       console.log(`🔔 Notifications API: ${finalOptions.method} ${url}`);
+      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
-
+      
       const response = await fetch(url, {
         ...finalOptions,
         signal: controller.signal,
       });
-
+      
       clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         let errorMessage = '';
-
+        
         if (typeof errorData.detail === 'string') {
           errorMessage = errorData.detail;
         } else if (Array.isArray(errorData.detail)) {
@@ -81,7 +84,7 @@ class NotificationsService {
         } else {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         }
-
+        
         throw new Error(errorMessage);
       }
 
@@ -93,19 +96,111 @@ class NotificationsService {
       const data = await response.json();
       console.log(`✅ Notifications Response:`, data);
       return data;
-
+      
     } catch (error) {
       console.error(`❌ Notifications Error:`, error);
-
+      
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
       }
-
+      
       if (error.message.includes('Failed to fetch')) {
         throw new Error('No se pudo conectar con el servidor');
       }
-
+      
       throw error;
+    }
+  }
+
+  // ========================================
+  // 🔥 MÉTODOS DE USUARIOS
+  // ========================================
+  
+  /**
+   * Obtener lista de usuarios activos y no bloqueados
+   */
+  async getActiveUsers() {
+    try {
+      const endpoint = `${API_CONFIG.endpoints.users}?activo=true&limit=1000`;
+      const data = await this.makeRequest(endpoint);
+      
+      // Filtrar solo usuarios activos y no bloqueados
+      const filteredUsers = data.filter(user => 
+        user.activo === true && 
+        user.bloqueado_permanente === false &&
+        !user.bloqueado_hasta
+      );
+
+      console.log(`✅ Usuarios activos obtenidos: ${filteredUsers.length}`);
+
+      return {
+        success: true,
+        data: filteredUsers
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo usuarios:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener usuarios'
+      };
+    }
+  }
+
+  // ========================================
+  // 🔥 MÉTODOS DE NOTIFICACIONES
+  // ========================================
+
+  /**
+   * Crear notificación general
+   */
+  async createNotification(notificationData) {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.createNotification, {
+        method: 'POST',
+        body: notificationData
+      });
+
+      // Limpiar caché para forzar recarga
+      this.cachedNotifications = null;
+
+      return {
+        success: true,
+        data: data,
+        message: 'Notificación creada exitosamente'
+      };
+    } catch (error) {
+      console.error('❌ Error creando notificación:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al crear notificación'
+      };
+    }
+  }
+
+  /**
+   * Crear mantenimiento programado
+   */
+  async createMaintenance(maintenanceData) {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.createMaintenance, {
+        method: 'POST',
+        body: maintenanceData
+      });
+
+      // Limpiar caché para forzar recarga
+      this.cachedNotifications = null;
+
+      return {
+        success: true,
+        data: data,
+        message: data.message || 'Mantenimiento programado creado exitosamente'
+      };
+    } catch (error) {
+      console.error('❌ Error creando mantenimiento:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al crear mantenimiento programado'
+      };
     }
   }
 
@@ -115,22 +210,20 @@ class NotificationsService {
   async getNotifications(estado = null) {
     try {
       let endpoint = API_CONFIG.endpoints.notifications;
-      
       if (estado) {
         endpoint += `?estado=${estado}`;
       }
 
       const data = await this.makeRequest(endpoint);
-
+      
       // Actualizar caché
       this.cachedNotifications = data;
       this.unreadCount = data.filter(n => n.estado === 'no_leido').length;
-
+      
       return {
         success: true,
         data: data
       };
-
     } catch (error) {
       console.error('❌ Error obteniendo notificaciones:', error);
       return {
@@ -141,52 +234,22 @@ class NotificationsService {
   }
 
   /**
-   * Obtener notificaciones no leídas
-   */
-  async getUnreadNotifications() {
-    return await this.getNotifications('no_leido');
-  }
-
-  /**
    * Obtener contador de notificaciones no leídas
    */
   async getUnreadCount() {
     try {
       const data = await this.makeRequest(API_CONFIG.endpoints.unreadCount);
-
       this.unreadCount = data.no_leidas || 0;
-
+      
       return {
         success: true,
         data: this.unreadCount
       };
-
     } catch (error) {
       console.error('❌ Error obteniendo contador:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener contador'
-      };
-    }
-  }
-
-  /**
-   * Obtener una notificación por ID
-   */
-  async getNotificationById(notificationId) {
-    try {
-      const data = await this.makeRequest(API_CONFIG.endpoints.notificationById(notificationId));
-
-      return {
-        success: true,
-        data: data
-      };
-
-    } catch (error) {
-      console.error('❌ Error obteniendo notificación:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener notificación'
       };
     }
   }
@@ -218,7 +281,6 @@ class NotificationsService {
         data: data,
         message: 'Notificación marcada como leída'
       };
-
     } catch (error) {
       console.error('❌ Error marcando como leída:', error);
       return {
@@ -246,7 +308,6 @@ class NotificationsService {
         data: data,
         message: data.message || 'Todas las notificaciones fueron marcadas como leídas'
       };
-
     } catch (error) {
       console.error('❌ Error marcando todas como leídas:', error);
       return {
@@ -276,7 +337,6 @@ class NotificationsService {
         success: true,
         message: 'Notificación eliminada correctamente'
       };
-
     } catch (error) {
       console.error('❌ Error eliminando notificación:', error);
       return {
@@ -318,131 +378,57 @@ class NotificationsService {
       return `Hace ${diffInWeeks} semana${diffInWeeks > 1 ? 's' : ''}`;
     }
 
-    return date.toLocaleDateString('es-ES', { 
-      day: '2-digit', 
-      month: 'short', 
-      year: 'numeric' 
+    return date.toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
     });
-  }
-
-  /**
-   * 🔧 CORREGIDO: Obtener ruta de navegación según el contenido de la notificación
-   */
-  getNotificationRoute(notification) {
-    const titulo = (notification.titulo || '').toLowerCase();
-    const mensaje = (notification.mensaje || '').toLowerCase();
-    const texto = `${titulo} ${mensaje}`;
-
-
-    // ========================================
-    // MAPEO COMPLETO DE PALABRAS CLAVE → RUTAS ABSOLUTAS
-    // ========================================
-    const routeMap = {
-      // Backups → Settings (Configuración)
-      'backup': '/admin/dashboard/settings',
-      'respaldo': '/admin/dashboard/settings',
-      
-      // Tarifas → Rates
-      'tarifa': '/admin/dashboard/rates',
-      
-      // Medidores → Meters
-      'medidor': '/admin/dashboard/meters',
-      
-      // Sectores → Sectors
-      'sector': '/admin/dashboard/sectors',
-      
-      // Afiliados → Affiliates
-      'afiliado': '/admin/dashboard/affiliates',
-      
-      // Usuarios → Users
-      'usuario': '/admin/dashboard/users',
-      
-      // Perfil → Profile
-      'perfil': '/admin/dashboard/profile',
-      'contraseña': '/admin/dashboard/profile',
-      'password': '/admin/dashboard/profile',
-      
-      // Roles y Permisos
-      'rol': '/admin/dashboard/roles',
-      'permiso': '/admin/dashboard/roles',
-      
-      // Geolocalización
-      'geolocalizacion': '/admin/dashboard/geolocation',
-      'geolocalización': '/admin/dashboard/geolocation',
-      'mapa': '/admin/dashboard/geolocation',
-      'ubicacion': '/admin/dashboard/geolocation',
-      'ubicación': '/admin/dashboard/geolocation',
-      
-      // Lecturas (si tienes este módulo)
-      'lectura': '/admin/dashboard/readings',
-      
-      // Facturas (si tienes este módulo)
-      'factura': '/admin/dashboard/invoices',
-      
-      // Pagos (si tienes este módulo)
-      'pago': '/admin/dashboard/payments',
-      
-      // Reportes (si tienes este módulo)
-      'reporte': '/admin/dashboard/reports',
-
-      //servicios
-      'servicio': '/admin/dashboard/services',
-      
-      // Auditoría (si tienes este módulo)
-      'auditoria': '/admin/dashboard/audits',
-      'auditoría': '/admin/dashboard/audits',
-    };
-
-    // Buscar coincidencias en el texto combinado
-    for (const [keyword, route] of Object.entries(routeMap)) {
-      if (texto.includes(keyword)) {
-        //console.log(`✅ Service - Coincidencia: "${keyword}" → ${route}`);
-        return route;
-      }
-    }
-
-    // Si no encuentra nada, devolver ruta por defecto
-    console.log('⚠️ Service - No se encontró coincidencia, usando ruta por defecto');
-    return '/admin/dashboard/notifications';
   }
 
   /**
    * Transformar notificaciones del backend al formato del frontend
    */
-  transformNotifications(notifications) {
-    return notifications.map(n => {
-      const route = this.getNotificationRoute(n);
+/**
+ * Transformar notificaciones del backend al formato del frontend
+ */
+transformNotifications(notifications) {
+    return notifications.map(n => ({
+      id: n.id_notificacion,
+      id_notificacion: n.id_notificacion,
+      type: n.tipo || 'info',
+      message: n.mensaje,
+      title: n.titulo,
+      time: this.formatRelativeTime(n.fecha_creacion),
+      timestamp: n.fecha_creacion,
+      read: n.estado === 'leido',
+      estado: n.estado,
+      es_mantenimiento: n.es_mantenimiento,
+      prioridad: n.prioridad,
       
-      return {
-        id: n.id_notificacion,
-        id_notificacion: n.id_notificacion,
-        type: n.tipo || 'info',
-        message: n.mensaje,
-        title: n.titulo,
-        time: this.formatRelativeTime(n.fecha_creacion),
-        timestamp: n.fecha_creacion,
-        read: n.estado === 'leido',
-        estado: n.estado,
-        route: route // ✅ Ahora devuelve rutas ABSOLUTAS
-      };
-    });
-  }
+      // ✅ AGREGAR CAMPOS DE MANTENIMIENTO
+      fecha_inicio_mantenimiento: n.fecha_inicio_mantenimiento,
+      fecha_fin_mantenimiento: n.fecha_fin_mantenimiento,
+      duracion_estimada: n.duracion_estimada,
+      modulos_afectados: n.modulos_afectados,
+      enviar_email: n.enviar_email,
+      email_enviado: n.email_enviado,
+      fecha_envio_email: n.fecha_envio_email
+    }));
+}
+
 
   /**
-   * Iniciar polling de notificaciones (consulta periódica)
+   * Iniciar polling de notificaciones
    */
   startPolling(intervalSeconds = 30, callback = null) {
-    // Detener polling anterior si existe
     this.stopPolling();
 
-    // Consultar inmediatamente
     this.getUnreadCount().then(result => {
       if (callback && result.success) {
         callback(result.data);
       }
     });
 
-    // Iniciar intervalo
     this.pollingInterval = setInterval(async () => {
       const result = await this.getUnreadCount();
       if (callback && result.success) {
@@ -450,52 +436,29 @@ class NotificationsService {
       }
     }, intervalSeconds * 1000);
 
-    console.log(`🔔 Polling de notificaciones iniciado (cada ${intervalSeconds}s)`);
+    console.log(`🔔 Polling iniciado (cada ${intervalSeconds}s)`);
   }
 
   /**
-   * Detener polling de notificaciones
+   * Detener polling
    */
   stopPolling() {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
-      console.log('🔔 Polling de notificaciones detenido');
     }
   }
 
   /**
-   * Obtener notificaciones desde caché
-   */
-  getCachedNotifications() {
-    return this.cachedNotifications || [];
-  }
-
-  /**
-   * Obtener contador desde caché
-   */
-  getCachedUnreadCount() {
-    return this.unreadCount;
-  }
-
-  /**
-   * Limpiar caché
-   */
-  clearCache() {
-    this.cachedNotifications = null;
-    this.unreadCount = 0;
-  }
-
-  /**
-   * Limpiar todo (caché + polling)
+   * Limpiar todo
    */
   cleanup() {
     this.stopPolling();
-    this.clearCache();
+    this.cachedNotifications = null;
+    this.unreadCount = 0;
   }
 }
 
 const notificationsService = new NotificationsService();
-
 export default notificationsService;
 export { NotificationsService };

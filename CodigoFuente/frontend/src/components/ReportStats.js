@@ -1,7 +1,7 @@
 // src/components/ReportStats.js
 import React, { useState, useMemo } from 'react';
 import { 
-  BarChart3, PieChart , Activity, 
+  BarChart3 , Activity, 
   ChevronDown, ChevronUp, Maximize2, X 
 } from 'lucide-react';
 import './ReportStats.css';
@@ -100,6 +100,7 @@ const ReportStats = ({ data, moduloInfo, stats }) => {
 // ============================================================================
 // VISTA DE GRÁFICOS
 // ============================================================================
+// VISTA DE GRÁFICOS
 const GraphicsView = ({ chartData, moduloInfo }) => {
   return (
     <div className="graphics-grid">
@@ -111,20 +112,19 @@ const GraphicsView = ({ chartData, moduloInfo }) => {
         </div>
       )}
 
-      {/* Gráfico de Barras Verticales (original) */}
-      {chartData.barChart && (
-        <div className="chart-card">
-          <h4 className="chart-title">{chartData.barChart.title}</h4>
-          <BarChart data={chartData.barChart.data} />
-        </div>
-      )}
-
-
-      {/* Gráfico de Pastel - USA EL NUEVO NOMBRE */}
+      {/* Gráfico de Pastel 1 */}
       {chartData.pieChart && chartData.pieChart.data && chartData.pieChart.data.length > 0 && (
         <div className="chart-card">
           <h4 className="chart-title">{chartData.pieChart.title}</h4>
           <PieChartCustom data={chartData.pieChart.data} />
+        </div>
+      )}
+
+      {/* ✅ NUEVO: Gráfico de Pastel 2 (Montos por Estado) */}
+      {chartData.pieChart2 && chartData.pieChart2.data && chartData.pieChart2.data.length > 0 && (
+        <div className="chart-card">
+          <h4 className="chart-title">{chartData.pieChart2.title}</h4>
+          <PieChartCustom data={chartData.pieChart2.data} />
         </div>
       )}
 
@@ -141,6 +141,14 @@ const GraphicsView = ({ chartData, moduloInfo }) => {
         <div className="chart-card">
           <h4 className="chart-title">{chartData.groupedBarChart.title}</h4>
           <GroupedBarChart data={chartData.groupedBarChart.data} />
+        </div>
+      )}
+
+      {/* Gráfico de Barras Verticales */}
+      {chartData.barChart && (
+        <div className="chart-card">
+          <h4 className="chart-title">{chartData.barChart.title}</h4>
+          <BarChart data={chartData.barChart.data} />
         </div>
       )}
 
@@ -165,6 +173,30 @@ const GraphicsView = ({ chartData, moduloInfo }) => {
         <div className="chart-card">
           <h4 className="chart-title">{chartData.distribution2.title}</h4>
           <DistributionChart data={chartData.distribution2.data} />
+        </div>
+      )}
+
+      {/* ✅ NUEVO: Gráfico de Pastel - Facturas con/sin Mora */}
+      {chartData.pieChartMora && chartData.pieChartMora.data && chartData.pieChartMora.data.length > 0 && (
+        <div className="chart-card">
+          <h4 className="chart-title">{chartData.pieChartMora.title}</h4>
+          <PieChartCustom data={chartData.pieChartMora.data} />
+        </div>
+      )}
+
+      {/* ✅ NUEVO: Gráfico de Pastel - Monto Mora */}
+      {chartData.pieChartMoraMonto && chartData.pieChartMoraMonto.data && chartData.pieChartMoraMonto.data.length > 0 && (
+        <div className="chart-card">
+          <h4 className="chart-title">{chartData.pieChartMoraMonto.title}</h4>
+          <PieChartCustom data={chartData.pieChartMoraMonto.data} />
+        </div>
+      )}
+
+      {/* ✅ NUEVO: Gráfico de Barras - Meses de Adeudo */}
+      {chartData.barChartMora && chartData.barChartMora.data && chartData.barChartMora.data.length > 0 && (
+        <div className="chart-card">
+          <h4 className="chart-title">{chartData.barChartMora.title}</h4>
+          <BarChart data={chartData.barChartMora.data} />
         </div>
       )}
     </div>
@@ -897,7 +929,7 @@ const calculateLecturasCharts = (data) => {
 };
 
 const calculateFacturasCharts = (data) => {
-  // Estados de facturas
+  // Estados de facturas - INCLUIR ANULADAS
   const pagadas = data.filter(f => 
     f.estado?.toLowerCase() === 'pagada' || f.estado_factura?.toLowerCase() === 'pagada'
   );
@@ -907,61 +939,117 @@ const calculateFacturasCharts = (data) => {
   const vencidas = data.filter(f => 
     f.estado?.toLowerCase() === 'vencida' || f.estado_factura?.toLowerCase() === 'vencida'
   );
+  const anuladas = data.filter(f => 
+    f.estado?.toLowerCase() === 'anulada' || f.estado_factura?.toLowerCase() === 'anulada'
+  );
   
   // Calcular montos
-  const montoPagado = pagadas.reduce((sum, f) => sum + (parseFloat(f.total) || 0), 0);
-  const montoPendiente = pendientes.reduce((sum, f) => sum + (parseFloat(f.total) || 0), 0);
-  const montoVencido = vencidas.reduce((sum, f) => sum + (parseFloat(f.total) || 0), 0);
+  const montoPagado = pagadas.reduce((sum, f) => sum + (parseFloat(f.total_factura || f.total) || 0), 0);
+  const montoPendiente = pendientes.reduce((sum, f) => sum + (parseFloat(f.total_factura || f.total) || 0), 0);
+  const montoVencido = vencidas.reduce((sum, f) => sum + (parseFloat(f.total_factura || f.total) || 0), 0);
+  const montoAnulado = anuladas.reduce((sum, f) => sum + (parseFloat(f.total_factura || f.total) || 0), 0);
   
-  // Top 10 facturas más altas (Barra Horizontal)
+  // 🚨 ESTADÍSTICAS DE MORA
+  const facturasConMora = data.filter(f => f.tiene_mora === true);
+  const totalMora = facturasConMora.reduce((sum, f) => sum + (parseFloat(f.valor_mora) || 0), 0);
+  const facturasSinMora = data.filter(f => !f.tiene_mora);
+  
+  const cantidadConMora = facturasConMora.length;
+  const cantidadSinMora = facturasSinMora.length;
+  
+  // Meses de adeudo promedio
+  const mesesAdeudoData = {};
+  facturasConMora.forEach(f => {
+    const meses = f.meses_adeudo || 0;
+    const rangoLabel = meses === 0 ? '0 meses' : 
+                       meses <= 2 ? '1-2 meses' : 
+                       meses <= 4 ? '3-4 meses' : 
+                       meses <= 6 ? '5-6 meses' : '6+ meses';
+    mesesAdeudoData[rangoLabel] = (mesesAdeudoData[rangoLabel] || 0) + 1;
+  });
+  
+  // Top 10 facturas más altas - CON NOMBRE DE AFILIADO
   const topFacturas = [...data]
-    .sort((a, b) => (parseFloat(b.total) || 0) - (parseFloat(a.total) || 0))
+    .sort((a, b) => (parseFloat(b.total_factura || b.total) || 0) - (parseFloat(a.total_factura || a.total) || 0))
     .slice(0, 10)
     .map(f => ({
-      label: f.num_factura || 'N/A',
-      value: parseFloat(f.total) || 0,
-      color: '#3b82f6'
+      label: f.Nombres || f.nombres || f.Nombre || f.num_factura || 'N/A',
+      value: parseFloat(f.total_factura || f.total) || 0,
+      color: f.tiene_mora ? '#ef4444' : '#3b82f6',
+      subtitle: `${f.num_factura}${f.tiene_mora ? ' (CON MORA)' : ''}`
     }));
   
-  // Facturación mensual (últimos 6 meses) - Para AreaChart
+  // Facturación mensual - Ordenar por fecha correctamente
   const facturasPorMes = {};
+  const mesesOrdenados = [];
+  
   data.forEach(f => {
-    if (f.fecha_emision || f.fecha_factura) {
-      const fecha = new Date(f.fecha_emision || f.fecha_factura);
-      const mes = fecha.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
-      facturasPorMes[mes] = (facturasPorMes[mes] || 0) + (parseFloat(f.total) || 0);
+    const fechaStr = f.fecha_emision || f.fecha_factura;
+    if (fechaStr) {
+      try {
+        let fecha;
+        if (fechaStr.includes('/')) {
+          const [dia, mes, anio] = fechaStr.split('/');
+          fecha = new Date(anio, mes - 1, dia);
+        } else if (fechaStr.includes('-')) {
+          fecha = new Date(fechaStr);
+        } else {
+          fecha = new Date(fechaStr);
+        }
+        
+        if (!isNaN(fecha.getTime())) {
+          const mesKey = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+          const mesLabel = fecha.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
+          
+          if (!facturasPorMes[mesKey]) {
+            facturasPorMes[mesKey] = { valor: 0, label: mesLabel, fecha: fecha };
+            mesesOrdenados.push(mesKey);
+          }
+          facturasPorMes[mesKey].valor += (parseFloat(f.total_factura || f.total) || 0);
+        }
+      } catch (e) {
+        console.error('Error al parsear fecha:', fechaStr, e);
+      }
     }
   });
   
-  const facturacionMensual = Object.entries(facturasPorMes)
+  const facturacionMensual = mesesOrdenados
+    .sort()
     .slice(-6)
-    .map(([label, value]) => ({
-      label,
-      value: Math.round(value)
+    .map(key => ({
+      label: facturasPorMes[key].label,
+      value: Math.round(facturasPorMes[key].valor)
     }));
   
-  // Comparación de estados por rango de monto - Para GroupedBarChart
+  // ✅ ARREGLADO: Rangos de 0 a 10, de 10 en 10
   const rangos = [
-    { min: 0, max: 50, label: '$0-50' },
-    { min: 50, max: 100, label: '$50-100' },
-    { min: 100, max: 200, label: '$100-200' },
-    { min: 200, max: 500, label: '$200-500' },
-    { min: 500, max: Infinity, label: '$500+' }
+    { min: 0, max: 10, label: '$0-10' },
+    { min: 10, max: 20, label: '$10-20' },
+    { min: 20, max: 30, label: '$20-30' },
+    { min: 30, max: 40, label: '$30-40' },
+    { min: 40, max: 50, label: '$40-50' },
+    { min: 50, max: 60, label: '$50-60' },
+    { min: 50, max: Infinity, label: '$50+' }
   ];
   
   const rangoData = rangos.map(rango => {
     const pagadasEnRango = pagadas.filter(f => {
-      const total = parseFloat(f.total) || 0;
+      const total = parseFloat(f.total_factura || f.total) || 0;
       return total >= rango.min && total < rango.max;
     }).length;
     
     const pendientesEnRango = pendientes.filter(f => {
-      const total = parseFloat(f.total) || 0;
+      const total = parseFloat(f.total_factura || f.total) || 0;
       return total >= rango.min && total < rango.max;
     }).length;
     
     const vencidasEnRango = vencidas.filter(f => {
-      const total = parseFloat(f.total) || 0;
+      const total = parseFloat(f.total_factura || f.total) || 0;
+      return total >= rango.min && total < rango.max;
+    }).length;
+    
+    const anuladasEnRango = anuladas.filter(f => {
+      const total = parseFloat(f.total_factura || f.total) || 0;
       return total >= rango.min && total < rango.max;
     }).length;
     
@@ -970,19 +1058,21 @@ const calculateFacturasCharts = (data) => {
       series: [
         { name: 'Pagadas', value: pagadasEnRango, color: '#22c55e' },
         { name: 'Pendientes', value: pendientesEnRango, color: '#f97316' },
-        { name: 'Vencidas', value: vencidasEnRango, color: '#ef4444' }
+        { name: 'Vencidas', value: vencidasEnRango, color: '#ef4444' },
+        { name: 'Anuladas', value: anuladasEnRango, color: '#6b7280' }
       ]
     };
   });
   
-  // Distribución por sector/zona (si existe)
+  // ✅ ARREGLADO: Distribución por sector - SOLO TOTAL DE FACTURA (SIN MORA)
   const facturasPorSector = {};
   data.forEach(f => {
-    const sector = f.sector || f.zona || 'Sin sector';
+    const sector = f.sector || f.zona || f.nombre_sector || 'Sin sector';
     if (!facturasPorSector[sector]) {
       facturasPorSector[sector] = 0;
     }
-    facturasPorSector[sector] += (parseFloat(f.total) || 0);
+    // ✅ SOLO USAR total_factura (sin incluir valor_mora)
+    facturasPorSector[sector] += (parseFloat(f.total_factura || f.total) || 0);
   });
   
   const sectoresData = Object.entries(facturasPorSector)
@@ -990,12 +1080,13 @@ const calculateFacturasCharts = (data) => {
     .slice(0, 8)
     .map(([label, value]) => ({
       label,
-      value: Math.round(value)
+      value: parseFloat(value.toFixed(2)),
+      displayValue: `$${value.toFixed(2)}`
     }));
   
   return {
     horizontalBarChart: {
-      title: 'Top 10 Facturas Más Altas',
+      title: 'Top 10 Afiliados - Facturas Más Altas',
       data: topFacturas
     },
     pieChart: {
@@ -1003,16 +1094,18 @@ const calculateFacturasCharts = (data) => {
       data: [
         { label: 'Pagadas', value: pagadas.length, color: '#22c55e' },
         { label: 'Pendientes', value: pendientes.length, color: '#f97316' },
-        { label: 'Vencidas', value: vencidas.length, color: '#ef4444' }
+        { label: 'Vencidas', value: vencidas.length, color: '#ef4444' },
+        { label: 'Anuladas', value: anuladas.length, color: '#6b7280' }
       ].filter(item => item.value > 0)
     },
-    distribution: {
+    pieChart2: {
       title: 'Montos por Estado ($)',
       data: [
-        { label: 'Pagado', value: montoPagado.toFixed(2), color: '#22c55e' },
-        { label: 'Pendiente', value: montoPendiente.toFixed(2), color: '#f97316' },
-        { label: 'Vencido', value: montoVencido.toFixed(2), color: '#ef4444' }
-      ].filter(item => parseFloat(item.value) > 0)
+        { label: 'Pagado', value: Math.round(montoPagado), color: '#22c55e' },
+        { label: 'Pendiente', value: Math.round(montoPendiente), color: '#f97316' },
+        { label: 'Vencido', value: Math.round(montoVencido), color: '#ef4444' },
+        { label: 'Anulado', value: Math.round(montoAnulado), color: '#6b7280' }
+      ].filter(item => item.value > 0)
     },
     areaChart: {
       title: 'Facturación Mensual ($)',
@@ -1026,47 +1119,90 @@ const calculateFacturasCharts = (data) => {
       series: [
         { name: 'Pagadas', color: '#22c55e' },
         { name: 'Pendientes', color: '#f97316' },
-        { name: 'Vencidas', color: '#ef4444' }
+        { name: 'Vencidas', color: '#ef4444' },
+        { name: 'Anuladas', color: '#6b7280' }
       ]
     },
-    distribution2: sectoresData.length > 0 ? {
+    barChart: sectoresData.length > 0 ? {
       title: 'Facturación por Sector ($)',
       data: sectoresData
+    } : null,
+    // 🚨 GRÁFICOS DE MORA
+    pieChartMora: cantidadConMora > 0 ? {
+      title: 'Facturas con/sin Mora',
+      data: [
+        { label: 'Con Mora', value: cantidadConMora, color: '#ef4444' },
+        { label: 'Sin Mora', value: cantidadSinMora, color: '#22c55e' }
+      ]
+    } : null,
+    pieChartMoraMonto: cantidadConMora > 0 ? {
+      title: 'Distribución de Mora ($)',
+      data: [
+        { label: 'Total Facturado', value: Math.round(data.reduce((sum, f) => sum + (parseFloat(f.total_factura || f.total) || 0), 0)), color: '#3b82f6' },
+        { label: 'Total Mora', value: Math.round(totalMora), color: '#ef4444' }
+      ]
+    } : null,
+    barChartMora: Object.keys(mesesAdeudoData).length > 0 ? {
+      title: 'Facturas por Meses de Adeudo',
+      data: Object.entries(mesesAdeudoData)
+        .map(([label, value]) => ({
+          label,
+          value,
+          color: '#ef4444'
+        }))
     } : null
   };
 };
 
 
+
 const calculatePagosCharts = (data) => {
   // Métodos de pago
   const efectivo = data.filter(p => 
-    p.metodo_pago?.toLowerCase() === 'efectivo' || p.metodopago?.toLowerCase() === 'efectivo'
+    p.metodo_pago?.toLowerCase().includes('efectivo') || p.metodopago?.toLowerCase().includes('efectivo')
   );
   const transferencia = data.filter(p => 
-    p.metodo_pago?.toLowerCase() === 'transferencia' || p.metodopago?.toLowerCase() === 'transferencia'
+    p.metodo_pago?.toLowerCase().includes('transferencia') || p.metodopago?.toLowerCase().includes('transferencia')
   );
   const tarjeta = data.filter(p => 
-    p.metodo_pago?.toLowerCase() === 'tarjeta' || p.metodopago?.toLowerCase() === 'tarjeta'
+    p.metodo_pago?.toLowerCase().includes('tarjeta') || p.metodopago?.toLowerCase().includes('tarjeta')
   );
   const otros = data.filter(p => {
     const metodo = (p.metodo_pago || p.metodopago || '').toLowerCase();
-    return metodo !== 'efectivo' && metodo !== 'transferencia' && metodo !== 'tarjeta' && metodo !== '';
+    return !metodo.includes('efectivo') && !metodo.includes('transferencia') && !metodo.includes('tarjeta') && metodo !== '';
   });
   
-  // Calcular montos
-  const montoEfectivo = efectivo.reduce((sum, p) => sum + (parseFloat(p.monto || p.valor) || 0), 0);
-  const montoTransferencia = transferencia.reduce((sum, p) => sum + (parseFloat(p.monto || p.valor) || 0), 0);
-  const montoTarjeta = tarjeta.reduce((sum, p) => sum + (parseFloat(p.monto || p.valor) || 0), 0);
-  const montoOtros = otros.reduce((sum, p) => sum + (parseFloat(p.monto || p.valor) || 0), 0);
+  // Calcular montos (usar monto_pagado del backend)
+  const montoEfectivo = efectivo.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
+  const montoTransferencia = transferencia.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
+  const montoTarjeta = tarjeta.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
+  const montoOtros = otros.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
   
-  // Top 10 pagos más altos (Barra Horizontal)
+  // 🚨 ESTADÍSTICAS DE MORA EN PAGOS
+  const pagosConMora = data.filter(p => p.tiene_mora === true);
+  const pagosSinMora = data.filter(p => !p.tiene_mora);
+  const totalMoraPagos = pagosConMora.reduce((sum, p) => sum + (parseFloat(p.valor_mora) || 0), 0);
+  
+  // Meses de adeudo en pagos
+  const mesesAdeudoPagosData = {};
+  pagosConMora.forEach(p => {
+    const meses = p.meses_adeudo || 0;
+    const rangoLabel = meses === 0 ? '0 meses' : 
+                       meses <= 2 ? '1-2 meses' : 
+                       meses <= 4 ? '3-4 meses' : 
+                       meses <= 6 ? '5-6 meses' : '6+ meses';
+    mesesAdeudoPagosData[rangoLabel] = (mesesAdeudoPagosData[rangoLabel] || 0) + 1;
+  });
+  
+  // ✅ Top 10 pagos más altos - CON NOMBRE DE AFILIADO
   const topPagos = [...data]
-    .sort((a, b) => (parseFloat(b.monto || b.valor) || 0) - (parseFloat(a.monto || a.valor) || 0))
+    .sort((a, b) => (parseFloat(b.monto_pagado || b.monto || b.valor) || 0) - (parseFloat(a.monto_pagado || a.monto || a.valor) || 0))
     .slice(0, 10)
     .map(p => ({
-      label: p.num_factura || p.numero_recibo || 'N/A',
-      value: parseFloat(p.monto || p.valor) || 0,
-      color: '#3b82f6'
+      label: p.Nombre || p.nombres || p.Nombres || p.num_factura || 'N/A',
+      value: parseFloat(p.monto_pagado || p.monto || p.valor) || 0,
+      color: p.tiene_mora ? '#ef4444' : '#10b981', // Rojo si tiene mora, verde si no
+      subtitle: `${p.num_factura || 'N/A'}${p.tiene_mora ? ' (CON MORA)' : ''}`
     }));
   
   // Recaudación mensual (últimos 6 meses) - Para AreaChart
@@ -1075,7 +1211,7 @@ const calculatePagosCharts = (data) => {
     if (p.fecha_pago || p.fecha) {
       const fecha = new Date(p.fecha_pago || p.fecha);
       const mes = fecha.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
-      pagosPorMes[mes] = (pagosPorMes[mes] || 0) + (parseFloat(p.monto || p.valor) || 0);
+      pagosPorMes[mes] = (pagosPorMes[mes] || 0) + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0);
     }
   });
   
@@ -1097,17 +1233,17 @@ const calculatePagosCharts = (data) => {
   
   const rangoData = rangos.map(rango => {
     const efectivoEnRango = efectivo.filter(p => {
-      const monto = parseFloat(p.monto || p.valor) || 0;
+      const monto = parseFloat(p.monto_pagado || p.monto || p.valor) || 0;
       return monto >= rango.min && monto < rango.max;
     }).length;
     
     const transferenciaEnRango = transferencia.filter(p => {
-      const monto = parseFloat(p.monto || p.valor) || 0;
+      const monto = parseFloat(p.monto_pagado || p.monto || p.valor) || 0;
       return monto >= rango.min && monto < rango.max;
     }).length;
     
     const tarjetaEnRango = tarjeta.filter(p => {
-      const monto = parseFloat(p.monto || p.valor) || 0;
+      const monto = parseFloat(p.monto_pagado || p.monto || p.valor) || 0;
       return monto >= rango.min && monto < rango.max;
     }).length;
     
@@ -1131,7 +1267,7 @@ const calculatePagosCharts = (data) => {
     if (p.fecha_pago || p.fecha) {
       const fecha = new Date(p.fecha_pago || p.fecha);
       const dia = dias[fecha.getDay()];
-      pagosPorDia[dia] = (pagosPorDia[dia] || 0) + (parseFloat(p.monto || p.valor) || 0);
+      pagosPorDia[dia] = (pagosPorDia[dia] || 0) + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0);
     }
   });
   
@@ -1139,12 +1275,13 @@ const calculatePagosCharts = (data) => {
     .filter(([_, value]) => value > 0)
     .map(([label, value]) => ({
       label,
-      value: Math.round(value)
+      value: Math.round(value),
+      color: '#3b82f6'
     }));
   
   return {
     horizontalBarChart: {
-      title: 'Top 10 Pagos Más Altos',
+      title: 'Top 10 Afiliados - Pagos Más Altos',
       data: topPagos
     },
     pieChart: {
@@ -1156,14 +1293,14 @@ const calculatePagosCharts = (data) => {
         { label: 'Otros', value: otros.length, color: '#8b5cf6' }
       ].filter(item => item.value > 0)
     },
-    distribution: {
+    pieChart2: {
       title: 'Montos por Método de Pago ($)',
       data: [
-        { label: 'Efectivo', value: montoEfectivo.toFixed(2), color: '#10b981' },
-        { label: 'Transferencia', value: montoTransferencia.toFixed(2), color: '#6366f1' },
-        { label: 'Tarjeta', value: montoTarjeta.toFixed(2), color: '#f59e0b' },
-        { label: 'Otros', value: montoOtros.toFixed(2), color: '#8b5cf6' }
-      ].filter(item => parseFloat(item.value) > 0)
+        { label: 'Efectivo', value: Math.round(montoEfectivo), color: '#10b981' },
+        { label: 'Transferencia', value: Math.round(montoTransferencia), color: '#6366f1' },
+        { label: 'Tarjeta', value: Math.round(montoTarjeta), color: '#f59e0b' },
+        { label: 'Otros', value: Math.round(montoOtros), color: '#8b5cf6' }
+      ].filter(item => item.value > 0)
     },
     areaChart: {
       title: 'Recaudación Mensual ($)',
@@ -1182,11 +1319,34 @@ const calculatePagosCharts = (data) => {
     },
     barChart: diasData.length > 0 ? {
       title: 'Recaudación por Día de la Semana',
-      data: diasData.map(d => ({ ...d, color: '#3b82f6' }))
+      data: diasData
+    } : null,
+    // 🚨 GRÁFICOS DE MORA EN PAGOS
+    pieChartMora: pagosConMora.length > 0 ? {
+      title: 'Pagos con/sin Mora',
+      data: [
+        { label: 'Con Mora', value: pagosConMora.length, color: '#ef4444' },
+        { label: 'Sin Mora', value: pagosSinMora.length, color: '#22c55e' }
+      ]
+    } : null,
+    pieChartMoraMonto: pagosConMora.length > 0 ? {
+      title: 'Monto Total vs Mora ($)',
+      data: [
+        { label: 'Pagado', value: Math.round(data.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto) || 0), 0)), color: '#10b981' },
+        { label: 'Mora', value: Math.round(totalMoraPagos), color: '#ef4444' }
+      ]
+    } : null,
+    barChartMora: Object.keys(mesesAdeudoPagosData).length > 0 ? {
+      title: 'Pagos por Meses de Adeudo',
+      data: Object.entries(mesesAdeudoPagosData)
+        .map(([label, value]) => ({
+          label,
+          value,
+          color: '#ef4444'
+        }))
     } : null
   };
 };
-
 
 
 const calculateUsuariosCharts = (data) => {
@@ -1368,7 +1528,7 @@ const generateLecturasTable = (data) => {
 const generateFacturasTable = (data) => {
   const tables = [];
   
-  // Filtrar por estado
+  // Filtrar por estado - INCLUIR ANULADAS
   const pagadas = data.filter(f => 
     f.estado?.toLowerCase() === 'pagada' || f.estado_factura?.toLowerCase() === 'pagada'
   );
@@ -1378,14 +1538,22 @@ const generateFacturasTable = (data) => {
   const vencidas = data.filter(f => 
     f.estado?.toLowerCase() === 'vencida' || f.estado_factura?.toLowerCase() === 'vencida'
   );
+  const anuladas = data.filter(f => 
+    f.estado?.toLowerCase() === 'anulada' || f.estado_factura?.toLowerCase() === 'anulada'
+  );
   
-  const montoPagado = pagadas.reduce((sum, f) => sum + (parseFloat(f.total) || 0), 0);
-  const montoPendiente = pendientes.reduce((sum, f) => sum + (parseFloat(f.total) || 0), 0);
-  const montoVencido = vencidas.reduce((sum, f) => sum + (parseFloat(f.total) || 0), 0);
-  const totalFacturado = montoPagado + montoPendiente + montoVencido;
+  const montoPagado = pagadas.reduce((sum, f) => sum + (parseFloat(f.total_factura || f.total) || 0), 0);
+  const montoPendiente = pendientes.reduce((sum, f) => sum + (parseFloat(f.total_factura || f.total) || 0), 0);
+  const montoVencido = vencidas.reduce((sum, f) => sum + (parseFloat(f.total_factura || f.total) || 0), 0);
+  const montoAnulado = anuladas.reduce((sum, f) => sum + (parseFloat(f.total_factura || f.total) || 0), 0);
+  const totalFacturado = montoPagado + montoPendiente + montoVencido + montoAnulado;
+  
+  // 🚨 CALCULAR DATOS DE MORA
+  const facturasConMora = data.filter(f => f.tiene_mora === true);
+  const totalMora = facturasConMora.reduce((sum, f) => sum + (parseFloat(f.valor_mora) || 0), 0);
   
   // ============================================
-  // TABLA 1: Resumen de Facturación
+  // TABLA 1: Resumen de Facturación (CON MORA)
   // ============================================
   tables.push({
     title: 'Resumen de Facturación',
@@ -1413,6 +1581,13 @@ const generateFacturasTable = (data) => {
         `${((montoVencido / totalFacturado) * 100).toFixed(1)}%`
       ],
       [
+        'Anuladas',
+        anuladas.length,
+        `$${montoAnulado.toFixed(2)}`,
+        `$${(montoAnulado / (anuladas.length || 1)).toFixed(2)}`,
+        `${((montoAnulado / totalFacturado) * 100).toFixed(1)}%`
+      ],
+      [
         'TOTAL',
         data.length,
         `$${totalFacturado.toFixed(2)}`,
@@ -1423,23 +1598,52 @@ const generateFacturasTable = (data) => {
   });
   
   // ============================================
-  // TABLA 2: Rangos de Montos
+  // 🚨 TABLA 2: Resumen de Mora
+  // ============================================
+  if (facturasConMora.length > 0) {
+    const mesesAdeudoPromedio = facturasConMora.reduce((sum, f) => 
+      sum + (parseInt(f.meses_adeudo) || 0), 0
+    ) / facturasConMora.length;
+    
+    const moraPromedio = totalMora / facturasConMora.length;
+    const totalConMora = totalFacturado + totalMora;
+    
+    tables.push({
+      title: '🚨 Resumen de Mora',
+      headers: ['Métrica', 'Valor'],
+      rows: [
+        ['Facturas con Mora', facturasConMora.length],
+        ['% Facturas con Mora', `${((facturasConMora.length / data.length) * 100).toFixed(1)}%`],
+        ['Total Mora Acumulada', `$${totalMora.toFixed(2)}`],
+        ['Mora Promedio', `$${moraPromedio.toFixed(2)}`],
+        ['Meses Adeudo Promedio', `${mesesAdeudoPromedio.toFixed(1)} meses`],
+        ['Total Facturado (sin mora)', `$${totalFacturado.toFixed(2)}`],
+        ['Total con Mora', `$${totalConMora.toFixed(2)}`],
+        ['Impacto de Mora', `${((totalMora / totalFacturado) * 100).toFixed(1)}%`]
+      ]
+    });
+  }
+  
+  // ============================================
+  // TABLA 3: Rangos de Montos (MEJORADO: 0-10, 10-20...)
   // ============================================
   const rangos = [
-    { min: 0, max: 50, label: 'Muy Bajo ($0-50)' },
-    { min: 50, max: 100, label: 'Bajo ($50-100)' },
-    { min: 100, max: 200, label: 'Normal ($100-200)' },
-    { min: 200, max: 500, label: 'Alto ($200-500)' },
-    { min: 500, max: Infinity, label: 'Muy Alto ($500+)' }
+    { min: 0, max: 10, label: '$0-10' },
+    { min: 10, max: 20, label: '$10-20' },
+    { min: 20, max: 30, label: '$20-30' },
+    { min: 30, max: 40, label: '$30-40' },
+    { min: 40, max: 50, label: '$40-50' },
+    { min: 50, max: 100, label: '$50-100' },
+    { min: 100, max: Infinity, label: '$100+' }
   ];
   
   const rangosRows = rangos.map(rango => {
     const facturas = data.filter(f => {
-      const total = parseFloat(f.total) || 0;
+      const total = parseFloat(f.total_factura || f.total) || 0;
       return total >= rango.min && total < rango.max;
     });
     const porcentaje = ((facturas.length / data.length) * 100).toFixed(1);
-    const montoTotal = facturas.reduce((sum, f) => sum + (parseFloat(f.total) || 0), 0);
+    const montoTotal = facturas.reduce((sum, f) => sum + (parseFloat(f.total_factura || f.total) || 0), 0);
     
     return [
       rango.label,
@@ -1447,7 +1651,7 @@ const generateFacturasTable = (data) => {
       `${porcentaje}%`,
       `$${montoTotal.toFixed(2)}`
     ];
-  });
+  }).filter(row => row[1] > 0); // Solo mostrar rangos con datos
   
   tables.push({
     title: 'Distribución por Rangos de Monto',
@@ -1456,76 +1660,112 @@ const generateFacturasTable = (data) => {
   });
   
   // ============================================
-  // TABLA 3: Top 10 Facturas Pendientes
+  // 🚨 TABLA 4: Top 10 Facturas con Mayor Mora
+  // ============================================
+  if (facturasConMora.length > 0) {
+    const topMora = [...facturasConMora]
+      .sort((a, b) => (parseFloat(b.valor_mora) || 0) - (parseFloat(a.valor_mora) || 0))
+      .slice(0, 10)
+      .map((f, idx) => [
+        idx + 1,
+        f.num_factura || 'N/A',
+        f.Nombres || f.nombres || 'N/A',
+        `$${(parseFloat(f.total_factura || f.total) || 0).toFixed(2)}`,
+        `$${(parseFloat(f.valor_mora) || 0).toFixed(2)}`,
+        f.meses_adeudo || 0,
+        `$${(parseFloat(f.total_con_mora) || 0).toFixed(2)}`
+      ]);
+    
+    tables.push({
+      title: '🚨 Top 10 Facturas con Mayor Mora',
+      headers: ['#', 'N° Factura', 'Cliente', 'Monto Base', 'Mora', 'Meses', 'Total c/Mora'],
+      rows: topMora
+    });
+  }
+  
+  // ============================================
+  // TABLA 5: Top 10 Facturas Pendientes
   // ============================================
   const topPendientes = pendientes
-    .sort((a, b) => (parseFloat(b.total) || 0) - (parseFloat(a.total) || 0))
+    .sort((a, b) => (parseFloat(b.total_factura || b.total) || 0) - (parseFloat(a.total_factura || a.total) || 0))
     .slice(0, 10)
     .map((f, idx) => [
       idx + 1,
       f.num_factura || 'N/A',
-      f.nombres || f.cliente || 'N/A',
-      `$${(parseFloat(f.total) || 0).toFixed(2)}`,
-      f.fecha_emision || f.fecha_factura || 'N/A',
-      f.fecha_vencimiento || 'N/A'
+      f.Nombres || f.nombres || 'N/A',
+      `$${(parseFloat(f.total_factura || f.total) || 0).toFixed(2)}`,
+      f.tiene_mora ? `$${(parseFloat(f.valor_mora) || 0).toFixed(2)}` : 'Sin mora',
+      f.fecha_emision || 'N/A',
+      f.sector || 'Sin sector'
     ]);
   
   if (topPendientes.length > 0) {
     tables.push({
       title: 'Top 10 Facturas Pendientes',
-      headers: ['#', 'N° Factura', 'Cliente', 'Monto', 'Fecha Emisión', 'Vencimiento'],
+      headers: ['#', 'N° Factura', 'Cliente', 'Monto', 'Mora', 'Fecha', 'Sector'],
       rows: topPendientes
     });
   }
   
   // ============================================
-  // TABLA 4: Top 10 Facturas Vencidas
+  // TABLA 6: Top 10 Facturas Vencidas
   // ============================================
   const topVencidas = vencidas
-    .sort((a, b) => (parseFloat(b.total) || 0) - (parseFloat(a.total) || 0))
+    .sort((a, b) => (parseFloat(b.total_factura || b.total) || 0) - (parseFloat(a.total_factura || a.total) || 0))
     .slice(0, 10)
-    .map((f, idx) => {
-      const fechaVenc = f.fecha_vencimiento ? new Date(f.fecha_vencimiento) : null;
-      const diasVencidos = fechaVenc ? Math.floor((new Date() - fechaVenc) / (1000 * 60 * 60 * 24)) : 0;
-      
-      return [
-        idx + 1,
-        f.num_factura || 'N/A',
-        f.nombres || f.cliente || 'N/A',
-        `$${(parseFloat(f.total) || 0).toFixed(2)}`,
-        f.fecha_vencimiento || 'N/A',
-        diasVencidos > 0 ? `${diasVencidos} días` : 'N/A'
-      ];
-    });
+    .map((f, idx) => [
+      idx + 1,
+      f.num_factura || 'N/A',
+      f.Nombres || f.nombres || 'N/A',
+      `$${(parseFloat(f.total_factura || f.total) || 0).toFixed(2)}`,
+      f.tiene_mora ? `$${(parseFloat(f.valor_mora) || 0).toFixed(2)}` : 'Sin mora',
+      f.meses_adeudo || 0,
+      f.sector || 'Sin sector'
+    ]);
   
   if (topVencidas.length > 0) {
     tables.push({
       title: 'Top 10 Facturas Vencidas',
-      headers: ['#', 'N° Factura', 'Cliente', 'Monto', 'Vencimiento', 'Días Vencidos'],
+      headers: ['#', 'N° Factura', 'Cliente', 'Monto', 'Mora', 'Meses', 'Sector'],
       rows: topVencidas
     });
   }
   
   // ============================================
-  // TABLA 5: Facturación por Mes
+  // TABLA 7: Facturación por Mes
   // ============================================
   const meses = {};
   data.forEach(f => {
-    if (f.fecha_emision || f.fecha_factura) {
-      const fecha = new Date(f.fecha_emision || f.fecha_factura);
-      const mes = fecha.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-      
-      if (!meses[mes]) {
-        meses[mes] = { count: 0, monto: 0, pagadas: 0, pendientes: 0, vencidas: 0 };
+    const fechaStr = f.fecha_emision || f.fecha_factura;
+    if (fechaStr) {
+      try {
+        let fecha;
+        if (fechaStr.includes('/')) {
+          const [dia, mes, anio] = fechaStr.split('/');
+          fecha = new Date(anio, mes - 1, dia);
+        } else {
+          fecha = new Date(fechaStr);
+        }
+        
+        if (!isNaN(fecha.getTime())) {
+          const mes = fecha.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+          
+          if (!meses[mes]) {
+            meses[mes] = { count: 0, monto: 0, mora: 0, pagadas: 0, pendientes: 0, vencidas: 0 };
+          }
+          
+          meses[mes].count++;
+          meses[mes].monto += (parseFloat(f.total_factura || f.total) || 0);
+          meses[mes].mora += (parseFloat(f.valor_mora) || 0);
+          
+          const estado = (f.estado || f.estado_factura || '').toLowerCase();
+          if (estado === 'pagada') meses[mes].pagadas++;
+          else if (estado === 'pendiente') meses[mes].pendientes++;
+          else if (estado === 'vencida') meses[mes].vencidas++;
+        }
+      } catch (e) {
+        console.error('Error al parsear fecha:', fechaStr);
       }
-      
-      meses[mes].count++;
-      meses[mes].monto += (parseFloat(f.total) || 0);
-      
-      const estado = (f.estado || f.estado_factura || '').toLowerCase();
-      if (estado === 'pagada') meses[mes].pagadas++;
-      else if (estado === 'pendiente') meses[mes].pendientes++;
-      else if (estado === 'vencida') meses[mes].vencidas++;
     }
   });
   
@@ -1536,7 +1776,7 @@ const generateFacturasTable = (data) => {
       mes,
       stats.count,
       `$${stats.monto.toFixed(2)}`,
-      `$${(stats.monto / stats.count).toFixed(2)}`,
+      stats.mora > 0 ? `$${stats.mora.toFixed(2)}` : '-',
       stats.pagadas,
       stats.pendientes,
       stats.vencidas
@@ -1545,20 +1785,52 @@ const generateFacturasTable = (data) => {
   if (mesesRows.length > 0) {
     tables.push({
       title: 'Facturación por Mes (Últimos 6 Meses)',
-      headers: ['Mes', 'Total', 'Monto', 'Promedio', 'Pagadas', 'Pendientes', 'Vencidas'],
+      headers: ['Mes', 'Total', 'Monto', 'Mora', 'Pagadas', 'Pendientes', 'Vencidas'],
       rows: mesesRows
     });
   }
   
   // ============================================
-  // TABLA 6: Estadísticas Generales
+  // TABLA 8: Facturación por Sector
   // ============================================
-  const montos = data.map(f => parseFloat(f.total) || 0).filter(m => m > 0);
+  const sectores = {};
+  data.forEach(f => {
+    const sector = f.sector || f.nombre_sector || 'Sin sector';
+    if (!sectores[sector]) {
+      sectores[sector] = { count: 0, monto: 0, mora: 0 };
+    }
+    sectores[sector].count++;
+    sectores[sector].monto += (parseFloat(f.total_factura || f.total) || 0);
+    sectores[sector].mora += (parseFloat(f.valor_mora) || 0);
+  });
+  
+  const sectoresRows = Object.entries(sectores)
+    .sort((a, b) => b[1].monto - a[1].monto)
+    .slice(0, 10)
+    .map(([sector, stats]) => [
+      sector,
+      stats.count,
+      `$${stats.monto.toFixed(2)}`,
+      stats.mora > 0 ? `$${stats.mora.toFixed(2)}` : '-',
+      `$${(stats.monto / stats.count).toFixed(2)}`
+    ]);
+  
+  if (sectoresRows.length > 0) {
+    tables.push({
+      title: 'Top 10 Facturación por Sector',
+      headers: ['Sector', 'Facturas', 'Monto Total', 'Mora Total', 'Promedio'],
+      rows: sectoresRows
+    });
+  }
+  
+  // ============================================
+  // TABLA 9: Estadísticas Generales
+  // ============================================
+  const montos = data.map(f => parseFloat(f.total_factura || f.total) || 0).filter(m => m > 0);
   const montoPromedio = montos.length > 0 ? montos.reduce((a, b) => a + b, 0) / montos.length : 0;
   const montoMax = Math.max(...montos, 0);
   const montoMin = Math.min(...montos.filter(m => m > 0), 0);
   
-  // Calcular mediana
   const montosOrdenados = [...montos].sort((a, b) => a - b);
   const mediana = montosOrdenados.length > 0
     ? montosOrdenados.length % 2 === 0
@@ -1566,23 +1838,26 @@ const generateFacturasTable = (data) => {
       : montosOrdenados[Math.floor(montosOrdenados.length / 2)]
     : 0;
   
-  // Tasa de cobro
   const tasaCobro = data.length > 0 ? ((pagadas.length / data.length) * 100).toFixed(1) : 0;
   const tasaMorosidad = data.length > 0 ? ((vencidas.length / data.length) * 100).toFixed(1) : 0;
+  const tasaAnulacion = data.length > 0 ? ((anuladas.length / data.length) * 100).toFixed(1) : 0;
   
   tables.push({
     title: 'Estadísticas Generales',
     headers: ['Métrica', 'Valor'],
     rows: [
       ['Total de Facturas', data.length],
-      ['Facturación Total', `$${totalFacturado.toFixed(2)}`],
+      ['Facturación Total (sin mora)', `$${totalFacturado.toFixed(2)}`],
+      ['Total con Mora', `$${(totalFacturado + totalMora).toFixed(2)}`],
       ['Monto Promedio', `$${montoPromedio.toFixed(2)}`],
       ['Monto Mediano', `$${mediana.toFixed(2)}`],
       ['Monto Máximo', `$${montoMax.toFixed(2)}`],
       ['Monto Mínimo', `$${montoMin.toFixed(2)}`],
       ['Tasa de Cobro', `${tasaCobro}%`],
       ['Tasa de Morosidad', `${tasaMorosidad}%`],
-      ['Por Cobrar', `$${(montoPendiente + montoVencido).toFixed(2)}`]
+      ['Tasa de Anulación', `${tasaAnulacion}%`],
+      ['Por Cobrar', `$${(montoPendiente + montoVencido).toFixed(2)}`],
+      ['Sectores Únicos', Object.keys(sectores).length]
     ]
   });
   
@@ -1594,24 +1869,28 @@ const generatePagosTable = (data) => {
   
   // Filtrar por método
   const efectivo = data.filter(p => 
-    p.metodo_pago?.toLowerCase() === 'efectivo' || p.metodopago?.toLowerCase() === 'efectivo'
+    p.metodo_pago?.toLowerCase().includes('efectivo') || p.metodopago?.toLowerCase().includes('efectivo')
   );
   const transferencia = data.filter(p => 
-    p.metodo_pago?.toLowerCase() === 'transferencia' || p.metodopago?.toLowerCase() === 'transferencia'
+    p.metodo_pago?.toLowerCase().includes('transferencia') || p.metodopago?.toLowerCase().includes('transferencia')
   );
   const tarjeta = data.filter(p => 
-    p.metodo_pago?.toLowerCase() === 'tarjeta' || p.metodopago?.toLowerCase() === 'tarjeta'
+    p.metodo_pago?.toLowerCase().includes('tarjeta') || p.metodopago?.toLowerCase().includes('tarjeta')
   );
   const otros = data.filter(p => {
     const metodo = (p.metodo_pago || p.metodopago || '').toLowerCase();
-    return metodo !== 'efectivo' && metodo !== 'transferencia' && metodo !== 'tarjeta' && metodo !== '';
+    return !metodo.includes('efectivo') && !metodo.includes('transferencia') && !metodo.includes('tarjeta') && metodo !== '';
   });
   
-  const montoEfectivo = efectivo.reduce((sum, p) => sum + (parseFloat(p.monto || p.valor) || 0), 0);
-  const montoTransferencia = transferencia.reduce((sum, p) => sum + (parseFloat(p.monto || p.valor) || 0), 0);
-  const montoTarjeta = tarjeta.reduce((sum, p) => sum + (parseFloat(p.monto || p.valor) || 0), 0);
-  const montoOtros = otros.reduce((sum, p) => sum + (parseFloat(p.monto || p.valor) || 0), 0);
+  const montoEfectivo = efectivo.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
+  const montoTransferencia = transferencia.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
+  const montoTarjeta = tarjeta.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
+  const montoOtros = otros.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
   const totalRecaudado = montoEfectivo + montoTransferencia + montoTarjeta + montoOtros;
+  
+  // 🚨 CALCULAR DATOS DE MORA
+  const pagosConMora = data.filter(p => p.tiene_mora === true);
+  const totalMoraPagos = pagosConMora.reduce((sum, p) => sum + (parseFloat(p.valor_mora) || 0), 0);
   
   // ============================================
   // TABLA 1: Resumen por Método de Pago
@@ -1659,23 +1938,51 @@ const generatePagosTable = (data) => {
   });
   
   // ============================================
-  // TABLA 2: Rangos de Montos
+  // 🚨 TABLA 2: Resumen de Mora en Pagos
+  // ============================================
+  if (pagosConMora.length > 0) {
+    const mesesAdeudoPromedio = pagosConMora.reduce((sum, p) => 
+      sum + (parseInt(p.meses_adeudo) || 0), 0
+    ) / pagosConMora.length;
+    
+    const moraPromedio = totalMoraPagos / pagosConMora.length;
+    const totalFacturado = data.reduce((sum, p) => sum + (parseFloat(p.total_factura || p.total) || 0), 0);
+    
+    tables.push({
+      title: '🚨 Resumen de Mora en Pagos',
+      headers: ['Métrica', 'Valor'],
+      rows: [
+        ['Pagos con Mora', pagosConMora.length],
+        ['% Pagos con Mora', `${((pagosConMora.length / data.length) * 100).toFixed(1)}%`],
+        ['Total Mora', `$${totalMoraPagos.toFixed(2)}`],
+        ['Mora Promedio', `$${moraPromedio.toFixed(2)}`],
+        ['Meses Adeudo Promedio', `${mesesAdeudoPromedio.toFixed(1)} meses`],
+        ['Total Recaudado', `$${totalRecaudado.toFixed(2)}`],
+        ['Total Facturado', `$${totalFacturado.toFixed(2)}`],
+        ['Impacto Mora vs Recaudado', `${((totalMoraPagos / totalRecaudado) * 100).toFixed(1)}%`]
+      ]
+    });
+  }
+  
+  // ============================================
+  // TABLA 3: Rangos de Montos
   // ============================================
   const rangos = [
-    { min: 0, max: 50, label: 'Muy Bajo ($0-50)' },
-    { min: 50, max: 100, label: 'Bajo ($50-100)' },
-    { min: 100, max: 200, label: 'Normal ($100-200)' },
-    { min: 200, max: 500, label: 'Alto ($200-500)' },
-    { min: 500, max: Infinity, label: 'Muy Alto ($500+)' }
+    { min: 0, max: 10, label: '$0-10' },
+    { min: 10, max: 20, label: '$10-20' },
+    { min: 20, max: 30, label: '$20-30' },
+    { min: 30, max: 50, label: '$30-50' },
+    { min: 50, max: 100, label: '$50-100' },
+    { min: 100, max: Infinity, label: '$100+' }
   ];
   
   const rangosRows = rangos.map(rango => {
     const pagos = data.filter(p => {
-      const monto = parseFloat(p.monto || p.valor) || 0;
+      const monto = parseFloat(p.monto_pagado || p.monto || p.valor) || 0;
       return monto >= rango.min && monto < rango.max;
     });
     const porcentaje = data.length > 0 ? ((pagos.length / data.length) * 100).toFixed(1) : '0.0';
-    const montoTotal = pagos.reduce((sum, p) => sum + (parseFloat(p.monto || p.valor) || 0), 0);
+    const montoTotal = pagos.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
     
     return [
       rango.label,
@@ -1683,7 +1990,7 @@ const generatePagosTable = (data) => {
       `${porcentaje}%`,
       `$${montoTotal.toFixed(2)}`
     ];
-  });
+  }).filter(row => row[1] > 0);
   
   tables.push({
     title: 'Distribución por Rangos de Monto',
@@ -1692,46 +1999,86 @@ const generatePagosTable = (data) => {
   });
   
   // ============================================
-  // TABLA 3: Top 10 Pagos Más Altos
+  // 🚨 TABLA 4: Top 10 Pagos con Mayor Mora
+  // ============================================
+  if (pagosConMora.length > 0) {
+    const topMoraPagos = [...pagosConMora]
+      .sort((a, b) => (parseFloat(b.valor_mora) || 0) - (parseFloat(a.valor_mora) || 0))
+      .slice(0, 10)
+      .map((p, idx) => [
+        idx + 1,
+        p.num_factura || 'N/A',
+        p.Nombre || p.nombres || 'N/A',
+        `$${(parseFloat(p.monto_pagado) || 0).toFixed(2)}`,
+        `$${(parseFloat(p.valor_mora) || 0).toFixed(2)}`,
+        p.meses_adeudo || 0,
+        p.metodo_pago || 'N/A'
+      ]);
+    
+    tables.push({
+      title: '🚨 Top 10 Pagos con Mayor Mora',
+      headers: ['#', 'N° Factura', 'Cliente', 'Monto Pagado', 'Mora', 'Meses', 'Método'],
+      rows: topMoraPagos
+    });
+  }
+  
+  // ============================================
+  // TABLA 5: Top 10 Pagos Más Altos
   // ============================================
   const topPagos = [...data]
-    .sort((a, b) => (parseFloat(b.monto || b.valor) || 0) - (parseFloat(a.monto || a.valor) || 0))
+    .sort((a, b) => (parseFloat(b.monto_pagado || b.monto || b.valor) || 0) - (parseFloat(a.monto_pagado || a.monto || a.valor) || 0))
     .slice(0, 10)
     .map((p, idx) => [
       idx + 1,
       p.num_factura || p.numero_recibo || 'N/A',
-      p.nombres || p.cliente || 'N/A',
-      `$${(parseFloat(p.monto || p.valor) || 0).toFixed(2)}`,
+      p.Nombre || p.nombres || 'N/A',
+      `$${(parseFloat(p.monto_pagado || p.monto || p.valor) || 0).toFixed(2)}`,
+      p.tiene_mora ? `$${(parseFloat(p.valor_mora) || 0).toFixed(2)}` : '-',
       p.metodo_pago || p.metodopago || 'N/A',
       p.fecha_pago || p.fecha || 'N/A'
     ]);
   
   tables.push({
     title: 'Top 10 Pagos Más Altos',
-    headers: ['#', 'N° Factura/Recibo', 'Cliente', 'Monto', 'Método', 'Fecha'],
-    rows: topPagos.length > 0 ? topPagos : [['Sin datos', '', '', '', '', '']]
+    headers: ['#', 'N° Factura', 'Cliente', 'Monto', 'Mora', 'Método', 'Fecha'],
+    rows: topPagos.length > 0 ? topPagos : [['Sin datos', '', '', '', '', '', '']]
   });
   
   // ============================================
-  // TABLA 4: Recaudación por Mes
+  // TABLA 6: Recaudación por Mes
   // ============================================
   const meses = {};
   data.forEach(p => {
-    if (p.fecha_pago || p.fecha) {
-      const fecha = new Date(p.fecha_pago || p.fecha);
-      const mes = fecha.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-      
-      if (!meses[mes]) {
-        meses[mes] = { count: 0, monto: 0, efectivo: 0, transferencia: 0, tarjeta: 0 };
+    const fechaStr = p.fecha_pago || p.fecha;
+    if (fechaStr) {
+      try {
+        let fecha;
+        if (fechaStr.includes('/')) {
+          const [dia, mes, anio] = fechaStr.split('/');
+          fecha = new Date(anio, mes - 1, dia);
+        } else {
+          fecha = new Date(fechaStr);
+        }
+        
+        if (!isNaN(fecha.getTime())) {
+          const mes = fecha.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+          
+          if (!meses[mes]) {
+            meses[mes] = { count: 0, monto: 0, mora: 0, efectivo: 0, transferencia: 0, tarjeta: 0 };
+          }
+          
+          meses[mes].count++;
+          meses[mes].monto += (parseFloat(p.monto_pagado || p.monto || p.valor) || 0);
+          meses[mes].mora += (parseFloat(p.valor_mora) || 0);
+          
+          const metodo = (p.metodo_pago || p.metodopago || '').toLowerCase();
+          if (metodo.includes('efectivo')) meses[mes].efectivo++;
+          else if (metodo.includes('transferencia')) meses[mes].transferencia++;
+          else if (metodo.includes('tarjeta')) meses[mes].tarjeta++;
+        }
+      } catch (e) {
+        console.error('Error al parsear fecha:', fechaStr);
       }
-      
-      meses[mes].count++;
-      meses[mes].monto += (parseFloat(p.monto || p.valor) || 0);
-      
-      const metodo = (p.metodo_pago || p.metodopago || '').toLowerCase();
-      if (metodo === 'efectivo') meses[mes].efectivo++;
-      else if (metodo === 'transferencia') meses[mes].transferencia++;
-      else if (metodo === 'tarjeta') meses[mes].tarjeta++;
     }
   });
   
@@ -1742,7 +2089,7 @@ const generatePagosTable = (data) => {
       mes,
       stats.count,
       `$${stats.monto.toFixed(2)}`,
-      `$${(stats.monto / stats.count).toFixed(2)}`,
+      stats.mora > 0 ? `$${stats.mora.toFixed(2)}` : '-',
       stats.efectivo,
       stats.transferencia,
       stats.tarjeta
@@ -1751,32 +2098,38 @@ const generatePagosTable = (data) => {
   if (mesesRows.length > 0) {
     tables.push({
       title: 'Recaudación por Mes (Últimos 6 Meses)',
-      headers: ['Mes', 'Total', 'Monto', 'Promedio', 'Efectivo', 'Transferencia', 'Tarjeta'],
+      headers: ['Mes', 'Total', 'Monto', 'Mora', 'Efectivo', 'Transf.', 'Tarjeta'],
       rows: mesesRows
     });
   }
   
   // ============================================
-  // TABLA 5: Recaudación por Día de la Semana (CORREGIDA)
+  // TABLA 7: Recaudación por Día de la Semana
   // ============================================
   const diasSemana = {};
   const diasNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
   
-  // Inicializar todos los días
   diasNombres.forEach(dia => {
     diasSemana[dia] = { count: 0, monto: 0 };
   });
   
-  // Contar pagos por día
   data.forEach(p => {
-    if (p.fecha_pago || p.fecha) {
+    const fechaStr = p.fecha_pago || p.fecha;
+    if (fechaStr) {
       try {
-        const fecha = new Date(p.fecha_pago || p.fecha);
-        if (!isNaN(fecha.getTime())) { // Validar que la fecha sea válida
+        let fecha;
+        if (fechaStr.includes('/')) {
+          const [dia, mes, anio] = fechaStr.split('/');
+          fecha = new Date(anio, mes - 1, dia);
+        } else {
+          fecha = new Date(fechaStr);
+        }
+        
+        if (!isNaN(fecha.getTime())) {
           const dia = diasNombres[fecha.getDay()];
-          if (diasSemana[dia]) { // Verificar que el día existe
+          if (diasSemana[dia]) {
             diasSemana[dia].count++;
-            diasSemana[dia].monto += (parseFloat(p.monto || p.valor) || 0);
+            diasSemana[dia].monto += (parseFloat(p.monto_pagado || p.monto || p.valor) || 0);
           }
         }
       } catch (error) {
@@ -1786,7 +2139,7 @@ const generatePagosTable = (data) => {
   });
   
   const diasRows = Object.entries(diasSemana)
-    .filter(([_, stats]) => stats && stats.count > 0) // Filtrar días con datos
+    .filter(([_, stats]) => stats && stats.count > 0)
     .map(([dia, stats]) => [
       dia,
       stats.count,
@@ -1804,14 +2157,13 @@ const generatePagosTable = (data) => {
   }
   
   // ============================================
-  // TABLA 6: Estadísticas Generales
+  // TABLA 8: Estadísticas Generales
   // ============================================
-  const montos = data.map(p => parseFloat(p.monto || p.valor) || 0).filter(m => m > 0);
+  const montos = data.map(p => parseFloat(p.monto_pagado || p.monto || p.valor) || 0).filter(m => m > 0);
   const montoPromedio = montos.length > 0 ? montos.reduce((a, b) => a + b, 0) / montos.length : 0;
   const montoMax = montos.length > 0 ? Math.max(...montos) : 0;
   const montoMin = montos.length > 0 ? Math.min(...montos.filter(m => m > 0)) : 0;
   
-  // Calcular mediana
   const montosOrdenados = [...montos].sort((a, b) => a - b);
   const mediana = montosOrdenados.length > 0
     ? montosOrdenados.length % 2 === 0
@@ -1819,7 +2171,6 @@ const generatePagosTable = (data) => {
       : montosOrdenados[Math.floor(montosOrdenados.length / 2)]
     : 0;
   
-  // Método más usado
   const metodosCount = {
     'Efectivo': efectivo.length,
     'Transferencia': transferencia.length,
@@ -1829,6 +2180,9 @@ const generatePagosTable = (data) => {
   const metodoMasUsado = Object.entries(metodosCount)
     .filter(([_, count]) => count > 0)
     .sort((a, b) => b[1] - a[1])[0];
+  
+  const pagosCompletos = data.filter(p => p.pago_completo === true).length;
+  const pagosParciales = data.filter(p => p.pago_completo === false).length;
   
   tables.push({
     title: 'Estadísticas Generales',
@@ -1840,10 +2194,12 @@ const generatePagosTable = (data) => {
       ['Monto Mediano', `$${mediana.toFixed(2)}`],
       ['Monto Máximo', `$${montoMax.toFixed(2)}`],
       ['Monto Mínimo', `$${montoMin.toFixed(2)}`],
-      ['Método Más Usado', metodoMasUsado ? `${metodoMasUsado[0]} (${metodoMasUsado[1]} pagos)` : 'N/A'],
-      ['Pago Promedio Efectivo', `$${(montoEfectivo / (efectivo.length || 1)).toFixed(2)}`],
-      ['Pago Promedio Transferencia', `$${(montoTransferencia / (transferencia.length || 1)).toFixed(2)}`],
-      ['Pago Promedio Tarjeta', `$${(montoTarjeta / (tarjeta.length || 1)).toFixed(2)}`]
+      ['Método Más Usado', metodoMasUsado ? `${metodoMasUsado[0]} (${metodoMasUsado[1]})` : 'N/A'],
+      ['Pagos Completos', `${pagosCompletos} (${((pagosCompletos / data.length) * 100).toFixed(1)}%)`],
+      ['Pagos Parciales', `${pagosParciales} (${((pagosParciales / data.length) * 100).toFixed(1)}%)`],
+      ['Efectivo Promedio', `$${(montoEfectivo / (efectivo.length || 1)).toFixed(2)}`],
+      ['Transferencia Promedio', `$${(montoTransferencia / (transferencia.length || 1)).toFixed(2)}`],
+      ['Tarjeta Promedio', `$${(montoTarjeta / (tarjeta.length || 1)).toFixed(2)}`]
     ]
   });
   

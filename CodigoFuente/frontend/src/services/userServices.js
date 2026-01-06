@@ -192,7 +192,7 @@ class UsersService {
   }
 
   /**
-   * ✅ Crear un nuevo usuario - CORREGIDO
+   * ✅ Crear un nuevo usuario 
    */
   async createUser(userData) {
     try {
@@ -677,6 +677,74 @@ class UsersService {
       return { success: false, message: error.message };
     }
   }
+
+  /**
+ * Desbloquear usuario y resetear intentos fallidos
+ */
+async unlockUser(userId) {
+  try {
+    const data = await this.makeRequest(`${API_CONFIG.endpoints.users}/${userId}/unlock`, {
+      method: 'POST'
+    });
+    
+    return {
+      success: true,
+      data: data,
+      message: data.message || 'Usuario desbloqueado exitosamente'
+    };
+  } catch (error) {
+    console.error('❌ Error desbloqueando usuario:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al desbloquear usuario'
+    };
+  }
+}
+
+/**
+ * Obtener estado de bloqueo de un usuario
+ */
+async getUserLockStatus(userId) {
+  try {
+    const data = await this.makeRequest(`${API_CONFIG.endpoints.users}/${userId}/lock-status`, {
+      method: 'GET'
+    });
+    
+    return {
+      success: true,
+      data: data.data
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo estado de bloqueo:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener estado de bloqueo'
+    };
+  }
+}
+
+/**
+ * Listar todos los usuarios bloqueados (solo admin)
+ */
+async getBlockedUsers() {
+  try {
+    const data = await this.makeRequest(`${API_CONFIG.endpoints.users}/admin/blocked-users`, {
+      method: 'GET'
+    });
+    
+    return {
+      success: true,
+      data: data.data
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo usuarios bloqueados:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener usuarios bloqueados'
+    };
+  }
+}
+
 
   /**
    * Limpiar caché de roles

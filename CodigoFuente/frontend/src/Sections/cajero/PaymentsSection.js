@@ -1,7 +1,7 @@
 // src/sections/PaymentsSection.js
 // MÓDULO DE PAGOS - Con sistema de periodos mensuales
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './PaymentsSection.css'; // Reutilizar estilos similares a InvoicesSection
 
 import PaymentReceipt, { generatePaymentPDF } from '../../components/PaymentReceipt';
@@ -28,7 +28,7 @@ import {
   FileText,
   CreditCard,
   Plus,
-  Wallet, XCircle, FileCheck
+  Wallet, XCircle, FileCheck, ChevronDown, Calculator
 } from 'lucide-react';
 
 const PaymentsSection = () => {
@@ -54,7 +54,42 @@ const PaymentsSection = () => {
   const [filterMetodo, setFilterMetodo] = useState('all');
   const [sortOption, setSortOption] = useState('fecha');
   const [sortOrder, setSortOrder] = useState('desc');
-  const [montosFactura, setMontosFactura] = useState(null);
+  const [montosFactura, ] = useState(null);
+
+  // Estado para almacenar facturas pendientes por afiliado
+  const [facturasPendientesPorAfiliado, setFacturasPendientesPorAfiliado] = useState({});
+  const [, setLoadingFacturasPendientes] = useState(false);
+ // Estado para controlar qué sección de adeudos está expandida
+  const [adeudosExpandidoPorAfiliado, setAdeudosExpandidoPorAfiliado] = useState({});
+
+    // Función helper para toggle
+  const toggleAdeudos = (idAfiliado) => {
+    setAdeudosExpandidoPorAfiliado(prev => ({
+      ...prev,
+      [idAfiliado]: !prev[idAfiliado]
+    }));
+  };
+
+  // ✅ Estados para pago masivo
+  const [facturasPendientesExpandido, setFacturasPendientesExpandido] = useState(false);
+  const [facturasSeleccionadas, setFacturasSeleccionadas] = useState({});
+  const [montoPagoMasivo, setMontoPagoMasivo] = useState(0);
+
+  /**
+   * Toggle selección de factura
+   */
+  const toggleSeleccionFactura = (idFactura, esObligatoria) => {
+    if (esObligatoria) {
+      alert('⚠️ La factura del periodo actual es obligatoria y no puede ser deseleccionada.');
+      return;
+    }
+    
+    setFacturasSeleccionadas(prev => ({
+      ...prev,
+      [idFactura]: !prev[idFactura]
+    }));
+  };
+
 
   // ============================================================
   // ESTADOS DE ESTADÍSTICAS
@@ -188,86 +223,191 @@ const PaymentsSection = () => {
   // ============================================================
   // FUNCIÓN PARA CARGAR TODAS LAS FACTURAS
   // ============================================================
-  const fetchFacturasPeriodo = useCallback(async () => {
-        if (!periodoSeleccionado) return;
 
-        setLoading(true);
-        setError(null);
+ /**
+ * Cargar facturas pendientes de un afiliado específico
+ */
+const cargarFacturasPendientesAfiliado = useCallback(async (idUsuarioAfi) => {
+  if (!idUsuarioAfi) return null;
+  
+  // ✅ Verificar que periodoSeleccionado existe
+  if (!periodoSeleccionado) {
+    console.warn('⚠️ No hay periodo seleccionado para cargar facturas pendientes');
+    return null;
+  }
+  
+  // Si ya está cacheado, retornar
+  if (facturasPendientesPorAfiliado[idUsuarioAfi]) {
+    console.log('💾 Usando facturas pendientes desde caché');
+    return facturasPendientesPorAfiliado[idUsuarioAfi];
+  }
+  
+  setLoadingFacturasPendientes(true);
+  
+  try {
+    // ✅ Generar periodo de forma segura
+    const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
+    
+    console.log(`🔍 Cargando facturas pendientes para afiliado ${idUsuarioAfi}, periodo: ${periodoStr}`);
+    
+    const result = await paymentsServices.getFacturasPendientesAfiliado(
+      idUsuarioAfi, 
+      periodoStr, 
+      false  // No aplicar mora en BD
+    );
+    
+    if (result.success && result.data) {
+      console.log(`✅ Facturas pendientes cargadas:`, {
+        afiliado: idUsuarioAfi,
+        meses_adeudo: result.data.meses_adeudo,
+        total_adeudado: result.data.total_adeudado
+      });
+      
+      // Cachear resultado
+      setFacturasPendientesPorAfiliado(prev => ({
+        ...prev,
+        [idUsuarioAfi]: result.data
+      }));
+      
+      return result.data;
+    } else {
+      console.warn(`⚠️ No se pudieron cargar facturas pendientes para afiliado ${idUsuarioAfi}`);
+      return null;
+    }
+  } catch (error) {
+    console.error(`❌ Error cargando facturas pendientes para afiliado ${idUsuarioAfi}:`, error);
+    return null;
+  } finally {
+    setLoadingFacturasPendientes(false);
+  }
+}, [periodoSeleccionado, facturasPendientesPorAfiliado]);  // ✅ Agregar dependencias
 
-        try {
-            const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
-            const result = await paymentsServices.getFacturasPeriodo({
-            periodo: periodoStr,
-            estado_factura: filterStatus !== 'all' ? filterStatus : null,
-            limit: 100
-            });
 
-            if (result.success && result.data) {
-            console.log('📦 Facturas cargadas:', result.data.length);
-            setFacturas(result.data);
-            
-            // 🔥 ACTUALIZAR EL PERIODO CON LOS DATOS REALES
-            const montoTotal = result.data.reduce((sum, f) => 
-                sum + parseFloat(f.total || 0), 0
-            );
-            
-            const montoCobrado = result.data
-                .filter(f => f.estado_factura === 'pagada')
-                .reduce((sum, f) => sum + parseFloat(f.total || 0), 0);
-            
-            const montoPendiente = result.data
-                .filter(f => f.estado_factura === 'pendiente' || f.estado_factura === 'vencida')
-                .reduce((sum, f) => sum + parseFloat(f.total || 0), 0);
-            
-            // Calcular total de pagos registrados en este periodo
-            const totalPagosRegistrados = result.data.reduce((sum, f) => {
-                if (f.pagos && f.pagos.length > 0) {
-                const pagosFact = f.pagos
-                    .filter(p => p.estado_pago === 'REGISTRADO')
-                    .reduce((s, p) => s + parseFloat(p.monto_pago || 0), 0);
-                return sum + pagosFact;
-                }
-                return sum;
-            }, 0);
-            
-            const cantidadPagos = result.data.reduce((sum, f) => {
-                if (f.pagos && f.pagos.length > 0) {
-                return sum + f.pagos.filter(p => p.estado_pago === 'REGISTRADO').length;
-                }
-                return sum;
-            }, 0);
-            
-            // Actualizar periodo con estadísticas
-            setPeriodos(prevPeriodos => 
-                prevPeriodos.map(p => 
-                p.mes === periodoSeleccionado.mes && p.anio === periodoSeleccionado.anio 
-                    ? {
-                        ...p,
-                        total_facturas: result.data.length,
-                        monto_total: montoTotal,
-                        monto_cobrado: montoCobrado,
-                        monto_pendiente: montoPendiente,
-                        total_pagos: cantidadPagos,
-                        monto_total_pagos: totalPagosRegistrados,
-                        tiene_facturas: result.data.length > 0,
-                        tiene_pagos: cantidadPagos > 0
-                    }
-                    : p
-                )
-            );
-            } else {
-            setError('No se pudieron cargar las facturas');
-            setFacturas([]);
-            }
-        } catch (err) {
-            setError('Error al cargar facturas');
-            console.error(err);
-            setFacturas([]);
-        } finally {
-            setLoading(false);
+const fetchFacturasPeriodo = useCallback(async () => {
+  // ✅ Validación temprana
+  if (!periodoSeleccionado) {
+    console.warn('⚠️ No hay periodo seleccionado');
+    return;
+  }
+
+  setLoading(true);
+  setError(null);
+
+  try {
+    const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
+    
+    console.log(`📅 Cargando facturas del periodo: ${periodoStr}`);
+    
+    const result = await paymentsServices.getFacturasPeriodo({
+      periodo: periodoStr,
+      estado_factura: filterStatus !== 'all' ? filterStatus : null,
+      sort_by: sortOption,      
+      sort_order: sortOrder,   
+      limit: 100
+    });
+
+    if (result.success && result.data) {
+      console.log('📦 Facturas cargadas:', result.data.length);
+      setFacturas(result.data);
+
+      // ✅ Cargar facturas pendientes de cada afiliado único
+      const afiliadosUnicos = [
+        ...new Set(
+          result.data
+            .map(f => f.usuario_afiliado?.id_usuario_afi)
+            .filter(Boolean)
+        )
+      ];
+      
+      console.log(`👥 Cargando adeudos para ${afiliadosUnicos.length} afiliados únicos`);
+      
+      // Cargar en paralelo con manejo de errores
+      const promesas = afiliadosUnicos.map(idAfi => 
+        cargarFacturasPendientesAfiliado(idAfi).catch(err => {
+          console.error(`Error cargando adeudos del afiliado ${idAfi}:`, err);
+          return null; // No fallar todo si uno falla
+        })
+      );
+      
+      await Promise.all(promesas);
+      
+      console.log('✅ Adeudos cargados para todos los afiliados');
+      
+      // 🔥 ACTUALIZAR EL PERIODO CON LOS DATOS REALES
+      const montoTotal = result.data.reduce((sum, f) => 
+        sum + parseFloat(f.total || 0), 0
+      );
+      
+      const montoCobrado = result.data
+        .filter(f => f.estado_factura === 'pagada')
+        .reduce((sum, f) => sum + parseFloat(f.total || 0), 0);
+      
+      const montoPendiente = result.data
+        .filter(f => f.estado_factura === 'pendiente' || f.estado_factura === 'vencida')
+        .reduce((sum, f) => sum + parseFloat(f.total || 0), 0);
+      
+      // Calcular total de pagos registrados en este periodo
+      const totalPagosRegistrados = result.data.reduce((sum, f) => {
+        if (f.pagos && f.pagos.length > 0) {
+          const pagosFact = f.pagos
+            .filter(p => p.estado_pago === 'REGISTRADO')
+            .reduce((s, p) => s + parseFloat(p.monto_pago || 0), 0);
+          return sum + pagosFact;
         }
-  }, [periodoSeleccionado, filterStatus]);
-
+        return sum;
+      }, 0);
+      
+      const cantidadPagos = result.data.reduce((sum, f) => {
+        if (f.pagos && f.pagos.length > 0) {
+          return sum + f.pagos.filter(p => p.estado_pago === 'REGISTRADO').length;
+        }
+        return sum;
+      }, 0);
+      
+      // Actualizar periodo con estadísticas
+      setPeriodos(prevPeriodos => 
+        prevPeriodos.map(p => 
+          p.mes === periodoSeleccionado.mes && p.anio === periodoSeleccionado.anio 
+            ? {
+                ...p,
+                total_facturas: result.data.length,
+                monto_total: montoTotal,
+                monto_cobrado: montoCobrado,
+                monto_pendiente: montoPendiente,
+                total_pagos: cantidadPagos,
+                monto_total_pagos: totalPagosRegistrados,
+                tiene_facturas: result.data.length > 0,
+                tiene_pagos: cantidadPagos > 0
+              }
+            : p
+        )
+      );
+      
+      console.log('📊 Estadísticas actualizadas:', {
+        total_facturas: result.data.length,
+        monto_total: montoTotal,
+        monto_cobrado: montoCobrado,
+        monto_pendiente: montoPendiente
+      });
+      
+    } else {
+      setError('No se pudieron cargar las facturas');
+      setFacturas([]);
+    }
+  } catch (err) {
+    setError('Error al cargar facturas');
+    console.error('❌ Error en fetchFacturasPeriodo:', err);
+    setFacturas([]);
+  } finally {
+    setLoading(false);
+  }
+}, [
+  periodoSeleccionado, 
+  filterStatus, 
+  sortOption, 
+  sortOrder, 
+  cargarFacturasPendientesAfiliado  // ✅ Incluir dependencia
+]);
 
     // ============================================================
     // FUNCIÓN PARA CALCULAR TOTAL PAGADO DE UNA FACTURA
@@ -344,97 +484,38 @@ const PaymentsSection = () => {
       fetchStats();
     }
   }, [periodoSeleccionado, permissions.canRead, fetchFacturasPeriodo, fetchStats]);
+// ============================================================
+// FILTRADO Y ORDENAMIENTO DE FACTURAS
+// ============================================================
+const toggleSortOrder = () => {
+  setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
+};
 
-  // ============================================================
-  // FILTRADO Y ORDENAMIENTO DE FACTURAS
-  // ============================================================
-  const toggleSortOrder = () => {
-    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
-  };
+const filteredFacturas = facturas.filter(factura => {
+  const searchLower = searchTerm.toLowerCase();
+  
+  // ✅ BÚSQUEDA: Solo por factura, afiliado, cédula, medidor, código
+  const matchesSearch =
+    factura.num_factura?.toLowerCase().includes(searchLower) ||
+    factura.usuario_afiliado?.cod_usuario_afi?.toString().includes(searchTerm) ||
+    factura.usuario_afiliado?.num_medidor?.toLowerCase().includes(searchLower) ||
+    factura.usuario_afiliado?.usuario_sistema?.nombres?.toLowerCase().includes(searchLower) ||
+    factura.usuario_afiliado?.usuario_sistema?.apellidos?.toLowerCase().includes(searchLower) ||
+    factura.usuario_afiliado?.usuario_sistema?.cedula?.includes(searchTerm);
 
-  const filteredFacturas = facturas.filter(factura => {
-    const searchLower = searchTerm.toLowerCase();
-    
-    // ✅ BÚSQUEDA: Solo por factura, afiliado, cédula, medidor, código
-    const matchesSearch =
-      factura.num_factura?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.cod_usuario_afi?.toString().includes(searchTerm) ||
-      factura.usuario_afiliado?.num_medidor?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.usuario_sistema?.nombres?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.usuario_sistema?.apellidos?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.usuario_sistema?.cedula?.includes(searchTerm);
+  // ✅ FILTRO DE ESTADO DE FACTURA
+  const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
 
-    // ✅ FILTRO DE ESTADO DE FACTURA
-    const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
+  // ✅ FILTRO DE MÉTODO DE PAGO (corregido para array de pagos)
+  const matchesMetodo = filterMetodo === 'all' || 
+    (factura.pagos && factura.pagos.some(p => p.metodo_pago === filterMetodo));
 
-    // ✅ FILTRO DE MÉTODO DE PAGO
-    const matchesMetodo = filterMetodo === 'all' || 
-      (factura.pago && factura.pago.metodo_pago === filterMetodo);
+  return matchesSearch && matchesStatus && matchesMetodo;
+});
 
-    return matchesSearch && matchesStatus && matchesMetodo;
-  });
+// constante para ordenar facturas
+const sortedFacturas = filteredFacturas;
 
-  const sortedFacturas = useMemo(() => {
-    return [...filteredFacturas].sort((a, b) => {
-      let comparison = 0;
-
-      if (sortOption === 'fecha') {
-        comparison = new Date(a.fecha_emision) - new Date(b.fecha_emision);
-      } else if (sortOption === 'monto') {
-        comparison = parseFloat(a.total) - parseFloat(b.total);
-      } else if (sortOption === 'metodo') {
-        // ✅ Ordenar por método de pago
-        const metodoA = a.pago?.metodo_pago || '';
-        const metodoB = b.pago?.metodo_pago || '';
-        comparison = metodoA.localeCompare(metodoB);
-      } else if (sortOption === 'estado') {
-        // ✅ ORDEN PRIORITARIO: primero por estado, luego por fecha
-        const estadoA = a.estado_factura || '';
-        const estadoB = b.estado_factura || '';
-        
-        // Definir orden de prioridad de estados
-        const estadoPrioridad = {
-          'pendiente': 1,
-          'pagada': 2,
-          'anulada': 3,
-          'vencida': 4
-        };
-        
-        const prioridadA = estadoPrioridad[estadoA] || 999;
-        const prioridadB = estadoPrioridad[estadoB] || 999;
-        
-        // Primero comparar por estado
-        comparison = prioridadA - prioridadB;
-        
-        // Si tienen el mismo estado, ordenar por fecha (más reciente primero)
-        if (comparison === 0) {
-          comparison = new Date(b.fecha_emision) - new Date(a.fecha_emision);
-        }
-      } else if (sortOption === 'estado_fecha') {
-        // ✅ NUEVA OPCIÓN: Estado + Fecha explícita
-        const estadoA = a.estado_factura || '';
-        const estadoB = b.estado_factura || '';
-        
-        const estadoPrioridad = {
-          'pendiente': 1,
-          'pagada': 2,
-          'anulada': 3,
-          'vencida': 4
-        };
-        
-        const prioridadA = estadoPrioridad[estadoA] || 999;
-        const prioridadB = estadoPrioridad[estadoB] || 999;
-        
-        comparison = prioridadA - prioridadB;
-        
-        if (comparison === 0) {
-          comparison = new Date(b.fecha_emision) - new Date(a.fecha_emision);
-        }
-      }
-
-      return sortOrder === 'desc' ? comparison : -comparison;
-    });
-  }, [filteredFacturas, sortOption, sortOrder]);
 
 /**
  * Obtiene un valor seguro, retornando un default si es null/undefined/NaN
@@ -499,20 +580,75 @@ const formatCurrencySafe = (value) => {
     setShowCreateModal(true);
   };
 
-  // Función para abrir modal de pago CON factura específica
+/**
+ * Función para abrir modal de pago CON factura específica
+ * Ahora incluye todas las facturas pendientes del afiliado
+ */
 const openPaymentModal = async (factura) => {
   if (!permissions.canCreate) {
     alert('No tienes permiso para registrar pagos');
     return;
   }
 
-  const saldoPendiente = calcularSaldoPendiente(factura);
+  setLoadingResumen(true);
+  
+  try {
+    const saldoPendiente = calcularSaldoPendiente(factura);
+    const idAfiliado = factura.usuario_afiliado?.id_usuario_afi;
+    
+    if (!idAfiliado) {
+      throw new Error('No se pudo identificar el afiliado de la factura');
+    }
 
-  // ⭐ CALCULAR RESUMEN CON MORA
-  if (factura) {
-    setLoadingResumen(true);
+    // ✅ 1. Cargar todas las facturas pendientes del afiliado
+    const facturasPendientes = await cargarFacturasPendientesAfiliado(idAfiliado);
+    
+    // ✅ 2. Calcular resumen con mora de la factura seleccionada
     const resultado = await paymentsServices.calcularResumenPago(factura.id_factura);
     
+    // Variables para las facturas a pagar
+    let facturasOrdenadas = [];
+    let facturasSeleccionadas = [];
+    let totalAdeudado = saldoPendiente;
+    
+    // ✅ 3. Procesar facturas pendientes si existen
+    if (facturasPendientes && facturasPendientes.tiene_deuda && facturasPendientes.facturas.length > 0) {
+      // Ordenar por fecha (más antiguas primero)
+      facturasOrdenadas = facturasPendientes.facturas.sort((a, b) => 
+        new Date(a.fecha_emision) - new Date(b.fecha_emision)
+      );
+      
+      // Por defecto, seleccionar todas las facturas pendientes
+      facturasSeleccionadas = facturasOrdenadas.map(f => f.id_factura);
+      
+      // Usar el total calculado por el backend (incluye mora)
+      totalAdeudado = facturasPendientes.total_adeudado;
+      
+      console.log('✅ Facturas pendientes cargadas:', {
+        total: facturasOrdenadas.length,
+        meses_adeudo: facturasPendientes.meses_adeudo,
+        total_adeudado: totalAdeudado
+      });
+    } else {
+      // Si no hay facturas pendientes, solo usar la factura actual
+      facturasOrdenadas = [{
+        id_factura: factura.id_factura,
+        num_factura: factura.num_factura,
+        periodo: factura.periodo,
+        fecha_emision: factura.fecha_emision,
+        total_factura: parseFloat(factura.total),
+        saldo_pendiente: saldoPendiente,
+        mora_aplicable: false,
+        mora_monto: 0,
+        total_con_mora: saldoPendiente,
+        estado_factura: factura.estado_factura
+      }];
+      
+      facturasSeleccionadas = [factura.id_factura];
+      totalAdeudado = saldoPendiente;
+    }
+
+    // ✅ 4. Validar y guardar resumen de pago
     if (resultado.success) {
       console.log('✅ Resumen de pago cargado:', resultado.data);
       
@@ -530,25 +666,92 @@ const openPaymentModal = async (factura) => {
       setResumenPago(resultado.data);
     } else {
       console.error('❌ Error al cargar resumen:', resultado.message);
-      alert('No se pudo calcular el resumen del pago: ' + resultado.message);
+      console.warn('⚠️ Continuando sin resumen de pago detallado');
       setResumenPago(null);
     }
+
+    
+    setNuevoPago({
+      id_factura: factura.id_factura,                  
+      id_usuario_afi: idAfiliado,                        
+      facturas_a_pagar: facturasSeleccionadas,           
+      facturas_pendientes: facturasOrdenadas,           
+      total_seleccionado: totalAdeudado,                 
+      monto_pago: totalAdeudado.toFixed(2),            
+      metodo_pago: 'EFECTIVO',
+      observaciones: ''
+    });
+
+    setSelectedFactura(factura);
+    setShowCreateModal(true);
+
+  } catch (error) {
+    console.error('❌ Error al abrir modal de pago:', error);
+    alert('Error al cargar información de pago: ' + error.message);
+    setResumenPago(null);
+  } finally {
     setLoadingResumen(false);
   }
-
-  setNuevoPago({
-    id_factura: factura.id_factura,
-    id_usuario_afi: factura.id_usuario_afi,
-    monto_pago: getSafeValue(saldoPendiente, 0).toFixed(2),
-    metodo_pago: 'EFECTIVO',
-    observaciones: ''
-  });
-
-  setSelectedFactura(factura);
-  setShowCreateModal(true);
 };
 
+  /**
+   * Seleccionar todas las facturas
+   */
+  const seleccionarTodasFacturas = () => {
+    const idAfiliado = selectedFactura?.usuario_afiliado?.id_usuario_afi;
+    const datos = facturasPendientesPorAfiliado[idAfiliado];
+    
+    if (datos && datos.facturas) {
+      const todasSeleccionadas = {};
+      datos.facturas.forEach(f => {
+        todasSeleccionadas[f.id_factura] = true;
+      });
+      todasSeleccionadas[selectedFactura.id_factura] = true;
+      setFacturasSeleccionadas(todasSeleccionadas);
+    }
+  };
 
+  /**
+   * Deseleccionar facturas (excepto la obligatoria)
+   */
+  const deseleccionarFacturas = () => {
+    // Solo mantener la factura actual seleccionada
+    setFacturasSeleccionadas({
+      [selectedFactura.id_factura]: true
+    });
+  };
+
+  /**
+   * Calcular monto total de facturas seleccionadas
+   */
+  useEffect(() => {
+    const calcularMontoTotal = () => {
+      const idAfiliado = selectedFactura?.usuario_afiliado?.id_usuario_afi;
+      const datos = facturasPendientesPorAfiliado[idAfiliado];
+      
+      let total = 0;
+      
+      // Sumar facturas pendientes seleccionadas
+      if (datos && datos.facturas) {
+        datos.facturas.forEach(f => {
+          if (facturasSeleccionadas[f.id_factura]) {
+            total += f.total_con_mora || 0;
+          }
+        });
+      }
+      
+      // Sumar factura actual si está seleccionada
+      if (selectedFactura && facturasSeleccionadas[selectedFactura.id_factura]) {
+        const saldoActual = calcularSaldoPendiente(selectedFactura);
+        const moraActual = resumenPago?.mora?.monto || 0;
+        total += saldoActual + moraActual;
+      }
+      
+      setMontoPagoMasivo(total);
+    };
+    
+    calcularMontoTotal();
+  }, [facturasSeleccionadas, facturasPendientesPorAfiliado, selectedFactura, resumenPago]);
 
 
   const closeCreateModal = () => {
@@ -567,6 +770,131 @@ const openPaymentModal = async (factura) => {
   // ============================================================
   // FUNCIÓN PARA CREAR PAGO CON OPCIÓN DE MULTAS
   // ============================================================
+  /**
+ * Procesar pago masivo de múltiples facturas
+ */
+const handlePagoMasivo = async () => {
+  try {
+    // Validar que haya facturas seleccionadas
+    const facturasAPagar = Object.keys(facturasSeleccionadas).filter(
+      id => facturasSeleccionadas[id]
+    );
+    
+    if (facturasAPagar.length === 0) {
+      alert('❌ Debe seleccionar al menos una factura para pagar');
+      return;
+    }
+    
+    // Validar que la factura actual esté incluida
+    if (!facturasSeleccionadas[selectedFactura.id_factura]) {
+      alert('❌ La factura del periodo actual es obligatoria');
+      return;
+    }
+    
+    // Confirmar pago
+    const idAfiliado = selectedFactura.usuario_afiliado?.id_usuario_afi;
+    const datosAdeudo = facturasPendientesPorAfiliado[idAfiliado];
+    
+    let mensaje = `¿Confirma el pago de ${facturasAPagar.length} factura(s)?\n\n`;
+    mensaje += `💰 Total a pagar: ${formatCurrency(montoPagoMasivo)}\n`;
+    mensaje += `💳 Método: ${nuevoPago.metodo_pago}\n\n`;
+    mensaje += `Facturas a pagar:\n`;
+    
+    // Listar facturas pendientes seleccionadas
+    if (datosAdeudo && datosAdeudo.facturas) {
+      datosAdeudo.facturas.forEach(f => {
+        if (facturasSeleccionadas[f.id_factura]) {
+          mensaje += `• ${f.num_factura} - ${f.periodo}: ${formatCurrency(f.total_con_mora)}\n`;
+        }
+      });
+    }
+    
+    // Factura actual
+    const saldoActual = calcularSaldoPendiente(selectedFactura);
+    const moraActual = resumenPago?.mora?.monto || 0;
+    mensaje += `• ${selectedFactura.num_factura} - ${selectedFactura.periodo} (ACTUAL): ${formatCurrency(saldoActual + moraActual)}\n`;
+    
+    if (!window.confirm(mensaje)) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser || !currentUser.id_usuario_sistema) {
+      throw new Error('No se pudo identificar al usuario actual');
+    }
+    
+    // Preparar datos para pago masivo
+    const pagoMasivoData = {
+      id_usuario_afi: selectedFactura.usuario_afiliado.id_usuario_afi,
+      monto_total: montoPagoMasivo,
+      metodo_pago: nuevoPago.metodo_pago || 'EFECTIVO',
+      id_cajero: currentUser.id_usuario_sistema,
+      observaciones: nuevoPago.observaciones || null,
+      facturas: []
+    };
+    
+    // Agregar facturas pendientes seleccionadas
+    if (datosAdeudo && datosAdeudo.facturas) {
+      datosAdeudo.facturas.forEach(f => {
+        if (facturasSeleccionadas[f.id_factura]) {
+          pagoMasivoData.facturas.push({
+            id_factura: f.id_factura,
+            monto: f.total_con_mora,
+            incluir_multas: true,
+            es_factura_actual: false
+          });
+        }
+      });
+    }
+    
+    // Agregar factura actual
+    pagoMasivoData.facturas.push({
+      id_factura: selectedFactura.id_factura,
+      monto: saldoActual + moraActual,
+      incluir_multas: resumenPago?.multas?.tiene_multas || false,
+      es_factura_actual: true
+    });
+    
+    console.log('📤 Procesando pago masivo:', pagoMasivoData);
+    
+    // Llamar al servicio
+    const result = await paymentsServices.createPagoMasivo(pagoMasivoData);
+    
+    if (!result.success) {
+      throw new Error(result.message || 'Error al procesar el pago masivo');
+    }
+    
+    console.log('✅ Pago masivo procesado:', result.data);
+    
+    // Cerrar modal
+    closeCreateModal();
+    
+    // Recargar datos
+    await Promise.all([fetchFacturasPeriodo(), fetchStats()]);
+    
+    // Limpiar selección
+    setFacturasSeleccionadas({});
+    setMontoPagoMasivo(0);
+    
+    // Mensaje de éxito
+    alert(
+      `✅ Pago masivo registrado exitosamente\n\n` +
+      `💵 Total pagado: ${formatCurrency(montoPagoMasivo)}\n` +
+      `📝 Facturas pagadas: ${result.data.facturas_procesadas}\n` +
+      `💳 Método: ${nuevoPago.metodo_pago}`
+    );
+    
+  } catch (error) {
+    console.error('❌ Error en pago masivo:', error);
+    setError(error.message);
+    alert(`❌ Error al procesar pago masivo:\n${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
     const handleCreatePago = async (incluirMultas = true) => {
       // VALIDACIONES INICIALES
       if (!nuevoPago.monto_pago || parseFloat(nuevoPago.monto_pago) <= 0) {
@@ -704,6 +1032,8 @@ const openPaymentModal = async (factura) => {
   // ============================================================
   // FUNCIONES DE ACCIONES
   // ============================================================
+
+ 
 
   /**
    * Anula un pago y regenera la factura
@@ -1293,210 +1623,278 @@ const openPaymentModal = async (factura) => {
             </div>
           )}
 
-        {/* LISTA DE FACTURAS */}
-        {!loading && (
-        <div className="invoices-list-container">
-            {/* HEADER */}
-            <div className="invoices-list-header">
-            <span>#</span>
-            <span><FileText className="w-4 h-4" /> Factura</span>
-            <span><Calendar className="w-4 h-4" /> Emisión</span>
-            <span><IdCard className="w-4 h-4" /> Código</span>
-            <span><User className="w-4 h-4" /> Afiliado</span>
-            <span><DollarSign className="w-4 h-4" /> Total</span>
-            <span><DollarSign className="w-4 h-4" /> Pagado</span>
-            <span><DollarSign className="w-4 h-4" /> Saldo</span>
-            <span>Estado</span>
-            <span>Comprobante</span> 
-            <span>Acciones</span>
-            </div>
-
-            {/* BODY */}
-            <div className="invoices-list-body">
-              {sortedFacturas.length > 0 ? (
-                sortedFacturas.map((factura, index) => {
-                  const totalPagado = calcularTotalPagado(factura);
-                  const saldoPendiente = calcularSaldoPendiente(factura);
-                  const puedeRecibirPago = factura.estado_factura === 'pendiente' || factura.estado_factura === 'vencida';
-
-                  return (
-                      <div 
-                      key={factura.id_factura} 
-                      className={`invoices-list-item ${
-                          factura.estado_factura === 'anulada' ? 'inv-anulada' : 
-                          factura.estado_factura === 'pagada' ? 'inv-pagada' :
-                          factura.estado_factura === 'vencida' ? 'inv-vencida' : ''
-                      }`}
-                      >
-                      {/* Columna 1: # */}
-                      <div className="inv-col-index">
-                          <span className="inv-index-badge">{index + 1}</span>
-                      </div>
-
-                      {/* Columna 2: Número Factura */}
-                      <div className="inv-col-numero">
-                          <FileText className="w-4 h-4" />
-                          <span className="inv-numero-text">
-                          {factura.num_factura}
-                          </span>
-                      </div>
-
-                      {/* Columna 3: Fecha Emisión */}
-                      <div className="inv-col-fecha">
-                          <Calendar className="w-3 h-3" />
-                          <span>{formatDateShort(factura.fecha_emision)}</span>
-                      </div>
-
-                      {/* Columna 4: Código Afiliado */}
-                      <div className="inv-col-codigo">
-                          {factura.usuario_afiliado?.cod_usuario_afi ?? '—'}
-                      </div>
-
-                      {/* Columna 5: Afiliado */}
-                      <div className="inv-col-usuario">
-                          {factura.usuario_afiliado?.usuario_sistema ? (
-                          <div className="inv-usuario-info">
-                              <span className="inv-usuario-nombre">
-                              {factura.usuario_afiliado.usuario_sistema.nombres} {factura.usuario_afiliado.usuario_sistema.apellidos}
-                              </span>
-                          </div>
-                          ) : (
-                          <span className="inv-sin-dato">-</span>
-                          )}
-                      </div>
-
-                      {/* Columna 6: Total */}
-                      <div className="inv-col-total">
-                          <span className="inv-monto">{formatCurrency(factura.total)}</span>
-                      </div>
-
-                      {/* Columna 7: Total Pagado */}
-                      <div className="inv-col-total">
-                          <span className="inv-monto" style={{ color: totalPagado > 0 ? '#10b981' : '#6b7280' }}>
-                          {formatCurrency(totalPagado)}
-                          </span>
-                          
-                      </div>
-
-                      {/* Columna 8: Saldo Pendiente */}
-                      <div className="inv-col-total">
-                          <span 
-                          className="inv-monto font-bold" 
-                          style={{ 
-                              color: saldoPendiente > 0 ? '#ef4444' : '#10b981'
-                          }}
-                          >
-                          {formatCurrency(saldoPendiente)}
-                          </span>
-                      </div>
-
-                      {/* Columna 9: Estado */}
-                      <div className="inv-col-estado">
-                          {getEstadoPagoBadge(factura)}
-                      </div>
-                      
-                      {/* Columna 10: Comprobante */}
-                      <div className="inv-col-comprobante">
-                        {factura.pago && factura.pago.tiene_comprobante ? (
-                          <button
-                            className="inv-btn inv-btn-edit"
-                            onClick={() => descargarComprobante(factura.pago.id_pago)}
-                            title={`Descargar: ${factura.pago.nombre_archivo || 'comprobante.pdf'}`}
-                          >
-                            <FileCheck className="w-4 h-4 text-green-600" />
-                          </button>
-                        ) : factura.pago && !factura.pago.tiene_comprobante ? (
-                          <span className="text-xs text-gray-400">Sin comprobante</span>
-                        ) : (
-                          <span className="text-xs text-gray-400">Sin pago</span>
-                        )}
-                      </div>
-
-                      {/* Columna 11: Acciones */}
-                      <div className="inv-col-acciones">
-                        <button 
-                          className="inv-btn inv-btn-view" 
-                          onClick={() => openModal('view-factura', factura)} 
-                          title="Ver factura y pagos"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-
-                        {permissions.canCreate && puedeRecibirPago && saldoPendiente > 0 && (
-                          <button
-                            className="inv-btn inv-btn-edit"
-                            onClick={() => openPaymentModal(factura)}
-                            title={`Registrar pago - Saldo: ${formatCurrency(saldoPendiente)}`}
-                            style={{ backgroundColor: '#10b981', color: 'white' }}
-                          >
-                            <DollarSign className="w-4 h-4" />
-                          </button>
-                        )}
-                        
-                        {/* ✅ Anular pago - Solo si está pagada */}
-                        {permissions.canDelete && factura.estado_factura === 'pagada' && factura.pago && (
-                          <button
-                            className="inv-btn inv-btn-delete"
-                            onClick={() => handleAnularPagoConRegeneracion(factura)}
-                            title={`Anular pago y regenerar factura`}
-                            style={{ backgroundColor: '#ef4444', color: 'white' }}
-                          >
-                            <Ban className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-
-                      </div>
-                  );
-                })
-              ) : (
-                <div className="invoices-list-empty">
-                <FileText className="inv-empty-icon" />
-                <h3>No hay facturas en este periodo</h3>
-                <p>
-                    {searchTerm || filterStatus !== 'all'
-                    ? 'No se encontraron facturas con los criterios de búsqueda.'
-                    : `No hay facturas para ${formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}`
-                    }
-                </p>
-                </div>
-              )}
-            </div>
-
-            {/* FOOTER */}
-            {sortedFacturas.length > 0 && (
-            <div className="invoices-list-footer">
-                <button 
-                className="btn-secondary"
-                onClick={() => setPeriodoSeleccionado(null)}
-                >
-                <ArrowUpDown className="w-4 h-4 mr-2" style={{ transform: 'rotate(90deg)' }} />
-                Cambiar periodo
-                </button>
-                
-                <div className="invoices-footer-stats">
-                <span>
-                    Mostrando <strong>{sortedFacturas.length}</strong> facturas
-                </span>
-                <span>
-                    Total facturado: <strong>{formatCurrency(sortedFacturas.reduce((sum, f) => sum + parseFloat(f.total || 0), 0))}</strong>
-                </span>
-                <span>
-                    Total cobrado: <strong className="text-green-600">{formatCurrency(sortedFacturas.reduce((sum, f) => sum + calcularTotalPagado(f), 0))}</strong>
-                </span>
-                <span>
-                    Saldo pendiente: <strong className="text-red-600">{formatCurrency(sortedFacturas.reduce((sum, f) => sum + calcularSaldoPendiente(f), 0))}</strong>
-                </span>
-                </div>
-            </div>
-            )}
+         {/* LISTA DE FACTURAS */}
+{!loading && (
+  <div className="payments-invoices-wrapper">
+    {/* ✅ CONTENEDOR DE SCROLL UNIFICADO */}
+    <div className="payments-invoices-scroll-wrapper">
+      <div className="payments-invoices-inner">
+        
+        {/* HEADER */}
+        <div className="payments-invoices-header">
+          <span>#</span>
+          <span><FileText className="w-4 h-4" /> Factura</span>
+          <span><Calendar className="w-4 h-4" /> Emisión</span>
+          <span><IdCard className="w-4 h-4" /> Código</span>
+          <span><User className="w-4 h-4" /> Afiliado</span>
+          <span><Clock className="w-4 h-4" /> Meses Adeudo</span>
+          <span><DollarSign className="w-4 h-4" /> Total Adeudo</span>
+          <span><DollarSign className="w-4 h-4" /> Total</span>
+          <span><DollarSign className="w-4 h-4" /> Saldo</span>
+          <span>Estado</span>
+          <span>Comprobante</span> 
+          <span>Acciones</span>
         </div>
-        )}
+
+        {/* BODY */}
+        <div className="payments-invoices-body">
+          {sortedFacturas.length > 0 ? (
+            sortedFacturas.map((factura, index) => {
+              
+              const saldoPendiente = calcularSaldoPendiente(factura);
+              const puedeRecibirPago = factura.estado_factura === 'pendiente' || factura.estado_factura === 'vencida';
+              const idAfiliado = factura.usuario_afiliado?.id_usuario_afi;
+              const datosAdeudo = facturasPendientesPorAfiliado[idAfiliado];
+
+              // ✅ CALCULAR ADEUDO TOTAL (periodos anteriores + factura actual)
+              const calcularAdeudoTotal = () => {
+                // Adeudo de periodos anteriores
+                const adeudoAnterior = datosAdeudo?.total_adeudado || 0;
+                
+                // Saldo pendiente de la factura actual
+                const saldoActual = saldoPendiente > 0 ? saldoPendiente : 0;
+                
+                // Total = adeudo anterior + saldo actual
+                return adeudoAnterior + saldoActual;
+              };
+
+              const adeudoTotal = calcularAdeudoTotal();
+
+              // ✅ CALCULAR MESES DE ADEUDO (incluir mes actual si tiene saldo)
+              const calcularMesesAdeudo = () => {
+                const mesesAnteriores = datosAdeudo?.meses_adeudo || 0;
+                
+                // Si la factura actual tiene saldo pendiente, sumar 1 mes
+                const mesActual = saldoPendiente > 0 ? 1 : 0;
+                
+                return mesesAnteriores + mesActual;
+              };
+
+              const mesesAdeudoTotal = calcularMesesAdeudo();
+
+              return (
+                <div 
+                  key={factura.id_factura} 
+                  className={`payments-invoices-item ${
+                    factura.estado_factura === 'anulada' ? 'pmt-inv-anulada' : 
+                    factura.estado_factura === 'pagada' ? 'pmt-inv-pagada' :
+                    factura.estado_factura === 'vencida' ? 'pmt-inv-vencida' : ''
+                  }`}
+                >
+                  {/* Columna 1: # */}
+                  <div className="pmt-inv-col-index">
+                    <span className="pmt-inv-index-badge">{index + 1}</span>
+                  </div>
+
+                  {/* Columna 2: Número Factura */}
+                  <div className="pmt-inv-col-numero">
+                    <div className="pmt-inv-numero-icon">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <span className="pmt-inv-numero-text">{factura.num_factura}</span>
+                  </div>
+
+                  {/* Columna 3: Fecha Emisión */}
+                  <div className="pmt-inv-col-fecha">
+                    <Calendar className="w-3 h-3" />
+                    <span>{formatDateShort(factura.fecha_emision)}</span>
+                  </div>
+
+                  {/* Columna 4: Código Afiliado */}
+                  <div className="pmt-inv-col-codigo">
+                    {factura.usuario_afiliado?.cod_usuario_afi ?? '—'}
+                  </div>
+
+                  {/* Columna 5: Afiliado */}
+                  <div className="pmt-inv-col-usuario">
+                    {factura.usuario_afiliado?.usuario_sistema ? (
+                      <div className="pmt-inv-usuario-info">
+                        <span className="pmt-inv-usuario-nombre">
+                          {factura.usuario_afiliado.usuario_sistema.nombres} {factura.usuario_afiliado.usuario_sistema.apellidos}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="pmt-inv-sin-dato">-</span>
+                    )}
+                  </div>
+
+                  {/* Columna 6: Meses Adeudo - ✅ INCLUYE MES ACTUAL */}
+                  <div className="pmt-inv-col-meses-adeudo">
+                    {mesesAdeudoTotal > 0 ? (
+                      <span 
+                        className={`pmt-meses-badge ${
+                          mesesAdeudoTotal > 2 ? 'urgente' : 
+                          mesesAdeudoTotal > 0 ? 'warning' : ''
+                        }`}
+                        title={`${datosAdeudo?.meses_adeudo || 0} meses anteriores + ${saldoPendiente > 0 ? 1 : 0} mes actual`}
+                      >
+                        {mesesAdeudoTotal} {mesesAdeudoTotal === 1 ? 'mes' : 'meses'}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </div>
+                  
+                  {/* Columna 7: Total Adeudo - ✅ INCLUYE FACTURA ACTUAL */}
+                  <div className="pmt-inv-col-total-adeudo">
+                    {adeudoTotal > 0 ? (
+                      <span 
+                        className="pmt-inv-monto font-bold" 
+                        style={{ 
+                          color: adeudoTotal > saldoPendiente ? '#ef4444' : '#f59e0b' 
+                        }}
+                        title={`Adeudos anteriores: ${formatCurrency(datosAdeudo?.total_adeudado || 0)} + Factura actual: ${formatCurrency(saldoPendiente)}`}
+                      >
+                        {formatCurrency(adeudoTotal)}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </div>
+
+                  {/* Columna 8: Total Factura */}
+                  <div className="pmt-inv-col-total">
+                    <span className="pmt-inv-monto">{formatCurrency(factura.total)}</span>
+                  </div>
+
+                  {/* Columna 9: Saldo Pendiente Factura Actual */}
+                  <div className="pmt-inv-col-total">
+                    <span 
+                      className="pmt-inv-monto font-bold" 
+                      style={{ color: saldoPendiente > 0 ? '#ef4444' : '#10b981' }}
+                    >
+                      {formatCurrency(saldoPendiente)}
+                    </span>
+                  </div>
+
+                  {/* Columna 10: Estado */}
+                  <div className="pmt-inv-col-estado">
+                    {getEstadoPagoBadge(factura)}
+                  </div>
+                  
+                  {/* Columna 11: Comprobante */}
+                  <div className="pmt-inv-col-comprobante">
+                    {factura.pagos && factura.pagos.length > 0 ? (
+                      factura.pagos.some(p => p.tiene_comprobante) ? (
+                        <div className="pmt-comprobantes-container">
+                          {factura.pagos
+                            .filter(p => p.tiene_comprobante && p.estado_pago === 'REGISTRADO')
+                            .map((pago, idx) => (
+                              <button
+                                key={pago.id_pago}
+                                className="pmt-inv-btn pmt-inv-btn-edit"
+                                onClick={() => descargarComprobante(pago.id_pago)}
+                                title={`Descargar: ${pago.nombre_archivo || 'comprobante.pdf'}`}
+                              >
+                                <FileCheck className="w-4 h-4 text-green-600" />
+                                {factura.pagos.length > 1 && (
+                                  <span className="text-xs ml-1">#{idx + 1}</span>
+                                )}
+                              </button>
+                            ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">Sin comprobante</span>
+                      )
+                    ) : (
+                      <span className="text-xs text-gray-400">Sin pago</span>
+                    )}
+                  </div>
+
+                  {/* Columna 12: Acciones */}
+                  <div className="pmt-inv-col-acciones">
+                    <button 
+                      className="pmt-inv-btn pmt-inv-btn-view" 
+                      onClick={() => openModal('view-factura', factura)} 
+                      title="Ver factura y pagos"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+
+                    {permissions.canCreate && puedeRecibirPago && saldoPendiente > 0 && (
+                      <button
+                        className="pmt-inv-btn pmt-inv-btn-edit"
+                        onClick={() => openPaymentModal(factura)}
+                        title={`Registrar pago - Saldo: ${formatCurrency(saldoPendiente)} | Adeudo total: ${formatCurrency(adeudoTotal)}`}
+                        style={{ backgroundColor: '#10b981', color: 'white' }}
+                      >
+                        <DollarSign className="w-4 h-4" />
+                      </button>
+                    )}
+                    
+                    {permissions.canDelete && factura.estado_factura === 'pagada' && factura.pago && (
+                      <button
+                        className="pmt-inv-btn pmt-inv-btn-delete"
+                        onClick={() => handleAnularPagoConRegeneracion(factura)}
+                        title={`Anular pago y regenerar factura`}
+                        style={{ backgroundColor: '#ef4444', color: 'white' }}
+                      >
+                        <Ban className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="payments-invoices-empty">
+              <FileText className="pmt-inv-empty-icon" />
+              <h3>No hay facturas en este periodo</h3>
+              <p>
+                {searchTerm || filterStatus !== 'all'
+                  ? 'No se encontraron facturas con los criterios de búsqueda.'
+                  : `No hay facturas para ${formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}`
+                }
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+
+    {/* FOOTER */}
+    {sortedFacturas.length > 0 && (
+      <div className="payments-invoices-footer">
+        <button 
+          className="btn-secondary"
+          onClick={() => setPeriodoSeleccionado(null)}
+        >
+          <ArrowUpDown className="w-4 h-4 mr-2" style={{ transform: 'rotate(90deg)' }} />
+          Cambiar periodo
+        </button>
+        
+        <div className="payments-invoices-footer-stats">
+          <span>
+            Mostrando <strong>{sortedFacturas.length}</strong> facturas
+          </span>
+          <span>
+            Total facturado: <strong>{formatCurrency(sortedFacturas.reduce((sum, f) => sum + parseFloat(f.total || 0), 0))}</strong>
+          </span>
+          <span>
+            Total cobrado: <strong className="text-green-600">{formatCurrency(sortedFacturas.reduce((sum, f) => sum + calcularTotalPagado(f), 0))}</strong>
+          </span>
+          <span>
+            Saldo pendiente: <strong className="text-red-600">{formatCurrency(sortedFacturas.reduce((sum, f) => sum + calcularSaldoPendiente(f), 0))}</strong>
+          </span>
+        </div>
+      </div>
+    )}
+  </div>
+)}
 
         </div>
       )}
-
-      {/* MODAL DETALLE FACTURA CON PAGOS */}
+  {/* MODAL DETALLE FACTURA CON PAGOS */}
       {showModal && modalType === 'view-factura' && selectedPago && (
         <div className="modal-overlay">
           <div className="modal modal-factura">
@@ -1511,6 +1909,183 @@ const openPaymentModal = async (factura) => {
             </div>
 
             <div className="modal-body">
+              {/* ✅ SECCIÓN DE ADEUDOS DESPLEGABLE */}
+              {(() => {
+                const idAfiliado = selectedPago.usuario_afiliado?.id_usuario_afi;
+                const datosAdeudo = facturasPendientesPorAfiliado[idAfiliado];
+                
+                // ✅ Obtener estado de expansión desde el estado del componente
+                const estaExpandido = adeudosExpandidoPorAfiliado[idAfiliado] || false;
+                
+                // Solo mostrar si tiene adeudos
+                if (datosAdeudo && datosAdeudo.meses_adeudo >= 1) {
+                  return (
+                    <div className="factura-section adeudos-alert-section">
+                      <div className="adeudos-card">
+                        {/* Header Clickeable */}
+                        <div 
+                          className="adeudos-card-header"
+                          onClick={() => toggleAdeudos(idAfiliado)}
+                        >
+                          <div className="adeudos-header-left">
+                            <AlertCircle className="w-5 h-5" />
+                            <span>Adeudos Pendientes</span>
+                            
+                            {/* Badge de resumen en el header */}
+                            <div className="adeudos-header-badge">
+                              <span>
+                                <Clock className="w-3 h-3" />
+                                {datosAdeudo.meses_adeudo} {datosAdeudo.meses_adeudo === 1 ? 'mes' : 'meses'}
+                              </span>
+                              <span>•</span>
+                              <span>
+                                <DollarSign className="w-3 h-3" />
+                                {formatCurrency(datosAdeudo.total_adeudado)}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* Icono de toggle */}
+                          <ChevronDown 
+                            className={`w-5 h-5 adeudos-toggle-icon ${estaExpandido ? 'expanded' : ''}`}
+                          />
+                        </div>
+                        
+                        {/* Body Desplegable */}
+                        <div className={`adeudos-card-body ${estaExpandido ? 'expanded' : ''}`}>
+                          {/* Resumen compacto */}
+                          <div className="adeudos-resumen">
+                            <div className="adeudo-stat">
+                              <span className="adeudo-label">Meses</span>
+                              <span className="adeudo-value urgente">
+                                {datosAdeudo.meses_adeudo}
+                              </span>
+                            </div>
+                            <div className="adeudo-stat">
+                              <span className="adeudo-label">Total Adeudo</span>
+                              <span className="adeudo-value monto">
+                                {formatCurrency(datosAdeudo.total_adeudado)}
+                              </span>
+                            </div>
+                            <div className="adeudo-stat">
+                              <span className="adeudo-label">Facturas</span>
+                              <span className="adeudo-value">
+                                {datosAdeudo.total_facturas_pendientes}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Lista de facturas pendientes */}
+                          {datosAdeudo.facturas && datosAdeudo.facturas.length > 0 && (
+                            <div className="adeudos-facturas-list">
+                              <div className="adeudos-list-title">
+                                <FileText className="w-4 h-4" />
+                                Detalle de Facturas Pendientes
+                              </div>
+                              
+                              {datosAdeudo.facturas.map((factura, index) => (
+                                <div key={factura.id_factura} className="adeudo-factura-item">
+                                  {/* Header compacto */}
+                                  <div className="adeudo-factura-header">
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                      <span className="adeudo-factura-numero">
+                                        {factura.num_factura}
+                                      </span>
+                                      <span className="adeudo-factura-periodo">
+                                        {factura.periodo}
+                                      </span>
+                                    </div>
+                                    <span className={`adeudo-factura-estado ${factura.estado_factura}`}>
+                                      {factura.estado_factura === 'vencida' ? (
+                                        <>
+                                          <Clock className="w-3 h-3" />
+                                          Vencida
+                                        </>
+                                      ) : (
+                                        <>
+                                          <AlertCircle className="w-3 h-3" />
+                                          Pendiente
+                                        </>
+                                      )}
+                                    </span>
+                                  </div>
+                                  
+                                  {/* Detalles en una fila */}
+                                  <div className="adeudo-factura-detalles">
+                                    <div className="adeudo-factura-info">
+                                      <Calendar className="w-3 h-3 text-gray-400" />
+                                      <span className="info-label">Emisión:</span>
+                                      <span className="info-value">{formatDateShort(factura.fecha_emision)}</span>
+                                    </div>
+                                    
+                                    <div className="adeudo-factura-info-divider"></div>
+                                    
+                                    <div className="adeudo-factura-info">
+                                      <Clock className="w-3 h-3 text-gray-400" />
+                                      <span className="info-label">Días:</span>
+                                      <span className="info-value urgente">
+                                        {factura.dias_transcurridos}
+                                      </span>
+                                    </div>
+                                    
+                                    <div className="adeudo-factura-info-divider"></div>
+                                    
+                                    <div className="adeudo-factura-info">
+                                      <DollarSign className="w-3 h-3 text-gray-400" />
+                                      <span className="info-label">Total:</span>
+                                      <span className="info-value">
+                                        {formatCurrency(factura.total_factura)}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Montos en una fila */}
+                                  <div className="adeudo-factura-montos">
+                                    <div className="adeudo-monto-item">
+                                      <span className="label">Saldo</span>
+                                      <span className="value">{formatCurrency(factura.saldo_pendiente)}</span>
+                                    </div>
+                                    
+                                    {factura.mora_aplicable && factura.mora_monto > 0 && (
+                                      <>
+                                        <span style={{ color: '#d1d5db' }}>+</span>
+                                        <div className="adeudo-monto-item mora">
+                                          <span className="label">Mora</span>
+                                          <span className="value">{formatCurrency(factura.mora_monto)}</span>
+                                        </div>
+                                      </>
+                                    )}
+                                    
+                                    <span style={{ color: '#d1d5db' }}>=</span>
+                                    
+                                    <div className="adeudo-monto-item total">
+                                      <span className="label">Total</span>
+                                      <span className="value">{formatCurrency(factura.total_con_mora)}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Mensaje de recomendación */}
+                          <div className="adeudos-recomendacion">
+                            <AlertCircle className="w-4 h-4" />
+                            <p>
+                              Se recomienda ponerse al día con los pagos anteriores para evitar acumulación de mora.
+                              {datosAdeudo.facturas?.some(f => f.mora_aplicable) && (
+                                <span className="highlight"> Algunas facturas ya tienen mora aplicable.</span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+      
               {/* SECCIÓN DE INFORMACIÓN DE LA FACTURA */}
               <div className="factura-section">
                 <h4 className="section-title">
@@ -1685,107 +2260,122 @@ const openPaymentModal = async (factura) => {
                   </div>
                 </div>
               )}
-
-              {/* SECCIÓN DE PAGO */}
-              {selectedPago.pago && (
+              {/* SECCIÓN DE PAGOS - Mostrar historial de todos los pagos */}
+              {selectedPago.pagos && selectedPago.pagos.length > 0 && (
                 <div className="factura-section">
                   <h4 className="section-title">
                     <DollarSign className="w-4 h-4" />
-                    Información del Pago
+                    Historial de Pagos ({selectedPago.pagos.length})
                   </h4>
                   <div className="pagos-list">
-                    <div 
-                      className={`pago-item ${selectedPago.pago.estado_pago === 'ANULADO' ? 'pago-anulado' : ''}`}
-                    >
-                      {/* CABECERA DEL PAGO */}
-                      <div className="pago-header">
-                        <div className="pago-header-left">
-                          <span className="pago-numero">Pago #{selectedPago.pago.id_pago}</span>
-                        </div>
-                        {getStatusBadge(selectedPago.pago.estado_pago)}
-                      </div>
-                      
-                      {/* DETALLES DEL PAGO */}
-                      <div className="pago-details">
-                        <div className="pago-detail">
-                          <span className="pago-label">
-                            <Calendar className="w-3 h-3" />
-                            Fecha:
-                          </span>
-                          <span className="pago-value">{formatDate(selectedPago.pago.fecha_pago)}</span>
-                        </div>
-                        
-                        <div className="pago-detail">
-                          <span className="pago-label">
-                            <DollarSign className="w-3 h-3" />
-                            Monto:
-                          </span>
-                          <span className="pago-value font-bold text-green-600">
-                            {formatCurrency(selectedPago.pago.monto_pago)}
-                          </span>
-                        </div>
-                        
-                        <div className="pago-detail">
-                          <span className="pago-label">
-                            {getMetodoIcon(selectedPago.pago.metodo_pago)}
-                            Método:
-                          </span>
-                          <span className="pago-value">
-                            {selectedPago.pago.metodo_pago}
-                          </span>
+                    {selectedPago.pagos.map((pago, index) => (
+                      <div 
+                        key={pago.id_pago} 
+                        className={`pago-item ${pago.estado_pago === 'ANULADO' ? 'pago-anulado' : ''}`}
+                      >
+                        {/* CABECERA DEL PAGO */}
+                        <div className="pago-header">
+                          <div className="pago-header-left">
+                            <span className="pago-numero">Pago #{pago.id_pago}</span>
+                          </div>
+                          {getStatusBadge(pago.estado_pago)}
                         </div>
 
-                        {/* CAJERO */}
-                        {selectedPago.pago.cajero && (
+                        {/* DETALLES DEL PAGO */}
+                        <div className="pago-details">
                           <div className="pago-detail">
                             <span className="pago-label">
-                              <User className="w-3 h-3" />
-                              Cajero:
+                              <Calendar className="w-3 h-3" /> Fecha
                             </span>
                             <span className="pago-value">
-                              {selectedPago.pago.cajero}
+                              {formatDate(pago.fecha_pago)}
                             </span>
                           </div>
-                        )}
-                      </div>
 
-                      {/* OBSERVACIONES */}
-                      {selectedPago.pago.observaciones && (
-                        <div className="pago-observaciones">
-                          <span className="pago-obs-label">
-                            <FileText className="w-3 h-3" />
-                            Observaciones:
-                          </span>
-                          <p className="pago-obs-text">{selectedPago.pago.observaciones}</p>
-                        </div>
-                      )}
-
-                      {/* INFORMACIÓN DE ANULACIÓN */}
-                      {selectedPago.pago.estado_pago === 'ANULADO' && (
-                        <div className="pago-anulacion-info">
-                          <div className="anulacion-header">
-                            <Ban className="w-4 h-4" />
-                            <span>Pago Anulado</span>
+                          <div className="pago-detail">
+                            <span className="pago-label">
+                              <DollarSign className="w-3 h-3" /> Monto
+                            </span>
+                            <span className="pago-value font-bold text-green-600">
+                              {formatCurrency(pago.monto_pago)}
+                            </span>
                           </div>
-                          {selectedPago.pago.fecha_anulacion && (
-                            <div className="anulacion-detail">
-                              <span className="anulacion-label">Fecha de anulación:</span>
-                              <span className="anulacion-value">
-                                {formatDate(selectedPago.pago.fecha_anulacion)}
+
+                          <div className="pago-detail">
+                            <span className="pago-label">
+                              {getMetodoIcon(pago.metodo_pago)} Método
+                            </span>
+                            <span className="pago-value">
+                              {pago.metodo_pago}
+                            </span>
+                          </div>
+
+                          {/* CAJERO */}
+                          {pago.cajero && (
+                            <div className="pago-detail">
+                              <span className="pago-label">
+                                <User className="w-3 h-3" /> Cajero
+                              </span>
+                              <span className="pago-value">
+                                {pago.cajero}
                               </span>
                             </div>
                           )}
-                          {selectedPago.pago.motivo_anulacion && (
-                            <div className="anulacion-detail">
-                              <span className="anulacion-label">Motivo:</span>
-                              <span className="anulacion-value">{selectedPago.pago.motivo_anulacion}</span>
-                            </div>
-                          )}
                         </div>
-                      )}
-                    </div>
+
+                        {/* OBSERVACIONES */}
+                        {pago.observaciones && (
+                          <div className="pago-observaciones">
+                            <span className="pago-obs-label">
+                              <FileText className="w-3 h-3" /> Observaciones
+                            </span>
+                            <p className="pago-obs-text">{pago.observaciones}</p>
+                          </div>
+                        )}
+
+                        {/* INFORMACIÓN DE ANULACIÓN */}
+                        {pago.estado_pago === 'ANULADO' && (
+                          <div className="pago-anulacion-info">
+                            <div className="anulacion-header">
+                              <Ban className="w-4 h-4" />
+                              <span>Pago Anulado</span>
+                            </div>
+
+                            {pago.fecha_anulacion && (
+                              <div className="anulacion-detail">
+                                <span className="anulacion-label">Fecha de anulación</span>
+                                <span className="anulacion-value">
+                                  {formatDate(pago.fecha_anulacion)}
+                                </span>
+                              </div>
+                            )}
+
+                            {pago.motivo_anulacion && (
+                              <div className="anulacion-detail">
+                                <span className="anulacion-label">Motivo</span>
+                                <span className="anulacion-value">{pago.motivo_anulacion}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* BOTÓN DESCARGAR COMPROBANTE */}
+                        {pago.tiene_comprobante && (
+                          <div className="pago-comprobante-btn">
+                            <button
+                              className="btn-secondary"
+                              onClick={() => descargarComprobante(pago.id_pago)}
+                              title={pago.nombre_archivo || 'Descargar comprobante'}
+                            >
+                              <FileCheck className="w-4 h-4 mr-2" />
+                              Descargar Comprobante
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  
+
                   {/* RESUMEN DE PAGOS */}
                   <div className="pagos-summary">
                     <div className="summary-header">
@@ -1793,32 +2383,28 @@ const openPaymentModal = async (factura) => {
                       <span>Resumen de Pago</span>
                     </div>
                     <div className="summary-row">
-                      <span>Total Factura:</span>
+                      <span>Total Factura</span>
                       <span className="font-bold">{formatCurrency(selectedPago.total)}</span>
                     </div>
                     <div className="summary-row pagado">
-                      <span>Total Pagado:</span>
+                      <span>Total Pagado</span>
                       <span className="font-bold text-green-600">
                         {formatCurrency(selectedPago.monto_pagado)}
                       </span>
                     </div>
                     <div className="summary-row total">
-                      <span>Saldo Pendiente:</span>
-                      <span className={`font-bold ${
-                        selectedPago.saldo_pendiente > 0 ? 'text-red-600' : 'text-green-600'
-                      }`}>
+                      <span>Saldo Pendiente</span>
+                      <span className={`font-bold ${selectedPago.saldo_pendiente > 0 ? 'text-red-600' : 'text-green-600'}`}>
                         {formatCurrency(selectedPago.saldo_pendiente)}
                       </span>
                     </div>
-                    
+
                     {/* INDICADOR VISUAL DEL PROGRESO */}
                     <div className="payment-progress">
                       <div className="progress-bar">
                         <div 
-                          className="progress-fill"
-                          style={{
-                            width: `${(selectedPago.monto_pagado / parseFloat(selectedPago.total)) * 100}%`
-                          }}
+                          className="progress-fill" 
+                          style={{ width: `${(selectedPago.monto_pagado / parseFloat(selectedPago.total)) * 100}%` }}
                         />
                       </div>
                       <span className="progress-percentage">
@@ -1829,16 +2415,15 @@ const openPaymentModal = async (factura) => {
                 </div>
               )}
 
-              {/* MENSAJE SI NO HAY PAGO */}
-              {!selectedPago.pago && (
+              {/* MENSAJE SI NO HAY PAGOS */}
+              {(!selectedPago.pagos || selectedPago.pagos.length === 0) && (
                 <div className="factura-section">
                   <div className="empty-state-small">
                     <AlertCircle className="w-8 h-8 text-gray-400" />
-                    <p>No hay pago registrado para esta factura</p>
+                    <p>No hay pagos registrados para esta factura</p>
                   </div>
                 </div>
               )}
-
             </div>
 
             <div className="modal-footer">
@@ -1851,14 +2436,15 @@ const openPaymentModal = async (factura) => {
       )}
 
 
+
 {/* ==================== MODAL CREAR PAGO CON MORA ==================== */}
-{showCreateModal && (
+{showCreateModal && selectedFactura && (
   <div className="modal-overlay">
     <div className="modal modal-payment">
       <div className="modal-header">
         <h3>
           <Plus className="w-5 h-5 inline mr-2" />
-          Registrar Nuevo Pago
+          Registrar Pago - {selectedFactura.num_factura}
         </h3>
         <button className="modal-close" onClick={closeCreateModal}>
           <X className="w-5 h-5" />
@@ -1866,250 +2452,456 @@ const openPaymentModal = async (factura) => {
       </div>
 
       <div className="modal-body">
-        {/* Información de la factura */}
+        {/* ✅ SECCIÓN DE FACTURAS PENDIENTES DESPLEGABLE */}
+        {(() => {
+          const idAfiliado = selectedFactura.usuario_afiliado?.id_usuario_afi;
+          const datosAdeudo = facturasPendientesPorAfiliado[idAfiliado];
+          
+          if (datosAdeudo && datosAdeudo.facturas && datosAdeudo.facturas.length > 0) {
+            return (
+              <div className="payment-facturas-pendientes-section">
+                {/* Header Clickeable */}
+                <div 
+                  className="payment-pendientes-header"
+                  onClick={() => setFacturasPendientesExpandido(!facturasPendientesExpandido)}
+                >
+                  <div className="payment-pendientes-header-left">
+                    <AlertCircle className="w-5 h-5" />
+                    <span>Facturas Pendientes de Periodos Anteriores</span>
+                  </div>
+                  
+                  <div className="payment-pendientes-header-right">
+                    <div className="payment-pendientes-badge">
+                      <span className="payment-badge-count">{datosAdeudo.total_facturas_pendientes}</span>
+                      <span className="payment-badge-divider">|</span>
+                      <span className="payment-badge-total">{formatCurrency(datosAdeudo.total_adeudado)}</span>
+                    </div>
+                    <ChevronDown 
+                      className={`payment-toggle-icon ${facturasPendientesExpandido ? 'expanded' : ''}`}
+                    />
+                  </div>
+                </div>
+                
+                {/* Body Desplegable */}
+                <div className={`payment-pendientes-body ${facturasPendientesExpandido ? 'expanded' : ''}`}>
+                  {/* Acciones rápidas */}
+                  <div className="payment-facturas-acciones">
+                    <button 
+                      className="payment-btn-accion payment-btn-seleccionar"
+                      onClick={seleccionarTodasFacturas}
+                      title="Seleccionar todas las facturas pendientes"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      Seleccionar Todas
+                    </button>
+                    <button 
+                      className="payment-btn-accion payment-btn-deseleccionar"
+                      onClick={deseleccionarFacturas}
+                      title="Deseleccionar solo las facturas opcionales"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Deseleccionar
+                    </button>
+                  </div>
+
+                  {/* Lista de facturas */}
+                  <div className="payment-seleccion-list">
+                    {datosAdeudo.facturas.map((factura) => {
+                      const estaSeleccionada = facturasSeleccionadas[factura.id_factura] || false;
+                      
+                      return (
+                        <div 
+                          key={factura.id_factura}
+                          className={`payment-factura-item ${estaSeleccionada ? 'selected' : ''}`}
+                          onClick={() => toggleSeleccionFactura(factura.id_factura, false)}
+                        >
+                          <input
+                            type="checkbox"
+                            className="payment-factura-checkbox"
+                            checked={estaSeleccionada}
+                            onChange={() => {}}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          
+                          <div className="payment-factura-content">
+                            <div className="payment-factura-main">
+                              <div className="payment-factura-info-left">
+                                <span className="payment-factura-numero">{factura.num_factura}</span>
+                                <span className="payment-factura-periodo">Periodo: {factura.periodo}</span>
+                              </div>
+                              
+                              <div className="payment-factura-info-right">
+                                <span className={`payment-factura-estado payment-estado-${factura.estado_factura.toLowerCase()}`}>
+                                  {factura.estado_factura}
+                                </span>
+                                <span className="payment-factura-monto">{formatCurrency(factura.total_con_mora)}</span>
+                              </div>
+                            </div>
+                            
+                            <div className="payment-factura-detalles">
+                              <div className="payment-detalle-item">
+                                <span className="payment-detalle-icon">📅</span>
+                                <span className="payment-detalle-text">{formatDateShort(factura.fecha_emision)}</span>
+                              </div>
+                              <div className="payment-detalle-item">
+                                <span className="payment-detalle-icon">⏰</span>
+                                <span className="payment-detalle-text">{factura.dias_transcurridos} días</span>
+                              </div>
+                              {factura.mora_aplicable && (
+                                <div className="payment-detalle-item payment-detalle-mora">
+                                  <span className="payment-detalle-icon">⚠️</span>
+                                  <span className="payment-detalle-text">Mora: {formatCurrency(factura.mora_monto)}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Resumen de selección */}
+                  {Object.values(facturasSeleccionadas).filter(Boolean).length > 0 && (
+                    <div className="payment-seleccion-resumen">
+                      <div className="payment-resumen-header">
+                        <Calculator className="w-5 h-5" />
+                        <span>Resumen de Facturas Seleccionadas</span>
+                      </div>
+                      <div className="payment-resumen-content">
+                        <div className="payment-resumen-item">
+                          <span className="payment-resumen-label">Facturas anteriores:</span>
+                          <span className="payment-resumen-value">
+                            {Object.values(facturasSeleccionadas).filter(Boolean).length}
+                          </span>
+                        </div>
+                        <div className="payment-resumen-item payment-resumen-total">
+                          <span className="payment-resumen-label">Subtotal periodos anteriores:</span>
+                          <span className="payment-resumen-value">{formatCurrency(montoPagoMasivo)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
+        {/* ========== INFORMACIÓN DE LA FACTURA ACTUAL ========== */}
         {selectedFactura && (
-          <div className="factura-info-card">
-            <div className="factura-info-header">
-              <FileText className="w-5 h-5 text-blue-600" style={{ marginRight: '8px' }} />
-              <h4>Factura: {selectedFactura.num_factura}</h4>
+          <div className="payment-factura-actual-section">
+            <div className="payment-factura-actual-header">
+              <div className="payment-header-left">
+                <FileText className="w-5 h-5" />
+                <h4>Factura del Periodo Actual</h4>
+              </div>
+              <span className="payment-badge-obligatorio">OBLIGATORIO</span>
             </div>
 
             {loadingResumen ? (
-              <div className="resumen-loading">
-                <RefreshCw className="w-6 h-6 animate-spin" style={{ margin: '0 auto' }} />
+              <div className="payment-resumen-loading">
+                <RefreshCw className="w-6 h-6 animate-spin" />
                 <p>Calculando resumen...</p>
               </div>
             ) : resumenPago ? (
               <>
-                {/* ⭐ INFORMACIÓN DE MORA */}
-                {resumenPago?.mora?.aplica && getSafeValue(resumenPago.mora?.monto) > 0 && (
-                  <div className="mora-card">
-                    <div className="mora-card-header">
-                      <AlertCircle className="w-4 h-4 text-orange-600" style={{ marginRight: '6px' }} />
-                      <span>⚠️ Mora por Pago Tardío</span>
+                {/* Tarjeta compacta de la factura actual */}
+                <div className="payment-factura-actual-card">
+                  <div className="payment-factura-actual-info">
+                    <div className="payment-info-row">
+                      <span className="payment-info-label">Número de Factura:</span>
+                      <span className="payment-info-value">{selectedFactura.num_factura}</span>
                     </div>
-                    <div className="mora-card-body">
-                      <p><strong>Monto de mora:</strong> {formatCurrencySafe(resumenPago.mora.monto)}</p>
-                      <p><strong>Días transcurridos:</strong> {getSafeValue(resumenPago.mora.dias_transcurridos, 0)} días desde emisión</p>
-                      <p><strong>Días de mora:</strong> {getSafeValue(resumenPago.mora.dias_mora_efectivos, 0)} días efectivos</p>
-                      <p className="mora-detalle">{resumenPago.mora.detalle || 'Sin detalles'}</p>
+                    <div className="payment-info-row">
+                      <span className="payment-info-label">Periodo:</span>
+                      <span className="payment-info-value">{selectedFactura.periodo}</span>
+                    </div>
+                    <div className="payment-info-row">
+                      <span className="payment-info-label">Fecha de Emisión:</span>
+                      <span className="payment-info-value">{formatDateShort(selectedFactura.fecha_emision)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ⚠️ ALERTAS DE MORA */}
+                {resumenPago?.mora?.aplica && getSafeValue(resumenPago.mora?.monto) > 0 && (
+                  <div className="payment-alert-card payment-alert-warning">
+                    <div className="payment-alert-header">
+                      <AlertCircle className="w-5 h-5" />
+                      <span>Mora por Pago Tardío</span>
+                    </div>
+                    <div className="payment-alert-content">
+                      <div className="payment-alert-row">
+                        <span className="payment-alert-label">Monto de mora:</span>
+                        <span className="payment-alert-value payment-alert-value-danger">
+                          {formatCurrencySafe(resumenPago.mora.monto)}
+                        </span>
+                      </div>
+                      <div className="payment-alert-details">
+                        <span>• {getSafeValue(resumenPago.mora.dias_transcurridos, 0)} días desde emisión</span>
+                        <span>• {getSafeValue(resumenPago.mora.dias_mora_efectivos, 0)} días de mora efectivos</span>
+                      </div>
+                      {resumenPago.mora.detalle && (
+                        <p className="payment-alert-note">{resumenPago.mora.detalle}</p>
+                      )}
                     </div>
                   </div>
                 )}
 
-                {/* ⭐ DETALLES DE MULTAS */}
+                {/* 🚨 ALERTAS DE MULTAS */}
                 {resumenPago.multas?.tiene_multas && resumenPago.multas?.detalles?.length > 0 && (
-                  <div className="multas-card">
-                    <div className="multas-card-header">
-                      <AlertCircle className="w-4 h-4 text-red-600" style={{ marginRight: '6px' }} />
+                  <div className="payment-alert-card payment-alert-danger">
+                    <div className="payment-alert-header">
+                      <AlertCircle className="w-5 h-5" />
                       <span>Multas Incluidas ({resumenPago.multas.cantidad || 0})</span>
                     </div>
-                    <div className="multas-list">
-                      {resumenPago.multas.detalles.map((multa, idx) => (
-                        <div key={idx} className="multa-item">
-                          <span>{multa.descripcion || 'Multa'}</span>
-                          <span>{formatCurrencySafe(multa.subtotal)}</span>
-                        </div>
-                      ))}
-                      <div className="multas-total">
-                        <span>Total Multas (+ IVA {getSafeValue(resumenPago.iva?.porcentaje, 0).toFixed(1)}%):</span>
-                        <span>{formatCurrencySafe(resumenPago.multas.total_con_iva)}</span>
+                    <div className="payment-alert-content">
+                      <div className="payment-multas-list-compact">
+                        {resumenPago.multas.detalles.map((multa, idx) => (
+                          <div key={idx} className="payment-multa-item-compact">
+                            <span className="payment-multa-desc">{multa.descripcion || 'Multa'}</span>
+                            <span className="payment-multa-monto">{formatCurrencySafe(multa.subtotal)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="payment-multas-total-compact">
+                        <span className="payment-multas-total-label">
+                          Total Multas (+ IVA {getSafeValue(resumenPago.iva?.porcentaje, 0).toFixed(1)}%):
+                        </span>
+                        <span className="payment-multas-total-value">
+                          {formatCurrencySafe(resumenPago.multas.total_con_iva)}
+                        </span>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* ⭐ RESUMEN DE OPCIONES */}
-                <div className="opciones-pago-container">
-                  <h5 className="opciones-pago-title">💰 Opciones de Pago</h5>
+                {/* 💰 OPCIONES DE PAGO - MEJORADO */}
+                <div className="payment-opciones-section">
+                  <h5 className="payment-opciones-title">
+                    <DollarSign className="w-5 h-5" />
+                    Opciones de Pago
+                  </h5>
 
-                  <table className="resumen-table">
-                    <tbody>
-                      {/* OPCIÓN 1: TODO */}
-                      <tr>
-                        <td colSpan="2" className="opcion-header-completa">
-                          📊 Opción 1: Pagar TODO {resumenPago.multas?.tiene_multas && '(incluye multas)'}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td>Subtotal:</td>
-                        <td>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.subtotal)}</td>
-                      </tr>
-                      {getSafeValue(resumenPago.totales?.opcion_completa?.descuento) > 0 && (
-                        <tr className="descuento-row">
-                          <td>- Descuento:</td>
-                          <td>{formatCurrencySafe(resumenPago.totales.opcion_completa.descuento)}</td>
-                        </tr>
-                      )}
-                      <tr>
-                        <td>Base imponible:</td>
-                        <td>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.base)}</td>
-                      </tr>
-                      <tr>
-                        <td>+ IVA ({getSafeValue(resumenPago.iva?.porcentaje, 0).toFixed(1)}%):</td>
-                        <td>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.iva)}</td>
-                      </tr>
-                      <tr className="subtotal-row">
-                        <td>= Subtotal con IVA:</td>
-                        <td>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.subtotal_con_iva)}</td>
-                      </tr>
-                      {resumenPago.mora?.aplica && getSafeValue(resumenPago.mora?.monto) > 0 && (
-                        <tr className="mora-row">
-                          <td>+ Mora:</td>
-                          <td>{formatCurrencySafe(resumenPago.mora.monto)}</td>
-                        </tr>
-                      )}
-                      <tr className="total-final-completa">
-                        <td>TOTAL A PAGAR:</td>
-                        <td>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.total_final)}</td>
-                      </tr>
+                  <div className="payment-opciones-grid">
+                    {/* OPCIÓN 1: PAGO COMPLETO */}
+                    <div className="payment-opcion-card payment-opcion-completa">
+                      <div className="payment-opcion-header">
+                        <div className="payment-opcion-title">
+                          <span className="payment-opcion-icon">✅</span>
+                          <span>Opción 1: Pagar TODO</span>
+                        </div>
+                        {resumenPago.multas?.tiene_multas && (
+                          <span className="payment-opcion-badge">Incluye multas</span>
+                        )}
+                      </div>
+                      
+                      <div className="payment-opcion-desglose">
+                        <div className="payment-desglose-row">
+                          <span>Subtotal:</span>
+                          <span>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.subtotal)}</span>
+                        </div>
+                        
+                        {getSafeValue(resumenPago.totales?.opcion_completa?.descuento) > 0 && (
+                          <div className="payment-desglose-row payment-desglose-descuento">
+                            <span>- Descuento:</span>
+                            <span>{formatCurrencySafe(resumenPago.totales.opcion_completa.descuento)}</span>
+                          </div>
+                        )}
+                        
+                        <div className="payment-desglose-row">
+                          <span>Base imponible:</span>
+                          <span>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.base)}</span>
+                        </div>
+                        
+                        <div className="payment-desglose-row">
+                          <span>+ IVA ({getSafeValue(resumenPago.iva?.porcentaje, 0).toFixed(1)}%):</span>
+                          <span>{formatCurrencySafe(resumenPago.totales?.opcion_completa?.iva)}</span>
+                        </div>
+                        
+                        {resumenPago.mora?.aplica && getSafeValue(resumenPago.mora?.monto) > 0 && (
+                          <div className="payment-desglose-row payment-desglose-mora">
+                            <span>+ Mora:</span>
+                            <span>{formatCurrencySafe(resumenPago.mora.monto)}</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="payment-opcion-total">
+                        <span>TOTAL A PAGAR:</span>
+                        <span className="payment-total-amount">
+                          {formatCurrencySafe(resumenPago.totales?.opcion_completa?.total_final)}
+                        </span>
+                      </div>
+                    </div>
 
-                      {/* OPCIÓN 2: SIN MULTAS */}
-                      {resumenPago.multas?.tiene_multas && (
-                        <>
-                          <tr className="table-separator"></tr>
-                          <tr>
-                            <td colSpan="2" className="opcion-header-parcial">
-                              ✨ Opción 2: Pagar SIN multas
-                            </td>
-                          </tr>
-                          <tr>
-                            <td>Subtotal (sin multas):</td>
-                            <td>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.subtotal)}</td>
-                          </tr>
+                    {/* OPCIÓN 2: SIN MULTAS */}
+                    {resumenPago.multas?.tiene_multas && getSafeValue(resumenPago.totales?.opcion_sin_multas?.total_final, 0) > 0 && (
+                      <div className="payment-opcion-card payment-opcion-parcial">
+                        <div className="payment-opcion-header">
+                          <div className="payment-opcion-title">
+                            <span className="payment-opcion-icon">⚡</span>
+                            <span>Opción 2: Pagar SIN Multas</span>
+                          </div>
+                          <span className="payment-opcion-badge payment-opcion-badge-warning">Multas quedan pendientes</span>
+                        </div>
+                        
+                        <div className="payment-opcion-desglose">
+                          <div className="payment-desglose-row">
+                            <span>Subtotal (sin multas):</span>
+                            <span>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.subtotal)}</span>
+                          </div>
+                          
                           {getSafeValue(resumenPago.totales?.opcion_sin_multas?.descuento) > 0 && (
-                            <tr className="descuento-row">
-                              <td>- Descuento:</td>
-                              <td>{formatCurrencySafe(resumenPago.totales.opcion_sin_multas.descuento)}</td>
-                            </tr>
+                            <div className="payment-desglose-row payment-desglose-descuento">
+                              <span>- Descuento:</span>
+                              <span>{formatCurrencySafe(resumenPago.totales.opcion_sin_multas.descuento)}</span>
+                            </div>
                           )}
-                          <tr>
-                            <td>Base imponible:</td>
-                            <td>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.base)}</td>
-                          </tr>
-                          <tr>
-                            <td>+ IVA ({getSafeValue(resumenPago.iva?.porcentaje, 0).toFixed(1)}%):</td>
-                            <td>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.iva)}</td>
-                          </tr>
-                          <tr className="subtotal-row">
-                            <td>= Subtotal con IVA:</td>
-                            <td>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.subtotal_con_iva)}</td>
-                          </tr>
+                          
+                          <div className="payment-desglose-row">
+                            <span>Base imponible:</span>
+                            <span>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.base)}</span>
+                          </div>
+                          
+                          <div className="payment-desglose-row">
+                            <span>+ IVA ({getSafeValue(resumenPago.iva?.porcentaje, 0).toFixed(1)}%):</span>
+                            <span>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.iva)}</span>
+                          </div>
+                          
                           {resumenPago.mora?.aplica && getSafeValue(resumenPago.mora?.monto) > 0 && (
-                            <tr className="mora-row">
-                              <td>+ Mora:</td>
-                              <td>{formatCurrencySafe(resumenPago.mora.monto)}</td>
-                            </tr>
+                            <div className="payment-desglose-row payment-desglose-mora">
+                              <span>+ Mora:</span>
+                              <span>{formatCurrencySafe(resumenPago.mora.monto)}</span>
+                            </div>
                           )}
-                          <tr className="total-final-parcial">
-                            <td>TOTAL A PAGAR:</td>
-                            <td>{formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.total_final)}</td>
-                          </tr>
-                          <tr>
-                            <td colSpan="2" className="multas-pendientes-info">
-                              💡 Multas pendientes: {formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.multas_pendientes)}
-                            </td>
-                          </tr>
-                        </>
-                      )}
-                    </tbody>
-                  </table>
+                        </div>
+                        
+                        <div className="payment-opcion-total">
+                          <span>TOTAL A PAGAR:</span>
+                          <span className="payment-total-amount">
+                            {formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.total_final)}
+                          </span>
+                        </div>
+                        
+                        <div className="payment-opcion-warning">
+                          <span>⚠️ Quedarán pendientes: {formatCurrencySafe(resumenPago.totales?.opcion_sin_multas?.multas_pendientes)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {resumenPago.recomendacion?.mostrar_opciones && (
-                    <div className="recomendacion-box">
-                      💡 {resumenPago.recomendacion?.mensaje || 'Seleccione una opción de pago'}
+                    <div className="payment-recomendacion-box">
+                      <span className="payment-recomendacion-icon">💡</span>
+                      <span>{resumenPago.recomendacion?.mensaje || 'Seleccione una opción de pago'}</span>
                     </div>
                   )}
                 </div>
-
-              
               </>
             ) : (
-              <p className="resumen-error">No se pudo cargar el resumen del pago</p>
+              <p className="payment-resumen-error">No se pudo cargar el resumen del pago</p>
             )}
           </div>
         )}
-        {/*  MONTO PERSONALIZADO */}
-        <div className="form-group">
-          <label>
-            <DollarSign className="w-4 h-4 mr-1" />
-            Monto a Pagar *
-          </label>
 
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            className={`form-input ${
-              parseFloat(nuevoPago.monto_pago) >
-              getSafeValue(resumenPago.totales?.opcion_completa?.total_final, 0)
-                ? 'error'
-                : ''
-            }`}
-            value={nuevoPago.monto_pago}
-            onChange={(e) =>
-              setNuevoPago({ ...nuevoPago, monto_pago: e.target.value })
-            }
-            placeholder="0.00"
-          />
+        {/* ========== FORMULARIO DE PAGO ========== */}
+        <div className="payment-form-section">
+          <h5 className="payment-form-title">
+            <DollarSign className="w-5 h-5" />
+            Detalles del Pago
+          </h5>
 
-          {parseFloat(nuevoPago.monto_pago) >
-            getSafeValue(resumenPago.totales?.opcion_completa?.total_final, 0) && (
-            <p className="form-error">
-              ⚠️ El monto excede el total de la factura
-            </p>
-          )}
+          {/* Monto a Pagar */}
+          <div className="payment-form-group">
+            <label className="payment-form-label">
+              Monto a Pagar *
+              <span className="payment-label-hint">(Puedes ajustar el monto manualmente)</span>
+            </label>
 
-          <small className="form-helper">
-            💡 Puede ingresar un monto personalizado o usar los botones de abajo
-          </small>
-        </div>
+            <div className="payment-input-with-icon">
+              <DollarSign className="payment-input-icon" />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className={`payment-form-input ${
+                  parseFloat(nuevoPago.monto_pago) >
+                  getSafeValue(resumenPago.totales?.opcion_completa?.total_final, 0)
+                    ? 'payment-input-error'
+                    : ''
+                }`}
+                value={nuevoPago.monto_pago}
+                onChange={(e) =>
+                  setNuevoPago({ ...nuevoPago, monto_pago: e.target.value })
+                }
+                placeholder="0.00"
+              />
+            </div>
 
+            {parseFloat(nuevoPago.monto_pago) >
+              getSafeValue(resumenPago.totales?.opcion_completa?.total_final, 0) && (
+              <p className="payment-form-error-message">
+                <AlertCircle className="w-4 h-4" />
+                El monto excede el total de la factura
+              </p>
+            )}
+          </div>
 
+          {/* Método de Pago */}
+          <div className="payment-form-group">
+            <label className="payment-form-label">Método de Pago *</label>
+            <select
+              className="payment-form-input"
+              value={nuevoPago.metodo_pago}
+              onChange={(e) => setNuevoPago({ ...nuevoPago, metodo_pago: e.target.value })}
+            >
+              <option value="EFECTIVO">💵 Efectivo</option>
+              <option value="TRANSFERENCIA">🏦 Transferencia Bancaria</option>
+              <option value="TARJETA">💳 Tarjeta</option>
+            </select>
+          </div>
 
-        {/* Método de pago */}
-        <div className="form-group">
-          <label>Método de Pago *</label>
-          <select
-            className="form-input"
-            value={nuevoPago.metodo_pago}
-            onChange={(e) => setNuevoPago({ ...nuevoPago, metodo_pago: e.target.value })}
-          >
-            <option value="EFECTIVO">Efectivo</option>
-            <option value="TRANSFERENCIA">Transferencia</option>
-            <option value="TARJETA">Tarjeta</option>
-          </select>
-        </div>
-
-        {/* Observaciones */}
-        <div className="form-group">
-          <label>Observaciones</label>
-          <textarea
-            className="form-input"
-            rows="2"
-            value={nuevoPago.observaciones}
-            onChange={(e) => setNuevoPago({ ...nuevoPago, observaciones: e.target.value })}
-            placeholder="Observaciones adicionales..."
-          />
+          {/* Observaciones */}
+          <div className="payment-form-group">
+            <label className="payment-form-label">Observaciones (Opcional)</label>
+            <textarea
+              className="payment-form-input payment-form-textarea"
+              rows="3"
+              value={nuevoPago.observaciones}
+              onChange={(e) => setNuevoPago({ ...nuevoPago, observaciones: e.target.value })}
+              placeholder="Ingresa notas adicionales sobre este pago..."
+            />
+          </div>
         </div>
       </div>
 
-      {/* ⭐ BOTONES */}
-      <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-        <button className="btn-secondary" onClick={closeCreateModal}>
-          Cancelar
-        </button>
+      {/* ========== FOOTER CON BOTONES DE ACCIÓN ========== */}
+      <div className="payment-modal-footer">
+        <div className="payment-footer-info">
+          <div className="payment-footer-total">
+            <span className="payment-footer-total-label">Total del Pago:</span>
+            <span className="payment-footer-total-amount">
+              {nuevoPago.monto_pago ? formatCurrency(parseFloat(nuevoPago.monto_pago)) : '$0.00'}
+            </span>
+          </div>
+        </div>
+
+        <div className="payment-footer-actions">
+          <button className="payment-btn-secondary" onClick={closeCreateModal} disabled={loading}>
+            <X className="w-4 h-4" />
+            Cancelar
+          </button>
+
           {resumenPago && resumenPago.totales ? (
             <>
               {resumenPago.multas?.tiene_multas ? (
                 <>
-                  {/* 👉 SOLO aparece si el monto sin multas es mayor a 0 */}
-                  {getSafeValue(
-                    resumenPago.totales.opcion_sin_multas?.total_final,
-                    0
-                  ) > 0 && (
+                  {/* Botón Pagar SIN Multas */}
+                  {getSafeValue(resumenPago.totales.opcion_sin_multas?.total_final, 0) > 0 && (
                     <button
-                      className="btn-primary"
+                      className="payment-btn-pago payment-btn-pago-parcial"
                       onClick={() => {
                         const montoSinMultas = getSafeValue(
                           resumenPago.totales.opcion_sin_multas?.total_final,
@@ -2123,19 +2915,28 @@ const openPaymentModal = async (factura) => {
                         handleCreatePago(false);
                       }}
                       disabled={loading || !resumenPago.totales.opcion_sin_multas}
+                      title="Pagar sin incluir las multas (quedarán pendientes)"
                     >
-                      <DollarSign className="w-4 h-4" />
-                      {loading
-                        ? 'Registrando...'
-                        : `Pagar Sin Multas (${formatCurrencySafe(
-                            resumenPago.totales.opcion_sin_multas?.total_final
-                          )})`}
+                      {loading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Procesando...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4" />
+                          Pagar Sin Multas
+                          <span className="payment-btn-amount">
+                            {formatCurrencySafe(resumenPago.totales.opcion_sin_multas?.total_final)}
+                          </span>
+                        </>
+                      )}
                     </button>
                   )}
 
-                  {/* 👉 Botón pagar TODO */}
+                  {/* Botón Pagar TODO */}
                   <button
-                    className="btn-pagar-sin-multas"
+                    className="payment-btn-pago payment-btn-pago-completo"
                     onClick={() => {
                       const montoCompleto = getSafeValue(
                         resumenPago.totales.opcion_completa?.total_final,
@@ -2149,18 +2950,27 @@ const openPaymentModal = async (factura) => {
                       handleCreatePago(true);
                     }}
                     disabled={loading || !resumenPago.totales.opcion_completa}
+                    title="Pagar el monto completo incluyendo multas"
                   >
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    {loading
-                      ? 'Registrando...'
-                      : `Pagar TODO (${formatCurrencySafe(
-                          resumenPago.totales.opcion_completa?.total_final
-                        )})`}
+                    {loading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Procesando...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        Pagar TODO
+                        <span className="payment-btn-amount">
+                          {formatCurrencySafe(resumenPago.totales.opcion_completa?.total_final)}
+                        </span>
+                      </>
+                    )}
                   </button>
                 </>
               ) : (
                 <button
-                  className="btn-primary"
+                  className="payment-btn-pago payment-btn-pago-completo"
                   onClick={() => {
                     const montoCompleto = getSafeValue(
                       resumenPago.totales.opcion_completa?.total_final,
@@ -2174,27 +2984,36 @@ const openPaymentModal = async (factura) => {
                     handleCreatePago(true);
                   }}
                   disabled={loading || !resumenPago.totales.opcion_completa}
+                  title="Registrar el pago"
                 >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  {loading
-                    ? 'Registrando...'
-                    : `Registrar Pago (${formatCurrencySafe(
-                        resumenPago.totales.opcion_completa?.total_final
-                      )})`}
+                  {loading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Procesando...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      Registrar Pago
+                      <span className="payment-btn-amount">
+                        {formatCurrencySafe(resumenPago.totales.opcion_completa?.total_final)}
+                      </span>
+                    </>
+                  )}
                 </button>
               )}
             </>
           ) : (
-            <button className="btn-secondary" disabled>
+            <button className="payment-btn-secondary" disabled>
+              <RefreshCw className="w-4 h-4 animate-spin" />
               Cargando opciones...
             </button>
           )}
-
+        </div>
       </div>
     </div>
   </div>
 )}
-
 
 
 

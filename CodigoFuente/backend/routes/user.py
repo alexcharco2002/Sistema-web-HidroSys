@@ -171,7 +171,12 @@ def user_to_response(user: UsuarioSistema, db: Session = None) -> dict:
         "activo": user.activo,
         "fecha_registro": user.fecha_registro.isoformat() if user.fecha_registro else None,
         "ultimo_acceso": user.ultimo_acceso.isoformat() if user.ultimo_acceso else None,
-        "foto": foto_url
+        "foto": foto_url,
+
+          # ✅ AGREGAR ESTOS CAMPOS DE BLOQUEO:
+        "bloqueado_permanente": user.bloqueado_permanente,
+        "bloqueado_hasta": user.bloqueado_hasta.isoformat() if user.bloqueado_hasta else None,
+        "intentos_fallidos": user.intentos_fallidos
     }
 
 # ========================================

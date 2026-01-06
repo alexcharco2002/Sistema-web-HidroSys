@@ -1,3 +1,560 @@
+/* ==========================================
+   LISTA DE FACTURAS - PAGOS (MEJORADO)
+   Sistema de scroll unificado
+========================================== */
+
+/* ==================== CONTENEDOR PRINCIPAL ==================== */
+.payments-invoices-wrapper {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  margin-top: 24px;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  max-height: 750px;
+}
+
+/* ==================== CONTENEDOR DE SCROLL UNIFICADO ==================== */
+.payments-invoices-scroll-wrapper {
+  overflow-x: auto; /* ✅ UN SOLO SCROLL HORIZONTAL */
+  overflow-y: hidden;
+  width: 100%;
+}
+
+/* Scrollbar horizontal personalizado */
+.payments-invoices-scroll-wrapper::-webkit-scrollbar {
+  height: 10px;
+}
+
+.payments-invoices-scroll-wrapper::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+.payments-invoices-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+  border: 2px solid #f1f5f9;
+}
+
+.payments-invoices-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ==================== CONTENEDOR INTERNO ==================== */
+.payments-invoices-inner {
+  min-width: max-content; /* ✅ Se expande según el contenido */
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==================== CABECERA DE LISTA ==================== */
+.payments-invoices-header {
+  display: grid;
+  grid-template-columns: 
+    55px       /* # */
+    150px      /* Factura */
+    110px      /* Emisión */
+    90px       /* Código */
+    minmax(200px, 200px)  /* Afiliado */
+    120px      /* Meses Adeudo */
+    130px      /* Total Adeudo */
+    110px      /* Total */
+    110px      /* Saldo */
+    120px      /* Estado */
+    130px      /* Comprobante */
+    200px;     /* Acciones */
+  
+  gap: 8px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  font-weight: 600;
+  font-size: 12px;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 2px solid #1e3a8a;
+}
+
+.payments-invoices-header span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.payments-invoices-header svg {
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+
+/* ==================== BODY CON SCROLL VERTICAL ==================== */
+.payments-invoices-body {
+  max-height: 600px;
+  overflow-y: auto; /* ✅ SOLO SCROLL VERTICAL */
+  overflow-x: hidden;
+  background: #fafbfc;
+}
+
+/* Scrollbar vertical personalizado */
+.payments-invoices-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.payments-invoices-body::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+  margin: 4px 0;
+}
+
+.payments-invoices-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+  border: 2px solid #f1f5f9;
+}
+
+.payments-invoices-body::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ==================== ITEMS DE LISTA ==================== */
+.payments-invoices-item {
+  display: grid;
+  grid-template-columns: 
+    55px       /* # */
+    150px      /* Factura */
+    110px      /* Emisión */
+    90px       /* Código */
+    minmax(200px, 210px)  /* Afiliado */
+    100px      /* Meses Adeudo */
+    120px      /* Total Adeudo */
+    110px      /* Total */
+    110px      /* Saldo */
+    120px      /* Estado */
+    130px      /* Comprobante */
+    200px;     /* Acciones */
+  
+  gap: 8px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  align-items: center;
+  transition: all 0.2s ease;
+  position: relative;
+  background: white;
+}
+
+.payments-invoices-item:nth-child(even) {
+  background: #f8fafc;
+}
+
+.payments-invoices-item:hover {
+  background: #eff6ff;
+  transform: scale(1.002);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+.payments-invoices-item:last-child {
+  border-bottom: none;
+}
+
+/* Estados */
+.payments-invoices-item.pmt-inv-anulada {
+  background: linear-gradient(90deg, #fef2f2 0%, #fff5f5 100%);
+  border-left: 4px solid #ef4444;
+  opacity: 0.75;
+}
+
+.payments-invoices-item.pmt-inv-anulada:hover {
+  background: #fee2e2;
+  opacity: 0.85;
+}
+
+.payments-invoices-item.pmt-inv-pagada {
+  background: linear-gradient(90deg, #f0fdf4 0%, #f7fee7 100%);
+}
+
+.payments-invoices-item.pmt-inv-vencida {
+  background: linear-gradient(90deg, #fef9e7 0%, #fef3c7 100%);
+  border-left: 4px solid #f59e0b;
+}
+
+/* ==================== COLUMNAS ESPECÍFICAS ==================== */
+
+/* Columna #1: Índice */
+.pmt-inv-col-index {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pmt-inv-index-badge {
+  font-weight: 700;
+  color: #3b82f6;
+  font-size: 13px;
+  background: #eff6ff;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+
+/* Columna #2: Número Factura */
+.pmt-inv-col-numero {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.pmt-inv-numero-icon {
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1d4ed8;
+  flex-shrink: 0;
+}
+
+.pmt-inv-numero-text {
+  font-weight: 700;
+  color: #1e293b;
+  font-size: 12px;
+  font-family: 'Monaco', 'Consolas', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Columna #3: Fecha */
+.pmt-inv-col-fecha {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #475569;
+  background: #f1f5f9;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.pmt-inv-col-fecha svg {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+/* Columna #4: Código */
+.pmt-inv-col-codigo {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+  color: #1e293b;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  padding: 6px 8px;
+  border-radius: 6px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Columna #5: Usuario/Afiliado */
+.pmt-inv-col-usuario {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.pmt-inv-usuario-info {
+  overflow: hidden;
+  width: 100%;
+  min-width: 0;
+}
+
+.pmt-inv-usuario-nombre {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.pmt-inv-sin-dato {
+  color: #cbd5e1;
+  font-size: 11px;
+  font-style: italic;
+}
+
+/* Columna #6: Meses Adeudo */
+.pmt-inv-col-meses-adeudo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pmt-meses-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+
+.pmt-meses-badge.warning {
+  background: #fef3c7;
+  color: #d97706;
+  border: 1px solid #fcd34d;
+}
+
+.pmt-meses-badge.urgente {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+  animation: pmt-pulse 2s infinite;
+}
+
+@keyframes pmt-pulse {
+  0%, 100% { 
+    opacity: 1; 
+    transform: scale(1); 
+  }
+  50% { 
+    opacity: 0.85; 
+    transform: scale(1.05); 
+  }
+}
+
+/* Columna #7: Total Adeudo */
+.pmt-inv-col-total-adeudo {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+}
+
+/* Columnas #8, #9, #10: Montos */
+.pmt-inv-col-total {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+}
+
+.pmt-inv-monto {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+  color: #059669;
+  white-space: nowrap;
+}
+
+/* Columna #11: Estado */
+.pmt-inv-col-estado {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Columna #12: Comprobante */
+.pmt-inv-col-comprobante {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+
+.pmt-comprobantes-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+/* Columna #13: Acciones */
+.pmt-inv-col-acciones {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.pmt-inv-btn {
+  padding: 7px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pmt-inv-btn:hover {
+  transform: scale(1.08);
+}
+
+.pmt-inv-btn-view {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.pmt-inv-btn-view:hover {
+  background: #dbeafe;
+}
+
+.pmt-inv-btn-edit {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.pmt-inv-btn-edit:hover {
+  background: #dcfce7;
+}
+
+.pmt-inv-btn-delete {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.pmt-inv-btn-delete:hover {
+  background: #fee2e2;
+}
+
+/* ==================== EMPTY STATE ==================== */
+.payments-invoices-empty {
+  padding: 60px 20px;
+  text-align: center;
+  color: #94a3b8;
+  background: white;
+}
+
+.pmt-inv-empty-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 20px;
+  opacity: 0.3;
+}
+
+.payments-invoices-empty h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.payments-invoices-empty p {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+/* ==================== FOOTER ==================== */
+.payments-invoices-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  border-radius: 0 0 16px 16px;
+  flex-shrink: 0;
+}
+
+.payments-invoices-footer-stats {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+  color: #64748b;
+  flex-wrap: wrap;
+}
+
+.payments-invoices-footer-stats span {
+  white-space: nowrap;
+}
+
+.payments-invoices-footer-stats strong {
+  color: #1e293b;
+  font-weight: 600;
+}
+
+/* ================================================
+   RESPONSIVE - ADAPTACIÓN PROGRESIVA
+================================================ */
+
+/* Tablets y pantallas medianas */
+@media (max-width: 1400px) {
+  .payments-invoices-header,
+  .payments-invoices-item {
+    grid-template-columns: 
+      50px 140px 105px 85px minmax(180px, 220px) 
+      110px 120px 105px 105px 105px 115px 125px 190px;
+    gap: 6px;
+    padding: 14px 18px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .payments-invoices-header,
+  .payments-invoices-item {
+    grid-template-columns: 
+      45px 130px 100px 80px minmax(170px, 200px) 
+      105px 115px 100px 100px 100px 110px 120px 180px;
+    gap: 6px;
+    padding: 12px 16px;
+    font-size: 11px;
+  }
+  
+  .pmt-inv-index-badge {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 992px) {
+  .payments-invoices-wrapper {
+    max-height: 650px;
+  }
+  
+  .payments-invoices-body {
+    max-height: 550px;
+  }
+}
+
+@media (max-width: 768px) {
+  .payments-invoices-footer {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .payments-invoices-footer-stats {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+}
+
 
 
 /* ========================================
@@ -180,26 +737,47 @@ textarea.form-input {
   transform: translateY(0);
 }
 
-/* Ajuste al grid para la nueva columna */
-.invoices-list-header,
-.invoices-list-item {
-  display: grid;
-  grid-template-columns: 
-    50px        /* # */
-    150px       /* Factura */
-    100px       /* Emisión */
-    80px        /* Código */
-    minmax(150px, 1fr)  /* Afiliado */
-    100px       /* Total */
-    100px       /* Pagado */
-    100px       /* Saldo */
-    100px       /* Estado */
-    120px       /* Comprobante - NUEVA */
-    200px;      /* Acciones */
-  gap: 1rem;
+
+
+.meses-badge {
+  display: inline-flex;
   align-items: center;
-  padding: 0.75rem 1rem;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background-color: #e0f2fe;
+  color: #0369a1;
+  white-space: nowrap;
 }
+
+.meses-badge.warning {
+  background-color: #fef3c7;
+  color: #d97706;
+}
+
+.meses-badge.urgente {
+  background-color: #fee2e2;
+  color: #dc2626;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.inv-col-total-adeudo {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding-right: 8px;
+}
+
 
 
 /* components/PaymentReceipt.css */
@@ -898,4 +1476,1488 @@ textarea.form-input {
   border-radius: 4px;
   font-size: 12px;
   color: #1e40af;
+}
+
+/* ================================
+   BOTÓN DESCARGAR COMPROBANTE
+   ================================ */
+
+.pago-comprobante-btn {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+/* Si quieres que el botón no crezca */
+.pago-comprobante-btn .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* ==========================================
+   SECCIÓN DE ADEUDOS - DESPLEGABLE
+========================================== */
+
+.adeudos-alert-section {
+  margin-bottom: 20px;
+  animation: fadeInAlert 0.3s ease;
+}
+
+@keyframes fadeInAlert {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Card Principal de Adeudos */
+.adeudos-card {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #f59e0b;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+}
+
+/* Header Clickeable */
+.adeudos-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  font-weight: 700;
+  font-size: 15px;
+  border-bottom: 2px solid #b45309;
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.adeudos-card-header:hover {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+}
+
+.adeudos-card-header:active {
+  transform: scale(0.99);
+}
+
+.adeudos-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.adeudos-header-left svg {
+  animation: pulse-icon 2s ease-in-out infinite;
+}
+
+@keyframes pulse-icon {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.8;
+  }
+}
+
+/* Badge de resumen en header */
+.adeudos-header-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.adeudos-header-badge span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Icono de toggle */
+.adeudos-toggle-icon {
+  transition: transform 0.3s ease;
+  flex-shrink: 0;
+}
+
+.adeudos-toggle-icon.expanded {
+  transform: rotate(180deg);
+}
+
+/* Body Desplegable */
+.adeudos-card-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease, padding 0.4s ease;
+  padding: 0 16px;
+}
+
+.adeudos-card-body.expanded {
+  max-height: 1000px;
+  padding: 16px;
+}
+
+/* Resumen de Adeudos (más compacto) */
+.adeudos-resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 2px dashed #f59e0b;
+}
+
+.adeudo-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #fcd34d;
+  transition: all 0.2s ease;
+}
+
+.adeudo-stat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(245, 158, 11, 0.2);
+}
+
+.adeudo-label {
+  font-size: 11px;
+  color: #92400e;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.adeudo-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #b45309;
+}
+
+.adeudo-value.urgente {
+  color: #dc2626;
+  font-size: 18px;
+}
+
+.adeudo-value.monto {
+  color: #dc2626;
+  font-size: 20px;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+/* Lista de Facturas Pendientes */
+.adeudos-facturas-list {
+  margin-top: 12px;
+}
+
+.adeudos-list-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #78350f;
+  margin-bottom: 10px;
+  padding: 8px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #fcd34d;
+}
+
+/* Item de factura (más compacto) */
+.adeudo-factura-item {
+  background: white;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  transition: all 0.2s ease;
+}
+
+.adeudo-factura-item:hover {
+  border-color: #f59e0b;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+  transform: translateX(4px);
+}
+
+.adeudo-factura-item:last-child {
+  margin-bottom: 0;
+}
+
+/* Header de factura (horizontal compacto) */
+.adeudo-factura-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.adeudo-factura-numero {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+  color: #1e40af;
+  background: #eff6ff;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #bfdbfe;
+}
+
+.adeudo-factura-periodo {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.adeudo-factura-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.adeudo-factura-estado.pendiente {
+  background: #fef3c7;
+  color: #d97706;
+  border: 1px solid #fcd34d;
+}
+
+.adeudo-factura-estado.vencida {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+}
+
+/* Detalles en una sola fila */
+.adeudo-factura-detalles {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px;
+  background: #f9fafb;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.adeudo-factura-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.adeudo-factura-info .info-label {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.adeudo-factura-info .info-value {
+  color: #1e293b;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.adeudo-factura-info .info-value.urgente {
+  color: #dc2626;
+}
+
+.adeudo-factura-info-divider {
+  width: 1px;
+  height: 14px;
+  background: #d1d5db;
+}
+
+/* Montos (una sola fila) */
+.adeudo-factura-montos {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.adeudo-monto-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.adeudo-monto-item .label {
+  font-size: 10px;
+  color: #78350f;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.adeudo-monto-item .value {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.adeudo-monto-item.total .value {
+  color: #dc2626;
+  font-size: 14px;
+}
+
+.adeudo-monto-item.mora .value {
+  color: #f59e0b;
+}
+
+/* Recomendación */
+.adeudos-recomendacion {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: white;
+  border-left: 4px solid #dc2626;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #78350f;
+  line-height: 1.5;
+}
+
+.adeudos-recomendacion svg {
+  flex-shrink: 0;
+  color: #dc2626;
+  margin-top: 2px;
+}
+
+.adeudos-recomendacion p {
+  margin: 0;
+}
+
+.adeudos-recomendacion .highlight {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+/* Empty state */
+.adeudos-empty {
+  padding: 20px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .adeudos-resumen {
+    grid-template-columns: 1fr;
+  }
+  
+  .adeudo-factura-header {
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  
+  .adeudo-factura-detalles {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  
+  .adeudo-factura-info-divider {
+    display: none;
+  }
+  
+  .adeudo-factura-montos {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .adeudos-header-badge {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+}
+
+/* ==========================================
+   MÓDULO DE PAGOS - SECCIÓN FACTURAS PENDIENTES
+========================================== */
+
+.payment-facturas-pendientes-section {
+  margin-bottom: 24px;
+  border: 2px solid #f59e0b;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fffbeb;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+}
+
+.payment-pendientes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  transition: all 0.3s ease;
+}
+
+.payment-pendientes-header:hover {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  box-shadow: 0 2px 12px rgba(217, 119, 6, 0.3);
+}
+
+.payment-pendientes-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+}
+
+.payment-pendientes-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.payment-pendientes-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.payment-badge-count {
+  font-weight: 700;
+}
+
+.payment-badge-divider {
+  opacity: 0.6;
+}
+
+.payment-badge-total {
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-weight: 700;
+}
+
+.payment-toggle-icon {
+  transition: transform 0.3s ease;
+  width: 20px;
+  height: 20px;
+}
+
+.payment-toggle-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.payment-pendientes-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease, padding 0.4s ease;
+  padding: 0 18px;
+}
+
+.payment-pendientes-body.expanded {
+  max-height: 650px;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+/* Scrollbar personalizado */
+.payment-pendientes-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.payment-pendientes-body::-webkit-scrollbar-track {
+  background: #fef3c7;
+  border-radius: 4px;
+}
+
+.payment-pendientes-body::-webkit-scrollbar-thumb {
+  background: #f59e0b;
+  border-radius: 4px;
+}
+
+.payment-pendientes-body::-webkit-scrollbar-thumb:hover {
+  background: #d97706;
+}
+
+/* Acciones rápidas */
+.payment-facturas-acciones {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px dashed #fde68a;
+}
+
+.payment-btn-accion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.payment-btn-seleccionar {
+  background: #3b82f6;
+  color: white;
+}
+
+.payment-btn-seleccionar:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.payment-btn-deseleccionar {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.payment-btn-deseleccionar:hover {
+  background: #d1d5db;
+  transform: translateY(-1px);
+}
+
+/* Lista de facturas */
+.payment-seleccion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.payment-factura-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.payment-factura-item:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.12);
+  transform: translateY(-1px);
+}
+
+.payment-factura-item.selected {
+  border-color: #3b82f6;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.15);
+}
+
+.payment-factura-checkbox {
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  accent-color: #3b82f6;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.payment-factura-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.payment-factura-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.payment-factura-info-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.payment-factura-numero {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+  color: #1e40af;
+  background: #dbeafe;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.payment-factura-periodo {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.payment-factura-info-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.payment-factura-estado {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.payment-estado-pendiente {
+  background: #fef3c7;
+  color: #d97706;
+  border: 1px solid #fbbf24;
+}
+
+.payment-estado-vencida {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #f87171;
+}
+
+.payment-factura-monto {
+  font-size: 16px;
+  font-weight: 700;
+  color: #059669;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.payment-factura-detalles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.payment-detalle-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.payment-detalle-icon {
+  font-size: 14px;
+}
+
+.payment-detalle-text {
+  font-weight: 500;
+}
+
+.payment-detalle-mora {
+  color: #ea580c;
+  font-weight: 600;
+}
+
+/* Resumen de selección */
+.payment-seleccion-resumen {
+  margin-top: 16px;
+  padding: 16px;
+  background: white;
+  border: 2px solid #3b82f6;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.1);
+}
+
+.payment-resumen-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-weight: 700;
+  color: #1e40af;
+  font-size: 15px;
+}
+
+.payment-resumen-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.payment-resumen-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.payment-resumen-label {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.payment-resumen-value {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+  color: #374151;
+}
+
+.payment-resumen-total {
+  padding-top: 10px;
+  border-top: 2px solid #e5e7eb;
+  margin-top: 4px;
+}
+
+.payment-resumen-total .payment-resumen-label {
+  font-weight: 700;
+  color: #374151;
+  font-size: 14px;
+}
+
+.payment-resumen-total .payment-resumen-value {
+  color: #dc2626;
+  font-size: 18px;
+}
+
+/* ==========================================
+   SECCIÓN DE FACTURA ACTUAL
+========================================== */
+
+.payment-factura-actual-section {
+  margin-bottom: 24px;
+  border: 2px solid #dc2626;
+  border-radius: 12px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.1);
+}
+
+.payment-factura-actual-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  color: white;
+}
+
+.payment-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.payment-header-left h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.payment-badge-obligatorio {
+  padding: 5px 12px;
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.payment-factura-actual-card {
+  padding: 16px 18px;
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+}
+
+.payment-factura-actual-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.payment-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+.payment-info-label {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.payment-info-value {
+  color: #374151;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.payment-resumen-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  gap: 12px;
+  color: #6b7280;
+}
+
+.payment-resumen-error {
+  padding: 16px 18px;
+  background: #fee2e2;
+  color: #dc2626;
+  font-weight: 600;
+  text-align: center;
+  border-left: 4px solid #dc2626;
+}
+
+/* Alertas */
+.payment-alert-card {
+  margin: 16px 18px;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.payment-alert-warning {
+  border: 2px solid #f59e0b;
+}
+
+.payment-alert-danger {
+  border: 2px solid #dc2626;
+}
+
+.payment-alert-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.payment-alert-warning .payment-alert-header {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.payment-alert-danger .payment-alert-header {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.payment-alert-content {
+  padding: 14px 16px;
+  background: white;
+}
+
+.payment-alert-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.payment-alert-label {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.payment-alert-value {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.payment-alert-value-danger {
+  color: #dc2626;
+}
+
+.payment-alert-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f3f4f6;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.payment-alert-note {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-left: 3px solid #9ca3af;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.payment-multas-list-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.payment-multa-item-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.payment-multa-desc {
+  color: #374151;
+  font-weight: 500;
+}
+
+.payment-multa-monto {
+  color: #dc2626;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.payment-multas-total-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #fef2f2;
+  border: 2px dashed #fca5a5;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.payment-multas-total-label {
+  font-size: 13px;
+  color: #374151;
+}
+
+.payment-multas-total-value {
+  font-size: 16px;
+  color: #dc2626;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+/* ==========================================
+   OPCIONES DE PAGO
+========================================== */
+
+.payment-opciones-section {
+  padding: 18px;
+  background: #f9fafb;
+  border-top: 2px solid #e5e7eb;
+}
+
+.payment-opciones-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.payment-opciones-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.payment-opcion-card {
+  border-radius: 12px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.payment-opcion-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.payment-opcion-completa {
+  border: 2px solid #10b981;
+}
+
+.payment-opcion-parcial {
+  border: 2px solid #3b82f6;
+}
+
+.payment-opcion-header {
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.payment-opcion-completa .payment-opcion-header {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+}
+
+.payment-opcion-parcial .payment-opcion-header {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+}
+
+.payment-opcion-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.payment-opcion-icon {
+  font-size: 18px;
+}
+
+.payment-opcion-badge {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.payment-opcion-badge-warning {
+  background: rgba(251, 191, 36, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.payment-opcion-desglose {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.payment-desglose-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.payment-desglose-row span:first-child {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.payment-desglose-row span:last-child {
+  color: #374151;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.payment-desglose-descuento {
+  color: #10b981 !important;
+}
+
+.payment-desglose-descuento span {
+  color: #10b981 !important;
+}
+
+.payment-desglose-mora {
+  color: #ea580c !important;
+}
+
+.payment-desglose-mora span:last-child {
+  color: #ea580c !important;
+}
+
+.payment-opcion-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: #f9fafb;
+  border-top: 2px solid #e5e7eb;
+  font-weight: 700;
+}
+
+.payment-opcion-total span:first-child {
+  color: #374151;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.payment-total-amount {
+  font-size: 20px;
+  color: #dc2626;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.payment-opcion-warning {
+  padding: 10px 16px;
+  background: #fef3c7;
+  border-top: 1px solid #fde68a;
+  font-size: 12px;
+  color: #d97706;
+  font-weight: 600;
+  text-align: center;
+}
+
+.payment-recomendacion-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border: 2px solid #3b82f6;
+  border-radius: 10px;
+  font-size: 14px;
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.payment-recomendacion-icon {
+  font-size: 20px;
+}
+
+/* ==========================================
+   FORMULARIO DE PAGO
+========================================== */
+
+.payment-form-section {
+  padding: 18px;
+  background: white;
+  border-top: 2px solid #e5e7eb;
+}
+
+.payment-form-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.payment-form-group {
+  margin-bottom: 18px;
+}
+
+.payment-form-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.payment-label-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.payment-input-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.payment-input-icon {
+  position: absolute;
+  left: 14px;
+  width: 18px;
+  height: 18px;
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.payment-form-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: 'Monaco', 'Consolas', monospace;
+  transition: all 0.2s ease;
+}
+
+.payment-input-with-icon .payment-form-input {
+  padding-left: 42px;
+}
+
+.payment-form-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.payment-form-input.payment-input-error {
+  border-color: #dc2626;
+}
+
+.payment-form-input.payment-input-error:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.payment-form-textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+
+.payment-form-error-message {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #fee2e2;
+  border-left: 3px solid #dc2626;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #dc2626;
+  font-weight: 600;
+}
+
+/* ==========================================
+   FOOTER CON BOTONES
+========================================== */
+
+.payment-modal-footer {
+  position: sticky;
+  bottom: 0;
+  background: white;
+  border-top: 3px solid #e5e7eb;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.payment-footer-info {
+  padding-bottom: 12px;
+  border-bottom: 2px dashed #e5e7eb;
+}
+
+.payment-footer-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.payment-footer-total-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.payment-footer-total-amount {
+  font-size: 24px;
+  font-weight: 700;
+  color: #dc2626;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.payment-footer-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.payment-btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 18px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.payment-btn-secondary:hover:not(:disabled) {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+  transform: translateY(-1px);
+}
+
+.payment-btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.payment-btn-pago {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: white;
+}
+
+.payment-btn-pago-parcial {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.payment-btn-pago-parcial:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.payment-btn-pago-completo {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.payment-btn-pago-completo:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.payment-btn-pago:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.payment-btn-amount {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 13px;
+  margin-left: 4px;
+}
+
+/* Animaciones */
+@keyframes payment-fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-payment {
+  animation: payment-fadeIn 0.3s ease;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .payment-opciones-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .payment-footer-actions {
+    flex-direction: column;
+  }
+  
+  .payment-footer-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .payment-factura-main {
+    flex-direction: column;
+  }
+  
+  .payment-factura-info-right {
+    align-items: flex-start;
+  }
+  
+  .payment-pendientes-header-left {
+    font-size: 13px;
+  }
+  
+  .payment-pendientes-badge {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
 }

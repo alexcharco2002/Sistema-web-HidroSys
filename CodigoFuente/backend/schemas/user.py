@@ -289,7 +289,11 @@ class UserListResponse(BaseModel):
     activo: bool
     fecha_registro: Optional[datetime] = None
     foto: Optional[str] = None
-    
+
+    bloqueado_permanente: bool
+    bloqueado_hasta: Optional[datetime] = None
+    intentos_fallidos: int
+
     class Config:
         from_attributes = True
         json_encoders = {

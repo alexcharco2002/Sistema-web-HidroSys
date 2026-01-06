@@ -31,7 +31,7 @@ from schemas.pago import (
 )
 
 from utils.audit_logger import registrar_auditoria
-from utils.config_mora import calcular_mora_factura, evaluar_y_aplicar_mora, obtener_configuracion_mora_activa, registrar_mora_en_bd
+from utils.config_mora import calcular_monto_mora, calcular_mora_factura, evaluar_y_aplicar_mora, obtener_configuracion_mora_activa, obtener_monto_base_mora, registrar_mora_en_bd
 from utils.pago_utils import calcular_montos_con_multas, liberar_multas_no_pagadas, procesar_multas_pagadas, validar_afiliado, validar_factura_para_pago, validar_monto_pago
 from utils.notifications import registrar_notificacion
 from db.session import SessionLocal
@@ -323,6 +323,7 @@ def obtener_facturas_periodo_con_pagos(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
+
     """
     Obtener facturas por periodo con información completa:
     - Una factura puede tener MÚLTIPLES pagos
@@ -334,9 +335,23 @@ def obtener_facturas_periodo_con_pagos(
     try:
         # Crear alias para el cajero
         Cajero = aliased(UsuarioSistema)
-        
         # ========================================
-        # QUERY PRINCIPAL - FACTURAS
+        # CALCULAR ESTADO REAL (INCLUYENDO PARCIAL)
+        # ========================================
+
+        # Primero obtener los totales pagados para determinar estado real
+        subquery_pagos = (
+            db.query(
+                Pago.id_factura,
+                func.sum(Pago.monto_pago).label('total_pagado')
+            )
+            .filter(Pago.estado_pago == 'REGISTRADO')
+            .group_by(Pago.id_factura)
+            .subquery()
+        )
+
+        # ========================================
+        # QUERY PRINCIPAL - FACTURAS CON ESTADO REAL
         # ========================================
         query = (
             db.query(
@@ -367,10 +382,13 @@ def obtener_facturas_periodo_con_pagos(
                 UsuarioSistema.email,
                 # Sector
                 Sector.nombre_sector,
+                # Total pagado (para calcular estado parcial)
+                func.coalesce(subquery_pagos.c.total_pagado, 0).label('monto_pagado_total')
             )
             .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
+            .outerjoin(subquery_pagos, Factura.id_factura == subquery_pagos.c.id_factura)
         )
 
         # Filtros
@@ -391,13 +409,44 @@ def obtener_facturas_periodo_con_pagos(
                 )
             )
 
-        # Ordenar
+        # ========================================
+        # ⭐ ORDENAMIENTO MEJORADO CON ESTADO PARCIAL
+        # ========================================
         estado_orden = case(
+            # Si está anulada -> 5
+            (Factura.estado_factura == 'anulada', 5),
+            
+            # Si está pagada completamente -> 4
+            (Factura.estado_factura == 'pagada', 4),
+            
+            # Si tiene pago parcial (monto_pagado > 0 pero < total) -> 3
+            (
+                and_(
+                    subquery_pagos.c.total_pagado.isnot(None),
+                    subquery_pagos.c.total_pagado > 0,
+                    subquery_pagos.c.total_pagado < Factura.total,
+                    Factura.estado_factura != 'anulada'
+                ),
+                3
+            ),
+            
+            # Si está vencida sin pago -> 2
+            (
+                and_(
+                    Factura.estado_factura == 'vencida',
+                    or_(
+                        subquery_pagos.c.total_pagado.is_(None),
+                        subquery_pagos.c.total_pagado == 0
+                    )
+                ),
+                2
+            ),
+            
+            # Pendiente (sin pago) -> 1
             (Factura.estado_factura == 'pendiente', 1),
-            (Factura.estado_factura == 'vencida', 2),
-            (Factura.estado_factura == 'pagada', 3),
-            (Factura.estado_factura == 'anulada', 4),
-            else_=5
+            
+            # Cualquier otro caso -> 999
+            else_=999
         )
 
         facturas = (
@@ -407,6 +456,7 @@ def obtener_facturas_periodo_con_pagos(
             .limit(limit)
             .all()
         )
+
 
         if not facturas:
             return []
@@ -956,6 +1006,9 @@ def obtener_pagos_por_afiliado(
     pagos = query.order_by(Pago.fecha_pago.desc()).all()
     return pagos
 
+# ===========================================
+# Obtener resumen de un factura 
+# ============================================
 @router.get("/calcular-resumen/{factura_id}")
 def calcular_resumen_pago(
     factura_id: int,
@@ -1220,6 +1273,249 @@ def calcular_resumen_pago(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al calcular resumen de pago: {str(e)}"
         )
+    
+
+# ========================================
+# HELPER: CALCULAR MONTO PAGADO DE FACTURA
+# ========================================
+
+def calcular_monto_pagado_factura(factura: Factura) -> Decimal:
+    """
+    Calcula el monto total pagado de una factura sumando
+    todos los pagos registrados (estado_pago = 'REGISTRADO').
+    
+    Args:
+        factura: Objeto Factura
+    
+    Returns:
+        Decimal: Monto total pagado
+    """
+    if not factura.pagos or len(factura.pagos) == 0:
+        return Decimal('0.00')
+    
+    # Sumar solo pagos registrados (no anulados)
+    monto_total = sum(
+        Decimal(str(pago.monto_pago)) 
+        for pago in factura.pagos 
+        if pago.estado_pago == 'REGISTRADO' and pago.activo
+    )
+    
+    return monto_total
+
+
+def calcular_saldo_pendiente_factura(factura: Factura) -> Decimal:
+    """
+    Calcula el saldo pendiente de una factura.
+    
+    Args:
+        factura: Objeto Factura
+    
+    Returns:
+        Decimal: Saldo pendiente (total - monto_pagado)
+    """
+    total = Decimal(str(factura.total))
+    monto_pagado = calcular_monto_pagado_factura(factura)
+    saldo = total - monto_pagado
+    
+    return max(Decimal('0.00'), saldo)  # No puede ser negativo
+
+
+# ========================================
+# ENDPOINT: OBTENER FACTURAS PENDIENTES (CORREGIDO)
+# ========================================
+
+@router.get("/afiliado/{id_afiliado}/facturas-pendientes")
+def obtener_facturas_pendientes_afiliado(
+    id_afiliado: int,
+    periodo_actual: Optional[str] = Query(None, description="Periodo actual en formato YYYY-MM"),
+    aplicar_mora: bool = Query(False, description="Si True, registra mora en BD"),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Obtiene todas las facturas pendientes de un afiliado,
+    excluyendo el periodo actual y periodos futuros.
+    Calcula la mora aplicable para cada factura.
+    """
+    try:
+        # 1. Validar y obtener periodo actual
+        if not periodo_actual:
+            hoy = date.today()
+            periodo_actual = f"{hoy.year}-{hoy.month:02d}"
+        
+        # Validar formato de periodo (YYYY-MM)
+        try:
+            anio, mes = periodo_actual.split('-')
+            if not (1 <= int(mes) <= 12 and len(anio) == 4):
+                raise ValueError("Formato inválido")
+        except:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Formato de periodo inválido. Use YYYY-MM (ej: 2026-01)"
+            )
+        
+        print(f"\n{'='*60}")
+        print(f"📋 CONSULTANDO FACTURAS PENDIENTES")
+        print(f"{'='*60}")
+        print(f"Afiliado ID: {id_afiliado}")
+        print(f"Periodo actual: {periodo_actual}")
+        print(f"Aplicar mora: {aplicar_mora}")
+        
+        # 2. Buscar configuración de mora activa
+        config_mora = obtener_configuracion_mora_activa(db)
+        
+        # 3. Consultar facturas pendientes con pagos cargados
+        facturas_pendientes = db.query(Factura).filter(
+            Factura.id_usuario_afi == id_afiliado,
+            or_(
+                Factura.estado_factura == 'pendiente',
+                Factura.estado_factura == 'vencida'
+            ),
+            Factura.periodo < periodo_actual
+        ).options(
+            # ✅ Cargar relación de pagos para calcular monto pagado
+            joinedload(Factura.pagos)
+        ).order_by(Factura.fecha_emision.asc()).all()
+        
+        if not facturas_pendientes:
+            print(f"✅ No hay facturas pendientes (periodos anteriores a {periodo_actual})")
+            print(f"{'='*60}\n")
+            return {
+                "tiene_deuda": False,
+                "meses_adeudo": 0,
+                "total_adeudado": 0.0,
+                "total_facturas_pendientes": 0,
+                "periodo_referencia": periodo_actual,
+                "facturas": []
+            }
+        
+        print(f"📊 Facturas encontradas: {len(facturas_pendientes)}")
+        
+        # 4. Procesar cada factura y calcular mora
+        facturas_procesadas = []
+        total_adeudado = Decimal('0.00')
+        hoy = date.today()
+        
+        for factura in facturas_pendientes:
+            # Verificar periodo
+            if factura.periodo >= periodo_actual:
+                print(f"⚠️ Factura {factura.num_factura} omitida (periodo {factura.periodo} >= {periodo_actual})")
+                continue
+            
+            print(f"\n--- Procesando Factura {factura.num_factura} ---")
+            print(f"Periodo: {factura.periodo}")
+            print(f"Estado: {factura.estado_factura}")
+            print(f"Total: ${factura.total}")
+            
+            # ✅ Calcular monto pagado usando la función helper
+            monto_pagado = calcular_monto_pagado_factura(factura)
+            saldo_pendiente = calcular_saldo_pendiente_factura(factura)
+            
+            print(f"Monto pagado: ${monto_pagado}")
+            print(f"Saldo pendiente: ${saldo_pendiente}")
+            
+            # Calcular días transcurridos
+            dias_transcurridos = (hoy - factura.fecha_emision).days
+            print(f"Días transcurridos: {dias_transcurridos}")
+            
+            # Evaluar y aplicar mora
+            mora_monto = Decimal('0.00')
+            mora_aplicada = False
+            mora_registrada = False
+            
+            if aplicar_mora and config_mora:
+                # Aplicar mora usando función principal (registra en BD)
+                mora_monto, mora_aplicada, detalle_mora = evaluar_y_aplicar_mora(
+                    factura=factura,
+                    fecha_pago=datetime.now(),
+                    db=db
+                )
+                mora_registrada = mora_aplicada
+            elif config_mora:
+                # Solo calcular sin registrar
+                if dias_transcurridos > config_mora.dias_gracia:
+                    monto_base = obtener_monto_base_mora(factura, config_mora, db)
+                    mora_monto, _ = calcular_monto_mora(
+                        monto_base=monto_base,
+                        dias_transcurridos=dias_transcurridos,
+                        config_mora=config_mora
+                    )
+                    mora_aplicada = mora_monto > 0
+                    
+                    if mora_aplicada:
+                        print(f"💰 Mora calculada: ${mora_monto}")
+                    else:
+                        print(f"✅ Sin mora")
+                else:
+                    print(f"✅ Sin mora (días de gracia: {config_mora.dias_gracia})")
+            else:
+                print(f"⚠️ No hay configuración de mora activa")
+            
+            # Calcular total con mora
+            total_con_mora = saldo_pendiente + mora_monto
+            
+            # Agregar a lista
+            facturas_procesadas.append({
+                "id_factura": factura.id_factura,
+                "num_factura": factura.num_factura,
+                "periodo": factura.periodo,
+                "fecha_emision": factura.fecha_emision.isoformat(),
+                "estado_factura": factura.estado_factura,
+                "total_factura": float(factura.total),
+                "monto_pagado": float(monto_pagado),
+                "saldo_pendiente": float(saldo_pendiente),
+                "dias_transcurridos": dias_transcurridos,
+                "mora_aplicable": mora_aplicada,
+                "mora_monto": float(mora_monto),
+                "total_con_mora": float(total_con_mora),
+                "mora_registrada": mora_registrada
+            })
+            
+            # Acumular total adeudado (saldo + mora)
+            total_adeudado += total_con_mora
+        
+        # 5. Calcular meses de adeudo
+        periodos_unicos = set(f.periodo for f in facturas_pendientes if f.periodo < periodo_actual)
+        meses_adeudo = len(periodos_unicos)
+        
+        # 6. Commit si se aplicó mora
+        if aplicar_mora:
+            db.commit()
+            print(f"✅ Mora aplicada y registrada en BD")
+        
+        print(f"\n{'='*60}")
+        print(f"📊 RESUMEN DE ADEUDOS")
+        print(f"{'='*60}")
+        print(f"Periodo referencia: {periodo_actual}")
+        print(f"Meses adeudados: {meses_adeudo}")
+        print(f"Facturas pendientes: {len(facturas_procesadas)}")
+        print(f"Total adeudado: ${total_adeudado:.2f}")
+        print(f"{'='*60}\n")
+        
+        # 7. Retornar resultado
+        return {
+            "tiene_deuda": len(facturas_procesadas) > 0,
+            "meses_adeudo": meses_adeudo,
+            "total_adeudado": float(total_adeudado),
+            "total_facturas_pendientes": len(facturas_procesadas),
+            "periodo_referencia": periodo_actual,
+            "mora_aplicada_en_bd": aplicar_mora,
+            "facturas": facturas_procesadas
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        if aplicar_mora:
+            db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener facturas pendientes: {str(e)}"
+        )
+
+
 # ========================================
 # CREAR NUEVO PAGO CON MORA
 # ========================================
@@ -1470,6 +1766,103 @@ def crear_pago(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear pago: {str(e)}"
         )
+
+# routes/pagos.py
+
+@router.post("/pago-masivo", status_code=status.HTTP_201_CREATED)
+def crear_pago_masivo(
+    pago_masivo: dict,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Procesa un pago masivo para múltiples facturas del mismo afiliado.
+    El periodo actual es obligatorio.
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "pagos", "crear")
+    
+    try:
+        print(f"\n{'='*70}")
+        print(f"💰 PROCESANDO PAGO MASIVO")
+        print(f"{'='*70}")
+        print(f"Afiliado: {pago_masivo['id_usuario_afi']}")
+        print(f"Facturas a procesar: {len(pago_masivo['facturas'])}")
+        print(f"Monto total: ${pago_masivo['monto_total']}")
+        
+        pagos_creados = []
+        facturas_procesadas = 0
+        mora_total_aplicada = Decimal('0.00')
+        
+        # Procesar cada factura
+        for item_factura in pago_masivo['facturas']:
+            id_factura = item_factura['id_factura']
+            monto = Decimal(str(item_factura['monto']))
+            incluir_multas = item_factura.get('incluir_multas', True)
+            es_actual = item_factura.get('es_factura_actual', False)
+            
+            print(f"\n--- Procesando Factura {id_factura} ---")
+            print(f"Monto: ${monto}")
+            print(f"Incluye multas: {incluir_multas}")
+            print(f"Es periodo actual: {es_actual}")
+            
+            # Crear pago individual
+            pago_data = PagoCreate(
+                id_factura=id_factura,
+                monto_pago=float(monto),
+                metodo_pago=pago_masivo['metodo_pago'],
+                id_usuario_afi=pago_masivo['id_usuario_afi'],
+                id_cajero=pago_masivo['id_cajero'],
+                observaciones=f"[PAGO MASIVO] {pago_masivo.get('observaciones', '')}",
+                incluir_multas=incluir_multas
+            )
+            
+            # Llamar a la función de crear pago individual
+            pago_creado = crear_pago(pago_data, db, payload)
+            pagos_creados.append(pago_creado)
+            facturas_procesadas += 1
+            
+            print(f"✅ Pago creado: ID={pago_creado.id_pago}")
+        
+        print(f"\n{'='*70}")
+        print(f"✅ PAGO MASIVO COMPLETADO")
+        print(f"{'='*70}")
+        print(f"Facturas procesadas: {facturas_procesadas}")
+        print(f"Pagos creados: {len(pagos_creados)}")
+        print(f"{'='*70}\n")
+        
+        # Registrar auditoría
+        registrar_auditoria(
+            db=db,
+            accion="CREATE",
+            descripcion=f"Pago masivo: {facturas_procesadas} facturas - Total: ${pago_masivo['monto_total']}",
+            id_usuario=current_user.id_usuario_sistema
+        )
+        
+        return {
+            "success": True,
+            "facturas_procesadas": facturas_procesadas,
+            "pagos_creados": len(pagos_creados),
+            "monto_total": float(pago_masivo['monto_total']),
+            "pagos": [
+                {
+                    "id_pago": p.id_pago,
+                    "id_factura": p.id_factura,
+                    "monto": float(p.monto_pago)
+                } for p in pagos_creados
+            ]
+        }
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ ERROR EN PAGO MASIVO: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al procesar pago masivo: {str(e)}"
+        )
+
 
 
 # ========================================

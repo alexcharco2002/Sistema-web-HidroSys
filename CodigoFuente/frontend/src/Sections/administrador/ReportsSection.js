@@ -31,13 +31,13 @@ const ReportsSection = () => {
   const [filterEstado, setFilterEstado] = useState('todos');
   const [searchTerm, setSearchTerm] = useState('');
 
-    // ====== FILTROS ESPECÍFICOS POR MÓDULO ======
+  // ====== FILTROS ESPECÍFICOS POR MÓDULO ======
   const [filterSector, setFilterSector] = useState('todos');        // Para Medidores
   const [filterTipoLectura, setFilterTipoLectura] = useState('todos'); // Para Lecturas (real/estimada)
   const [filterPagoCompleto, setFilterPagoCompleto] = useState('todos'); // Para Pagos
   const [sectoresDisponibles, setSectoresDisponibles] = useState([]); // Lista de sectores
   // Después de filterEstado
-  const [filterActivoMultas, setFilterActivoMultas] = useState('todos');  // ✅ NUEVO
+  const [filterActivoMultas, ] = useState('todos');  
 
   
   // ============================================================
@@ -308,7 +308,6 @@ const ReportsSection = () => {
         break;
       }
 
-
       case 'Facturas':
         const totalFacturado = reporteData.reduce((sum, f) => sum + (parseFloat(f.total || f.monto_total) || 0), 0);
         
@@ -329,94 +328,173 @@ const ReportsSection = () => {
           ? (totalFacturado / reporteData.length).toFixed(2) 
           : '0.00';
 
+        // 🚨 ESTADÍSTICAS DE MORA
+        const facturasConMora = reporteData.filter(f => f.tiene_mora === true).length;
+        const totalMora = reporteData.reduce((sum, f) => sum + (parseFloat(f.valor_mora) || 0), 0);
+        const porcentajeConMora = reporteData.length > 0 
+          ? ((facturasConMora / reporteData.length) * 100).toFixed(1) 
+          : 0;
+        const totalConMora = totalFacturado + totalMora;
+        const promedioMesesAdeudo = facturasConMora > 0
+          ? (reporteData.filter(f => f.tiene_mora).reduce((sum, f) => sum + (parseInt(f.meses_adeudo) || 0), 0) / facturasConMora).toFixed(1)
+          : 0;
+
         stats.push(
-          { label: 'Total Facturado', value: `$${totalFacturado.toFixed(2)}`, icon: 'DollarSign', color: 'text-green-600' },
-          { label: 'Promedio', value: `$${promedioFactura}`, icon: 'TrendingUp', color: 'text-blue-600' },
-          { label: 'Pagadas', value: pagadas, icon: 'CheckCircle', color: 'text-green-600' },
-          { label: 'Pendientes', value: pendientes, icon: 'Clock', color: 'text-orange-600' },
-          { label: 'Vencidas', value: vencidas, icon: 'AlertCircle', color: 'text-red-600' }
+          { 
+            label: 'Total Facturado', 
+            value: `$${totalFacturado.toFixed(2)}`, 
+            icon: 'DollarSign', 
+            color: 'text-green-600',
+            subtitle: `Con mora: $${totalConMora.toFixed(2)}`
+          },
+          { 
+            label: 'Promedio', 
+            value: `$${promedioFactura}`, 
+            icon: 'TrendingUp', 
+            color: 'text-blue-600',
+            subtitle: `${reporteData.length} facturas`
+          },
+          { 
+            label: 'Pagadas', 
+            value: pagadas, 
+            icon: 'CheckCircle', 
+            color: 'text-green-600',
+            subtitle: `${((pagadas / reporteData.length) * 100).toFixed(1)}%`
+          },
+          { 
+            label: 'Pendientes', 
+            value: pendientes, 
+            icon: 'Clock', 
+            color: 'text-orange-600',
+            subtitle: `${((pendientes / reporteData.length) * 100).toFixed(1)}%`
+          },
+          { 
+            label: 'Vencidas', 
+            value: vencidas, 
+            icon: 'AlertCircle', 
+            color: 'text-red-600',
+            subtitle: `${((vencidas / reporteData.length) * 100).toFixed(1)}%`
+          },
+          { 
+            label: 'Con Mora', 
+            value: `${facturasConMora} (${porcentajeConMora}%)`, 
+            icon: 'AlertTriangle', 
+            color: 'text-red-600',
+            subtitle: `Promedio: ${promedioMesesAdeudo} meses`
+          },
+          { 
+            label: 'Total Mora', 
+            value: `$${totalMora.toFixed(2)}`, 
+            icon: 'DollarSign', 
+            color: 'text-red-700',
+            subtitle: `${facturasConMora} facturas afectadas`
+          }
         );
         break;
 
-        case 'Pagos':
-          // 💰 MONTOS Y PROMEDIOS
-          const totalRecaudado = reporteData.reduce((sum, p) => sum + (parseFloat(p.monto_pagado) || 0), 0);
-          const promedioPago = reporteData.length > 0 ? (totalRecaudado / reporteData.length).toFixed(2) : 0;
-          const pagoMayor = Math.max(...reporteData.map(p => parseFloat(p.monto_pagado) || 0));
-          // 💳 MÉTODOS DE PAGO
-          const efectivo = reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('efectivo')).length;
-          const transferencia = reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('transferencia')).length;
-          
+      case 'Pagos':
+        // 💰 MONTOS Y PROMEDIOS
+        const totalRecaudado = reporteData.reduce((sum, p) => sum + (parseFloat(p.monto_pagado) || 0), 0);
+        const promedioPago = reporteData.length > 0 ? (totalRecaudado / reporteData.length).toFixed(2) : 0;
+        const pagoMayor = Math.max(...reporteData.map(p => parseFloat(p.monto_pagado) || 0));
         
-          
-          // 🧾 COMPROBANTES
-          const conComprobante = reporteData.filter(p => p.tiene_comprobante === true).length;
-          const sinComprobante = reporteData.filter(p => p.tiene_comprobante === false).length;
-          
-          // ✅ PAGOS COMPLETOS
-          const pagosParciales = reporteData.filter(p => p.pago_completo === false).length;
-          
-          // 💵 SALDOS
-          const saldoPendiente = reporteData.reduce((sum, p) => sum + (parseFloat(p.saldo) || 0), 0);
-          
-          // 📅 PAGOS HOY (si tienes fecha)
-          
-          // 🎯 PORCENTAJES
-          const porcentajeEfectivo = reporteData.length > 0 
-            ? ((efectivo / reporteData.length) * 100).toFixed(1) 
-            : 0;
-          const porcentajeTransferencia = reporteData.length > 0 
-            ? ((transferencia / reporteData.length) * 100).toFixed(1) 
-            : 0;
-          const porcentajeComprobantes = reporteData.length > 0 
-            ? ((conComprobante / reporteData.length) * 100).toFixed(1) 
-            : 0;
+        // 💳 MÉTODOS DE PAGO
+        const efectivo = reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('efectivo')).length;
+        const transferencia = reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('transferencia')).length;
+        
+        // 🧾 COMPROBANTES
+        const conComprobante = reporteData.filter(p => p.tiene_comprobante === true).length;
+        const sinComprobante = reporteData.filter(p => p.tiene_comprobante === false).length;
+        
+        // ✅ PAGOS COMPLETOS
+        const pagosParciales = reporteData.filter(p => p.pago_completo === false).length;
+        
+        // 💵 SALDOS
+        const saldoPendiente = reporteData.reduce((sum, p) => sum + (parseFloat(p.saldo) || 0), 0);
+        
+        // 🎯 PORCENTAJES
+        const porcentajeEfectivo = reporteData.length > 0 
+          ? ((efectivo / reporteData.length) * 100).toFixed(1) 
+          : 0;
+        const porcentajeTransferencia = reporteData.length > 0 
+          ? ((transferencia / reporteData.length) * 100).toFixed(1) 
+          : 0;
+        const porcentajeComprobantes = reporteData.length > 0 
+          ? ((conComprobante / reporteData.length) * 100).toFixed(1) 
+          : 0;
 
-            stats.push(
-            { 
-              label: 'Total Recaudado', 
-              value: `$${totalRecaudado.toFixed(2)}`, 
-              icon: 'DollarSign', 
-              color: 'text-green-600',
-              subtitle: `${reporteData.length} pagos`
-            },
-            { 
-              label: 'Promedio por Pago', 
-              value: `$${promedioPago}`, 
-              icon: 'TrendingUp', 
-              color: 'text-blue-600',
-              subtitle: `Mayor: $${pagoMayor.toFixed(2)}`
-            },
-            { 
-              label: 'Efectivo', 
-              value: `${efectivo} (${porcentajeEfectivo}%)`, 
-              icon: 'Banknote', 
-              color: 'text-purple-600',
-              subtitle: `$${reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('efectivo')).reduce((sum, p) => sum + parseFloat(p.monto_pagado || 0), 0).toFixed(2)}`
-            },
-            { 
-              label: 'Transferencia', 
-              value: `${transferencia} (${porcentajeTransferencia}%)`, 
-              icon: 'ArrowRightLeft', 
-              color: 'text-indigo-600',
-              subtitle: `$${reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('transferencia')).reduce((sum, p) => sum + parseFloat(p.monto_pagado || 0), 0).toFixed(2)}`
-            },
-            { 
-              label: 'Con Comprobante', 
-              value: `${conComprobante} (${porcentajeComprobantes}%)`, 
-              icon: 'FileCheck', 
-              color: 'text-emerald-600',
-              subtitle: `Sin: ${sinComprobante}`
-            },
-            { 
-              label: 'Saldo Pendiente', 
-              value: `$${saldoPendiente.toFixed(2)}`, 
-              icon: 'AlertCircle', 
-              color: 'text-orange-600',
-              subtitle: `${pagosParciales} parciales`
-            }
-          );
+        // 🚨 ESTADÍSTICAS DE MORA EN PAGOS
+        const pagosMora = reporteData.filter(p => p.tiene_mora === true).length;
+        const totalMoraPagos = reporteData.reduce((sum, p) => sum + (parseFloat(p.valor_mora) || 0), 0);
+        const porcentajePagosMora = reporteData.length > 0 
+          ? ((pagosMora / reporteData.length) * 100).toFixed(1) 
+          : 0;
+        const totalFacturadoConMora = reporteData.reduce((sum, p) => sum + (parseFloat(p.total_con_mora) || 0), 0);
+        const promedioMesesAdeudoPagos = pagosMora > 0
+          ? (reporteData.filter(p => p.tiene_mora).reduce((sum, p) => sum + (parseInt(p.meses_adeudo) || 0), 0) / pagosMora).toFixed(1)
+          : 0;
+
+        stats.push(
+          { 
+            label: 'Total Recaudado', 
+            value: `$${totalRecaudado.toFixed(2)}`, 
+            icon: 'DollarSign', 
+            color: 'text-green-600',
+            subtitle: `${reporteData.length} pagos`
+          },
+          { 
+            label: 'Promedio por Pago', 
+            value: `$${promedioPago}`, 
+            icon: 'TrendingUp', 
+            color: 'text-blue-600',
+            subtitle: `Mayor: $${pagoMayor.toFixed(2)}`
+          },
+          { 
+            label: 'Efectivo', 
+            value: `${efectivo} (${porcentajeEfectivo}%)`, 
+            icon: 'Banknote', 
+            color: 'text-purple-600',
+            subtitle: `$${reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('efectivo')).reduce((sum, p) => sum + parseFloat(p.monto_pagado || 0), 0).toFixed(2)}`
+          },
+          { 
+            label: 'Transferencia', 
+            value: `${transferencia} (${porcentajeTransferencia}%)`, 
+            icon: 'ArrowRightLeft', 
+            color: 'text-indigo-600',
+            subtitle: `$${reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('transferencia')).reduce((sum, p) => sum + parseFloat(p.monto_pagado || 0), 0).toFixed(2)}`
+          },
+          { 
+            label: 'Con Comprobante', 
+            value: `${conComprobante} (${porcentajeComprobantes}%)`, 
+            icon: 'FileCheck', 
+            color: 'text-emerald-600',
+            subtitle: `Sin: ${sinComprobante}`
+          },
+          { 
+            label: 'Saldo Pendiente', 
+            value: `$${saldoPendiente.toFixed(2)}`, 
+            icon: 'AlertCircle', 
+            color: 'text-orange-600',
+            subtitle: `${pagosParciales} parciales`
+          },
+          { 
+            label: 'Pagos con Mora', 
+            value: `${pagosMora} (${porcentajePagosMora}%)`, 
+            icon: 'AlertTriangle', 
+            color: 'text-red-600',
+            subtitle: `Promedio: ${promedioMesesAdeudoPagos} meses`
+          },
+          { 
+            label: 'Total Mora', 
+            value: `$${totalMoraPagos.toFixed(2)}`, 
+            icon: 'DollarSign', 
+            color: 'text-red-700',
+            subtitle: `Total con mora: $${totalFacturadoConMora.toFixed(2)}`
+          }
+        );
         break;
+
+
       case 'Multas':
         const totalMultas = reporteData.reduce((sum, m) => sum + (parseFloat(m.monto || m.valor) || 0), 0);
         const multasPagadas = reporteData.filter(m => m.pagado === true || m.estado === 'pagada').length;
@@ -1302,6 +1380,7 @@ const formatTooltip = (key, value) => {
                 <option value="todos">Todos los estados</option>
                 <option value="REGISTRADO">Registrado</option>
                 <option value="ANULADO">Anulado</option>
+
               </select>
 
                 <select
@@ -1333,7 +1412,7 @@ const formatTooltip = (key, value) => {
             )}
 
             {/* FILTRO GENÉRICO PARA OTROS MÓDULOS: Activo/Inactivo */}
-            {['Usuarios', 'Roles', 'Sectores', 'Tarifas', 'Afiliados', 'Medidores', 'Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo) && (
+            {['Usuarios', 'Roles', 'Sectores', 'Tarifas', 'Afiliados', 'Medidores' ].includes(selectedModulo) && (
               <select
                 className="filter-select"
                 value={filterEstado}
@@ -1371,10 +1450,53 @@ const formatTooltip = (key, value) => {
               <Eraser className="w-4 h-4" />
             </button>
           </div>
-
-
           </div>
-          {/* SELECTOR DE COLUMNAS - PANEL EXPANDIBLE */}
+
+          <div className="filters-section">
+            {reporteData.length > 0 && (
+              <div className="filters-actions-container2">
+                {/* Botón selector de columnas */}
+                <button
+                  onClick={() => setMostrarSelectorColumnas(!mostrarSelectorColumnas)}
+                  className={`filter-control-btn ${mostrarSelectorColumnas ? 'active' : ''}`}
+                  title={mostrarSelectorColumnas ? 'Ocultar selector de columnas' : 'Mostrar selector de columnas'}
+                >
+                  <Settings className="w-5 h-5" />
+                  <span>Personalizar columnas</span>
+                  <span className="control-badge">
+                    {columnasActivas.length}/{Object.keys(columnasVisibles).length}
+                  </span>
+                  {mostrarSelectorColumnas ? (
+                    <XCircle className="w-4 h-4 ml-auto" />
+                  ) : (
+                    <span className="control-arrow">▼</span>
+                  )}
+                </button>
+
+                {/* Botón estadísticas - SOLO para Lecturas, Facturas, Pagos, MultasAfiliados */}
+                {['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo) && (
+                  <button
+                    onClick={() => setMostrarEstadisticas(!mostrarEstadisticas)}
+                    className={`filter-control-btn ${mostrarEstadisticas ? 'active' : ''}`}
+                    title={mostrarEstadisticas ? 'Ocultar estadísticas' : 'Mostrar estadísticas'}
+                  >
+                    <TrendingUp className="w-5 h-5" />
+                    <span>Estadísticas detalladas</span>
+                    <span className="control-badge control-badge-stats">
+                      {estadisticasDinamicas.length} métricas
+                    </span>
+                    {mostrarEstadisticas ? (
+                      <XCircle className="w-4 h-4 ml-auto" />
+                    ) : (
+                      <span className="control-arrow">▼</span>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* SELECTOR DE COLUMNAS - PANEL EXPANDIBLE (FUERA DE FILTERS-SECTION) */}
           {reporteData.length > 0 && mostrarSelectorColumnas && (
             <div className="column-selector-panel">
               <div className="column-selector-panel-header">
@@ -1414,17 +1536,20 @@ const formatTooltip = (key, value) => {
             </div>
           )}
 
-          {/* PANEL DE ESTADÍSTICAS AVANZADAS - EXPANDIBLE */}
-          {reporteData.length > 0 && mostrarEstadisticas && (
+          {/* PANEL DE ESTADÍSTICAS AVANZADAS (FUERA DE FILTERS-SECTION) */}
+          {reporteData.length > 0 && 
+          mostrarEstadisticas && 
+          ['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo) && (
             <div className="stats-panel">
               <ReportStats 
                 data={reporteData} 
                 moduloInfo={modulosSistema.find(m => m.value === selectedModulo)} 
                 stats={estadisticasDinamicas}
               />
-
             </div>
           )}
+
+
           
           {/* ESTADOS DE CARGA */}
           {loading && (

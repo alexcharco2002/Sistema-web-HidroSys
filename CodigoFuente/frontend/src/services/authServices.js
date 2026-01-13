@@ -719,8 +719,16 @@ clearLocalData() {
   /**
    * Solicitar recuperación de contraseña
    */
-  async forgotPassword(email) {
+  /**
+ * Solicitar recuperación de contraseña
+ */
+  async forgotPassword(username, email) {  // ✅ ORDEN CORRECTO
     try {
+      // ✅ Validar ambos campos
+      if (!username || !username.trim()) {
+        throw new Error('El nombre de usuario es requerido');
+      }
+
       if (!email || !email.trim()) {
         throw new Error('El correo electrónico es requerido');
       }
@@ -730,9 +738,13 @@ clearLocalData() {
         throw new Error('Formato de correo electrónico inválido');
       }
 
+      // ✅ CORRECTO: ambos campos dentro del body
       const response = await this.makeRequest(API_CONFIG.endpoints.forgotPassword, {
         method: 'POST',
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        body: JSON.stringify({
+          username: username.trim().toLowerCase(),  // ✅ DENTRO del body
+          email: email.trim().toLowerCase()          // ✅ DENTRO del body
+        }),
         skipAuth: true,
       });
 
@@ -747,10 +759,11 @@ clearLocalData() {
     }
   }
 
+
   /**
    * Verificar código de recuperación
    */
-  async verifyRecoveryCode(email, code) {
+  async verifyRecoveryCode(username, email, code) {
     try {
       if (!email || !code) {
         throw new Error('Email y código son requeridos');
@@ -759,6 +772,7 @@ clearLocalData() {
       const response = await this.makeRequest(API_CONFIG.endpoints.verifyCode, {
         method: 'POST',
         body: JSON.stringify({
+          username: username.trim().toLowerCase(),
           email: email.trim().toLowerCase(),
           code: code.trim()
         }),
@@ -779,7 +793,7 @@ clearLocalData() {
   /**
    * Restablecer contraseña
    */
-  async resetPassword(email, resetToken, newPassword) {
+  async resetPassword(username, email, resetToken, newPassword) {
     try {
       if (!email || !resetToken || !newPassword) {
         throw new Error('Todos los campos son requeridos');
@@ -788,6 +802,7 @@ clearLocalData() {
       const response = await this.makeRequest(API_CONFIG.endpoints.resetPassword, {
         method: 'POST',
         body: JSON.stringify({
+          username: username.trim().toLowerCase(), 
           email: email.trim().toLowerCase(),
           reset_token: resetToken,
           new_password: newPassword
@@ -809,28 +824,41 @@ clearLocalData() {
   /**
    * Reenviar código de verificación
    */
-  async resendCode(email) {
-    try {
-      if (!email || !email.trim()) {
-        throw new Error('El correo electrónico es requerido');
-      }
-
-      const response = await this.makeRequest(API_CONFIG.endpoints.resendCode, {
-        method: 'POST',
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
-        skipAuth: true,
-      });
-
-      return response;
-
-    } catch (error) {
-      console.error('❌ Error en resendCode:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al reenviar el código'
-      };
+/**
+ * Reenviar código de verificación
+ */
+async resendCode(username, email) {  // ✅ AGREGAR username
+  try {
+    // ✅ Validar ambos campos
+    if (!username || !username.trim()) {
+      throw new Error('El nombre de usuario es requerido');
     }
+
+    if (!email || !email.trim()) {
+      throw new Error('El correo electrónico es requerido');
+    }
+
+    // ✅ CORRECTO: enviar ambos campos
+    const response = await this.makeRequest(API_CONFIG.endpoints.resendCode, {
+      method: 'POST',
+      body: JSON.stringify({
+        username: username.trim().toLowerCase(),  // ✅ AGREGAR username
+        email: email.trim().toLowerCase()
+      }),
+      skipAuth: true,
+    });
+
+    return response;
+
+  } catch (error) {
+    console.error('❌ Error en resendCode:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al reenviar el código'
+    };
   }
+}
+
 }
 
 // ========================================

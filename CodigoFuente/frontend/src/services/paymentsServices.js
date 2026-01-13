@@ -108,7 +108,7 @@ class PaymentsServices {
     }
   }
 
-  // ✅ La función getFacturasPeriodo ya está bien, solo asegúrate de que use el endpoint correcto
+  // 
   async getFacturasPeriodo(filters = {}) {
     try {
       const params = new URLSearchParams();
@@ -495,38 +495,36 @@ class PaymentsServices {
     }
   }
 
-// paymentsServices.js
+  /**
+   * Crear pago masivo (múltiples facturas)
+   */
+  async createPagoMasivo(pagoMasivoData) {
+    try {
+      const endpoint = '/pagos/pago-masivo';
+      const data = await this.makeRequest(endpoint, {
+        method: 'POST',
+        body: pagoMasivoData
+      });
 
-/**
- * Crear pago masivo (múltiples facturas)
- */
-async createPagoMasivo(pagoMasivoData) {
-  try {
-    const endpoint = '/pagos/pago-masivo';
-    const data = await this.makeRequest(endpoint, {
-      method: 'POST',
-      body: pagoMasivoData
-    });
+      console.log('✅ Pago masivo creado:', data);
 
-    console.log('✅ Pago masivo creado:', data);
+      // Limpiar cachés
+      this.cachedPagos = null;
+      this.cachedStats = null;
 
-    // Limpiar cachés
-    this.cachedPagos = null;
-    this.cachedStats = null;
-
-    return {
-      success: true,
-      data: data,
-      message: 'Pago masivo registrado exitosamente'
-    };
-  } catch (error) {
-    console.error('❌ Error en pago masivo:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al registrar pago masivo'
-    };
+      return {
+        success: true,
+        data: data,
+        message: 'Pago masivo registrado exitosamente'
+      };
+    } catch (error) {
+      console.error('❌ Error en pago masivo:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al registrar pago masivo'
+      };
+    }
   }
-}
 
 
 
@@ -575,38 +573,35 @@ async createPagoMasivo(pagoMasivoData) {
     }
   }
 
+
   /**
-   * Anular un pago
+   * Anula un pago con opción de regenerar factura
    */
- 
-/**
- * Anula un pago y regenera la factura
- */
-async anularPagoConRegeneracion(idPago, motivo) {
-  try {
-    const endpoint = `${API_CONFIG.endpoints.anular(idPago)}`;
-    
-    const data = await this.makeRequest(endpoint, {
-      method: 'PATCH',
-      body: {
-        motivo: motivo,
-        regenerar_factura: true  // ✅ Flag para regenerar
-      }
-    });
-    
-    return {
-      success: true,
-      data: data
-    };
-    
-  } catch (error) {
-    console.error('❌ Error anulando pago con regeneración:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al anular pago'
-    };
+  async anularPagoConRegeneracion(idPago, motivo, regenerarFactura = true) {
+    try {
+      const endpoint = `${API_CONFIG.endpoints.anular(idPago)}`;
+      
+      const data = await this.makeRequest(endpoint, {
+        method: 'PATCH',
+        body: {
+          motivo: motivo,
+          regenerar_factura: regenerarFactura  // ✅ Flag controlado por el usuario
+        }
+      });
+      
+      return {
+        success: true,
+        data: data
+      };
+      
+    } catch (error) {
+      console.error('❌ Error anulando pago:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al anular pago'
+      };
+    }
   }
-}
 
 
   // ========================================

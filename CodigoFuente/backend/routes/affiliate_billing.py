@@ -157,21 +157,32 @@ def listar_mis_facturas_completo(
     payload: dict = Depends(verify_token)
 ):
     """
-    Obtener facturas del usuario afiliado actual con información completa:
-    - Datos de la factura
-    - Información del afiliado (nombres, medidor)
-    - Detalles de factura
-    - Pago asociado (si existe)
+    Obtener facturas del usuario afiliado actual con información completa
+    - Una factura puede tener MÚLTIPLES pagos
+    - El saldo se calcula sumando TODOS los pagos
     """
     current_user = get_current_user(payload, db)
     afiliado = get_current_afiliado(current_user, db)
 
     try:
-        # ✅ Crear alias para el cajero
+        # Crear alias para el cajero
         Cajero = aliased(UsuarioSistema)
         
         # ========================================
-        # 🔥 QUERY PRINCIPAL - FACTURAS DEL AFILIADO
+        # CALCULAR ESTADO REAL (INCLUYENDO PARCIAL)
+        # ========================================
+        subquery_pagos = (
+            db.query(
+                Pago.id_factura,
+                func.sum(Pago.monto_pago).label('total_pagado')
+            )
+            .filter(Pago.estado_pago == 'REGISTRADO')
+            .group_by(Pago.id_factura)
+            .subquery()
+        )
+
+        # ========================================
+        # QUERY PRINCIPAL - FACTURAS CON ESTADO REAL
         # ========================================
         query = (
             db.query(
@@ -193,47 +204,31 @@ def listar_mis_facturas_completo(
                 UsuarioAfiliado.id_usuario_afi,
                 UsuarioAfiliado.cod_usuario_afi,
                 UsuarioAfiliado.num_medidor,
-                # Usuario sistema (del afiliado)
-                UsuarioSistema.nombres,
-                UsuarioSistema.apellidos,
+                # Usuario sistema (del afiliado) - Nombre completo
+                func.concat(
+                    func.coalesce(UsuarioSistema.nombres, ''),
+                    ' ',
+                    func.coalesce(UsuarioSistema.apellidos, '')
+                ).label('nombre_completo'),
                 UsuarioSistema.cedula,
                 UsuarioSistema.direccion,
                 UsuarioSistema.telefono,
                 UsuarioSistema.email,
                 # Sector
                 Sector.nombre_sector,
-                # ✅ PAGO (relación 1:1)
-                Pago.id_pago,
-                Pago.monto_pago,
-                Pago.fecha_pago,
-                Pago.metodo_pago,
-                Pago.estado_pago,
-                Pago.observaciones,
-                # ✅ COMPROBANTE
-                Pago.nombre_archivo,
-                Pago.tipo_mime,
-                case(
-                    (Pago.comprobante_pdf.isnot(None), True),
-                    else_=False
-                ).label('tiene_comprobante'),
-                # ✅ CAJERO (usando alias)
-                Cajero.nombres.label('cajero_nombres'),
-                Cajero.apellidos.label('cajero_apellidos')
+                # Total pagado (para calcular estado parcial)
+                func.coalesce(subquery_pagos.c.total_pagado, 0).label('monto_pagado_total')
             )
             .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
-            # ✅ JOIN con pagos (puede no tener pago)
-            .outerjoin(Pago, Factura.id_factura == Pago.id_factura)
-            # ✅ JOIN con cajero usando alias
-            .outerjoin(Cajero, Pago.id_cajero == Cajero.id_usuario_sistema)
-            # ✅ FILTRAR POR AFILIADO ACTUAL
+            .outerjoin(subquery_pagos, Factura.id_factura == subquery_pagos.c.id_factura)
             .filter(Factura.id_usuario_afi == afiliado.id_usuario_afi)
         )
 
-        # ===============================
+        # ========================================
         # FILTROS
-        # ===============================
+        # ========================================
         if anio and mes:
             fecha_inicio = date(anio, mes, 1)
             fecha_fin = date(anio + 1, 1, 1) if mes == 12 else date(anio, mes + 1, 1)
@@ -252,13 +247,44 @@ def listar_mis_facturas_completo(
         if estado_factura and estado_factura != "todos":
             query = query.filter(Factura.estado_factura == estado_factura)
 
-        # Ordenar
+        # ========================================
+        # ORDENAMIENTO MEJORADO CON ESTADO PARCIAL
+        # ========================================
         estado_orden = case(
+            # Si está anulada -> 5
+            (Factura.estado_factura == 'anulada', 5),
+            
+            # Si está pagada completamente -> 4
+            (Factura.estado_factura == 'pagada', 4),
+            
+            # Si tiene pago parcial (monto_pagado > 0 pero < total) -> 3
+            (
+                and_(
+                    subquery_pagos.c.total_pagado.isnot(None),
+                    subquery_pagos.c.total_pagado > 0,
+                    subquery_pagos.c.total_pagado < Factura.total,
+                    Factura.estado_factura != 'anulada'
+                ),
+                3
+            ),
+            
+            # Si está vencida sin pago -> 2
+            (
+                and_(
+                    Factura.estado_factura == 'vencida',
+                    or_(
+                        subquery_pagos.c.total_pagado.is_(None),
+                        subquery_pagos.c.total_pagado == 0
+                    )
+                ),
+                2
+            ),
+            
+            # Pendiente (sin pago) -> 1
             (Factura.estado_factura == 'pendiente', 1),
-            (Factura.estado_factura == 'vencida', 2),
-            (Factura.estado_factura == 'pagada', 3),
-            (Factura.estado_factura == 'anulada', 4),
-            else_=5
+            
+            # Cualquier otro caso -> 999
+            else_=999
         )
 
         facturas = (
@@ -275,7 +301,84 @@ def listar_mis_facturas_completo(
         ids_facturas = [f.id_factura for f in facturas]
 
         # ========================================
-        # 🔥 QUERY: DETALLES
+        # QUERY: TODOS LOS PAGOS DE LAS FACTURAS
+        # ========================================
+        pagos_query = (
+            db.query(
+                Pago.id_pago,
+                Pago.id_factura,
+                Pago.monto_pago,
+                Pago.fecha_pago,
+                Pago.metodo_pago,
+                Pago.estado_pago,
+                Pago.observaciones,
+                Pago.nombre_archivo,
+                Pago.tipo_mime,
+                case(
+                    (Pago.comprobante_pdf.isnot(None), True),
+                    else_=False
+                ).label('tiene_comprobante'),
+                # Nombre completo del cajero
+                func.concat(
+                    func.coalesce(Cajero.nombres, ''),
+                    ' ',
+                    func.coalesce(Cajero.apellidos, '')
+                ).label('cajero_nombre_completo')
+            )
+            .outerjoin(Cajero, Pago.id_cajero == Cajero.id_usuario_sistema)
+            .filter(
+                Pago.id_factura.in_(ids_facturas),
+                Pago.estado_pago == 'REGISTRADO'  # Solo pagos válidos
+            )
+            .order_by(Pago.fecha_pago.desc())
+            .all()
+        )
+
+        # Agrupar pagos por factura
+        pagos_por_factura = {}
+        for p in pagos_query:
+            if p.id_factura not in pagos_por_factura:
+                pagos_por_factura[p.id_factura] = []
+            
+            # Usar nombre completo del cajero
+            cajero_nombre = p.cajero_nombre_completo.strip() if p.cajero_nombre_completo and p.cajero_nombre_completo.strip() else "Sin cajero"
+            
+            pagos_por_factura[p.id_factura].append({
+                "id_pago": p.id_pago,
+                "monto_pago": float(p.monto_pago) if p.monto_pago else 0.0,
+                "fecha_pago": p.fecha_pago.isoformat() if p.fecha_pago else None,
+                "metodo_pago": p.metodo_pago or "No especificado",
+                "estado_pago": p.estado_pago,
+                "observaciones": p.observaciones,
+                "cajero": cajero_nombre,
+                "tiene_comprobante": p.tiene_comprobante,
+                "nombre_archivo": p.nombre_archivo,
+                "tipo_mime": p.tipo_mime or "application/pdf"
+            })
+
+        # ========================================
+        # QUERY: TOTAL PAGADO POR FACTURA (SUMA)
+        # ========================================
+        total_pagado_query = (
+            db.query(
+                Pago.id_factura,
+                func.sum(Pago.monto_pago).label('total_pagado')
+            )
+            .filter(
+                Pago.id_factura.in_(ids_facturas),
+                Pago.estado_pago == 'REGISTRADO'
+            )
+            .group_by(Pago.id_factura)
+            .all()
+        )
+
+        total_pagado_por_factura = {
+            tp.id_factura: float(tp.total_pagado) if tp.total_pagado else 0.0
+            for tp in total_pagado_query
+        }
+
+        # ========================================
+        # QUERY: DETALLES
         # ========================================
         detalles_query = (
             db.query(
@@ -310,46 +413,23 @@ def listar_mis_facturas_completo(
                 "subtotal_detalle": float(d.subtotal_detalle) if d.subtotal_detalle else 0.0,
             })
 
-        print(f"✅ Facturas: {len(facturas)} | Detalles: {len(detalles_query)}")
+        print(f"📊 Facturas: {len(facturas)} | Pagos: {len(pagos_query)} | Detalles: {len(detalles_query)}")
 
         # ========================================
-        # 🔄 FORMATEAR RESPUESTA
+        # FORMATEAR RESPUESTA
         # ========================================
         resultado = []
         
         for f in facturas:
             detalles_factura = detalles_por_factura.get(f.id_factura, [])
+            pagos_factura = pagos_por_factura.get(f.id_factura, [])
             
-            # ✅ Construir nombre del cajero
-            cajero_nombre = None
-            if f.cajero_nombres and f.cajero_apellidos:
-                cajero_nombre = f"{f.cajero_nombres} {f.cajero_apellidos}"
-            elif f.cajero_nombres:
-                cajero_nombre = f.cajero_nombres
-            elif f.cajero_apellidos:
-                cajero_nombre = f.cajero_apellidos
+            # CALCULAR TOTALES CORRECTAMENTE
+            total_pagado = total_pagado_por_factura.get(f.id_factura, 0.0)
+            saldo_pendiente = float(f.total) - total_pagado
             
-            # ✅ PAGO (puede ser None si no tiene pago)
-            pago = None
-            if f.id_pago:
-                pago = {
-                    "id_pago": f.id_pago,
-                    "monto_pago": float(f.monto_pago) if f.monto_pago else 0.0,
-                    "fecha_pago": f.fecha_pago.isoformat() if f.fecha_pago else None,
-                    "metodo_pago": f.metodo_pago or "No especificado",
-                    "estado_pago": f.estado_pago,
-                    "observaciones": f.observaciones,
-                    "cajero": cajero_nombre or "Sin cajero",
-                    # ✅ COMPROBANTE
-                    "tiene_comprobante": f.tiene_comprobante,
-                    
-                    "nombre_archivo": f.nombre_archivo,
-                    "tipo_mime": f.tipo_mime or "application/pdf"
-                }
-            
-            # Calcular totales
-            monto_pagado = float(f.monto_pago) if f.monto_pago else 0.0
-            saldo_pendiente = float(f.total) - monto_pagado
+            # Asegurar que no sea negativo
+            saldo_pendiente = max(0.0, saldo_pendiente)
             
             resultado.append({
                 "id_factura": f.id_factura,
@@ -374,8 +454,7 @@ def listar_mis_facturas_completo(
                     "num_medidor": f.num_medidor or "N/A",
                     
                     "usuario_sistema": {
-                        "nombres": f.nombres,
-                        "apellidos": f.apellidos,
+                        "nombre_completo": f.nombre_completo.strip() if f.nombre_completo else "Sin nombre",
                         "cedula": f.cedula,
                         "direccion": f.direccion,
                         "telefono": f.telefono,
@@ -396,15 +475,16 @@ def listar_mis_facturas_completo(
                     "servicios": len([d for d in detalles_factura if d['tipo_detalle'] == 'servicio']),
                 },
                 
-                # ✅ UN SOLO PAGO (no array)
-                "pago": pago,
+                # 🔹 ARRAY DE PAGOS (puede tener múltiples)
+                "pagos": pagos_factura,
                 
-                # ✅ RESUMEN SIMPLIFICADO
-                "tiene_pago": pago is not None,
-                "monto_pagado": monto_pagado,
+                # 🔹 RESUMEN CORRECTO
+                "tiene_pago": len(pagos_factura) > 0,
+                "cantidad_pagos": len(pagos_factura),
+                "monto_pagado": total_pagado,
                 "saldo_pendiente": saldo_pendiente,
-                "esta_totalmente_pagada": saldo_pendiente <= 0,
-                "tiene_comprobante": f.tiene_comprobante if f.id_pago else False
+                "esta_totalmente_pagada": saldo_pendiente <= 0.01,  # Tolerancia por decimales
+                "tiene_comprobante": any(p.get('tiene_comprobante', False) for p in pagos_factura)
             })
 
         return resultado
@@ -416,7 +496,6 @@ def listar_mis_facturas_completo(
             status_code=500,
             detail=f"Error al obtener mis facturas: {str(e)}"
         )
-
 
 
 

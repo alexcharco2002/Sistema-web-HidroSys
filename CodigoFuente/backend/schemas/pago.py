@@ -46,8 +46,8 @@ class PagoBase(BaseModel):
 class PagoCreate(PagoBase):
     """Schema para crear un nuevo pago"""
     id_cajero: int = Field(..., description="ID del cajero que registra el pago")
-    incluir_multas: bool = Field(True, description="Indica si el pago incluye multas o solo consumo/servicios")  # ⭐ NUEVO CAMPO
-    
+    incluir_multas: bool = Field(True, description="Indica si el pago incluye multas o solo consumo/servicios") 
+
     @field_validator('incluir_multas')
     @classmethod
     def validar_incluir_multas(cls, v: bool) -> bool:
@@ -177,10 +177,10 @@ class PagoResponse(BaseModel):
 class PagoStats(BaseModel):
     """Schema para estadísticas de pagos"""
     total_pagos: int
-    pagos_activos: int  # ✅ AGREGAR
+    pagos_activos: int  
     pagos_registrados: int
     pagos_anulados: int
-    monto_total: float  # ✅ CAMBIAR de monto_total_pagado a monto_total
+    monto_total: float   
     monto_efectivo: float
     monto_transferencia: float
     monto_tarjeta: float
@@ -190,10 +190,10 @@ class PagoStats(BaseModel):
         json_schema_extra = {
             "example": {
                 "total_pagos": 150,
-                "pagos_activos": 145,  # ✅ AGREGAR
+                "pagos_activos": 145,   
                 "pagos_registrados": 145,
                 "pagos_anulados": 5,
-                "monto_total": 3875.50,  # ✅ CAMBIAR
+                "monto_total": 3875.50,   
                 "monto_efectivo": 2100.00,
                 "monto_transferencia": 1200.50,
                 "monto_tarjeta": 500.00,
@@ -216,7 +216,6 @@ class PagoPorPeriodo(BaseModel):
                 "monto_total": 1250.75
             }
         }
-
 
 class PagoPorMetodo(BaseModel):
     """Schema para pagos agrupados por método"""

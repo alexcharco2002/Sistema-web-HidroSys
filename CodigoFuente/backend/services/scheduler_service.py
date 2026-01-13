@@ -34,7 +34,7 @@ class SchedulerService:
             job_defaults={
                 'coalesce': True,  # Combinar ejecuciones perdidas
                 'max_instances': 1,  # Solo una instancia por trabajo
-                'misfire_grace_time': 300  # 5 minutos de gracia
+                'misfire_grace_time': 300  # 5 minutos 
             }
         )
         

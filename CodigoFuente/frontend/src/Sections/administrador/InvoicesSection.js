@@ -338,9 +338,8 @@ const InvoicesSection = () => {
       // 🔥 Número de medidor
       toString(factura.usuario_afiliado?.num_medidor).includes(searchLower) ||
       
-      // Nombres del afiliado
-      toString(factura.usuario_afiliado?.usuario_sistema?.nombres).includes(searchLower) ||
-      toString(factura.usuario_afiliado?.usuario_sistema?.apellidos).includes(searchLower) ||
+      // 🔹 CAMBIO: Buscar en nombre completo
+      toString(factura.usuario_afiliado?.usuario_sistema?.nombre_completo).includes(searchLower) ||
       
       // Cédula
       toString(factura.usuario_afiliado?.usuario_sistema?.cedula).includes(searchTerm);
@@ -350,55 +349,52 @@ const InvoicesSection = () => {
     return matchesSearch && matchesStatus;
   });
 
-
-// Función auxiliar para determinar prioridad de estado
-const getEstadoPrioridad = (estado) => {
-  const prioridades = {
-    'pendiente': 1,
-    'vencida': 2,
-    'pagada': 3,
-    'anulada': 4
+  // Función auxiliar para determinar prioridad de estado
+  const getEstadoPrioridad = (estado) => {
+    const prioridades = {
+      'pendiente': 1,
+      'vencida': 2,
+      'pagada': 3,
+      'anulada': 4
+    };
+    return prioridades[estado] || 5;
   };
-  return prioridades[estado] || 5;
-};
 
-const sortedFacturas = useMemo(() => {
-  return [...filteredFacturas].sort((a, b) => {
-    let comparison = 0;
+  const sortedFacturas = useMemo(() => {
+    return [...filteredFacturas].sort((a, b) => {
+      let comparison = 0;
 
-    // Primero ordenar por estado (pendiente → vencida → pagada → anulada)
-    const estadoA = getEstadoPrioridad(a.estado_factura);
-    const estadoB = getEstadoPrioridad(b.estado_factura);
-    
-    if (estadoA !== estadoB) {
-      return estadoA - estadoB; // Siempre ascendente para estados
-    }
+      // Primero ordenar por estado (pendiente → vencida → pagada → anulada)
+      const estadoA = getEstadoPrioridad(a.estado_factura);
+      const estadoB = getEstadoPrioridad(b.estado_factura);
+      
+      if (estadoA !== estadoB) {
+        return estadoA - estadoB; // Siempre ascendente para estados
+      }
 
-    // Luego ordenar por el criterio seleccionado
-    if (sortOption === 'fecha') {
-      comparison = new Date(a.fecha_emision) - new Date(b.fecha_emision);
-    } else if (sortOption === 'numero') {
-      comparison = a.num_factura.localeCompare(b.num_factura);
-    } else if (sortOption === 'total') {
-      comparison = parseFloat(a.total) - parseFloat(b.total);
-    } else if (sortOption === 'estado') {
-      comparison = a.estado_factura.localeCompare(b.estado_factura);
-    } else if (sortOption === 'codigo') {
-      // Ordenar por código de afiliado - CONVERTIR A STRING
-      const codigoA = String(a.usuario_afiliado?.cod_usuario_afi || '');
-      const codigoB = String(b.usuario_afiliado?.cod_usuario_afi || '');
-      comparison = codigoA.localeCompare(codigoB, undefined, { numeric: true });
-    }
+      // Luego ordenar por el criterio seleccionado
+      if (sortOption === 'fecha') {
+        comparison = new Date(a.fecha_emision) - new Date(b.fecha_emision);
+      } else if (sortOption === 'numero') {
+        comparison = a.num_factura.localeCompare(b.num_factura);
+      } else if (sortOption === 'total') {
+        comparison = parseFloat(a.total) - parseFloat(b.total);
+      } else if (sortOption === 'estado') {
+        comparison = a.estado_factura.localeCompare(b.estado_factura);
+      } else if (sortOption === 'codigo') {
+        // Ordenar por código de afiliado - CONVERTIR A STRING
+        const codigoA = String(a.usuario_afiliado?.cod_usuario_afi || '');
+        const codigoB = String(b.usuario_afiliado?.cod_usuario_afi || '');
+        comparison = codigoA.localeCompare(codigoB, undefined, { numeric: true });
+      }
 
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
-}, [filteredFacturas, sortOption, sortOrder]);
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+  }, [filteredFacturas, sortOption, sortOrder]);
 
-
-
-const toggleSortOrder = () => {
-  setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
-};
+  const toggleSortOrder = () => {
+    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
+  };
 
 
  // ============================================================
@@ -504,9 +500,6 @@ const handleConfirmarAnulacion = async (e) => {
     setLoading(false);
   }
 };
-
-
-
   
   // ============================================================
   // FUNCIONES DE servicios 
@@ -1473,7 +1466,7 @@ const agruparDetallesPorTipo = (detalles) => {
                         {factura.usuario_afiliado?.usuario_sistema ? (
                           <div className="inv-usuario-info">
                             <span className="inv-usuario-nombre">
-                              {factura.usuario_afiliado.usuario_sistema.nombres} {factura.usuario_afiliado.usuario_sistema.apellidos}
+                              {factura.usuario_afiliado.usuario_sistema.nombre_completo}
                             </span>
                           </div>
                         ) : (
@@ -1663,8 +1656,7 @@ const agruparDetallesPorTipo = (detalles) => {
               <div className="detail-group">
                 <label>Afiliado:</label>
                 <p>
-                  {selectedFactura.usuario_afiliado?.usuario_sistema?.nombres || 'N/A'}{' '}
-                  {selectedFactura.usuario_afiliado?.usuario_sistema?.apellidos || ''}
+                  {selectedFactura.usuario_afiliado?.usuario_sistema?.nombre_completo || 'N/A'}
                 </p>
               </div>
               <div className="detail-group">
@@ -1916,8 +1908,7 @@ const agruparDetallesPorTipo = (detalles) => {
                     <div>
                       <p className="client-name">
                         <strong>Nombre Afiliado:</strong>{' '}
-                        {paymentData.factura.usuario_afiliado?.usuario_sistema?.nombres}{' '}
-                        {paymentData.factura.usuario_afiliado?.usuario_sistema?.apellidos}
+                        {paymentData.factura.usuario_afiliado?.usuario_sistema?.nombre_completo}
                       </p>
 
                       <p className="client-code">
@@ -2174,8 +2165,7 @@ const agruparDetallesPorTipo = (detalles) => {
 
                     <p className="client-name">
                       <strong>Nombre Afiliado:</strong>{' '}
-                      {facturaSeleccionadaServicios.usuario_afiliado?.usuario_sistema?.nombres}{' '}
-                      {facturaSeleccionadaServicios.usuario_afiliado?.usuario_sistema?.apellidos}
+                      {facturaSeleccionadaServicios.usuario_afiliado?.usuario_sistema?.nombre_completo}
                     </p>
 
                     <p className="client-code">
@@ -2316,7 +2306,7 @@ const agruparDetallesPorTipo = (detalles) => {
                 <p className="client-name">
                   <strong>Afiliado:</strong>{' '}
                   {selectedFactura.usuario_afiliado?.usuario_sistema
-                    ? `${selectedFactura.usuario_afiliado.usuario_sistema.nombres} ${selectedFactura.usuario_afiliado.usuario_sistema.apellidos}`
+                    ? `${selectedFactura.usuario_afiliado.usuario_sistema.nombre_completo} `
                     : 'No registrado'}
                 </p>
 
@@ -2335,9 +2325,16 @@ const agruparDetallesPorTipo = (detalles) => {
                 <p className="client-code">
                   <strong>Periodo:</strong>{' '}
                   <span className="text-blue-600 font-semibold">
-                    {selectedFactura.mes_facturado || 'N/A'}/{selectedFactura.anio_facturado || 'N/A'}
+                    {selectedFactura.periodo 
+                      ? (() => {
+                          const [anio, mes] = selectedFactura.periodo.split('-');
+                          return formatearPeriodo(parseInt(mes), anio);
+                        })()
+                      : 'N/A'
+                    }
                   </span>
                 </p>
+
                 <p className="client-code">
                   <strong>Consumo:</strong>{' '}
                   {selectedFactura.consumo_m3 || 0} m³

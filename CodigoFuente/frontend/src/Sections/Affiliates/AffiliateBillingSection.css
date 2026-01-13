@@ -298,3 +298,30 @@
 .factura-card-item {
   animation: fadeInUp 0.3s ease-out;
 }
+
+/* Mejorar el estilo del comprobante existente */
+.pago-detail .pago-value.text-green-600.underline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background-color: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  color: #4b5563;
+  text-decoration: none;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pago-detail .pago-value.text-green-600.underline:hover {
+  background-color: #e5e7eb;
+  border-color: #9ca3af;
+  color: #1f2937;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.pago-detail .pago-value.text-green-600.underline svg {
+  color: #6b7280;
+}

@@ -6,6 +6,8 @@ from sqlalchemy import func, or_, cast, String
 from psycopg2.errors import ForeignKeyViolation, UniqueViolation
 from typing import List, Optional
 
+
+from models.HistorialMedidor import HistorialMedidor
 from models.meter import Medidor
 from models.servicio import Servicio
 from models.user import UsuarioSistema
@@ -616,24 +618,24 @@ def actualizar_medidor(
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "medidores", "actualizar")
-    
+
     # PRIMERO: Buscar el medidor en la base de datos
     medidor = db.query(Medidor).options(
         joinedload(Medidor.sector),
         joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
     ).filter(Medidor.id_medidor == id_medidor).first()
-    
+
     if not medidor:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Medidor no encontrado"
         )
-    
+
     # ========================================================================
     # VALIDACIÓN GEOGRÁFICA DE COORDENADAS (INCLUYE ALTITUD)
     # ========================================================================
     datos_actualizacion = medidor_update.dict(exclude_unset=True)
-    
+
     # Determinar las coordenadas finales (nuevas o existentes)
     latitud_final = (
         datos_actualizacion.get('latitud')
@@ -650,7 +652,7 @@ def actualizar_medidor(
         if 'altitud' in datos_actualizacion
         else medidor.altitud
     )
-    
+
     # Validar formato de coordenadas si hay algún cambio
     if any([
         latitud_final is not None,
@@ -692,7 +694,9 @@ def actualizar_medidor(
             )
 
     # ========================================================================
-      # Validar número de medidor único
+    # Validaciones de unicidad
+    # ========================================================================
+    # Validar número de medidor único
     if medidor_update.num_medidor and medidor_update.num_medidor != medidor.num_medidor:
         existe = db.query(Medidor).filter(
             Medidor.num_medidor == medidor_update.num_medidor,
@@ -703,7 +707,7 @@ def actualizar_medidor(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Ya existe otro medidor con el número '{medidor_update.num_medidor}'"
             )
-    
+
     # Validar afiliado único
     if medidor_update.id_usuario_afi and medidor_update.id_usuario_afi != medidor.id_usuario_afi:
         existe = db.query(Medidor).filter(
@@ -715,22 +719,29 @@ def actualizar_medidor(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="El afiliado ya tiene un medidor asignado"
             )
-    
+
     datos_actualizacion = medidor_update.dict(exclude_unset=True)
-    
+
     # 🆕 Variables para tracking de cambios
     id_usuario_afi_anterior = medidor.id_usuario_afi
     num_medidor_anterior = medidor.num_medidor
-    
+
+    # Guardar referencias de afiliado anterior para notificación
+    afiliado_anterior_obj = None
+    if id_usuario_afi_anterior:
+        afiliado_anterior_obj = db.query(UsuarioAfiliado).options(
+            joinedload(UsuarioAfiliado.usuario_sistema)
+        ).filter(UsuarioAfiliado.id_usuario_afi == id_usuario_afi_anterior).first()
+
     # Actualizar solo los campos enviados
     for key, value in datos_actualizacion.items():
         setattr(medidor, key, value)
-    
+
     try:
-        db.flush()  # 🔥 Ejecuta el UPDATE pero NO hace commit
-        
+        db.flush()  # Ejecuta el UPDATE pero NO hace commit
+
         # 🆕 SINCRONIZAR: Actualizar num_medidor en t_usuario_afiliado
-        
+
         # CASO 1: Cambió el num_medidor
         if 'num_medidor' in datos_actualizacion:
             if medidor.id_usuario_afi:  # Si tiene afiliado actual
@@ -739,8 +750,11 @@ def actualizar_medidor(
                 ).first()
                 if afiliado:
                     afiliado.num_medidor = medidor.num_medidor
-        
+
         # CASO 2: Cambió el id_usuario_afi
+        historial_creado = False
+        afiliado_nuevo_obj = None
+
         if 'id_usuario_afi' in datos_actualizacion:
             # Limpiar afiliado anterior
             if id_usuario_afi_anterior:
@@ -749,16 +763,34 @@ def actualizar_medidor(
                 ).first()
                 if afiliado_anterior:
                     afiliado_anterior.num_medidor = None
-            
+
             # Asignar a nuevo afiliado
             if medidor.id_usuario_afi:
-                afiliado_nuevo = db.query(UsuarioAfiliado).filter(
+                afiliado_nuevo = db.query(UsuarioAfiliado).options(
+                    joinedload(UsuarioAfiliado.usuario_sistema)
+                ).filter(
                     UsuarioAfiliado.id_usuario_afi == medidor.id_usuario_afi
                 ).first()
                 if afiliado_nuevo:
                     afiliado_nuevo.num_medidor = medidor.num_medidor
-        
-        db.commit()  # ✅ Commit de ambas operaciones juntas
+                    afiliado_nuevo_obj = afiliado_nuevo
+
+            # Registrar en historial si realmente cambió el afiliado
+            if id_usuario_afi_anterior != medidor.id_usuario_afi:
+                historial = HistorialMedidor(
+                    id_medidor=medidor.id_medidor,
+                    id_usuario_afi_anterior=id_usuario_afi_anterior,
+                    id_usuario_afi_nuevo=medidor.id_usuario_afi,
+                    motivo_cambio="Cambio de afiliado del medidor",
+                    costo_cambio=medidor_update.costo_cambio,
+                    id_usuario_sistema=current_user.id_usuario_sistema,
+                    observaciones=f"Cambio realizado por {payload.get('sub')}",
+                    activo=True,
+                )
+                db.add(historial)
+                historial_creado = True
+
+        db.commit()  # Commit de todas las operaciones juntas
         db.refresh(medidor)
 
         # Registrar auditoría
@@ -768,8 +800,8 @@ def actualizar_medidor(
             descripcion=f"Medidor '{medidor.num_medidor}' actualizado por '{payload['sub']}'",
             id_usuario=current_user.id_usuario_sistema
         )
-        
-        # Crear notificación
+
+        # Notificación para el usuario que hizo el cambio
         registrar_notificacion(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
@@ -777,9 +809,39 @@ def actualizar_medidor(
             mensaje=f"El medidor '{medidor.num_medidor}' fue modificado correctamente.",
             tipo="info"
         )
-        
+
+        # 🆕 Notificaciones para afiliado anterior y nuevo (si aplica)
+        if 'id_usuario_afi' in datos_actualizacion and id_usuario_afi_anterior != medidor.id_usuario_afi:
+            # Notificar afiliado anterior (si tiene usuario_sistema)
+            if afiliado_anterior_obj and afiliado_anterior_obj.usuario_sistema:
+                us_ant = afiliado_anterior_obj.usuario_sistema
+                registrar_notificacion(
+                    db=db,
+                    id_usuario=us_ant.id_usuario_sistema,
+                    titulo="Medidor retirado",
+                    mensaje=(
+                        f"El medidor '{num_medidor_anterior}' fue retirado de su afiliación "
+                        f"(código {afiliado_anterior_obj.cod_usuario_afi})."
+                    ),
+                    tipo="info"
+                )
+
+            # Notificar afiliado nuevo (si tiene usuario_sistema)
+            if afiliado_nuevo_obj and afiliado_nuevo_obj.usuario_sistema:
+                us_nuevo = afiliado_nuevo_obj.usuario_sistema
+                registrar_notificacion(
+                    db=db,
+                    id_usuario=us_nuevo.id_usuario_sistema,
+                    titulo="Medidor asignado",
+                    mensaje=(
+                        f"Se le ha asignado el medidor '{medidor.num_medidor}' "
+                        f"a su afiliación (código {afiliado_nuevo_obj.cod_usuario_afi})."
+                    ),
+                    tipo="info"
+                )
+
         return MedidorCompleto.from_orm(medidor)
-    
+
     except Exception as e:
         db.rollback()
         print(f"❌ Error al actualizar medidor: {e}")
@@ -787,6 +849,7 @@ def actualizar_medidor(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al actualizar el medidor"
         )
+
 
 @router.delete("/{id_medidor}", status_code=status.HTTP_200_OK)
 def eliminar_medidor(

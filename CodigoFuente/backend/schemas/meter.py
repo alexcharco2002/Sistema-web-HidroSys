@@ -82,6 +82,12 @@ class MedidorUpdate(BaseModel):
     id_usuario_afi: Optional[int] = None
     activo: Optional[bool] = None
 
+  
+    # 🆕 Campos para cambio de medidor (opcionales)
+    costo_cambio: Optional[Decimal] = Field(None, description="Costo del cambio de medidor")
+    motivo_cambio: Optional[str] = Field(None, max_length=255, description="Motivo del cambio")
+    observaciones_cambio: Optional[str] = Field(None, description="Observaciones del cambio")
+    
 
 class MedidorResponse(MedidorBase):
     """Schema básico de respuesta"""

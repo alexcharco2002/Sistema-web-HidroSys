@@ -45,7 +45,7 @@ class Notificacion(Base):
     # Fechas - ✅ USAR HORA DE ECUADOR EN VEZ DE UTC
     fecha_creacion = Column(
         DateTime, 
-        default=lambda: datetime.now(ECUADOR_TZ),  # ✅ Cambio aquí
+        default=lambda: datetime.now(ECUADOR_TZ), 
         nullable=False
     )
     fecha_leido = Column(DateTime, nullable=True)

@@ -14,6 +14,7 @@ const API_CONFIG = {
     estadisticasGenerales: '/afiliados/estadisticas',
     exportarLecturas: '/afiliados/exportar-lecturas',
     misLecturasPeriodosDisponibles: '/afiliados/mis-lecturas/periodos-disponibles',
+     tarifasVigentes: '/afiliados/tarifas-vigentes' 
 
   }
 };
@@ -112,6 +113,23 @@ class AffiliateGeneralServices {
       };
     }
   }
+
+  /**
+ * Obtener tarifas vigentes (básica y exceso)
+ */
+async getTarifasVigentes() {
+  try {
+    const data = await this.makeRequest(API_CONFIG.endpoints.tarifasVigentes);
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error obteniendo tarifas vigentes', error);
+    return { 
+      success: false, 
+      message: error.message || 'Error al obtener tarifas'
+    };
+  }
+}
+
 
   /**
    * Obtener lecturas filtradas por año y mes

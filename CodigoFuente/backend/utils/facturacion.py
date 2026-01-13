@@ -2,8 +2,10 @@
 
 import re
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_
+
+
 from models.factura import Factura
 from models.detalle_factura import DetalleFactura
 from models.iva import IVA
@@ -16,6 +18,7 @@ from models.multa_afiliado import MultaAfiliado
 from decimal import Decimal
 from datetime import date
 from typing import Dict, Optional, Tuple, List
+from models.HistorialMedidor import HistorialMedidor
 
 
 dias_vencimientos: int = 30  # Días por defecto para vencimiento de facturas
@@ -352,7 +355,8 @@ def generar_factura_desde_lectura(
     tipo_descuento: str = 'ninguno',
     valor_descuento: float = 0.0,
     aplicar_servicios: bool = True,
-    aplicar_multas: bool = True
+    aplicar_multas: bool = True,
+    aplicar_cambios_medidor: bool = True 
 ) -> Tuple[bool, str, Optional[Factura]]:
     """
     Genera factura desde lectura de manera modular y optimizada
@@ -477,6 +481,24 @@ def generar_factura_desde_lectura(
                 recalcular_totales_factura(db, nueva_factura)
         
         # ============================================
+        # 🆕 PASO 10: AGREGAR CAMBIOS DE MEDIDOR (SI APLICA)
+        # ============================================
+        if aplicar_cambios_medidor:
+            print(f"\n{'='*60}")
+            print(f"🔄 BUSCANDO CAMBIOS DE MEDIDOR PENDIENTES")
+            print(f"{'='*60}")
+            
+            cambios_agregados = agregar_cambios_medidor_a_factura(
+                db=db,
+                id_factura=nueva_factura.id_factura,
+                id_usuario_afi=id_usuario_afi
+            )
+            
+            if cambios_agregados > 0:
+                print(f"   ✅ {cambios_agregados} cambio(s) agregado(s)")
+                recalcular_totales_factura(db, nueva_factura)
+
+        # ============================================
         # PASO 10: COMMIT FINAL
         # ============================================
         db.commit()
@@ -517,8 +539,6 @@ def regenerar_factura_desde_lectura_anulada(
         aplicar_servicios=True,
         aplicar_multas=True
     )
-
-
 
 
 def agregar_multas_a_factura(
@@ -596,7 +616,101 @@ def agregar_multas_a_factura(
     except Exception as e:
         print(f"❌ Error agregando multas: {e}")
         return 0
+
+# utils/billing_utils.py (o donde tengas agregar_multas_a_factura)
+
+def agregar_cambios_medidor_a_factura(
+    db: Session,
+    id_factura: int,
+    id_usuario_afi: int
+) -> int:
+    """
+    Agrega cargos de cambio de medidor pendientes como detalles de factura
     
+    Condiciones:
+    - activo = True
+    - facturado = False
+    - costo_cambio > 0
+    - id_usuario_afi_nuevo = id_usuario_afi (es el nuevo afiliado)
+    
+    Returns:
+        int: Cantidad de cambios agregados
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"🔄 BUSCANDO CAMBIOS DE MEDIDOR PENDIENTES")
+        print(f"{'='*60}")
+        
+        # 🆕 BUSCAR CAMBIOS PENDIENTES DE FACTURAR
+        cambios_pendientes = db.query(HistorialMedidor).options(
+            joinedload(HistorialMedidor.medidor)
+        ).filter(
+            HistorialMedidor.id_usuario_afi_nuevo == id_usuario_afi,  # Es el nuevo afiliado
+            HistorialMedidor.activo == True,
+            HistorialMedidor.facturado == False,
+            HistorialMedidor.costo_cambio.isnot(None),
+            HistorialMedidor.costo_cambio > 0
+        ).all()
+        
+        if not cambios_pendientes:
+            print(f"   ℹ️  No hay cambios de medidor pendientes para el afiliado {id_usuario_afi}")
+            return 0
+        
+        print(f"   📋 Se encontraron {len(cambios_pendientes)} cambio(s) pendiente(s)")
+        
+        cambios_agregados = 0
+        
+        # 🆕 Buscar servicio de cambio de medidor si existe
+        servicio_cambio = db.query(Servicio).filter(
+            Servicio.nombre.ilike('%cambio%medidor%'),
+            Servicio.es_vigente == True,
+            Servicio.activo == True
+        ).first()
+        
+        id_servicio = servicio_cambio.id_servicio if servicio_cambio else None
+        
+        for cambio in cambios_pendientes:
+            medidor = cambio.medidor
+            num_medidor = medidor.num_medidor if medidor else f"ID:{cambio.id_medidor}"
+            
+            descripcion = (
+                f"{cambio.motivo_cambio or 'Cambio de Medidor'} - "
+                f"Medidor: {num_medidor} - "
+                f"Fecha: {cambio.fecha_cambio.strftime('%d/%m/%Y')}"
+            )
+            
+            if cambio.observaciones:
+                descripcion += f" - {cambio.observaciones}"
+            
+            # Crear detalle con referencia al servicio
+            detalle_cambio = DetalleFactura(
+                id_factura=id_factura,
+                tipo_detalle='servicio',
+                id_servicio=id_servicio,  # 🆕 Vinculado al servicio
+                subtotal_detalle=cambio.costo_cambio,
+                descripcion=descripcion
+            )
+            
+            db.add(detalle_cambio)
+            cambio.facturado = True
+            cambios_agregados += 1
+            
+            print(f"   ✅ Cambio #{cambio.id_historial}: {num_medidor} - ${cambio.costo_cambio}")
+        
+        db.flush()
+        
+        print(f"\n   💰 Total cambios agregados: {cambios_agregados}")
+        print(f"{'='*60}\n")
+        
+        return cambios_agregados
+    
+    except Exception as e:
+        print(f"❌ Error agregando cambios de medidor: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0
+
+
 def calcular_descuento(
     subtotal: Decimal,
     tipo_descuento: str,

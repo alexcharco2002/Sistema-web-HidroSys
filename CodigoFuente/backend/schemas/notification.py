@@ -107,25 +107,54 @@ class MantenimientoCreate(BaseModel):
     @classmethod
     def validate_fecha_inicio(cls, v):
         """Valida que el mantenimiento sea con al menos 24 horas de anticipación"""
+        
+        # Obtener hora actual de Ecuador
         ahora = datetime.now(ECUADOR_TZ)
-        diferencia = (v - ahora).total_seconds() / 3600  # Diferencia en horas
+        
+        # Si el valor viene sin zona horaria, asignarle la zona horaria de Ecuador
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=ECUADOR_TZ)
+        else:
+            # Si tiene otra zona horaria, convertir a Ecuador
+            v = v.astimezone(ECUADOR_TZ)
+        
+        # Calcular diferencia en horas
+        diferencia = (v - ahora).total_seconds() / 3600
         
         if diferencia < 24:
             raise ValueError(
-                f'El mantenimiento debe programarse con al menos 24 horas de anticipación. '
-                f'Anticipación actual: {diferencia:.1f} horas'
+                f"El mantenimiento debe programarse con al menos 24 horas de anticipación. "
+                f"Anticipación actual: {diferencia:.1f} horas"
             )
         
         return v
-    
+
+
     @field_validator('fecha_fin_mantenimiento')
     @classmethod
     def validate_fecha_fin(cls, v, info):
         """Valida que la fecha fin sea posterior a la fecha inicio"""
-        if v and 'fecha_inicio_mantenimiento' in info.data:
-            if v <= info.data['fecha_inicio_mantenimiento']:
-                raise ValueError('La fecha de fin debe ser posterior a la fecha de inicio')
+        if v:
+            # Si el valor viene sin zona horaria, asignarle la zona horaria de Ecuador
+            if v.tzinfo is None:
+                v = v.replace(tzinfo=ECUADOR_TZ)
+            else:
+                # Si tiene otra zona horaria, convertir a Ecuador
+                v = v.astimezone(ECUADOR_TZ)
+            
+            # Validar contra fecha de inicio
+            if 'fecha_inicio_mantenimiento' in info.data:
+                fecha_inicio = info.data['fecha_inicio_mantenimiento']
+                
+                # Asegurar que fecha_inicio tenga zona horaria
+                if fecha_inicio.tzinfo is None:
+                    fecha_inicio = fecha_inicio.replace(tzinfo=ECUADOR_TZ)
+                
+                if v <= fecha_inicio:
+                    raise ValueError("La fecha de fin debe ser posterior a la fecha de inicio")
+        
         return v
+
     
     @field_validator('duracion_estimada')
     @classmethod

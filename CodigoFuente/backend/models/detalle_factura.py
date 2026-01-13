@@ -23,7 +23,7 @@ class DetalleFactura(Base):
             name='chk_subtotal_positivo'
         ),
         CheckConstraint(
-            "tipo_detalle IN ('servicio', 'multa')",
+            "tipo_detalle IN ('servicio', 'multa', 'consumo', 'cambio medidor')",
             name='chk_tipo_detalle_valido'
         ),
         {'schema': 'facturacion'}

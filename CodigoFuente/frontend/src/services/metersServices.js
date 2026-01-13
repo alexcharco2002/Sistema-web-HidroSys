@@ -369,8 +369,19 @@ class MetersService {
         altitud: meterData.altitud,
         id_usuario_afi: meterData.id_usuario_afi,
         id_sector: meterData.id_sector,
-        activo: meterData.activo
+        activo: meterData.activo,
+        // 🆕 Campos del cambio de medidor (opcionales)
+        costo_cambio: meterData.costo_cambio,
+        motivo_cambio: meterData.motivo_cambio,
+        observaciones_cambio: meterData.observaciones_cambio
       };
+
+      // Limpiar campos undefined/null para no enviarlos
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === undefined || updateData[key] === null) {
+          delete updateData[key];
+        }
+      });
 
       const data = await this.makeRequest(`${API_CONFIG.endpoints.meters}/${meterId}`, {
         method: 'PUT',

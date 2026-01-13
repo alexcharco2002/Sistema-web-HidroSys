@@ -133,116 +133,168 @@ def obtener_periodos_mis_lecturas(
         "periodos": periodos_agrupados
     }
 
-@router.get("/mis-lecturas", response_model=List[dict])
-def listar_mis_lecturas(
-    anio: Optional[int] = Query(None, description="Año para filtrar (ej: 2025)"),
-    mes: Optional[int] = Query(None, ge=1, le=12, description="Mes para filtrar (1-12)"),
-    tipo_lectura: Optional[str] = Query(None, description="Tipo: 'reales', 'estimadas' o 'todas'"),
+# ============================================
+# IMPORTAR MODELO DE TARIFA
+# ============================================
+from models.tarifa import Tarifa
+
+# ============================================
+# ENDPOINT: OBTENER TARIFAS VIGENTES
+# ============================================
+@router.get("/tarifas-vigentes", response_model=Dict)
+def obtener_tarifas_vigentes_endpoint(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
-    Lista las lecturas del afiliado actual con filtros opcionales de año y mes
+    Obtiene las tarifas básica y de exceso vigentes
+    Disponible para todos los usuarios autenticados
     """
     current_user = get_current_user(payload, db)
+    
+    tarifa_basica = db.query(Tarifa).filter(
+        Tarifa.activo == True,
+        Tarifa.es_vigente == True,
+        Tarifa.tipo_tarifa == 'basico'
+    ).first()
+    
+    tarifa_exceso = db.query(Tarifa).filter(
+        Tarifa.activo == True,
+        Tarifa.es_vigente == True,
+        Tarifa.tipo_tarifa == 'exceso'
+    ).first()
+    
+    return {
+        "success": True,
+        "tarifa_basica": {
+            "id_tarifa": tarifa_basica.id_tarifa if tarifa_basica else None,
+            "nombre": tarifa_basica.nombre if tarifa_basica else None,
+            "limite_min_m3": float(tarifa_basica.limite_min_m3) if tarifa_basica else 0,
+            "limite_max_m3": float(tarifa_basica.limite_max_m3) if tarifa_basica else 15,
+            "precio_por_m3": float(tarifa_basica.precio_por_m3) if tarifa_basica else 0
+        } if tarifa_basica else None,
+        "tarifa_exceso": {
+            "id_tarifa": tarifa_exceso.id_tarifa if tarifa_exceso else None,
+            "nombre": tarifa_exceso.nombre if tarifa_exceso else None,
+            "precio_por_m3": float(tarifa_exceso.precio_por_m3) if tarifa_exceso else 0
+        } if tarifa_exceso else None
+    }
 
-    # ✅ OBTENER AFILIADO CON DATOS DEL USUARIO
-    afiliado = (
-        db.query(UsuarioAfiliado)
-        .options(joinedload(UsuarioAfiliado.usuario_sistema))  # ⚠️ Cargar relación
-        .filter(UsuarioAfiliado.id_usuario_sistema == current_user.id_usuario_sistema)
+
+
+@router.get("/mis-lecturas", response_model=List[dict])
+def listar_mis_lecturas(
+    anio: Optional[int] = Query(None, description="Año para filtrar (ej. 2025)"),
+    mes: Optional[int] = Query(None, ge=1, le=12, description="Mes para filtrar (1-12)"),
+    tipo_lectura: Optional[str] = Query(None, description="Tipo: reales, estimadas o todas"),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """Lista las lecturas del afiliado actual con clasificación de consumo"""
+    
+    current_user = get_current_user(payload, db)
+    afiliado = db.query(UsuarioAfiliado)\
+        .options(joinedload(UsuarioAfiliado.usuario_sistema))\
+        .filter(UsuarioAfiliado.id_usuario_sistema == current_user.id_usuario_sistema)\
         .first()
-    )
-
+    
     if not afiliado:
         return []
-
-    # ✅ OBTENER NOMBRE COMPLETO DEL AFILIADO
-    nombre_afiliado = (
-        f"{afiliado.usuario_sistema.nombres} {afiliado.usuario_sistema.apellidos}".strip()
-        if afiliado.usuario_sistema else "Sin nombre"
-    )
-    codigo_afiliado = afiliado.cod_usuario_afi
-
-    # ==================== CONSTRUCCIÓN DE LA QUERY ====================
-    query = (
-        db.query(
-            Lectura.id_lectura,
-            Lectura.id_medidor,
-            Lectura.lectura_actual,
-            Lectura.lectura_anterior,
-            Lectura.consumo_m3,
-            Lectura.fecha_lectura,
-            Lectura.observacion,
-            Lectura.es_estimada,
-            Lectura.activo,
-            
-            Medidor.num_medidor,
-            
-            UsuarioAfiliado.cod_usuario_afi,
-            
-            UsuarioSistema.nombres.label("lector_nombres"),
-            UsuarioSistema.apellidos.label("lector_apellidos"),
-            
-            Sector.nombre_sector,
-        )
-        .join(Medidor, Medidor.id_medidor == Lectura.id_medidor)
-        .join(UsuarioAfiliado, UsuarioAfiliado.id_usuario_afi == Medidor.id_usuario_afi)
-        .outerjoin(
-            UsuarioSistema,
-            UsuarioSistema.id_usuario_sistema == Lectura.id_lector
-        )
-        .outerjoin(Sector, Sector.id_sector == Medidor.id_sector)
-        .filter(
-            Medidor.activo == True,
-            Lectura.activo == True,
-            Medidor.id_usuario_afi == afiliado.id_usuario_afi
-        )
-    )
-
-    # ==================== APLICAR FILTROS OPCIONALES ====================
     
+    # ✅ OBTENER TARIFAS VIGENTES
+    tarifa_basica = db.query(Tarifa).filter(
+        Tarifa.activo == True,
+        Tarifa.es_vigente == True,
+        Tarifa.tipo_tarifa == 'basico'
+    ).first()
+    
+    limite_min = float(tarifa_basica.limite_min_m3) if tarifa_basica else 0
+    limite_max = float(tarifa_basica.limite_max_m3) if tarifa_basica else 15
+    
+    # Query de lecturas (mantén tu código existente)
+    query = db.query(
+        Lectura.id_lectura,
+        Lectura.id_medidor,
+        Lectura.lectura_actual,
+        Lectura.lectura_anterior,
+        Lectura.consumo_m3,
+        Lectura.fecha_lectura,
+        Lectura.observacion,
+        Lectura.es_estimada,
+        Lectura.activo,
+        Medidor.num_medidor,
+        UsuarioAfiliado.cod_usuario_afi,
+        UsuarioSistema.nombres.label('lector_nombres'),
+        UsuarioSistema.apellidos.label('lector_apellidos'),
+        Sector.nombre_sector,
+    )\
+    .join(Medidor, Medidor.id_medidor == Lectura.id_medidor)\
+    .join(UsuarioAfiliado, UsuarioAfiliado.id_usuario_afi == Medidor.id_usuario_afi)\
+    .outerjoin(UsuarioSistema, UsuarioSistema.id_usuario_sistema == Lectura.id_lector)\
+    .outerjoin(Sector, Sector.id_sector == Medidor.id_sector)\
+    .filter(
+        Medidor.activo == True,
+        Lectura.activo == True,
+        Medidor.id_usuario_afi == afiliado.id_usuario_afi
+    )
+    
+    # Aplicar filtros (mantén tu código existente)
     if anio and mes:
         fecha_inicio = date(anio, mes, 1)
         if mes == 12:
             fecha_fin = date(anio + 1, 1, 1)
         else:
             fecha_fin = date(anio, mes + 1, 1)
-        
         query = query.filter(
             Lectura.fecha_lectura >= fecha_inicio,
             Lectura.fecha_lectura < fecha_fin
         )
-        print(f"📅 Filtrando por: {obtener_nombre_mes(mes)} {anio}")
-        
     elif anio:
         fecha_inicio = date(anio, 1, 1)
         fecha_fin = date(anio + 1, 1, 1)
-        
         query = query.filter(
             Lectura.fecha_lectura >= fecha_inicio,
             Lectura.fecha_lectura < fecha_fin
         )
-        print(f"📅 Filtrando por año: {anio}")
-
+    
     if tipo_lectura:
         tipo_lower = tipo_lectura.lower()
-        if tipo_lower == "reales":
+        if tipo_lower == 'reales':
             query = query.filter(Lectura.es_estimada == False)
-        elif tipo_lower == "estimadas":
+        elif tipo_lower == 'estimadas':
             query = query.filter(Lectura.es_estimada == True)
-
-    # ==================== EJECUTAR QUERY ====================
-    lecturas = (
-        query
-        .order_by(Lectura.fecha_lectura.desc())
-        .limit(200)
-        .all()
-    )
-
-    print(f"✅ Lecturas encontradas: {len(lecturas)} para {nombre_afiliado}")
-
-    # ==================== FORMATEAR RESPUESTA ====================
+    
+    lecturas = query.order_by(Lectura.fecha_lectura.desc()).limit(200).all()
+    
+    # ✅ FORMATEAR RESPUESTA CON CLASIFICACIÓN
+    def clasificar_consumo(consumo_m3):
+        """Clasifica el consumo según tarifas"""
+        if consumo_m3 < limite_min:
+            return {
+                "tipo": "bajo",
+                "descripcion": "Bajo Mínimo",
+                "color": "#3b82f6",  # Azul
+                "icono": "arrow-down"
+            }
+        elif consumo_m3 <= limite_max:
+            return {
+                "tipo": "normal",
+                "descripcion": "Rango Normal",
+                "color": "#22c55e",  # Verde
+                "icono": "check-circle"
+            }
+        else:
+            exceso = consumo_m3 - limite_max
+            return {
+                "tipo": "exceso",
+                "descripcion": f"Con Exceso (+{exceso:.2f} m³)",
+                "color": "#ef4444",  # Rojo
+                "icono": "alert-triangle"
+            }
+    
+    nombre_afiliado = f"{afiliado.usuario_sistema.nombres} {afiliado.usuario_sistema.apellidos}".strip() if afiliado.usuario_sistema else "Sin nombre"
+    codigo_afiliado = afiliado.cod_usuario_afi
+    
     return [
         {
             "id_lectura": l.id_lectura,
@@ -254,24 +306,23 @@ def listar_mis_lecturas(
             "observacion": l.observacion,
             "es_estimada": l.es_estimada,
             "activo": l.activo,
-            
             "anio": l.fecha_lectura.year if l.fecha_lectura else None,
             "mes": l.fecha_lectura.month if l.fecha_lectura else None,
             "nombre_mes": obtener_nombre_mes(l.fecha_lectura.month) if l.fecha_lectura else None,
-            
-            "medidor": {
-                "num_medidor": l.num_medidor,
-                "codigo_afiliado": codigo_afiliado,  # ✅ Del afiliado actual
-                "nombre_afiliado": nombre_afiliado,  # ✅ AGREGADO
-                "sector": l.nombre_sector or "Sin sector",
-            },
+            "medidor": {"num_medidor": l.num_medidor},
+            "codigo_afiliado": codigo_afiliado,
+            "nombre_afiliado": nombre_afiliado,
+            "sector": l.nombre_sector or "Sin sector",
             "lector": {
                 "nombres": l.lector_nombres,
-                "apellidos": l.lector_apellidos,
+                "apellidos": l.lector_apellidos
             },
+            # ✅ NUEVA CLASIFICACIÓN
+            "clasificacion_consumo": clasificar_consumo(l.consumo_m3 or 0)
         }
         for l in lecturas
     ]
+
 
 @router.get("/consumo-por-periodo", response_model=Dict)
 def obtener_consumo_por_periodo(

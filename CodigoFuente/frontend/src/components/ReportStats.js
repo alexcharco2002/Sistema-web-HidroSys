@@ -25,8 +25,8 @@ const ReportStats = ({ data, moduloInfo, stats }) => {
         return calculateFacturasCharts(data);
       case 'Pagos':
         return calculatePagosCharts(data);
-      case 'Usuarios':
-        return calculateUsuariosCharts(data);
+      case 'MultasAfiliados':
+        return calculateMultasCharts(data);
       default:
         return null;
     }
@@ -100,7 +100,6 @@ const ReportStats = ({ data, moduloInfo, stats }) => {
 // ============================================================================
 // VISTA DE GRÁFICOS
 // ============================================================================
-// VISTA DE GRÁFICOS
 const GraphicsView = ({ chartData, moduloInfo }) => {
   return (
     <div className="graphics-grid">
@@ -199,6 +198,8 @@ const GraphicsView = ({ chartData, moduloInfo }) => {
           <BarChart data={chartData.barChartMora.data} />
         </div>
       )}
+
+      
     </div>
   );
 };
@@ -218,6 +219,8 @@ const TablesView = ({ data, moduloInfo }) => {
         return generateFacturasTable(data);
       case 'Pagos':
         return generatePagosTable(data);
+      case 'MultasAfiliados':
+        return generateMultasTable(data);
       default:
         return generateGenericTable(data);
     }
@@ -822,20 +825,86 @@ const HorizontalBarChart = ({ data }) => {
 
 const calculateLecturasCharts = (data) => {
   // Distribución por tipo de lectura
-  const reales = data.filter(l => l.tipo_lectura === 'Real').length;
-  const estimadas = data.filter(l => l.tipo_lectura === 'Estimada').length;
+  const reales = data.filter(l => 
+    l.tipo_lectura === 'Real' || l.es_estimada === false || l.es_estimada === 'No'
+  ).length;
+  const estimadas = data.filter(l => 
+    l.tipo_lectura === 'Estimada' || l.es_estimada === true || l.es_estimada === 'Sí'
+  ).length;
   
-  // Top 5 consumos (Barra Horizontal)
+  // Top 10 consumos más altos
   const topConsumos = [...data]
-    .sort((a, b) => (b.consumo_m3 || 0) - (a.consumo_m3 || 0))
-    .slice(0, 5)
+    .sort((a, b) => (parseFloat(b.consumo_m3 || b.consumo) || 0) - (parseFloat(a.consumo_m3 || a.consumo) || 0))
+    .slice(0, 10)
     .map(l => ({
-      label: l.nombres?.split(' ')[0] || 'N/A',
-      value: l.consumo_m3 || 0,
-      color: '#3b82f6'
+      label: l.Nombre || l.nombres || l.Nombres || l.num_medidor || 'N/A',
+      value: parseFloat(l.consumo_m3 || l.consumo) || 0,
+      color: '#3b82f6',
+      subtitle: `Medidor: ${l.num_medidor || 'N/A'}`
     }));
   
-  // Distribución por sector
+  // ✅ NUEVO: Consumo Promedio por Sector (Barras Verticales)
+  const consumoPorSector = {};
+  data.forEach(l => {
+    const sector = l.sector || 'Sin sector';
+    if (!consumoPorSector[sector]) {
+      consumoPorSector[sector] = { total: 0, count: 0 };
+    }
+    consumoPorSector[sector].total += (parseFloat(l.consumo_m3 || l.consumo) || 0);
+    consumoPorSector[sector].count += 1;
+  });
+  
+  const sectorConsumoData = Object.entries(consumoPorSector)
+    .map(([label, data]) => ({
+      label,
+      value: Math.round(data.total / data.count), // Promedio
+      color: '#10b981'
+    }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8); // Top 8 sectores
+  
+  // ✅ NUEVO: Top 10 Medidores con Mayor Consumo Total
+  const consumoPorMedidor = {};
+  data.forEach(l => {
+    const medidor = l.num_medidor || 'Sin medidor';
+    if (!consumoPorMedidor[medidor]) {
+      consumoPorMedidor[medidor] = 0;
+    }
+    consumoPorMedidor[medidor] += (parseFloat(l.consumo_m3 || l.consumo) || 0);
+  });
+  
+  const topMedidores = Object.entries(consumoPorMedidor)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([label, value]) => ({
+      label,
+      value: Math.round(value),
+      color: '#6366f1'
+    }));
+  
+  // ✅ NUEVO: Distribución de Consumo (Muy Bajo, Bajo, Normal, Alto, Muy Alto)
+  const categorias = [
+    { min: 0, max: 5, label: 'Muy Bajo (0-5 m³)', color: '#22c55e' },
+    { min: 5, max: 10, label: 'Bajo (5-10 m³)', color: '#84cc16' },
+    { min: 10, max: 20, label: 'Normal (10-20 m³)', color: '#eab308' },
+    { min: 20, max: 50, label: 'Alto (20-50 m³)', color: '#f97316' },
+    { min: 50, max: Infinity, label: 'Muy Alto (50+ m³)', color: '#ef4444' }
+  ];
+  
+  const distribucionConsumo = categorias.map(cat => {
+    const count = data.filter(l => {
+      const consumo = parseFloat(l.consumo_m3 || l.consumo) || 0;
+      return consumo >= cat.min && consumo < cat.max;
+    }).length;
+    
+    return {
+      label: cat.label,
+      value: count,
+      color: cat.color
+    };
+  }).filter(item => item.value > 0);
+  
+  // Distribución por sector (cantidad)
   const sectores = {};
   data.forEach(l => {
     const sector = l.sector || 'Sin sector';
@@ -848,24 +917,7 @@ const calculateLecturasCharts = (data) => {
     color: `hsl(${idx * 60}, 70%, 60%)`
   }));
   
-  // Consumo promedio por mes (últimos 6 meses) - Para AreaChart
-  const consumoPorMes = {};
-  data.forEach(l => {
-    if (l.fecha_lectura) {
-      const fecha = new Date(l.fecha_lectura);
-      const mes = fecha.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
-      consumoPorMes[mes] = (consumoPorMes[mes] || 0) + (l.consumo_m3 || 0);
-    }
-  });
-  
-  const consumoMensual = Object.entries(consumoPorMes)
-    .slice(-6)
-    .map(([label, value]) => ({
-      label,
-      value: Math.round(value)
-    }));
-  
-  // Comparación por rango de consumo - Para GroupedBarChart
+  // Comparación por rango de consumo (Reales vs Estimadas)
   const rangos = [
     { min: 0, max: 10, label: '0-10' },
     { min: 10, max: 20, label: '10-20' },
@@ -874,17 +926,17 @@ const calculateLecturasCharts = (data) => {
   ];
   
   const rangoData = rangos.map(rango => {
-    const realesEnRango = data.filter(l => 
-      l.tipo_lectura === 'Real' && 
-      l.consumo_m3 >= rango.min && 
-      l.consumo_m3 < rango.max
-    ).length;
+    const realesEnRango = data.filter(l => {
+      const esReal = l.tipo_lectura === 'Real' || l.es_estimada === false || l.es_estimada === 'No';
+      const consumo = parseFloat(l.consumo_m3 || l.consumo) || 0;
+      return esReal && consumo >= rango.min && consumo < rango.max;
+    }).length;
     
-    const estimadasEnRango = data.filter(l => 
-      l.tipo_lectura === 'Estimada' && 
-      l.consumo_m3 >= rango.min && 
-      l.consumo_m3 < rango.max
-    ).length;
+    const estimadasEnRango = data.filter(l => {
+      const esEstimada = l.tipo_lectura === 'Estimada' || l.es_estimada === true || l.es_estimada === 'Sí';
+      const consumo = parseFloat(l.consumo_m3 || l.consumo) || 0;
+      return esEstimada && consumo >= rango.min && consumo < rango.max;
+    }).length;
     
     return {
       category: rango.label + ' m³',
@@ -897,28 +949,34 @@ const calculateLecturasCharts = (data) => {
   
   return {
     horizontalBarChart: {
-      title: 'Top 5 Mayores Consumos',
+      title: 'Top 10 Mayores Consumos por Afiliado',
       data: topConsumos
     },
     pieChart: {
-      title: 'Distribución por Tipo',
+      title: 'Distribución por Tipo de Lectura',
       data: [
         { label: 'Reales', value: reales, color: '#22c55e' },
         { label: 'Estimadas', value: estimadas, color: '#f97316' }
-      ]
+      ].filter(item => item.value > 0)
+    },
+    pieChart2: {
+      title: 'Distribución por Nivel de Consumo',
+      data: distribucionConsumo
     },
     distribution: {
-      title: 'Lecturas por Sector',
+      title: 'Cantidad de Lecturas por Sector',
       data: sectoresData
     },
-    areaChart: {
-      title: 'Consumo Mensual (m³)',
-      data: consumoMensual.length > 0 ? consumoMensual : [
-        { label: 'Sin datos', value: 0 }
-      ]
-    },
+    barChart: sectorConsumoData.length > 0 ? {
+      title: 'Consumo Promedio por Sector (m³)',
+      data: sectorConsumoData
+    } : null,
+    barChart2: topMedidores.length > 0 ? {
+      title: 'Top 10 Medidores - Consumo Acumulado (m³)',
+      data: topMedidores
+    } : null,
     groupedBarChart: {
-      title: 'Lecturas por Rango de Consumo',
+      title: 'Lecturas Reales vs Estimadas por Rango',
       data: rangoData,
       series: [
         { name: 'Reales', color: '#22c55e' },
@@ -927,6 +985,8 @@ const calculateLecturasCharts = (data) => {
     }
   };
 };
+
+
 
 const calculateFacturasCharts = (data) => {
   // Estados de facturas - INCLUIR ANULADAS
@@ -1349,20 +1409,188 @@ const calculatePagosCharts = (data) => {
 };
 
 
-const calculateUsuariosCharts = (data) => {
-  const activos = data.filter(u => u.activo === true || u.activo === 'Sí').length;
-  const inactivos = data.length - activos;
+const calculateMultasCharts = (data) => {
+  // Estados de multas
+  const pendientes = data.filter(m => m.estado === 'pendiente');
+  const pagadas = data.filter(m => m.estado === 'pagada');
+  const anuladas = data.filter(m => m.estado === 'anulada');
+  
+  // Montos
+  const montoPendiente = pendientes.reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+  const montoPagado = pagadas.reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+  const montoAnulado = anuladas.reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+  
+  // Top 10 afiliados con mayores multas
+  const multasPorAfiliado = {};
+  data.forEach(m => {
+    const cod = m.cod_usuario_afi || 'N/A';
+    const nombre = m.nombre_completo || 'N/A';
+    const medidor = m.medidor || 'Sin medidor';
+    const sector = m.sector || 'Sin sector';
+    
+    if (!multasPorAfiliado[cod]) {
+      multasPorAfiliado[cod] = {
+        nombre,
+        medidor,
+        sector,
+        monto: 0,
+        cantidad: 0,
+        pendientes: 0
+      };
+    }
+    
+    multasPorAfiliado[cod].monto += (parseFloat(m.monto) || 0);
+    multasPorAfiliado[cod].cantidad += 1;
+    if (m.estado === 'pendiente') {
+      multasPorAfiliado[cod].pendientes += 1;
+    }
+  });
+  
+  const topAfiliados = Object.values(multasPorAfiliado)
+    .sort((a, b) => b.monto - a.monto)
+    .slice(0, 10)
+    .map(a => ({
+      label: a.nombre,
+      value: Math.round(a.monto),
+      color: a.pendientes > 0 ? '#ef4444' : '#10b981',
+      subtitle: `${a.sector} - ${a.medidor}`
+    }));
+  
+  // Tipos de multa
+  const tiposMulta = {};
+  data.forEach(m => {
+    const tipo = m.nombre_multa || 'Sin tipo';
+    if (!tiposMulta[tipo]) {
+      tiposMulta[tipo] = { cantidad: 0, monto: 0 };
+    }
+    tiposMulta[tipo].cantidad += 1;
+    tiposMulta[tipo].monto += (parseFloat(m.monto) || 0);
+  });
+  
+  const tiposMultaData = Object.entries(tiposMulta)
+    .sort((a, b) => b[1].monto - a[1].monto)
+    .slice(0, 6)
+    .map(([label, data], idx) => ({
+      label,
+      value: data.cantidad,
+      color: `hsl(${idx * 60}, 70%, 60%)`
+    }));
+  
+  // Multas por sector
+  const multasPorSector = {};
+  data.forEach(m => {
+    const sector = m.sector || 'Sin sector';
+    if (!multasPorSector[sector]) {
+      multasPorSector[sector] = { cantidad: 0, monto: 0 };
+    }
+    multasPorSector[sector].cantidad += 1;
+    multasPorSector[sector].monto += (parseFloat(m.monto) || 0);
+  });
+  
+  const sectoresData = Object.entries(multasPorSector)
+    .sort((a, b) => b[1].cantidad - a[1].cantidad)
+    .map(([label, data]) => ({
+      label,
+      value: data.cantidad,
+      color: '#3b82f6'
+    }));
+  
+  // Distribución por rango de monto
+  const rangos = [
+    { min: 0, max: 10, label: '$0-10' },
+    { min: 10, max: 20, label: '$10-20' },
+    { min: 20, max: 50, label: '$20-50' },
+    { min: 50, max: 100, label: '$50-100' },
+    { min: 100, max: Infinity, label: '$100+' }
+  ];
+  
+  const rangoData = rangos.map(rango => {
+    const pendientesEnRango = pendientes.filter(m => {
+      const monto = parseFloat(m.monto) || 0;
+      return monto >= rango.min && monto < rango.max;
+    }).length;
+    
+    const pagadasEnRango = pagadas.filter(m => {
+      const monto = parseFloat(m.monto) || 0;
+      return monto >= rango.min && monto < rango.max;
+    }).length;
+    
+    return {
+      category: rango.label,
+      series: [
+        { name: 'Pendientes', value: pendientesEnRango, color: '#f97316' },
+        { name: 'Pagadas', value: pagadasEnRango, color: '#22c55e' }
+      ]
+    };
+  });
+  
+  // Multas por mes (últimos 6 meses)
+  const multasPorMes = {};
+  const mesesOrdenados = [];
+  
+  data.forEach(m => {
+    if (m.fecha_multa) {
+      try {
+        const fecha = new Date(m.fecha_multa);
+        if (!isNaN(fecha.getTime())) {
+          const mesKey = fecha.getFullYear() + '-' + String(fecha.getMonth() + 1).padStart(2, '0');
+          const mesLabel = fecha.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
+          
+          if (!multasPorMes[mesKey]) {
+            multasPorMes[mesKey] = { valor: 0, label: mesLabel };
+            mesesOrdenados.push(mesKey);
+          }
+          
+          multasPorMes[mesKey].valor += (parseFloat(m.monto) || 0);
+        }
+      } catch (e) {
+        console.warn('Fecha inválida en multa:', m);
+      }
+    }
+  });
+  
   
   return {
+    horizontalBarChart: {
+      title: 'Top 10 Afiliados - Mayor Monto en Multas',
+      data: topAfiliados
+    },
     pieChart: {
-      title: 'Estado de Usuarios',
+      title: 'Distribución por Estado',
       data: [
-        { label: 'Activos', value: activos, color: '#22c55e' },
-        { label: 'Inactivos', value: inactivos, color: '#ef4444' }
+        { label: 'Pendientes', value: pendientes.length, color: '#f97316' },
+        { label: 'Pagadas', value: pagadas.length, color: '#22c55e' },
+        { label: 'Anuladas', value: anuladas.length, color: '#6b7280' }
+      ].filter(item => item.value > 0)
+    },
+    pieChart2: {
+      title: 'Montos por Estado ($)',
+      data: [
+        { label: 'Pendiente', value: Math.round(montoPendiente), color: '#f97316' },
+        { label: 'Pagado', value: Math.round(montoPagado), color: '#22c55e' },
+        { label: 'Anulado', value: Math.round(montoAnulado), color: '#6b7280' }
+      ].filter(item => item.value > 0)
+    },
+    distribution: {
+      title: 'Distribución por Tipo de Multa',
+      data: tiposMultaData
+    },
+    barChart: sectoresData.length > 0 ? {
+      title: 'Multas por Sector',
+      data: sectoresData
+    } : null,
+    groupedBarChart: {
+      title: 'Estados por Rango de Monto',
+      data: rangoData,
+      series: [
+        { name: 'Pendientes', color: '#f97316' },
+        { name: 'Pagadas', color: '#22c55e' }
       ]
     }
   };
 };
+
+
 
 // ============================================================================
 // FUNCIONES DE GENERACIÓN DE TABLAS
@@ -1474,7 +1702,7 @@ const generateLecturasTable = (data) => {
     .map((l, idx) => [
       idx + 1,
       l.nombres || 'N/A',
-      l.direccion || 'N/A',
+      l.num_medidor || 'N/A',
       l.sector || 'N/A',
       `${(l.consumo_m3 || 0).toFixed(2)} m³`,
       l.tipo_lectura || 'N/A'
@@ -1482,7 +1710,7 @@ const generateLecturasTable = (data) => {
   
   tables.push({
     title: 'Top 10 Mayores Consumos',
-    headers: ['#', 'Usuario', 'Dirección', 'Sector', 'Consumo', 'Tipo'],
+    headers: ['#', 'Usuario', 'Medidor', 'Sector', 'Consumo', 'Tipo'],
     rows: topConsumos.length > 0 ? topConsumos : [['Sin datos', '', '', '', '', '']]
   });
   
@@ -2206,6 +2434,274 @@ const generatePagosTable = (data) => {
   return tables;
 };
 
+const generateMultasTable = (data) => {
+  const tables = [];
+  
+  // ============================================
+  // TABLA 1: Resumen por Estado
+  // ============================================
+  const pendientes = data.filter(m => m.estado === 'pendiente');
+  const pagadas = data.filter(m => m.estado === 'pagada');
+  const anuladas = data.filter(m => m.estado === 'anulada');
+  
+  const montoPendiente = pendientes.reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+  const montoPagado = pagadas.reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+  const montoAnulado = anuladas.reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+  const montoTotal = montoPendiente + montoPagado + montoAnulado;
+  
+  tables.push({
+    title: 'Resumen por Estado',
+    headers: ['Estado', 'Cantidad', 'Monto Total', 'Promedio', '% del Total'],
+    rows: [
+      [
+        'Pendientes',
+        pendientes.length,
+        `$${montoPendiente.toFixed(2)}`,
+        `$${(pendientes.length > 0 ? montoPendiente / pendientes.length : 0).toFixed(2)}`,
+        `${((pendientes.length / data.length) * 100).toFixed(1)}%`
+      ],
+      [
+        'Pagadas',
+        pagadas.length,
+        `$${montoPagado.toFixed(2)}`,
+        `$${(pagadas.length > 0 ? montoPagado / pagadas.length : 0).toFixed(2)}`,
+        `${((pagadas.length / data.length) * 100).toFixed(1)}%`
+      ],
+      [
+        'Anuladas',
+        anuladas.length,
+        `$${montoAnulado.toFixed(2)}`,
+        `$${(anuladas.length > 0 ? montoAnulado / anuladas.length : 0).toFixed(2)}`,
+        `${((anuladas.length / data.length) * 100).toFixed(1)}%`
+      ],
+      [
+        'TOTAL',
+        data.length,
+        `$${montoTotal.toFixed(2)}`,
+        `$${(data.length > 0 ? montoTotal / data.length : 0).toFixed(2)}`,
+        '100%'
+      ]
+    ]
+  });
+  
+  // ============================================
+  // TABLA 2: Resumen por Tipo de Multa
+  // ============================================
+  const tiposMulta = {};
+  data.forEach(m => {
+    const tipo = m.nombre_multa || 'Sin tipo';
+    if (!tiposMulta[tipo]) {
+      tiposMulta[tipo] = { count: 0, montoTotal: 0, pendientes: 0 };
+    }
+    tiposMulta[tipo].count++;
+    tiposMulta[tipo].montoTotal += (parseFloat(m.monto) || 0);
+    if (m.estado === 'pendiente') {
+      tiposMulta[tipo].pendientes++;
+    }
+  });
+  
+  const tiposMultaRows = Object.entries(tiposMulta)
+    .sort((a, b) => b[1].montoTotal - a[1].montoTotal)
+    .map(([tipo, stats]) => [
+      tipo,
+      stats.count,
+      `$${stats.montoTotal.toFixed(2)}`,
+      `$${(stats.montoTotal / stats.count).toFixed(2)}`,
+      stats.pendientes
+    ]);
+  
+  tables.push({
+    title: 'Resumen por Tipo de Multa',
+    headers: ['Tipo de Multa', 'Cantidad', 'Monto Total', 'Promedio', 'Pendientes'],
+    rows: tiposMultaRows
+  });
+  
+  // ============================================
+  // TABLA 3: Top 10 Afiliados con Mayores Multas
+  // ============================================
+  const multasPorAfiliado = {};
+  data.forEach(m => {
+    const cod = m.cod_usuario_afi || 'N/A';
+    const nombre = m.nombre_completo || 'N/A';
+    const medidor = m.medidor || 'Sin medidor';
+    const sector = m.sector || 'Sin sector';
+    
+    if (!multasPorAfiliado[cod]) {
+      multasPorAfiliado[cod] = {
+        nombre,
+        medidor,
+        sector,
+        monto: 0,
+        cantidad: 0,
+        pendientes: 0
+      };
+    }
+    
+    multasPorAfiliado[cod].monto += (parseFloat(m.monto) || 0);
+    multasPorAfiliado[cod].cantidad += 1;
+    if (m.estado === 'pendiente') {
+      multasPorAfiliado[cod].pendientes += 1;
+    }
+  });
+  
+  const topAfiliados = Object.entries(multasPorAfiliado)
+    .sort((a, b) => b[1].monto - a[1].monto)
+    .slice(0, 10)
+    .map(([cod, stats], idx) => [
+      idx + 1,
+      cod,
+      stats.nombre,
+      stats.medidor,
+      stats.sector,
+      stats.cantidad,
+      `$${stats.monto.toFixed(2)}`,
+      stats.pendientes
+    ]);
+  
+  tables.push({
+    title: 'Top 10 Afiliados con Mayores Multas',
+    headers: ['#', 'Código', 'Afiliado', 'Medidor', 'Sector', 'Total Multas', 'Monto Total', 'Pendientes'],
+    rows: topAfiliados.length > 0 ? topAfiliados : [['Sin datos', '', '', '', '', '', '', '']]
+  });
+  
+  // ============================================
+  // TABLA 4: Multas por Sector
+  // ============================================
+  const multasPorSector = {};
+  data.forEach(m => {
+    const sector = m.sector || 'Sin sector';
+    if (!multasPorSector[sector]) {
+      multasPorSector[sector] = { count: 0, monto: 0, pendientes: 0 };
+    }
+    multasPorSector[sector].count++;
+    multasPorSector[sector].monto += (parseFloat(m.monto) || 0);
+    if (m.estado === 'pendiente') {
+      multasPorSector[sector].pendientes++;
+    }
+  });
+  
+  const sectoresRows = Object.entries(multasPorSector)
+    .sort((a, b) => b[1].monto - a[1].monto)
+    .map(([sector, stats]) => [
+      sector,
+      stats.count,
+      `$${stats.monto.toFixed(2)}`,
+      `$${(stats.monto / stats.count).toFixed(2)}`,
+      stats.pendientes,
+      `${((stats.count / data.length) * 100).toFixed(1)}%`
+    ]);
+  
+  tables.push({
+    title: 'Multas por Sector',
+    headers: ['Sector', 'Cantidad', 'Monto Total', 'Promedio', 'Pendientes', '% del Total'],
+    rows: sectoresRows
+  });
+  
+  // ============================================
+  // TABLA 5: Rangos de Montos
+  // ============================================
+  const rangos = [
+    { min: 0, max: 10, label: 'Muy Bajo ($0-10)' },
+    { min: 10, max: 20, label: 'Bajo ($10-20)' },
+    { min: 20, max: 50, label: 'Medio ($20-50)' },
+    { min: 50, max: 100, label: 'Alto ($50-100)' },
+    { min: 100, max: Infinity, label: 'Muy Alto ($100+)' }
+  ];
+  
+  const rangosRows = rangos.map(rango => {
+    const multasEnRango = data.filter(m => {
+      const monto = parseFloat(m.monto) || 0;
+      return monto >= rango.min && monto < rango.max;
+    });
+    
+    const pendientesEnRango = multasEnRango.filter(m => m.estado === 'pendiente').length;
+    const porcentaje = ((multasEnRango.length / data.length) * 100).toFixed(1);
+    const montoTotal = multasEnRango.reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+    
+    return [
+      rango.label,
+      multasEnRango.length,
+      `${porcentaje}%`,
+      `$${montoTotal.toFixed(2)}`,
+      pendientesEnRango
+    ];
+  });
+  
+  tables.push({
+    title: 'Distribución por Rangos de Monto',
+    headers: ['Rango', 'Cantidad', '% del Total', 'Monto Total', 'Pendientes'],
+    rows: rangosRows
+  });
+  
+  // ============================================
+  // TABLA 6: Estado de Facturación
+  // ============================================
+  const facturadas = data.filter(m => m.facturado === true);
+  const noFacturadas = data.filter(m => m.facturado === false);
+  
+  const montoFacturado = facturadas.reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+  const montoNoFacturado = noFacturadas.reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+  
+  tables.push({
+    title: 'Estado de Facturación',
+    headers: ['Estado', 'Cantidad', 'Monto Total', '% del Total'],
+    rows: [
+      [
+        'Facturadas',
+        facturadas.length,
+        `$${montoFacturado.toFixed(2)}`,
+        `${((facturadas.length / data.length) * 100).toFixed(1)}%`
+      ],
+      [
+        'No Facturadas',
+        noFacturadas.length,
+        `$${montoNoFacturado.toFixed(2)}`,
+        `${((noFacturadas.length / data.length) * 100).toFixed(1)}%`
+      ]
+    ]
+  });
+  
+  // ============================================
+  // TABLA 7: Estadísticas Generales
+  // ============================================
+  const montos = data.map(m => parseFloat(m.monto) || 0).filter(m => m > 0);
+  const montoTotalGeneral = montos.reduce((sum, m) => sum + m, 0);
+  const montoPromedio = montos.length > 0 ? montoTotalGeneral / montos.length : 0;
+  const montoMax = Math.max(...montos, 0);
+  const montoMin = Math.min(...montos.filter(m => m > 0), 0);
+  
+  // Calcular mediana
+  const montosOrdenados = [...montos].sort((a, b) => a - b);
+  const mediana = montosOrdenados.length > 0
+    ? montosOrdenados.length % 2 === 0
+      ? (montosOrdenados[montosOrdenados.length / 2 - 1] + montosOrdenados[montosOrdenados.length / 2]) / 2
+      : montosOrdenados[Math.floor(montosOrdenados.length / 2)]
+    : 0;
+  
+  const tasaCobro = data.length > 0 ? ((pagadas.length / data.length) * 100).toFixed(1) : '0.0';
+  const tasaFacturacion = data.length > 0 ? ((facturadas.length / data.length) * 100).toFixed(1) : '0.0';
+  
+  tables.push({
+    title: 'Estadísticas Generales',
+    headers: ['Métrica', 'Valor'],
+    rows: [
+      ['Total de Multas', data.length],
+      ['Multas Activas', data.filter(m => m.activo === true).length],
+      ['Monto Total', `$${montoTotalGeneral.toFixed(2)}`],
+      ['Monto Promedio', `$${montoPromedio.toFixed(2)}`],
+      ['Monto Mediano', `$${mediana.toFixed(2)}`],
+      ['Monto Máximo', `$${montoMax.toFixed(2)}`],
+      ['Monto Mínimo', `$${montoMin.toFixed(2)}`],
+      ['Tasa de Cobro', `${tasaCobro}%`],
+      ['Tasa de Facturación', `${tasaFacturacion}%`],
+      ['Tipos de Multa Únicos', Object.keys(tiposMulta).length],
+      ['Sectores con Multas', Object.keys(multasPorSector).length],
+      ['Afiliados con Multas', Object.keys(multasPorAfiliado).length]
+    ]
+  });
+  
+  return tables;
+};
 
 
 const generateGenericTable = (data) => {

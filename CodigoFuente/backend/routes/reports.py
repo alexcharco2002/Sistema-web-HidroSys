@@ -1481,7 +1481,6 @@ def get_reporte_multas(
     # Formatear respuesta
     multas_formateadas = [
         {
-            "id_tipo_multa": m.id_tipo_multa,
             "nombre_multa": m.nombre_multa,
             "descripcion": m.descripcion,
             "monto": float(m.monto) if m.monto is not None else None,
@@ -1510,7 +1509,7 @@ def get_reporte_multas(
 
 
 # ============================================================================
-# 11. REPORTE DE MULTAS AFILIADOS
+# 10. REPORTE DE MULTAS AFILIADOS
 # ============================================================================
 
 @router.get("/multas-afiliados")
@@ -1528,42 +1527,36 @@ def get_reporte_multas_afiliados(
     payload: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
-    """📊 Reporte de multas asignadas a afiliados con búsqueda"""
+    """📊 Reporte de multas asignadas a afiliados"""
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "reportes", "lectura")
     
     # Query base con eager loading
     query = db.query(MultaAfiliado).options(
         joinedload(MultaAfiliado.tipo_multa),
-        joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.usuario_sistema)
+        joinedload(MultaAfiliado.usuario)
+            .joinedload(UsuarioAfiliado.usuario_sistema),
+        joinedload(MultaAfiliado.usuario)
+            .joinedload(UsuarioAfiliado.sector)
     )
     
-    #BÚSQUEDA POR TEXTO
+    # BÚSQUEDA POR TEXTO
     if search:
         search_pattern = f"%{search}%"
         
-        # joins necesarios 
         query = query.join(MultaAfiliado.usuario).join(UsuarioAfiliado.usuario_sistema)
         query = query.join(MultaAfiliado.tipo_multa)
         
         query = query.filter(
             or_(
-                # Buscar por código de afiliado
                 cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
-                
-                # Buscar por nombre completo del afiliado
                 func.concat(
                     UsuarioSistema.nombres, ' ', UsuarioSistema.apellidos
                 ).ilike(search_pattern),
-                
-                # Buscar por cédula del afiliado
                 UsuarioSistema.cedula.ilike(search_pattern),
-                
-                # Buscar por tipo de multa
                 TipoMulta.nombre_multa.ilike(search_pattern),
-                
-                # Buscar en observaciones
-                MultaAfiliado.observaciones.ilike(search_pattern)
+                MultaAfiliado.observaciones.ilike(search_pattern),
+                UsuarioAfiliado.num_medidor.ilike(search_pattern)
             )
         )
     
@@ -1573,7 +1566,6 @@ def get_reporte_multas_afiliados(
             extract('month', MultaAfiliado.fecha_multa) == mes,
             extract('year', MultaAfiliado.fecha_multa) == anio
         )
-        print(f"🔍 Filtrando por período: {mes}/{anio}")
 
     if id_usuario_afi:
         query = query.filter(MultaAfiliado.id_usuario_afi == id_usuario_afi)
@@ -1602,21 +1594,24 @@ def get_reporte_multas_afiliados(
     # Aplicar paginación
     multas = query.offset(skip).limit(limit).all()
     
-    # Formatear respuesta
+    # ✅ Formatear respuesta - SOLO DATOS BRUTOS
     multas_formateadas = [
         {
-            "cod_usuario_afi": m.usuario.cod_usuario_afi if m.usuario else "N/A",
-            "nombre_afiliado": f"{m.usuario.usuario_sistema.nombres} {m.usuario.usuario_sistema.apellidos}" if m.usuario and m.usuario.usuario_sistema else "N/A",
-            "cedula": m.usuario.usuario_sistema.cedula if m.usuario and m.usuario.usuario_sistema else "N/A",
+            "medidor": m.usuario.num_medidor if m.usuario else None,
+            "cod_usuario_afi": m.usuario.cod_usuario_afi if m.usuario else None,
+            "nombres": m.usuario.usuario_sistema.nombres if m.usuario and m.usuario.usuario_sistema else "N/A",
+            "apellidos": m.usuario.usuario_sistema.apellidos if m.usuario and m.usuario.usuario_sistema else "",
+            "nombre_completo": f"{m.usuario.usuario_sistema.nombres} {m.usuario.usuario_sistema.apellidos}" if m.usuario and m.usuario.usuario_sistema else "N/A",
+            "cedula": m.usuario.usuario_sistema.cedula if m.usuario and m.usuario.usuario_sistema else None,
+            "sector": m.usuario.sector.nombre_sector if m.usuario and m.usuario.sector else None,
             "nombre_multa": m.tipo_multa.nombre_multa if m.tipo_multa else "N/A",
             "monto": float(m.monto),
             "fecha_multa": m.fecha_multa.isoformat() if m.fecha_multa else None,
             "fecha_pago": m.fecha_pago.isoformat() if m.fecha_pago else None,
             "observaciones": m.observaciones,
             "estado": m.estado,
-            "facturado": "Sí" if m.facturado else "No" ,
+            "facturado": m.facturado,
             "activo": m.activo,
-
         }
         for m in multas
     ]
@@ -1626,18 +1621,12 @@ def get_reporte_multas_afiliados(
         "data": multas_formateadas,
         "total": total,  
         "skip": skip,
-        "limit": limit,
-        "estadisticas": {
-            "total_multas": total,
-            "total_pendientes": sum(1 for m in multas if m.estado == 'pendiente'),
-            "total_pagadas": sum(1 for m in multas if m.estado == 'pagada'),
-            "total_facturadas": sum(1 for m in multas if m.facturado),
-            "total_activas": sum(1 for m in multas if m.activo)
-        }
+        "limit": limit
     }
 
+
 # ============================================================================
-# 11.1 PERIODOS DE MULTAS AFILIADOS
+# 10.1 PERIODOS DE MULTAS AFILIADOS
 # ============================================================================
 @router.get("/multas-afiliados/periodos")
 def get_periodos_multas_afiliados(
@@ -1677,7 +1666,7 @@ def get_periodos_multas_afiliados(
 
 
 # ============================================================================
-# 10. REPORTE DE TARIFAS
+# 11. REPORTE DE TARIFAS
 # ============================================================================
 
 @router.get("/tarifas")
@@ -1730,7 +1719,7 @@ def get_reporte_tarifas(
     ]
 
 # ============================================================================
-# 11. REPORTE DE SERVICIOS
+# 12. REPORTE DE SERVICIOS
 # ============================================================================
 
 @router.get("/servicios")

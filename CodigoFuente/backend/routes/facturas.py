@@ -2,7 +2,7 @@
 
 import locale
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
-from sqlalchemy import String, cast, or_
+from sqlalchemy import String, cast, func, or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
@@ -172,7 +172,7 @@ def listar_facturas_optimizado(
 
     try:
         # ========================================
-        # 🔥 QUERY PRINCIPAL - FACTURAS COMPLETAS
+        # QUERY PRINCIPAL - FACTURAS COMPLETAS
         # ========================================
         query = (
             db.query(
@@ -183,13 +183,13 @@ def listar_facturas_optimizado(
                 Factura.fecha_emision,
                 Factura.estado_factura,
                 
-                # 🔥 DATOS DE CONSUMO Y VALORES
+                # DATOS DE CONSUMO Y VALORES
                 Factura.consumo_m3,
                 Factura.exceso_m3,
                 Factura.valor_consumo,
                 Factura.valor_exceso,
                 
-                # 🔥 DATOS DE CÁLCULO
+                # DATOS DE CÁLCULO
                 Factura.subtotal,
                 Factura.descuento,
                 Factura.impuesto,
@@ -198,15 +198,18 @@ def listar_facturas_optimizado(
                 # ===== DATOS DEL AFILIADO =====
                 UsuarioAfiliado.id_usuario_afi,
                 UsuarioAfiliado.cod_usuario_afi,
-                UsuarioAfiliado.num_medidor,  # 👈 CORRECTO
+                UsuarioAfiliado.num_medidor,  
                 
                 # ===== DATOS DEL USUARIO SISTEMA =====
-                UsuarioSistema.nombres,
-                UsuarioSistema.apellidos,
-                UsuarioSistema.cedula,        # 👈 AGREGADO
-                UsuarioSistema.direccion,     # 👈 AGREGADO
-                UsuarioSistema.telefono,      # 👈 AGREGADO (extra)
-                UsuarioSistema.email,         # 👈 AGREGADO (extra)
+                func.concat(
+                    func.coalesce(UsuarioSistema.nombres, ''),
+                    ' ',
+                    func.coalesce(UsuarioSistema.apellidos, '')
+                ).label('nombre_completo'),
+                UsuarioSistema.cedula,        
+                UsuarioSistema.direccion,   
+                UsuarioSistema.telefono,      
+                UsuarioSistema.email,         
                 
                 # ===== DATOS DEL SECTOR =====
                 Sector.nombre_sector,
@@ -221,11 +224,15 @@ def listar_facturas_optimizado(
         # 🔍 FILTROS
         # ========================================
         if search:
+            search_pattern = f"%{search}%"
             query = query.filter(
                 or_(
                     Factura.num_factura.ilike(f"%{search}%"),
-                    UsuarioSistema.nombres.ilike(f"%{search}%"),
-                    UsuarioSistema.apellidos.ilike(f"%{search}%"),
+                    func.concat(
+                        func.coalesce(UsuarioSistema.nombres, ''),
+                        ' ',
+                        func.coalesce(UsuarioSistema.apellidos, '')
+                    ).ilike(search_pattern),
                     UsuarioSistema.cedula.ilike(f"%{search}%"),
                     cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(f"%{search}%"),
                     UsuarioAfiliado.num_medidor.ilike(f"%{search}%")
@@ -253,7 +260,7 @@ def listar_facturas_optimizado(
         )
 
         # ========================================
-        # 🔥 OBTENER DETALLES DE TODAS LAS FACTURAS (1 QUERY)
+        # OBTENER DETALLES DE TODAS LAS FACTURAS (1 QUERY)
         # ========================================
         if facturas:
             ids_facturas = [f.id_factura for f in facturas]
@@ -317,14 +324,13 @@ def listar_facturas_optimizado(
                     "cod_usuario_afi": f.cod_usuario_afi,
                     "num_medidor": f.num_medidor or "N/A",
                     
-                    # 🔥 Usuario Sistema (con todos los campos)
+                    # Usuario Sistema (con todos los campos)
                     "usuario_sistema": {
-                        "nombres": f.nombres,
-                        "apellidos": f.apellidos,
-                        "cedula": f.cedula,           # 👈 AGREGADO
-                        "direccion": f.direccion,     # 👈 AGREGADO
-                        "telefono": f.telefono,       # 👈 AGREGADO (extra)
-                        "email": f.email,             # 👈 AGREGADO (extra)
+                        "nombre_completo": f.nombre_completo.strip() if f.nombre_completo else "Sin nombre",
+                        "cedula": f.cedula,         
+                        "direccion": f.direccion,     
+                        "telefono": f.telefono,    
+                        "email": f.email,         
                     },
                     
                     # Sector
@@ -1319,7 +1325,7 @@ def aplicar_servicios_a_usuarios(
         print(f"💼 APLICANDO SERVICIOS MASIVO - PERIODO: {data.periodo}")
         print(f"{'='*60}")
         
-        # 🔥 APLICAR A TODAS LAS FACTURAS DEL PERÍODO
+        # APLICAR A TODAS LAS FACTURAS DEL PERÍODO
         facturas = db.query(Factura).filter(
             Factura.periodo == data.periodo,
             Factura.estado_factura.in_(['pendiente', 'vencida'])  # Solo pendientes/vencidas
@@ -1372,7 +1378,7 @@ def aplicar_servicios_a_usuarios(
                     
                     print(f"   ✅ Factura {factura.num_factura}: {servicio.nombre}")
             
-            # 🔥 RECALCULAR TOTALES SI SE AGREGARON SERVICIOS
+            # RECALCULAR TOTALES SI SE AGREGARON SERVICIOS
             if detalles_nuevos:
                 # Obtener detalles existentes
                 detalles_existentes = db.query(DetalleFactura).filter(

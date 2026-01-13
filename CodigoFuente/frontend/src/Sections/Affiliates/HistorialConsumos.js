@@ -75,6 +75,11 @@ const HistorialConsumos = () => {
     tendencia: null
   });
 
+  // NUEVO ESTADO: Tarifas vigentes
+  const [tarifasVigentes, setTarifasVigentes] = useState({
+    tarifa_basica: null,
+    tarifa_exceso: null
+  });
   // 
   const fetchPeriodosDisponibles = useCallback(async () => {
     try {
@@ -177,7 +182,51 @@ const HistorialConsumos = () => {
   // ============================================================
   // FUNCIONES DE PERIODOS (AÑOS Y MESES DISPONIBLES)
   // ============================================================
+  // FUNCIÓN: Cargar tarifas vigentes
+  const cargarTarifasVigentes = useCallback(async () => {
+    try {
+      const result = await affiliateGeneralServices.getTarifasVigentes();
+      if (result.success) {
+        setTarifasVigentes(result.data);
+      }
+    } catch (error) {
+      console.error('Error cargando tarifas', error);
+    }
+  }, []);
+
+  // EFECTO: Cargar tarifas al inicio
+  useEffect(() => {
+    if (permissions.canRead && !isInitialized) {
+      cargarTarifasVigentes();
+    }
+  }, [permissions.canRead, isInitialized, cargarTarifasVigentes]);
+
+
+// FUNCIÓN: Renderizar badge de clasificación
+// FUNCIÓN: Renderizar badge de clasificación (usando estilos CSS)
+const renderClasificacionBadge = (clasificacion) => {
+  if (!clasificacion) return null;
   
+  const iconMap = {
+    'arrow-down': TrendingDown,
+    'check-circle': CheckCircle,
+    'alert-triangle': AlertCircle
+  };
+  
+  const Icon = iconMap[clasificacion.icono] || Activity;
+  
+  // Determinar clase CSS según el tipo
+  const badgeClass = `lectura-badge lectura-badge-${clasificacion.tipo}`;
+  
+  return (
+    <div className={badgeClass}>
+      <Icon className="w-3 h-3" />
+      <span>{clasificacion.descripcion}</span>
+    </div>
+  );
+};
+
+
   /**
    * Manejar cambio de año seleccionado
    * Actualiza la lista de meses disponibles para ese año
@@ -833,6 +882,12 @@ const HistorialConsumos = () => {
                   </div>
                 </div>
 
+                {/* ✅ NUEVA COLUMNA 4: Clasificación de Consumo */}
+                <div className="lectura-clasificacion-section lectura-clickable" onClick={() => verDetalle(lectura)}>
+                  {renderClasificacionBadge(lectura.clasificacion_consumo)}
+                </div>
+
+
                 {/* Columna 4: Estado (Estimada/Real) */}
                 <div 
                   className="lectura-estado-section lectura-clickable"
@@ -869,128 +924,276 @@ const HistorialConsumos = () => {
           </div>
         )}
       </div>
-
-      {/* MODAL DE DETALLES*/}
-      {showModal && selectedLectura && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3>
-                <Eye className="w-5 h-5 inline mr-2" />
-                Detalle de Lectura
-              </h3>
-              <button className="modal-close" onClick={closeModal}>
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="modal-body">
-              <div className="user-details">
-                {/* Medidor */}
-                <div className="detail-group">
-                  <label>Medidor:</label>
-                  <p>{selectedLectura.medidor?.num_medidor || 'N/A'}</p>
-                </div>
-
-                {/* Sector */}
-                <div className="detail-group">
-                  <label>Sector:</label>
-                  <p>{selectedLectura.medidor?.sector || 'Sin sector'}</p>
-                </div>
-
-                {/* Código de Afiliado */}
-                <div className="detail-group">
-                  <label>Código de Afiliado:</label>
-                  <p>{selectedLectura.medidor?.codigo_afiliado || 'N/A'}</p>
-                </div>
-
-                {/* Nombre Afiliado */}
-                <div className="detail-group">
-                  <label>Nombre Afiliado:</label>
-                  <p>{selectedLectura.medidor?.nombre_afiliado || 'Sin afiliado'}</p>
-                </div>
-
-                {/* Lecturas */}
-                <div className="detail-group">
-                  <label>Lectura Anterior:</label>
-                  <p>{selectedLectura.lectura_anterior} m³</p>
-                </div>
-
-                <div className="detail-group">
-                  <label>Lectura Actual:</label>
-                  <p>{selectedLectura.lectura_actual} m³</p>
-                </div>
-
-                {/* Consumo */}
-                <div className="detail-group">
-                  <label>Consumo:</label>
-                  <p className="text-blue-600 font-semibold text-xl">{selectedLectura.consumo_m3} m³</p>
-                </div>
-
-                {/* Fecha */}
-                <div className="detail-group">
-                  <label>Fecha lectura:</label>
-                  <p>{formatDate(selectedLectura.fecha_lectura)}</p>
-                </div>
-
-                {/* Tipo de Lectura */}
-                <div className="detail-group">
-                  <label>Tipo de Lectura:</label>
-                  {selectedLectura.es_estimada ? (
-                    <span className="status-badge" style={{backgroundColor: '#fef3c7', color: '#92400e'}}>
-                      <AlertCircle className="w-3 h-3 mr-1" />
-                      Estimada
-                    </span>
-                  ) : (
-                    <span className="status-badge active">
-                      <Activity className="w-3 h-3 mr-1" />
-                      Real
-                    </span>
-                  )}
-                </div>
-
-                {/* Lector */}
-                <div className="detail-group">
-                  <label>Lector:</label>
-                  <p>
-                    {selectedLectura.lector
-                      ? `${selectedLectura.lector.nombres} ${selectedLectura.lector.apellidos}`
-                      : 'No registrado'}
-                  </p>
-                </div>
-
-                {/* Observación */}
-                <div className="detail-group">
-                  <label>Observación:</label>
-                  <p className={selectedLectura.observacion ? "bg-gray-50 p-3 rounded border border-gray-200" : ""}>
-                    {selectedLectura.observacion || 'Sin observaciones'}
-                  </p>
-                </div>
-
-                {/* Estado  */}
-                <div className="detail-group">
-                  <label>Estado:</label>
-                  <span
-                    className={`status-badge ${selectedLectura.activo ? 'active' : 'inactive'}`}
-                  >
-                    {selectedLectura.activo ? (
-                      <>
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        Activo
-                      </>
-                    ) : (
-                      <>
-                        <XCircle className="w-3 h-3 mr-1" />
-                        Inactivo
-                      </>
-                    )}
-                  </span>
-                </div>
+{/* MODAL DE DETALLES*/}
+{showModal && selectedLectura && (
+  <div className="modal-overlay">
+    <div className="modal">
+      <div className="modal-header">
+        <h3>
+          <Eye className="w-5 h-5 inline mr-2" />
+          Detalle de Lectura
+        </h3>
+        <button className="modal-close" onClick={closeModal}>
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      
+      <div className="modal-body">
+        <div className="user-details">
+          
+          {/*CLASIFICACIÓN DE CONSUMO  */}
+          {selectedLectura.clasificacion_consumo && tarifasVigentes.tarifa_basica && (
+            <div className="detail-group-destacado" style={{
+              padding: '16px',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              border: '2px solid',
+              borderColor: selectedLectura.clasificacion_consumo.color,
+              backgroundColor: `${selectedLectura.clasificacion_consumo.color}08`
+            }}>
+              <label style={{ 
+                fontSize: '14px', 
+                fontWeight: 600, 
+                color: '#374151',
+                marginBottom: '12px',
+                display: 'block'
+              }}>
+                Análisis de Consumo:
+              </label>
+              
+              {/* Badge de clasificación */}
+              <div style={{ marginBottom: '12px' }}>
+                {renderClasificacionBadge(selectedLectura.clasificacion_consumo)}
               </div>
+              
+              {/* ✅ INFORMACIÓN DETALLADA - CORREGIDA */}
+              {selectedLectura.clasificacion_consumo.tipo === 'bajo' && (
+                <div style={{ 
+                  backgroundColor: '#dbeafe', 
+                  padding: '12px', 
+                  borderRadius: '6px',
+                  border: '1px solid #60a5fa'
+                }}>
+                  <p style={{ margin: 0, color: '#1e40af', fontSize: '14px', lineHeight: '1.6' }}>
+                    <strong>Tu consumo está por debajo del mínimo establecido.</strong>
+                  </p>
+                  <p style={{ margin: '8px 0 0', color: '#1e40af', fontSize: '13px' }}>
+                    • Consumo: <strong>{selectedLectura.consumo_m3} m³</strong><br/>
+                    • Mínimo esperado: <strong>{tarifasVigentes.tarifa_basica.limite_min_m3} m³</strong><br/>
+                    • Diferencia: <strong>{(tarifasVigentes.tarifa_basica.limite_min_m3 - selectedLectura.consumo_m3).toFixed(2)} m³ menos</strong>
+                  </p>
+                </div>
+              )}
+              
+              {selectedLectura.clasificacion_consumo.tipo === 'normal' && (
+                <div style={{ 
+                  backgroundColor: '#dcfce7', 
+                  padding: '12px', 
+                  borderRadius: '6px',
+                  border: '1px solid #4ade80'
+                }}>
+                  <p style={{ margin: 0, color: '#166534', fontSize: '14px', lineHeight: '1.6' }}>
+                    <strong>✓ Tu consumo está dentro del rango normal.</strong>
+                  </p>
+                  <p style={{ margin: '8px 0 0', color: '#166534', fontSize: '13px' }}>
+                    • Consumo: <strong>{selectedLectura.consumo_m3} m³</strong><br/>
+                    • Rango permitido: <strong>{tarifasVigentes.tarifa_basica.limite_min_m3} - {tarifasVigentes.tarifa_basica.limite_max_m3} m³</strong><br/>
+                    • Tarifa aplicada: <strong>${tarifasVigentes.tarifa_basica.precio_por_m3}/m³</strong><br/>
+                    • Margen restante: <strong>{(tarifasVigentes.tarifa_basica.limite_max_m3 - selectedLectura.consumo_m3).toFixed(2)} m³</strong>
+                  </p>
+                </div>
+              )}
+              
+              {selectedLectura.clasificacion_consumo.tipo === 'exceso' && (
+                <div style={{ 
+                  backgroundColor: '#fee2e2', 
+                  padding: '12px', 
+                  borderRadius: '6px',
+                  border: '1px solid #f87171'
+                }}>
+                  <p style={{ margin: 0, color: '#991b1b', fontSize: '14px', fontWeight: 600, lineHeight: '1.6' }}>
+                    ⚠️ Tu consumo supera el límite normal
+                  </p>
+                  <div style={{ 
+                    marginTop: '12px', 
+                    padding: '12px', 
+                    backgroundColor: 'white',
+                    borderRadius: '6px',
+                    border: '1px dashed #f87171'
+                  }}>
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '12px',
+                      fontSize: '13px'
+                    }}>
+                      <div>
+                        <p style={{ margin: 0, color: '#6b7280', fontWeight: 500 }}>
+                          Consumo Total:
+                        </p>
+                        <p style={{ margin: '4px 0 0', color: '#991b1b', fontWeight: 700, fontSize: '16px' }}>
+                          {selectedLectura.consumo_m3} m³
+                        </p>
+                      </div>
+                      <div>
+                        <p style={{ margin: 0, color: '#6b7280', fontWeight: 500 }}>
+                          Límite Normal:
+                        </p>
+                        <p style={{ margin: '4px 0 0', color: '#166534', fontWeight: 700, fontSize: '16px' }}>
+                          {tarifasVigentes.tarifa_basica.limite_max_m3} m³
+                        </p>
+                      </div>
+                      <div>
+                        <p style={{ margin: 0, color: '#6b7280', fontWeight: 500 }}>
+                          Exceso:
+                        </p>
+                        <p style={{ margin: '4px 0 0', color: '#dc2626', fontWeight: 700, fontSize: '16px' }}>
+                          +{(selectedLectura.consumo_m3 - tarifasVigentes.tarifa_basica.limite_max_m3).toFixed(2)} m³
+                        </p>
+                      </div>
+                      {tarifasVigentes.tarifa_exceso && (
+                        <div>
+                          <p style={{ margin: 0, color: '#6b7280', fontWeight: 500 }}>
+                            Tarifa Exceso:
+                          </p>
+                          <p style={{ margin: '4px 0 0', color: '#dc2626', fontWeight: 700, fontSize: '16px' }}>
+                            ${tarifasVigentes.tarifa_exceso.precio_por_m3}/m³
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {tarifasVigentes.tarifa_exceso && (
+                      <div style={{ 
+                        marginTop: '12px', 
+                        paddingTop: '12px',
+                        borderTop: '1px solid #fecaca'
+                      }}>
+                        <p style={{ margin: 0, color: '#991b1b', fontSize: '12px', lineHeight: '1.5' }}>
+                          <strong>Costo estimado del exceso:</strong> ${(
+                            (selectedLectura.consumo_m3 - tarifasVigentes.tarifa_basica.limite_max_m3) * 
+                            tarifasVigentes.tarifa_exceso.precio_por_m3
+                          ).toFixed(2)}
+                        </p>
+                        <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: '11px', fontStyle: 'italic' }}>
+                          Este valor se suma a la tarifa básica en tu factura.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Medidor */}
+          <div className="detail-group">
+            <label>Medidor:</label>
+            <p>{selectedLectura.medidor?.num_medidor || 'N/A'}</p>
+          </div>
+
+          {/* Sector */}
+          <div className="detail-group">
+            <label>Sector:</label>
+            <p>{selectedLectura.sector || 'Sin sector'}</p>
+          </div>
+
+          {/* Código de Afiliado */}
+          <div className="detail-group">
+            <label>Código de Afiliado:</label>
+            <p>{selectedLectura.codigo_afiliado || 'N/A'}</p>
+          </div>
+
+          {/* Nombre Afiliado */}
+          <div className="detail-group">
+            <label>Nombre Afiliado:</label>
+            <p>{selectedLectura.nombre_afiliado || 'Sin afiliado'}</p>
+          </div>
+
+          {/* Lecturas */}
+          <div className="detail-group">
+            <label>Lectura Anterior:</label>
+            <p>{selectedLectura.lectura_anterior} m³</p>
+          </div>
+
+          <div className="detail-group">
+            <label>Lectura Actual:</label>
+            <p>{selectedLectura.lectura_actual} m³</p>
+          </div>
+
+          {/* Consumo */}
+          <div className="detail-group">
+            <label>Consumo:</label>
+            <p className="text-blue-600 font-semibold text-xl">{selectedLectura.consumo_m3} m³</p>
+          </div>
+
+          {/* Fecha */}
+          <div className="detail-group">
+            <label>Fecha lectura:</label>
+            <p>{formatDate(selectedLectura.fecha_lectura)}</p>
+          </div>
+
+          {/* Tipo de Lectura */}
+          <div className="detail-group">
+            <label>Tipo de Lectura:</label>
+            <div>
+              {selectedLectura.es_estimada ? (
+                <div className="lectura-badge lectura-badge-estimada">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>Estimada</span>
+                </div>
+              ) : (
+                <div className="lectura-badge lectura-badge-real">
+                  <Activity className="w-3 h-3" />
+                  <span>Real</span>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Lector */}
+          <div className="detail-group">
+            <label>Lector:</label>
+            <p>
+              {selectedLectura.lector
+                ? `${selectedLectura.lector.nombres} ${selectedLectura.lector.apellidos}`
+                : 'No registrado'}
+            </p>
+          </div>
+
+          {/* Observación */}
+          <div className="detail-group">
+            <label>Observación:</label>
+            <p className={selectedLectura.observacion ? "bg-gray-50 p-3 rounded border border-gray-200" : ""}>
+              {selectedLectura.observacion || 'Sin observaciones'}
+            </p>
+          </div>
+
+          {/* Estado  */}
+          <div className="detail-group">
+            <label>Estado:</label>
+            <span
+              className={`status-badge ${selectedLectura.activo ? 'active' : 'inactive'}`}
+            >
+              {selectedLectura.activo ? (
+                <>
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  Activo
+                </>
+              ) : (
+                <>
+                  <XCircle className="w-3 h-3 mr-1" />
+                  Inactivo
+                </>
+              )}
+            </span>
+          </div>
         </div>
-      )}
+      </div>
+    </div>
+  </div>
+)}
+
     </div>
   );
 };

@@ -522,6 +522,35 @@ const ReportsSection = () => {
         );
         break;
 
+      case 'MultasAfiliados': {
+        const activas = reporteData.filter(m => m.activo === true).length;
+        const pendientes = reporteData.filter(m => m.estado === 'pendiente').length;
+        const pagadas = reporteData.filter(m => m.estado === 'pagada').length;
+        const facturadas = reporteData.filter(m => m.facturado === true).length;
+        
+        const montoTotal = reporteData.reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+        const montoPendiente = reporteData
+          .filter(m => m.estado === 'pendiente')
+          .reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+        const montoPagado = reporteData
+          .filter(m => m.estado === 'pagada')
+          .reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
+        const montoPromedio = reporteData.length > 0 ? (montoTotal / reporteData.length) : 0;
+
+        stats.push(
+          { label: 'Total Multas', value: reporteData.length, icon: 'AlertCircle', color: 'text-red-600' },
+          { label: 'Multas Activas', value: activas, icon: 'CheckCircle', color: 'text-green-600' },
+          { label: 'Pendientes', value: pendientes, icon: 'Clock', color: 'text-orange-600' },
+          { label: 'Pagadas', value: pagadas, icon: 'DollarSign', color: 'text-green-600' },
+          { label: 'Facturadas', value: facturadas, icon: 'FileText', color: 'text-blue-600' },
+          { label: 'Monto Total', value: `$${montoTotal.toFixed(2)}`, icon: 'TrendingUp', color: 'text-purple-600' },
+          { label: 'Monto Pendiente', value: `$${montoPendiente.toFixed(2)}`, icon: 'AlertTriangle', color: 'text-orange-600' },
+          { label: 'Monto Pagado', value: `$${montoPagado.toFixed(2)}`, icon: 'CheckCircle', color: 'text-green-700' },
+          { label: 'Monto Promedio', value: `$${montoPromedio.toFixed(2)}`, icon: 'TrendingUp', color: 'text-indigo-600' }
+        );
+        break;
+      }
+
 
       default:
         // Estadísticas genéricas para módulos sin configuración específica

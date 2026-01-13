@@ -57,6 +57,8 @@ const AffiliateBillingSection = () => {
   const [filterMontoMax, setFilterMontoMax] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
   const [sortBy, setSortBy] = useState('fecha_emision');
+  const [isInitialized, setIsInitialized] = useState(false);
+
 
   // ============================================================
   // ESTADOS DE PERIODOS (AÑO/MES)
@@ -138,120 +140,151 @@ const AffiliateBillingSection = () => {
   // ============================================================
   // FUNCIONES DE PERIODOS (AÑOS Y MESES DISPONIBLES)
   // ============================================================
-  const handleAnioChange = (e) => {
-    const anio = e.target.value;
-    setSelectedAnio(anio);
+// FUNCIONES DE PERIODOS AÑOS Y MESES DISPONIBLES
+const handleAnioChange = (e) => {
+  const anio = e.target.value;
+  
+  console.log('📅 Usuario seleccionó año:', anio);
+  
+  // Si selecciona "Todos los años"
+  if (!anio || anio === '' || anio === 'todos') {
+    setSelectedAnio('');
     setSelectedMes('');
-
-    if (anio && periodosDisponibles[anio]) {
+    setMesesDelAnio([]);
+    console.log('📅 Modo: Todos los años');
+  } else {
+    // ✅ Establecer el año que el usuario seleccionó
+    setSelectedAnio(anio);
+    setSelectedMes(''); // Resetear mes
+    
+    // Cargar meses del año seleccionado
+    if (periodosDisponibles[anio]) {
       setMesesDelAnio(periodosDisponibles[anio]);
+      console.log('📅 Meses cargados para', anio, ':', periodosDisponibles[anio]);
     } else {
       setMesesDelAnio([]);
+      console.log('⚠️ No hay meses disponibles para', anio);
     }
-  };
+  }
+};
+
 
   // ============================================================
   // FUNCIONES DE CARGA DE DATOS
   // ============================================================
-  const cargarFacturas = useCallback(async () => {
-    if (!permissions.canRead) {
-      setError('No tienes permiso para ver tus facturas');
-      setLoading(false);
-      return;
+const cargarFacturas = useCallback(async () => {
+  if (!permissions.canRead) {
+    setError('No tienes permiso para ver tus facturas');
+    setLoading(false);
+    return;
+  }
+
+  // ✅ Convertir valores vacíos a null para el backend
+  const anioParam = selectedAnio === '' || selectedAnio === 'todos' ? null : selectedAnio;
+  const mesParam = selectedMes === '' || selectedMes === 'todos' ? null : selectedMes;
+
+  console.log('📊 Cargando facturas con filtros:', { 
+    anio: anioParam, 
+    mes: mesParam, 
+    estadoFactura: filterEstadoFactura 
+  });
+
+  setLoading(true);
+  setError(null);
+
+  try {
+    const result = await affiliateBillingServices.getMisFacturasPorPeriodo(
+      anioParam,
+      mesParam,
+      { estadofactura: filterEstadoFactura }
+    );
+
+    console.log('✅ Facturas recibidas:', result);
+
+    if (result.success) {
+      setFacturas(result.data);
+      calcularEstadisticas(result.data);
+    } else {
+      setError(result.message);
+      console.error('❌ Error en respuesta:', result.message);
     }
+  } catch (err) {
+    setError('Error al cargar tus facturas');
+    console.error('❌ Error cargando facturas:', err);
+  } finally {
+    setLoading(false);
+  }
+}, [permissions.canRead, selectedAnio, selectedMes, filterEstadoFactura]);
 
-    console.log('📊 Cargando facturas con filtros:', {
-      anio: selectedAnio,
-      mes: selectedMes,
-      estadoFactura: filterEstadoFactura
-    });
 
-    setLoading(true);
-    setError(null);
-
+useEffect(() => {
+  const cargarPeriodsDisponibles = async () => {
+    console.log('🚀 Cargando periodos disponibles...');
+    
     try {
-      const result = await affiliateBillingServices.getMisFacturasPorPeriodo(
-        selectedAnio || null,
-        selectedMes || null,
-        {
-          estado_factura: filterEstadoFactura
-        }
-      );
-
-      console.log('✅ Facturas recibidas:', result);
-
-      if (result.success) {
-        setFacturas(result.data);
-        calcularEstadisticas(result.data);
-      } else {
-        setError(result.message);
-        console.error('❌ Error en respuesta:', result.message);
-      }
-    } catch (err) {
-      setError('Error al cargar tus facturas');
-      console.error('❌ Error cargando facturas:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    permissions.canRead,
-    selectedAnio,
-    selectedMes,
-    filterEstadoFactura
-  ]);
-
-  useEffect(() => {
-      const inicializar = async () => {
-          console.log('🚀 Iniciando carga de datos...');
+      const resultPeriodos = await affiliateBillingServices.getPeriodosFacturasDisponibles();
+      console.log('📅 Periodos obtenidos:', resultPeriodos);
+      
+      if (resultPeriodos.success) {
+        setAniosDisponibles(resultPeriodos.data.anios_disponibles || []);
+        setPeriodosDisponibles(resultPeriodos.data.periodos || {});
+        
+        // ✅ SOLO establecer año inicial si hay años disponibles
+        if (resultPeriodos.data.anios_disponibles && resultPeriodos.data.anios_disponibles.length > 0) {
+          const anioReciente = resultPeriodos.data.anios_disponibles[0];
+          const mesesDelAnioReciente = resultPeriodos.data.periodos[anioReciente] || [];
           
-          // Cargar periodos disponibles
-          try {
-              const resultPeriodos = await affiliateBillingServices.getPeriodosFacturasDisponibles();
-              console.log('📅 Periodos obtenidos:', resultPeriodos);
-              
-              if (resultPeriodos.success) {
-                  setAniosDisponibles(resultPeriodos.data.anios_disponibles || []);
-                  setPeriodosDisponibles(resultPeriodos.data.periodos || {});
-                  
-                  if (resultPeriodos.data.anios_disponibles && resultPeriodos.data.anios_disponibles.length > 0) {
-                      const anioReciente = resultPeriodos.data.anios_disponibles[0];
-                      const mesesDelAnioReciente = resultPeriodos.data.periodos[anioReciente] || [];
-                      
-                      setSelectedAnio(anioReciente);
-                      setMesesDelAnio(mesesDelAnioReciente);
-                      
-                      // ✅ ESTABLECER EL MES MÁS RECIENTE
-                      if (mesesDelAnioReciente.length > 0) {
-                          const mesReciente = Math.max(...mesesDelAnioReciente);
-                          setSelectedMes(mesReciente);
-                          console.log(`📅 Periodo inicial: ${anioReciente}/${mesReciente}`);
-                      }
-                  }
-              } else {
-                  console.error('❌ Error al cargar periodos:', resultPeriodos.message);
-                  setError(resultPeriodos.message);
-              }
-          } catch (error) {
-              console.error('❌ Error obteniendo periodos:', error);
-              setError('Error al cargar periodos disponibles');
+          console.log('📅 Año inicial:', anioReciente);
+          console.log('📅 Meses disponibles:', mesesDelAnioReciente);
+          
+          // ✅ SOLO establecer si aún no se ha inicializado
+          if (!isInitialized) {
+            setSelectedAnio(anioReciente);
+            setMesesDelAnio(mesesDelAnioReciente);
+            
+            // Establecer mes más reciente si hay meses disponibles
+            if (mesesDelAnioReciente.length > 0) {
+              const mesesNumeros = mesesDelAnioReciente.map(p => p.mes);
+              const mesReciente = Math.max(...mesesNumeros);
+              console.log('📅 Mes inicial:', mesReciente);
+              setSelectedMes(mesReciente);
+            } else {
+              setSelectedMes('');
+            }
+            
+            setIsInitialized(true); // ✅ Marcar como inicializado
           }
-
-          // Cargar facturas iniciales
-          await cargarFacturas();
-      };
-
-      if (permissions.canRead) {
-          inicializar();
+        }
+      } else {
+        console.error('❌ Error al cargar periodos:', resultPeriodos.message);
+        setError(resultPeriodos.message);
       }
-  }, [permissions.canRead, cargarFacturas]);
-
-
-  // Recargar facturas cuando cambien los filtros
-  useEffect(() => {
-    if (permissions.canRead && aniosDisponibles.length > 0) {
-      cargarFacturas();
+    } catch (error) {
+      console.error('❌ Error obteniendo periodos:', error);
+      setError('Error al cargar periodos disponibles');
     }
-  }, [selectedAnio, selectedMes, filterEstadoFactura, cargarFacturas, permissions.canRead, aniosDisponibles.length]);
+  };
+
+  // ✅ SOLO ejecutar UNA VEZ cuando se tienen permisos
+  if (permissions.canRead && !isInitialized) {
+    cargarPeriodsDisponibles();
+  }
+}, [permissions.canRead, isInitialized]); // ✅ Dependencias correctas
+
+// ============================================
+// EFECTO 2: CARGAR FACTURAS CUANDO CAMBIEN LOS FILTROS
+// ============================================
+useEffect(() => {
+  // ✅ Solo cargar si ya está inicializado
+  if (permissions.canRead && isInitialized) {
+    console.log('📊 Filtros cambiaron, recargando facturas...', {
+      año: selectedAnio,
+      mes: selectedMes,
+      estado: filterEstadoFactura
+    });
+    cargarFacturas();
+  }
+}, [selectedAnio, selectedMes, filterEstadoFactura, permissions.canRead, isInitialized, cargarFacturas]);
 
   // ============================================================
   // CÁLCULO DE ESTADÍSTICAS
@@ -483,23 +516,118 @@ const AffiliateBillingSection = () => {
     }).format(amount || 0);
   };
 
-  const limpiarFiltros = () => {
-    setSearchTerm('');
-    setFilterFechaDesde('');
-    setFilterFechaHasta('');
-    setFilterEstadoFactura('todos');
-    setFilterMontoMin('');
-    setFilterMontoMax('');
-    setSortBy('fecha_emision');
-    setSortOrder('desc');
+const limpiarFiltros = () => {
+  console.log('🧹 Limpiando filtros...');
+  
+  setSearchTerm('');
+  setFilterFechaDesde('');
+  setFilterFechaHasta('');
+  setFilterEstadoFactura('todos');
+  setFilterMontoMin('');
+  setFilterMontoMax('');
+  setSortBy('fechaemision');
+  setSortOrder('desc');
+  
+  // ✅ Volver al estado inicial (año más reciente)
+  if (aniosDisponibles.length > 0) {
+    const anioReciente = aniosDisponibles[0];
+    setSelectedAnio(anioReciente);
+    
+    if (periodosDisponibles[anioReciente]) {
+      setMesesDelAnio(periodosDisponibles[anioReciente]);
+      const mesesNumeros = periodosDisponibles[anioReciente].map(p => p.mes);
+      if (mesesNumeros.length > 0) {
+        setSelectedMes(Math.max(...mesesNumeros));
+      } else {
+        setSelectedMes('');
+      }
+    } else {
+      setMesesDelAnio([]);
+      setSelectedMes('');
+    }
+  } else {
     setSelectedAnio('');
     setSelectedMes('');
-  };
+    setMesesDelAnio([]);
+  }
+};
+
+
+// Funciones auxiliares para cálculos de pago
+const calcularTotalPagado = (factura) => {
+  return factura.montopagado || 0;
+};
+
+const calcularSaldoPendiente = (factura) => {
+  return factura.saldopendiente || 0;
+};
+
+// Helper para obtener badge de estado de pago
+const getEstadoPagoBadge = (factura) => {
+  if (factura.estado_factura === 'anulada') {
+    return (
+      <span className="status-badge anulada">
+        <Ban className="w-3 h-3" />
+        Anulada
+      </span>
+    );
+  }
+
+  if (factura.estado_factura === 'pagada') {
+    return (
+      <span className="status-badge pagada">
+        <CheckCircle className="w-3 h-3" />
+        Pagada
+      </span>
+    );
+  }
+
+  const saldo = calcularSaldoPendiente(factura);
+  const totalPagado = calcularTotalPagado(factura);
+
+  if (totalPagado > 0 && saldo > 0) {
+    return (
+      <span className="status-badge parcial" style={{ backgroundColor: '#f59e0b', color: 'white' }}>
+        <Clock className="w-3 h-3" />
+        Parcial
+      </span>
+    );
+  }
+
+  if (factura.estado_factura === 'vencida') {
+    return (
+      <span className="status-badge vencida">
+        <XCircle className="w-3 h-3" />
+        Vencida
+      </span>
+    );
+  }
+
+  return (
+    <span className="status-badge pendiente">
+      <Clock className="w-3 h-3" />
+      Pendiente
+    </span>
+  );
+};
+
 
   const handleRecargar = () => {
     cargarFacturas();
   };
 
+  // FUNCIONES DE UTILIDAD (agregar esta función)
+  const formatPeriodoDisplay = (periodo) => {
+    if (!periodo) return 'N/A';
+    const [anio, mes] = periodo.split('-');
+    return formatearPeriodo(parseInt(mes), anio);
+  };
+
+ const formatearPeriodo = (mes, anio) => {
+    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    return `${meses[mes - 1]} ${anio}`;
+  };
 
   const getMetodoIcon = (metodo) => {
     switch (metodo?.toLowerCase()) {
@@ -513,6 +641,54 @@ const AffiliateBillingSection = () => {
         return <DollarSign className="w-3 h-3" />;
     }
   };
+  // Helper para obtener badge de estado de PAGO (no factura)
+const getEstadoPagoBadgeForPayment = (estadoPago) => {
+  const estadoUpper = estadoPago?.toUpperCase();
+  
+  switch (estadoUpper) {
+    case 'REGISTRADO':
+      return (
+        <span className="status-badge pagada">
+          <CheckCircle className="w-3 h-3" />
+          Registrado
+        </span>
+      );
+    
+    case 'ANULADO':
+      return (
+        <span className="status-badge anulada">
+          <Ban className="w-3 h-3" />
+          Anulado
+        </span>
+      );
+    
+    case 'PENDIENTE':
+      return (
+        <span className="status-badge pendiente">
+          <Clock className="w-3 h-3" />
+          Pendiente
+        </span>
+      );
+    
+    case 'VERIFICADO':
+      return (
+        <span className="status-badge pagada">
+          <CheckCircle className="w-3 h-3" />
+          Verificado
+        </span>
+      );
+    
+    default:
+      return (
+        <span className="status-badge pendiente">
+          <Clock className="w-3 h-3" />
+          {estadoPago || 'Sin estado'}
+        </span>
+      );
+  }
+};
+
+
 
   // ============================================================
   // RENDERIZADO
@@ -635,51 +811,63 @@ const AffiliateBillingSection = () => {
       <div className="filters-main-container">
         
         {/* ✅ SECCIÓN 1: FILTRO POR PERIODO */}
-        <div className="filters-section-card">
-          <div className="filters-section-header">
-            <Search className="w-4 h-4 text-blue-600" />
-            <h4 className="filters-section-title">Filtro por periodo</h4>
-          </div>
-          
-          <div className="filters-section-content-full">
+{/* SECCIÓN 1: FILTRO POR PERIODO */}
+<div className="filters-section-card">
+  <div className="filters-section-header">
+    <Search className="w-4 h-4 text-blue-600" />
+    <h4 className="filters-section-title">Filtro por periodo</h4>
+  </div>
+  
+  <div className="filters-section-content-full">
+    <div className="filter-group-row">
+      {/* Año */}
+      <div className="filter-group">
+        <label className="filter-label">Año</label>
+        <select 
+          className="filter-select" 
+          value={selectedAnio}
+          onChange={handleAnioChange}
+        >
+          {/* ✅ Value vacío para "Todos los años" */}
+          <option value="">Todos los años</option>
+          {aniosDisponibles.map((anio) => (
+            <option key={anio} value={anio}>
+              {anio}
+            </option>
+          ))}
+        </select>
+      </div>
 
-            <div className="filter-group-row">
-              {/* 📅 Año */}
-              <div className="filter-group">
-                <label className="filter-label">Año</label>
-                <select
-                  className="filter-select"
-                  value={selectedAnio}
-                  onChange={handleAnioChange}
-                >
-                  <option value="">Todos los años</option>
-                  {aniosDisponibles.map(anio => (
-                    <option key={anio} value={anio}>{anio}</option>
-                  ))}
-                </select>
-              </div>
+{/* Mes */}
+<div className="filter-group">
+  <label className="filter-label">Mes</label>
+  <select 
+    className="filter-select" 
+    value={selectedMes}
+    onChange={(e) => setSelectedMes(e.target.value)}
+    disabled={!selectedAnio || selectedAnio === ''}  
+  >
+    <option value="">Todos los meses</option>
+    {mesesDelAnio.map((periodo) => (
+      <option key={periodo.mes} value={periodo.mes}>
+        {/* ✅ CORREGIR: nombre_mes y total_facturas (con guión bajo) */}
+        {periodo.nombre_mes} ({periodo.total_facturas})
+      </option>
+    ))}
+  </select>
+  
+  {/* Mensaje informativo cuando está bloqueado */}
+  {(!selectedAnio || selectedAnio === '') && (
+    <p className="text-xs text-gray-500 mt-1">
+      Selecciona un año específico para filtrar por mes
+    </p>
+  )}
+</div>
 
-              {/* 📆 Mes */}
-              <div className="filter-group">
-                <label className="filter-label">Mes</label>
-                <select
-                  className="filter-select"
-                  value={selectedMes}
-                  onChange={(e) => setSelectedMes(e.target.value)}
-                  disabled={!selectedAnio}
-                >
-                  <option value="">Todos los meses</option>
-                  {mesesDelAnio.map(periodo => (
-                    <option key={periodo.mes} value={periodo.mes}>
-                      {periodo.nombre_mes} ({periodo.total_facturas})
-                    </option>
-                  ))}
-                </select>
-              </div>
+    </div>
+  </div>
+</div>
 
-            </div>
-          </div>
-        </div>
 
         {/* ✅ SECCIÓN 2: FILTROS Y ACCIONES */}
         <div className="filters-section-card">
@@ -833,8 +1021,7 @@ const AffiliateBillingSection = () => {
                   <div className="factura-stat-box">
                     <User className="w-4 h-4 text-gray-500" />
                     <span className="factura-user-name">
-                      {factura.usuario_afiliado?.usuario_sistema?.nombres}{' '}
-                      {factura.usuario_afiliado?.usuario_sistema?.apellidos}
+                      {factura.usuario_afiliado?.usuario_sistema?.nombre_completo || 'Sin nombre'}
                     </span>
                   </div>
                   <div className="factura-stat-box">
@@ -844,6 +1031,7 @@ const AffiliateBillingSection = () => {
                     </span>
                   </div>
                 </div>
+
 
                 {/* Columna 4: Estado de Pago */}
                 <div 
@@ -855,34 +1043,56 @@ const AffiliateBillingSection = () => {
                   </div>
                 </div>
 
-
                 {/* ✅ Columna 5: Comprobante */}
                 <div className="factura-comprobante-section">
-                  {factura.pago && factura.pago.tiene_comprobante ? (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        descargarComprobante(factura.pago.id_pago, factura.pago.nombre_archivo);
-                      }}
-                      className="factura-comprobante-download"
-                      title={`Descargar: ${factura.pago.nombre_archivo || 'comprobante.pdf'}`}
-                    >
-                      <FileCheck className="w-4 h-4" />
-                      <span>Descargar</span>
-                    </button>
-                  ) : factura.pago && !factura.pago.tiene_comprobante ? (
-                    <div 
-                      className="factura-comprobante-none" 
-                      title="Este pago no tiene comprobante"
-                    >
-                      <Paperclip className="w-4 h-4" />
-                      <span>Sin comprobante</span>
-                    </div>
+                  {factura.pagos && factura.pagos.length > 0 ? (
+                    (() => {
+                      const pagosConComprobantes = factura.pagos.filter(p => p.tiene_comprobante);
+                      
+                      if (pagosConComprobantes.length === 0) {
+                        // Hay pagos pero sin comprobantes
+                        return (
+                          <div className="factura-comprobante-none" title="Los pagos no tienen comprobante">
+                            <Paperclip className="w-4 h-4" />
+                            <span>Sin comprobante</span>
+                          </div>
+                        );
+                      } else if (pagosConComprobantes.length === 1) {
+                        // Solo 1 comprobante - descarga directa
+                        const pago = pagosConComprobantes[0];
+                        return (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              descargarComprobante(pago.id_pago, pago.nombre_archivo);
+                            }}
+                            className="factura-comprobante-download"
+                            title={`Descargar: ${pago.nombre_archivo || 'comprobante.pdf'}`}
+                          >
+                            <FileCheck className="w-4 h-4" />
+                            <span>Descargar</span>
+                          </button>
+                        );
+                      } else {
+                        // Múltiples comprobantes - abrir detalle
+                        return (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              verDetalle(factura);
+                            }}
+                            className="factura-comprobante-download"
+                            title={`Ver ${pagosConComprobantes.length} comprobantes en detalle`}
+                          >
+                            <FileCheck className="w-4 h-4" />
+                            <span>{pagosConComprobantes.length} Facturas</span>
+                          </button>
+                        );
+                      }
+                    })()
                   ) : (
-                    <div 
-                      className="factura-comprobante-none" 
-                      title="Sin pago registrado"
-                    >
+                    // Sin pagos registrados
+                    <div className="factura-comprobante-none" title="Sin pago registrado">
                       <Ban className="w-4 h-4" />
                       <span>Sin pago</span>
                     </div>
@@ -907,7 +1117,6 @@ const AffiliateBillingSection = () => {
           </div>
         )}
       </div>
-
 
       {/* ============================================================ */}
       {/* MODAL DE DETALLE DE FACTURA */}
@@ -943,11 +1152,11 @@ const AffiliateBillingSection = () => {
                   </div>
                   <div className="detail-group">
                     <label>Periodo</label>
-                    <p>{selectedFactura.periodo}</p>
+                    <p>{formatPeriodoDisplay(selectedFactura.periodo)}</p>
                   </div>
                   <div className="detail-group">
                     <label>Estado</label>
-                    {selectedFactura.estado_factura}
+                    {getEstadoPagoBadge(selectedFactura)}
                   </div>
                 </div>
               </div>
@@ -963,8 +1172,7 @@ const AffiliateBillingSection = () => {
                     <div className="detail-group form-group-full">
                       <label>Nombre Afiliado:</label>
                       <p>
-                        {selectedFactura.usuario_afiliado.usuario_sistema?.nombres}{' '}
-                        {selectedFactura.usuario_afiliado.usuario_sistema?.apellidos}{' '}
+                        {selectedFactura.usuario_afiliado.usuario_sistema?.nombre_completo || 'Sin nombre'}{' '}
                         - {selectedFactura.usuario_afiliado.usuario_sistema?.cedula || 'N/A'}
                       </p>
                     </div>
@@ -1046,7 +1254,6 @@ const AffiliateBillingSection = () => {
                   </h4>
                   <div className="detalles-factura-list">
                     {selectedFactura.detalles.map((detalle, index) => {
-                      // Determinar el ícono y color según el tipo
                       const getTipoConfig = (tipo) => {
                         switch (tipo?.toLowerCase()) {
                           case 'consumo':
@@ -1137,131 +1344,142 @@ const AffiliateBillingSection = () => {
                 </div>
               )}
 
-              {/* SECCIÓN DE PAGO */}
-              {selectedFactura.pago && (
+              {/* ✅ SECCIÓN DE PAGOS (MÚLTIPLES) */}
+              {selectedFactura.pagos && selectedFactura.pagos.length > 0 && (
                 <div className="factura-section">
                   <h4 className="section-title">
                     <DollarSign className="w-4 h-4" />
-                    Información del Pago
+                    Información de Pagos ({selectedFactura.pagos.length})
                   </h4>
                   <div className="pagos-list">
-                    <div
-                      className={`pago-item ${selectedFactura.pago.estado_pago === 'ANULADO' ? 'pago-anulado' : ''}`}
-                    >
-                      {/* CABECERA DEL PAGO */}
-                      <div className="pago-header">
-                        <div className="pago-header-left">
-                          <span className="pago-numero">Pago #{selectedFactura.pago.id_pago}</span>
-                        </div>
-                        {getStatusBadge(selectedFactura.pago.estado_pago)}
-                      </div>
-
-                      {/* DETALLES DEL PAGO */}
-                      <div className="pago-details">
-                        <div className="pago-detail">
-                          <span className="pago-label">
-                            <Calendar className="w-3 h-3" />
-                            Fecha:
-                          </span>
-                          <span className="pago-value">{formatDate(selectedFactura.pago.fecha_pago)}</span>
+                    {selectedFactura.pagos.map((pago, index) => (
+                      <div
+                        key={pago.id_pago}
+                        className={`pago-item ${pago.estado_pago === 'ANULADO' ? 'pago-anulado' : ''}`}
+                      >
+                        {/* CABECERA DEL PAGO */}
+                        <div className="pago-header">
+                          <div className="pago-header-left">
+                            <span className="pago-numero">Pago #{index + 1} (ID: {pago.id_pago})</span>
+                          </div>
+                          {getEstadoPagoBadgeForPayment(pago.estado_pago)}
                         </div>
 
-                        <div className="pago-detail">
-                          <span className="pago-label">
-                            <DollarSign className="w-3 h-3" />
-                            Monto:
-                          </span>
-                          <span className="pago-value font-bold text-green-600">
-                            {formatCurrency(selectedFactura.pago.monto_pago)}
-                          </span>
-                        </div>
-
-                        <div className="pago-detail">
-                          <span className="pago-label">
-                            {getMetodoIcon(selectedFactura.pago.metodo_pago)}
-                            Método:
-                          </span>
-                          <span className="pago-value">
-                            {selectedFactura.pago.metodo_pago}
-                          </span>
-                        </div>
-
-                        {/* CAJERO */}
-                        {selectedFactura.pago.cajero && (
+                        {/* DETALLES DEL PAGO */}
+                        <div className="pago-details">
                           <div className="pago-detail">
                             <span className="pago-label">
-                              <User className="w-3 h-3" />
-                              Cajero:
+                              <Calendar className="w-3 h-3" />
+                              Fecha:
+                            </span>
+                            <span className="pago-value">{formatDate(pago.fecha_pago)}</span>
+                          </div>
+
+                          <div className="pago-detail">
+                            <span className="pago-label">
+                              <DollarSign className="w-3 h-3" />
+                              Monto:
+                            </span>
+                            <span className="pago-value font-bold text-green-600">
+                              {formatCurrency(pago.monto_pago)}
+                            </span>
+                          </div>
+
+                          <div className="pago-detail">
+                            <span className="pago-label">
+                              {getMetodoIcon(pago.metodo_pago)}
+                              Método:
                             </span>
                             <span className="pago-value">
-                              {selectedFactura.pago.cajero}
+                              {pago.metodo_pago}
                             </span>
                           </div>
-                        )}
 
-                        {/* COMPROBANTE */}
-                        {selectedFactura.pago.tiene_comprobante && (
-                          <div className="pago-detail">
-                            <span className="pago-label">
-                              <Paperclip className="w-3 h-3" />
-                              Comprobante:
-                            </span>
-                            <span className="pago-value text-green-600">
-                              {selectedFactura.pago.nombre_archivo}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* OBSERVACIONES */}
-                      {selectedFactura.pago.observaciones && (
-                        <div className="pago-observaciones">
-                          <span className="pago-obs-label">
-                            <FileText className="w-3 h-3" />
-                            Observaciones:
-                          </span>
-                          <p className="pago-obs-text">{selectedFactura.pago.observaciones}</p>
-                        </div>
-                      )}
-
-                      {/* INFORMACIÓN DE ANULACIÓN */}
-                      {selectedFactura.pago.estado_pago === 'ANULADO' && (
-                        <div className="pago-anulacion-info">
-                          <div className="anulacion-header">
-                            <Ban className="w-4 h-4" />
-                            <span>Pago Anulado</span>
-                          </div>
-                          {selectedFactura.pago.fecha_anulacion && (
-                            <div className="anulacion-detail">
-                              <span className="anulacion-label">Fecha de anulación:</span>
-                              <span className="anulacion-value">
-                                {formatDate(selectedFactura.pago.fecha_anulacion)}
+                          {/* CAJERO */}
+                          {pago.cajero && (
+                            <div className="pago-detail">
+                              <span className="pago-label">
+                                <User className="w-3 h-3" />
+                                Cajero:
+                              </span>
+                              <span className="pago-value">
+                                {pago.cajero}
                               </span>
                             </div>
                           )}
-                          {selectedFactura.pago.motivo_anulacion && (
-                            <div className="anulacion-detail">
-                              <span className="anulacion-label">Motivo:</span>
-                              <span className="anulacion-value">{selectedFactura.pago.motivo_anulacion}</span>
+
+                          {/* COMPROBANTE CON BOTÓN DE DESCARGA */}
+                          {pago.tiene_comprobante && (
+                            <div className="pago-detail">
+                              <span className="pago-label">
+                                <Paperclip className="w-3 h-3" />
+                                Comprobante:
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  descargarComprobante(pago.id_pago, pago.nombre_archivo);
+                                }}
+                                className="pago-value text-green-600 hover:text-green-700 underline cursor-pointer"
+                                title={`Descargar: ${pago.nombre_archivo}`}
+                              >
+                                <FileCheck className="w-3 h-3 inline mr-1" />
+                                {pago.nombre_archivo}
+                              </button>
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
+
+                        {/* OBSERVACIONES */}
+                        {pago.observaciones && (
+                          <div className="pago-observaciones">
+                            <span className="pago-obs-label">
+                              <FileText className="w-3 h-3" />
+                              Observaciones:
+                            </span>
+                            <p className="pago-obs-text">{pago.observaciones}</p>
+                          </div>
+                        )}
+
+                        {/* INFORMACIÓN DE ANULACIÓN */}
+                        {pago.estado_pago === 'ANULADO' && (
+                          <div className="pago-anulacion-info">
+                            <div className="anulacion-header">
+                              <Ban className="w-4 h-4" />
+                              <span>Pago Anulado</span>
+                            </div>
+                            {pago.fecha_anulacion && (
+                              <div className="anulacion-detail">
+                                <span className="anulacion-label">Fecha de anulación:</span>
+                                <span className="anulacion-value">
+                                  {formatDate(pago.fecha_anulacion)}
+                                </span>
+                              </div>
+                            )}
+                            {pago.motivo_anulacion && (
+                              <div className="anulacion-detail">
+                                <span className="anulacion-label">Motivo:</span>
+                                <span className="anulacion-value">{pago.motivo_anulacion}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
 
                   {/* RESUMEN DE PAGOS */}
                   <div className="pagos-summary">
                     <div className="summary-header">
                       <TrendingUp className="w-4 h-4" />
-                      <span>Resumen de Pago</span>
+                      <span>Resumen de Pagos</span>
                     </div>
                     <div className="summary-row">
                       <span>Total Factura:</span>
                       <span className="font-bold">{formatCurrency(selectedFactura.total)}</span>
                     </div>
                     <div className="summary-row pagado">
-                      <span>Total Pagado:</span>
+                      <span>Total Pagado ({selectedFactura.cantidad_pagos} {selectedFactura.cantidad_pagos === 1 ? 'pago' : 'pagos'}):</span>
                       <span className="font-bold text-green-600">
                         {formatCurrency(selectedFactura.monto_pagado)}
                       </span>
@@ -1293,12 +1511,12 @@ const AffiliateBillingSection = () => {
                 </div>
               )}
 
-              {/* MENSAJE SI NO HAY PAGO */}
-              {!selectedFactura.pago && (
+              {/* MENSAJE SI NO HAY PAGOS */}
+              {(!selectedFactura.pagos || selectedFactura.pagos.length === 0) && (
                 <div className="factura-section">
                   <div className="empty-state-small">
                     <AlertCircle className="w-8 h-8 text-gray-400" />
-                    <p>No hay pago registrado para esta factura</p>
+                    <p>No hay pagos registrados para esta factura</p>
                   </div>
                 </div>
               )}
@@ -1409,6 +1627,7 @@ const AffiliateBillingSection = () => {
           </div>
         </div>
       )}
+
     </div>
   );
 };

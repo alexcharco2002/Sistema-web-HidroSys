@@ -1,7 +1,7 @@
 // src/pages/ForgotPassword.js
 // Página para recuperar la contraseña en varios pasos con CODIGO de verificación
 import React, { useState, useEffect } from 'react';
-import { Mail, ArrowLeft, AlertCircle, CheckCircle, Key, Lock, RefreshCw } from 'lucide-react';
+import { Mail, ArrowLeft, AlertCircle, CheckCircle, Key, Lock, RefreshCw, User } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import authService from '../services/authServices';
 import './Login.css';
@@ -11,6 +11,7 @@ const ForgotPassword = () => {
   
   // Estados
   const [step, setStep] = useState(1); // 1: email, 2: código, 3: nueva contraseña
+  const [username, setUsername] = useState(''); 
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -38,46 +39,50 @@ const ForgotPassword = () => {
   }, [step, resendTimer]);
 
   // PASO 1: Solicitar código
-  const handleRequestCode = async (e) => {
-    e.preventDefault();
+// PASO 1: Solicitar código
+const handleRequestCode = async (e) => {
+  e.preventDefault();
+  
+  // ✅ Validar ambos campos
+  if (!username.trim() || !email.trim()) {
+    setMessage('Por favor ingresa tu usuario y correo electrónico.');
+    setIsError(true);
+    return;
+  }
 
-    if (!email.trim()) {
-      setMessage('Por favor ingresa tu correo electrónico.');
+  // Validar formato de email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    setMessage('Por favor ingresa un correo válido.');
+    setIsError(true);
+    return;
+  }
+
+  setIsLoading(true);
+  setMessage('');
+
+  try {
+    // ✅ ORDEN CORRECTO: (username, email)
+    const result = await authService.forgotPassword(username, email);
+    
+    if (result.success) {
+      setIsError(false);
+      setMessage('Se ha enviado un código de verificación a tu correo.');
+      setStep(2);
+      setResendTimer(60);
+      setCanResend(false);
+    } else {
       setIsError(true);
-      return;
+      setMessage(result.message || 'No se pudo enviar el correo.');
     }
+  } catch (error) {
+    setIsError(true);
+    setMessage('Error de conexión. Intenta nuevamente.');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
-    // Validar formato de email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setMessage('Por favor ingresa un correo válido.');
-      setIsError(true);
-      return;
-    }
-
-    setIsLoading(true);
-    setMessage('');
-
-    try {
-      const result = await authService.forgotPassword(email);
-
-      if (result.success) {
-        setIsError(false);
-        setMessage('Se ha enviado un código de verificación a tu correo.');
-        setStep(2);
-        setResendTimer(60);
-        setCanResend(false);
-      } else {
-        setIsError(true);
-        setMessage(result.message || 'No se pudo enviar el correo.');
-      }
-    } catch (error) {
-      setIsError(true);
-      setMessage('Error de conexión. Intenta nuevamente.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // PASO 2: Verificar código
   const handleVerifyCode = async (e) => {
@@ -99,7 +104,7 @@ const ForgotPassword = () => {
     setMessage('');
 
     try {
-      const result = await authService.verifyRecoveryCode(email, code);
+      const result = await authService.verifyRecoveryCode(username, email, code);
 
       if (result.success) {
         setIsError(false);
@@ -145,7 +150,7 @@ const ForgotPassword = () => {
     setMessage('');
 
     try {
-      const result = await authService.resetPassword(email, resetToken, newPassword);
+      const result = await authService.resetPassword(username, email, resetToken, newPassword);
 
       if (result.success) {
         setIsError(false);
@@ -168,32 +173,35 @@ const ForgotPassword = () => {
   };
 
   // Reenviar código
-  const handleResendCode = async () => {
-    if (!canResend) return;
+// Reenviar código
+const handleResendCode = async () => {
+  if (!canResend) return;
 
-    setIsLoading(true);
-    setMessage('');
+  setIsLoading(true);
+  setMessage('');
 
-    try {
-      const result = await authService.resendCode(email);
-
-      if (result.success) {
-        setIsError(false);
-        setMessage('Código reenviado exitosamente.');
-        setResendTimer(60);
-        setCanResend(false);
-        setCode(''); // Limpiar código anterior
-      } else {
-        setIsError(true);
-        setMessage(result.message || 'No se pudo reenviar el código.');
-      }
-    } catch (error) {
+  try {
+    // ✅ ORDEN CORRECTO: (username, email)
+    const result = await authService.resendCode(username, email);
+    
+    if (result.success) {
+      setIsError(false);
+      setMessage('Código reenviado exitosamente.');
+      setResendTimer(60);
+      setCanResend(false);
+      setCode('');
+    } else {
       setIsError(true);
-      setMessage('Error al reenviar el código.');
-    } finally {
-      setIsLoading(false);
+      setMessage(result.message || 'No se pudo reenviar el código.');
     }
-  };
+  } catch (error) {
+    setIsError(true);
+    setMessage('Error al reenviar el código.');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   // Volver al paso anterior
   const handleGoBack = () => {
@@ -214,7 +222,7 @@ const ForgotPassword = () => {
             {step === 3 && '🔑 Nueva Contraseña'}
           </h1>
           <p className="system-subtitle">
-            {step === 1 && 'Ingresa tu correo para recibir un código de verificación'}
+            {step === 1 && 'Ingresa tu usuario y correo para recibir un código de verificación'}
             {step === 2 && 'Ingresa el código enviado a tu correo'}
             {step === 3 && 'Crea tu nueva contraseña segura'}
           </p>
@@ -230,6 +238,21 @@ const ForgotPassword = () => {
                   <span>{message}</span>
                 </div>
               )}
+              <div className="input-group">
+                <label htmlFor="username" className="input-label">
+                  <User className="label-icon" /> Usuario
+                </label>
+                <input
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Ej: user"
+                  className="form-input"
+                  disabled={isLoading}
+                  autoComplete="username"
+                />
+              </div>
 
               <div className="input-group">
                 <label htmlFor="email" className="input-label">

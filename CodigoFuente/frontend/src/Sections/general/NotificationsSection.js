@@ -139,7 +139,47 @@ useEffect(() => {
   }
 }, [loadNotifications, permissions.canRead]);
 
- 
+// ========================================
+// CALCULAR DURACIÓN AL CAMBIAR FECHAS
+// ========================================
+// ========================================
+// CALCULAR DURACIÓN AL CAMBIAR FECHAS
+// ========================================
+useEffect(() => {
+  if (maintenanceData.fechainiciomantenimiento && maintenanceData.fechafinmantenimiento) {
+    const duracion = calcularDuracionEstimada(
+      maintenanceData.fechainiciomantenimiento,
+      maintenanceData.fechafinmantenimiento
+    );
+    
+    if (duracion === null) {
+      // Fecha fin es menor o igual a fecha inicio
+      setError('⚠️ La fecha de fin debe ser posterior a la fecha de inicio');
+      setMaintenanceData(prev => ({
+        ...prev,
+        duracionestimada: ''
+      }));
+    } else {
+      // Actualizar duración calculada
+      setMaintenanceData(prev => ({
+        ...prev,
+        duracionestimada: duracion
+      }));
+      // Limpiar error si había
+      if (error && error.includes('fecha')) {
+        setError('');
+      }
+    }
+  } else if (maintenanceData.fechainiciomantenimiento) {
+    // Solo hay fecha inicio, limpiar duración
+    setMaintenanceData(prev => ({
+      ...prev,
+      duracionestimada: ''
+    }));
+  }
+}, [maintenanceData.fechainiciomantenimiento, maintenanceData.fechafinmantenimiento, error]);
+
+
 
   async function loadUsers() {
     setLoadingUsers(true);
@@ -305,77 +345,24 @@ const filteredUsers = users.filter(user => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccessMessage('');
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError('');
+  setSuccessMessage('');
 
-    try {
-      if (notificationType === 'normal') {
-        if (!sendToAll && selectedUsers.length === 0) {
-          setError('Debes seleccionar al menos un usuario o marcar "Enviar a todos"');
-          return;
-        }
+  try {
+    if (notificationType === 'normal') {
+      if (!sendToAll && selectedUsers.length === 0) {
+        setError('Debes seleccionar al menos un usuario o marcar "Enviar a todos"');
+        return;
+      }
 
-        if (sendToAll) {
-          const payload = {
-            ...formData,
-            id_usuario_sistema: null
-          };
-          
-          const result = await notificationsService.createNotification(payload);
-          
-          if (result.success) {
-            setSuccessMessage('✅ Notificación enviada a todos los usuarios');
-            setTimeout(() => {
-              closeModal();
-              loadNotifications();
-            }, 2000);
-          } else {
-            setError(result.message);
-          }
-        } else {
-          let successCount = 0;
-          let errorCount = 0;
-          
-          // ✅ USAR directamente el ID (ya que el backend espera id_usuario_sistema)
-          for (const userId of selectedUsers) {
-            const payload = {
-              ...formData,
-              id_usuario_sistema: userId  // El backend espera este nombre
-            };
-            
-            const result = await notificationsService.createNotification(payload);
-            
-            if (result.success) {
-              successCount++;
-            } else {
-              errorCount++;
-            }
-          }
-          
-          if (errorCount === 0) {
-            setSuccessMessage(`✅ Notificación enviada a ${successCount} usuario(s)`);
-            setTimeout(() => {
-              closeModal();
-              loadNotifications();
-            }, 2000);
-          } else {
-            setError(`⚠️ ${successCount} enviadas, ${errorCount} fallaron`);
-          }
-        }
-      } else {
-        // Mantenimiento
-        const payload = {
-          ...maintenanceData,
-          tipo: 'mantenimiento',
-          id_usuario_sistema: null
-        };
-
-        const result = await notificationsService.createMaintenance(payload);
-
+      if (sendToAll) {
+        const payload = { ...formData, idusuariosistema: null };
+        const result = await notificationsService.createNotification(payload);
+        
         if (result.success) {
-          setSuccessMessage('✅ ' + result.message);
+          setSuccessMessage('Notificación enviada a todos los usuarios');
           setTimeout(() => {
             closeModal();
             loadNotifications();
@@ -383,12 +370,90 @@ const filteredUsers = users.filter(user => {
         } else {
           setError(result.message);
         }
+      } else {
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const userId of selectedUsers) {
+          const payload = { ...formData, idusuariosistema: userId };
+          const result = await notificationsService.createNotification(payload);
+          
+          if (result.success) {
+            successCount++;
+          } else {
+            errorCount++;
+          }
+        }
+
+        if (errorCount === 0) {
+          setSuccessMessage(`Notificación enviada a ${successCount} usuarios`);
+          setTimeout(() => {
+            closeModal();
+            loadNotifications();
+          }, 2000);
+        } else {
+          setError(`${successCount} enviadas, ${errorCount} fallaron`);
+        }
       }
-    } catch (error) {
-      console.error('❌ Error al crear notificación:', error);
-      setError('Error al crear la notificación');
+    } else {
+      // MANTENIMIENTO
+      // Validar fechas antes de enviar
+      if (!maintenanceData.fechainiciomantenimiento) {
+        setError('⚠️ Debes ingresar la fecha de inicio del mantenimiento');
+        return;
+      }
+      
+      if (maintenanceData.fechafinmantenimiento) {
+        const inicio = new Date(maintenanceData.fechainiciomantenimiento);
+        const fin = new Date(maintenanceData.fechafinmantenimiento);
+        
+        if (fin <= inicio) {
+          setError('⚠️ La fecha de fin debe ser posterior a la fecha de inicio');
+          return;
+        }
+        
+        // Validar que haya duración calculada
+        if (!maintenanceData.duracionestimada) {
+          setError('⚠️ No se pudo calcular la duración. Verifica las fechas ingresadas');
+          return;
+        }
+      }
+
+      // Preparar payload con nombres correctos para el backend
+      const payload = {
+        titulo: maintenanceData.titulo,
+        mensaje: maintenanceData.mensaje,
+        fecha_inicio_mantenimiento: maintenanceData.fechainiciomantenimiento,
+        fecha_fin_mantenimiento: maintenanceData.fechafinmantenimiento || null,
+        duracion_estimada: maintenanceData.duracionestimada || null,
+        modulos_afectados: maintenanceData.modulosafectados || null,
+        enviar_email: maintenanceData.enviaremail,
+        prioridad: maintenanceData.prioridad,
+        tipo: 'mantenimiento',
+        idusuariosistema: null
+      };
+
+      console.log('📤 Enviando mantenimiento:', payload);
+
+      const result = await notificationsService.createMaintenance(payload);
+      
+      if (result.success) {
+        setSuccessMessage(result.message || 'Mantenimiento programado correctamente');
+        setTimeout(() => {
+          closeModal();
+          loadNotifications();
+        }, 2000);
+      } else {
+        setError(result.message);
+      }
     }
-  };
+  } catch (error) {
+    console.error('❌ Error al crear notificación:', error);
+    setError('Error al crear la notificación');
+  }
+};
+
+
 
 
   const handleMarkAllAsRead = async () => {
@@ -434,13 +499,64 @@ const filteredUsers = users.filter(user => {
     }
   };
 
+ 
   const getMinDate = () => {
     const now = new Date();
-    now.setHours(now.getHours() + 24);
-    return now.toISOString().slice(0, 16);
+    // Agregar exactamente 24 horas (24 * 60 * 60 * 1000 milisegundos)
+    const minDate = new Date(now.getTime() + (24 * 60 * 60 * 1000));
+    
+    // Formatear para datetime-local (YYYY-MM-DDTHH:mm)
+    const year = minDate.getFullYear();
+    const month = String(minDate.getMonth() + 1).padStart(2, '0');
+    const day = String(minDate.getDate()).padStart(2, '0');
+    const hours = String(minDate.getHours()).padStart(2, '0');
+    const minutes = String(minDate.getMinutes()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
+
+
 // ==================== FUNCIÓN HELPER PARA FECHAS ====================
+  // ========================================
+  // CALCULAR DURACIÓN ESTIMADA
+  // ========================================
+  const calcularDuracionEstimada = (fechaInicio, fechaFin) => {
+    if (!fechaInicio || !fechaFin) return '';
+    
+    const inicio = new Date(fechaInicio);
+    const fin = new Date(fechaFin);
+    
+    // Validar que fecha fin sea mayor que fecha inicio
+    if (fin <= inicio) {
+      return null; // Retornamos null para indicar error
+    }
+    
+    const diffMs = fin - inicio;
+    const diffMinutos = Math.floor(diffMs / (1000 * 60));
+    const diffHoras = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    // Si es menos de 1 hora
+    if (diffHoras < 1) {
+      return `${diffMinutos} minuto${diffMinutos !== 1 ? 's' : ''}`;
+    }
+    
+    // Si es el mismo día (menos de 24 horas)
+    if (diffDias < 1) {
+      return `${diffHoras}h`;
+    }
+    
+    // Si es 1 o más días
+    const horasRestantes = diffHoras % 24;
+    if (horasRestantes === 0) {
+      return `${diffDias} día${diffDias !== 1 ? 's' : ''}`;
+    }
+    
+    return `${diffDias} día${diffDias !== 1 ? 's' : ''} ${horasRestantes}h`;
+  };
+
+
 const formatearFecha = (fechaString, incluirSegundos = false) => {
   if (!fechaString) return 'N/A';
   
@@ -994,47 +1110,55 @@ return (
                         placeholder="Describe las actividades de mantenimiento..."
                       />
                     </div>
+<div className="form-group">
+  <label>Fecha y Hora de Inicio *</label>
+  <input
+    type="datetime-local"
+    required
+    min={getMinDate()}
+    value={maintenanceData.fechainiciomantenimiento}
+    onChange={(e) => setMaintenanceData({ 
+      ...maintenanceData, 
+      fechainiciomantenimiento: e.target.value 
+    })}
+  />
+  <small>Mínimo 24 horas en el futuro</small>
+</div>
 
-                    <div className="form-group">
-                      <label>Fecha y Hora de Inicio *</label>
-                      <input
-                        type="datetime-local"
-                        required
-                        min={getMinDate()}
-                        value={maintenanceData.fecha_inicio_mantenimiento}
-                        onChange={(e) => setMaintenanceData({ 
-                          ...maintenanceData, 
-                          fecha_inicio_mantenimiento: e.target.value 
-                        })}
-                      />
-                      <small>Mínimo 24 horas en el futuro</small>
-                    </div>
+<div className="form-group">
+  <label>Fecha y Hora de Fin</label>
+  <input
+    type="datetime-local"
+    value={maintenanceData.fechafinmantenimiento}
+    onChange={(e) => setMaintenanceData({ 
+      ...maintenanceData, 
+      fechafinmantenimiento: e.target.value 
+    })}
+  />
+  <small>Opcional</small>
+</div>
 
-                    <div className="form-group">
-                      <label>Fecha y Hora de Fin</label>
-                      <input
-                        type="datetime-local"
-                        value={maintenanceData.fecha_fin_mantenimiento}
-                        onChange={(e) => setMaintenanceData({ 
-                          ...maintenanceData, 
-                          fecha_fin_mantenimiento: e.target.value 
-                        })}
-                      />
-                      <small>Opcional</small>
-                    </div>
 
-                    <div className="form-group">
-                      <label>Duración Estimada</label>
-                      <input
-                        type="text"
-                        value={maintenanceData.duracion_estimada}
-                        onChange={(e) => setMaintenanceData({ 
-                          ...maintenanceData, 
-                          duracion_estimada: e.target.value 
-                        })}
-                        placeholder="Ej: 2 horas"
-                      />
-                    </div>
+
+<div className="form-group">
+  <label>Duración Estimada</label>
+  <div className="input-readonly-wrapper">
+    <Clock className="w-4 h-4 text-gray-400" />
+    <input
+      type="text"
+      value={maintenanceData.duracionestimada || 'Ingresa fecha inicio y fin'}
+      readOnly
+      disabled
+      className="input-readonly"
+      placeholder="Se calculará automáticamente"
+    />
+  </div>
+  <small className="text-muted">
+    Se calcula automáticamente según las fechas
+  </small>
+</div>
+
+
 
                     <div className="form-group">
                       <label>Prioridad</label>
@@ -1157,28 +1281,25 @@ return (
                   
                   <div className="notification-details-grid">
 
-                  {selectedNotification.fecha_inicio_mantenimiento && (
-                    <div className="notification-detail-item">
-                      <span className="detail-label">Fecha de inicio:</span>
-                      <span className="detail-value">
-                        <Calendar className="w-4 h-4" />
-                        {formatearFecha(selectedNotification.fecha_inicio_mantenimiento)}
-                      </span>
-                    </div>
-                  )}
+                    {selectedNotification.fecha_inicio_mantenimiento && (
+                      <div className="notification-detail-item">
+                        <span className="detail-label">Fecha de inicio:</span>
+                        <span className="detail-value">
+                          <Calendar className="w-4 h-4" />
+                          {formatearFecha(selectedNotification.fecha_inicio_mantenimiento)}
+                        </span>
+                      </div>
+                    )}
 
-                  {selectedNotification.fecha_fin_mantenimiento && (
-                    <div className="notification-detail-item">
-                      <span className="detail-label">Fecha de finalización:</span>
-                      <span className="detail-value">
-                        <Calendar className="w-4 h-4" />
-                        {formatearFecha(selectedNotification.fecha_fin_mantenimiento)}
-                      </span>
-                    </div>
-                  )}
-
-
-
+                    {selectedNotification.fecha_fin_mantenimiento && (
+                      <div className="notification-detail-item">
+                        <span className="detail-label">Fecha de finalización:</span>
+                        <span className="detail-value">
+                          <Calendar className="w-4 h-4" />
+                          {formatearFecha(selectedNotification.fecha_fin_mantenimiento)}
+                        </span>
+                      </div>
+                    )}
 
                     {selectedNotification.duracion_estimada && (
                       <div className="notification-detail-item">

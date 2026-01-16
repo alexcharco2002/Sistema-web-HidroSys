@@ -617,8 +617,7 @@ def agregar_multas_a_factura(
         print(f"❌ Error agregando multas: {e}")
         return 0
 
-# utils/billing_utils.py (o donde tengas agregar_multas_a_factura)
-
+# 
 def agregar_cambios_medidor_a_factura(
     db: Session,
     id_factura: int,

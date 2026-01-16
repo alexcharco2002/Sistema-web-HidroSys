@@ -1,7 +1,7 @@
 // src/sections/NotificationsSection.js
 // MÓDULO DE NOTIFICACIONES - Sistema de notificación y mantenimiento programado
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Bell, 
   Plus, 
@@ -68,15 +68,15 @@ const NotificationsSection = () => {
 
   // Form data mantenimiento
   const [maintenanceData, setMaintenanceData] = useState({
-    titulo: 'Mantenimiento Programado del Sistema',
-    mensaje: 'Se realizará un mantenimiento programado para mejorar el rendimiento y estabilidad del sistema. Durante este período, el acceso al sistema estará temporalmente suspendido.',
-    fecha_inicio_mantenimiento: '',
-    fecha_fin_mantenimiento: '',
-    duracion_estimada: '2 horas',
-    modulos_afectados: 'Facturación, Lecturas, Pagos',
-    enviar_email: false,
-    prioridad: 'alta'
-  });
+  titulo: 'Mantenimiento Programado del Sistema',
+  mensaje: 'Se realizará un mantenimiento programado para mejorar el rendimiento y estabilidad del sistema. Durante este período, el acceso al sistema estará temporalmente suspendido.',
+  fecha_inicio_mantenimiento: '',
+  fecha_fin_mantenimiento: '',
+  duracion_estimada: '2 horas',
+  modulos_afectados: 'Facturación, Lecturas, Pagos',
+  enviar_email: false,
+  prioridad: 'alta'
+});
 
 
 
@@ -98,6 +98,24 @@ useEffect(() => {
 
   console.log('🔐 Permisos en módulo Notificaciones:', { canCreate, canRead, canUpdate, canDelete });
 }, []);
+
+  // ==================== HANDLERS MEMORIZADOS ====================
+  const handleInputChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  }, []);
+
+ const handleMaintenanceChange = useCallback((e) => {
+  const { name, value, type, checked } = e.target;
+  setMaintenanceData(prev => ({
+    ...prev,
+    [name]: type === 'checkbox' ? checked : value
+  }));
+}, []);
+
 
 // ==================== CARGAR DATOS ====================
 const loadNotifications = useCallback(async () => {
@@ -142,43 +160,27 @@ useEffect(() => {
 // ========================================
 // CALCULAR DURACIÓN AL CAMBIAR FECHAS
 // ========================================
-// ========================================
-// CALCULAR DURACIÓN AL CAMBIAR FECHAS
-// ========================================
+// ==================== 3. USEEFFECT DE DURACIÓN (línea ~142) ====================
 useEffect(() => {
-  if (maintenanceData.fechainiciomantenimiento && maintenanceData.fechafinmantenimiento) {
+  if (maintenanceData.fecha_inicio_mantenimiento && maintenanceData.fecha_fin_mantenimiento) {
     const duracion = calcularDuracionEstimada(
-      maintenanceData.fechainiciomantenimiento,
-      maintenanceData.fechafinmantenimiento
+      maintenanceData.fecha_inicio_mantenimiento,
+      maintenanceData.fecha_fin_mantenimiento
     );
     
     if (duracion === null) {
-      // Fecha fin es menor o igual a fecha inicio
-      setError('⚠️ La fecha de fin debe ser posterior a la fecha de inicio');
-      setMaintenanceData(prev => ({
-        ...prev,
-        duracionestimada: ''
+      setMaintenanceData(prev => ({ 
+        ...prev, 
+        duracion_estimada: '' 
       }));
     } else {
-      // Actualizar duración calculada
-      setMaintenanceData(prev => ({
-        ...prev,
-        duracionestimada: duracion
+      setMaintenanceData(prev => ({ 
+        ...prev, 
+        duracion_estimada: duracion 
       }));
-      // Limpiar error si había
-      if (error && error.includes('fecha')) {
-        setError('');
-      }
     }
-  } else if (maintenanceData.fechainiciomantenimiento) {
-    // Solo hay fecha inicio, limpiar duración
-    setMaintenanceData(prev => ({
-      ...prev,
-      duracionestimada: ''
-    }));
   }
-}, [maintenanceData.fechainiciomantenimiento, maintenanceData.fechafinmantenimiento, error]);
-
+}, [maintenanceData.fecha_inicio_mantenimiento, maintenanceData.fecha_fin_mantenimiento]);
 
 
   async function loadUsers() {
@@ -198,58 +200,47 @@ useEffect(() => {
     }
   }
 
-  // ==================== FILTROS ====================
-  
-  const filteredNotifications = notifications.filter(notification => {
-    const matchesSearch = 
-      notification.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      notification.message?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesStatus = 
-      filterStatus === 'all' ||
-      (filterStatus === 'unread' && !notification.read) ||
-      (filterStatus === 'read' && notification.read);
+  // ==================== FILTROS MEMORIZADOS ====================
+  const filteredNotifications = useMemo(() => {
+    return notifications.filter(notification => {
+      const matchesSearch = notification.title?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           notification.message?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = filterStatus === 'all' || 
+                           (filterStatus === 'unread' && !notification.read) || 
+                           (filterStatus === 'read' && notification.read);
+      const matchesType = filterType === 'all' || 
+                         notification.type?.toLowerCase() === filterType.toLowerCase();
+      return matchesSearch && matchesStatus && matchesType;
+    });
+  }, [notifications, searchTerm, filterStatus, filterType]);
 
-    const matchesType = 
-      filterType === 'all' ||
-      notification.type?.toLowerCase() === filterType.toLowerCase();
+  const filteredUsers = useMemo(() => {
+    if (!userSearchTerm) return users;
+    
+    const searchLower = userSearchTerm.toLowerCase().trim();
+    return users.filter(user => {
+      const nombres = user.nombres?.toLowerCase() || '';
+      const apellidos = user.apellidos?.toLowerCase() || '';
+      const fullName = `${nombres} ${apellidos}`;
+      const cedula = user.cedula?.toString() || '';
+      const email = user.email?.toLowerCase() || '';
+      
+      return fullName.includes(searchLower) || 
+             cedula.includes(searchLower) || 
+             email.includes(searchLower);
+    });
+  }, [users, userSearchTerm]);
 
-    return matchesSearch && matchesStatus && matchesType;
-  });
-
-  // ==================== AGREGAR ESTA FUNCIÓN DE FILTRADO ====================
-// (Antes del return, junto con las demás funciones)
-
-/**
- * Filtrar usuarios por nombre, apellido o cédula
- */
-// ==================== AGREGAR ESTA FUNCIÓN DE FILTRADO ====================
-const filteredUsers = users.filter(user => {
-  if (!userSearchTerm) return true;
-  const searchLower = userSearchTerm.toLowerCase().trim();
-  
-  const nombres = user.nombres?.toLowerCase() || '';
-  const apellidos = user.apellidos?.toLowerCase() || '';
-  const fullName = `${nombres} ${apellidos}`;
-  const cedula = user.cedula?.toString() || '';
-  const email = user.email?.toLowerCase() || '';
-  
-  return (
-    fullName.includes(searchLower) ||
-    cedula.includes(searchLower) ||
-    email.includes(searchLower)
-  );
-});
-
-
-  // ==================== ESTADÍSTICAS ====================
-  
-  const stats = {
+  // ==================== ESTADÍSTICAS MEMORIZADAS ====================
+  const stats = useMemo(() => ({
     total: notifications.length,
     unread: notifications.filter(n => !n.read).length,
     read: notifications.filter(n => n.read).length,
     maintenance: notifications.filter(n => n.es_mantenimiento).length
-  };
+  }), [notifications]);
+
+
 
   // ==================== MODAL ====================
   
@@ -287,28 +278,28 @@ const filteredUsers = users.filter(user => {
     resetForm();
   };
 
-  const resetForm = () => {
-    setFormData({
-      titulo: '',
-      mensaje: '',
-      tipo: 'info',
-      prioridad: 'media'
-    });
-    
-    setMaintenanceData({
-      titulo: 'Mantenimiento Programado del Sistema',
-      mensaje: 'Se realizará un mantenimiento programado para mejorar el rendimiento y estabilidad del sistema. Durante este período, el acceso al sistema estará temporalmente suspendido.',
-      fecha_inicio_mantenimiento: '',
-      fecha_fin_mantenimiento: '',
-      duracion_estimada: '2 horas',
-      modulos_afectados: 'Facturación, Lecturas, Pagos',
-      enviar_email: false,
-      prioridad: 'alta'
-    });
-    
-    setSelectedUsers([]);
-    setSendToAll(false);
-  };
+const resetForm = () => {
+  setFormData({
+    titulo: '',
+    mensaje: '',
+    tipo: 'info',
+    prioridad: 'media'
+  });
+  
+  setMaintenanceData({
+    titulo: 'Mantenimiento Programado del Sistema',
+    mensaje: 'Se realizará un mantenimiento programado para mejorar el rendimiento y estabilidad del sistema. Durante este período, el acceso al sistema estará temporalmente suspendido.',
+    fecha_inicio_mantenimiento: '',
+    fecha_fin_mantenimiento: '',
+    duracion_estimada: '2 horas',
+    modulos_afectados: 'Facturación, Lecturas, Pagos',
+    enviar_email: false,
+    prioridad: 'alta'
+  });
+  
+  setSelectedUsers([]);
+  setSendToAll(false);
+};
 
   // ==================== HANDLERS ====================
   const handleUserSelection = (userId) => {
@@ -331,7 +322,6 @@ const filteredUsers = users.filter(user => {
   };
 
   const handleSelectAllUsers = () => {
-    // ✅ USAR 'id' en lugar de 'id_usuario_sistema'
     const filteredUserIds = filteredUsers.map(u => u.id);
     const allFilteredSelected = filteredUserIds.every(id => selectedUsers.includes(id));
     
@@ -396,57 +386,54 @@ const handleSubmit = async (e) => {
         }
       }
     } else {
-      // MANTENIMIENTO
-      // Validar fechas antes de enviar
-      if (!maintenanceData.fechainiciomantenimiento) {
-        setError('⚠️ Debes ingresar la fecha de inicio del mantenimiento');
-        return;
-      }
-      
-      if (maintenanceData.fechafinmantenimiento) {
-        const inicio = new Date(maintenanceData.fechainiciomantenimiento);
-        const fin = new Date(maintenanceData.fechafinmantenimiento);
-        
-        if (fin <= inicio) {
-          setError('⚠️ La fecha de fin debe ser posterior a la fecha de inicio');
-          return;
-        }
-        
-        // Validar que haya duración calculada
-        if (!maintenanceData.duracionestimada) {
-          setError('⚠️ No se pudo calcular la duración. Verifica las fechas ingresadas');
-          return;
-        }
-      }
-
-      // Preparar payload con nombres correctos para el backend
-      const payload = {
-        titulo: maintenanceData.titulo,
-        mensaje: maintenanceData.mensaje,
-        fecha_inicio_mantenimiento: maintenanceData.fechainiciomantenimiento,
-        fecha_fin_mantenimiento: maintenanceData.fechafinmantenimiento || null,
-        duracion_estimada: maintenanceData.duracionestimada || null,
-        modulos_afectados: maintenanceData.modulosafectados || null,
-        enviar_email: maintenanceData.enviaremail,
-        prioridad: maintenanceData.prioridad,
-        tipo: 'mantenimiento',
-        idusuariosistema: null
-      };
-
-      console.log('📤 Enviando mantenimiento:', payload);
-
-      const result = await notificationsService.createMaintenance(payload);
-      
-      if (result.success) {
-        setSuccessMessage(result.message || 'Mantenimiento programado correctamente');
-        setTimeout(() => {
-          closeModal();
-          loadNotifications();
-        }, 2000);
-      } else {
-        setError(result.message);
-      }
+  // MANTENIMIENTO
+  if (!maintenanceData.fecha_inicio_mantenimiento) {
+    setError('⚠️ Debes ingresar la fecha de inicio del mantenimiento');
+    return;
+  }
+  
+  if (maintenanceData.fecha_fin_mantenimiento) {
+    const inicio = new Date(maintenanceData.fecha_inicio_mantenimiento);
+    const fin = new Date(maintenanceData.fecha_fin_mantenimiento);
+    
+    if (fin <= inicio) {
+      setError('⚠️ La fecha de fin debe ser posterior a la fecha de inicio');
+      return;
     }
+    
+    if (!maintenanceData.duracion_estimada) {
+      setError('⚠️ No se pudo calcular la duración. Verifica las fechas ingresadas');
+      return;
+    }
+  }
+
+  const payload = {
+    titulo: maintenanceData.titulo,
+    mensaje: maintenanceData.mensaje,
+    fecha_inicio_mantenimiento: maintenanceData.fecha_inicio_mantenimiento,
+    fecha_fin_mantenimiento: maintenanceData.fecha_fin_mantenimiento || null,
+    duracion_estimada: maintenanceData.duracion_estimada || null,
+    modulos_afectados: maintenanceData.modulos_afectados || null,
+    enviar_email: maintenanceData.enviar_email,
+    prioridad: maintenanceData.prioridad,
+    tipo: 'mantenimiento',
+    idusuariosistema: null
+  };
+
+  console.log('📤 Enviando mantenimiento:', payload);
+
+  const result = await notificationsService.createMaintenance(payload);
+  
+  if (result.success) {
+    setSuccessMessage(result.message || 'Mantenimiento programado correctamente');
+    setTimeout(() => {
+      closeModal();
+      loadNotifications();
+    }, 2000);
+  } else {
+    setError(result.message);
+  }
+}
   } catch (error) {
     console.error('❌ Error al crear notificación:', error);
     setError('Error al crear la notificación');
@@ -909,10 +896,11 @@ return (
                       <label>Título *</label>
                       <input
                         type="text"
+                        name="titulo"  
                         required
                         minLength="3"
                         value={formData.titulo}
-                        onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
+                             onChange={handleInputChange} 
                         placeholder="Título de la notificación"
                       />
                     </div>
@@ -920,11 +908,12 @@ return (
                     <div className="form-group form-group-full">
                       <label>Mensaje *</label>
                       <textarea
+                        name="mensaje"
                         required
                         minLength="5"
                         rows="4"
                         value={formData.mensaje}
-                        onChange={(e) => setFormData({ ...formData, mensaje: e.target.value })}
+                           onChange={handleInputChange}  
                         placeholder="Escribe el mensaje..."
                       />
                     </div>
@@ -1093,9 +1082,10 @@ return (
                       <label>Título *</label>
                       <input
                         type="text"
+                        name="titulo"
                         required
                         value={maintenanceData.titulo}
-                        onChange={(e) => setMaintenanceData({ ...maintenanceData, titulo: e.target.value })}
+                        onChange={handleMaintenanceChange}
                         placeholder="Ej: Mantenimiento de Servidores"
                       />
                     </div>
@@ -1103,60 +1093,57 @@ return (
                     <div className="form-group form-group-full">
                       <label>Descripción *</label>
                       <textarea
+                        name="mensaje"
                         required
                         rows="4"
                         value={maintenanceData.mensaje}
-                        onChange={(e) => setMaintenanceData({ ...maintenanceData, mensaje: e.target.value })}
+                        onChange={handleMaintenanceChange}
                         placeholder="Describe las actividades de mantenimiento..."
                       />
                     </div>
-<div className="form-group">
-  <label>Fecha y Hora de Inicio *</label>
-  <input
-    type="datetime-local"
-    required
-    min={getMinDate()}
-    value={maintenanceData.fechainiciomantenimiento}
-    onChange={(e) => setMaintenanceData({ 
-      ...maintenanceData, 
-      fechainiciomantenimiento: e.target.value 
-    })}
-  />
-  <small>Mínimo 24 horas en el futuro</small>
-</div>
+                    <div className="form-group">
+                      <label>Fecha y Hora de Inicio *</label>
+                      <input
+                        type="datetime-local"
+                        name="fecha_inicio_mantenimiento"
+                        required
+                        min={getMinDate()}
+                        value={maintenanceData.fecha_inicio_mantenimiento}
+                        onChange={handleMaintenanceChange}
+                      />
+                      <small>Mínimo 24 horas en el futuro</small>
+                    </div>
 
-<div className="form-group">
-  <label>Fecha y Hora de Fin</label>
-  <input
-    type="datetime-local"
-    value={maintenanceData.fechafinmantenimiento}
-    onChange={(e) => setMaintenanceData({ 
-      ...maintenanceData, 
-      fechafinmantenimiento: e.target.value 
-    })}
-  />
-  <small>Opcional</small>
-</div>
+                    <div className="form-group">
+                      <label>Fecha y Hora de Fin</label>
+                     <input
+                        type="datetime-local"
+                        name="fecha_fin_mantenimiento"
+                        value={maintenanceData.fecha_fin_mantenimiento}
+                        onChange={handleMaintenanceChange}
+                      />
+                      <small>Opcional</small>
+                    </div>
 
 
 
-<div className="form-group">
-  <label>Duración Estimada</label>
-  <div className="input-readonly-wrapper">
-    <Clock className="w-4 h-4 text-gray-400" />
-    <input
-      type="text"
-      value={maintenanceData.duracionestimada || 'Ingresa fecha inicio y fin'}
-      readOnly
-      disabled
-      className="input-readonly"
-      placeholder="Se calculará automáticamente"
-    />
-  </div>
-  <small className="text-muted">
-    Se calcula automáticamente según las fechas
-  </small>
-</div>
+                    <div className="form-group">
+                      <label>Duración Estimada</label>
+                      <div className="input-readonly-wrapper">
+                        <Clock className="w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          value={maintenanceData.duracionestimada || 'Ingresa fecha inicio y fin'}
+                          readOnly
+                          disabled
+                          className="input-readonly"
+                          placeholder="Se calculará automáticamente"
+                        />
+                      </div>
+                      <small className="text-muted">
+                        Se calcula automáticamente según las fechas
+                      </small>
+                    </div>
 
 
 
@@ -1164,10 +1151,7 @@ return (
                       <label>Prioridad</label>
                       <select
                         value={maintenanceData.prioridad}
-                        onChange={(e) => setMaintenanceData({ 
-                          ...maintenanceData, 
-                          prioridad: e.target.value 
-                        })}
+                        onChange={handleMaintenanceChange}
                       >
                         <option value="baja">Baja</option>
                         <option value="media">Media</option>
@@ -1178,15 +1162,13 @@ return (
 
                     <div className="form-group form-group-full">
                       <label>Módulos Afectados</label>
-                      <input
-                        type="text"
-                        value={maintenanceData.modulos_afectados}
-                        onChange={(e) => setMaintenanceData({ 
-                          ...maintenanceData, 
-                          modulos_afectados: e.target.value 
-                        })}
-                        placeholder="Ej: Facturación, Lecturas, Reportes"
-                      />
+                        <input
+                          type="text"
+                          name="modulos_afectados"
+                          value={maintenanceData.modulos_afectados}
+                          onChange={handleMaintenanceChange}
+                          placeholder="Ej: Facturación, Lecturas, Reportes"
+                        />
                       <small>Separa con comas los módulos afectados</small>
                     </div>
 
@@ -1195,10 +1177,8 @@ return (
                         <input
                           type="checkbox"
                           checked={maintenanceData.enviar_email}
-                          onChange={(e) => setMaintenanceData({ 
-                            ...maintenanceData, 
-                            enviar_email: e.target.checked 
-                          })}
+                          onChange={handleMaintenanceChange}
+
                         />
                         <Mail className="w-4 h-4" />
                         <span>Enviar notificación por correo electrónico</span>

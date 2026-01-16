@@ -354,47 +354,114 @@ class MoraService {
   /**
    * Validar datos de configuración de mora
    */
-  validateMoraData(moraData) {
-    if (!moraData.nombre || moraData.nombre.trim() === '') {
-      throw new Error('El nombre de la configuración es requerido');
-    }
+validateMoraData(moraData) {
+  if (!moraData.nombre || moraData.nombre.trim() === '') {
+    throw new Error('El nombre de la configuración es requerido');
+  }
 
-    if (!moraData.tipo_calculo) {
-      throw new Error('El tipo de cálculo es requerido');
-    }
+  // ✅ NUEVO: Validar tipo_periodo
+  if (!moraData.tipo_periodo) {
+    throw new Error('El tipo de periodo es requerido');
+  }
 
-    const tiposValidos = ['porcentaje', 'fijo', 'interes_diario'];
-    if (!tiposValidos.includes(moraData.tipo_calculo)) {
-      throw new Error('El tipo de cálculo debe ser: porcentaje, fijo o interes_diario');
-    }
+  const periodosValidos = ['dias', 'meses'];
+  if (!periodosValidos.includes(moraData.tipo_periodo)) {
+    throw new Error('El tipo de periodo debe ser: dias o meses');
+  }
 
-    // Validar según tipo de cálculo
-    if (moraData.tipo_calculo === 'porcentaje') {
-      if (!moraData.porcentaje_mora || moraData.porcentaje_mora <= 0) {
-        throw new Error('Para tipo porcentaje debe especificar porcentaje_mora mayor a 0');
-      }
-    }
+  // ✅ NUEVO: Validar que tenga el campo correcto según tipo_periodo
+  if (moraData.tipo_periodo === 'dias' && moraData.dias_gracia === undefined) {
+    throw new Error('Para tipo dias debe especificar dias_gracia');
+  }
 
-    if (moraData.tipo_calculo === 'fijo') {
-      if (!moraData.valor_fijo || moraData.valor_fijo <= 0) {
-        throw new Error('Para tipo fijo debe especificar valor_fijo mayor a 0');
-      }
-    }
+  if (moraData.tipo_periodo === 'meses' && moraData.meses_gracia === undefined) {
+    throw new Error('Para tipo meses debe especificar meses_gracia');
+  }
 
-    if (moraData.tipo_calculo === 'interes_diario') {
-      if (!moraData.interes_diario || moraData.interes_diario <= 0) {
-        throw new Error('Para tipo interes_diario debe especificar interes_diario mayor a 0');
-      }
-    }
+  if (!moraData.tipo_calculo) {
+    throw new Error('El tipo de cálculo es requerido');
+  }
 
-    if (!moraData.vigencia_desde) {
-      throw new Error('La fecha de vigencia desde es requerida');
-    }
+  const tiposValidos = ['porcentaje', 'fijo', 'interes_diario'];
+  if (!tiposValidos.includes(moraData.tipo_calculo)) {
+    throw new Error('El tipo de cálculo debe ser: porcentaje, fijo o interes_diario');
+  }
 
-    if (moraData.dias_gracia !== undefined && moraData.dias_gracia < 0) {
-      throw new Error('Los días de gracia no pueden ser negativos');
+  // Validar según tipo de cálculo
+  if (moraData.tipo_calculo === 'porcentaje') {
+    if (!moraData.porcentaje_mora || moraData.porcentaje_mora <= 0) {
+      throw new Error('Para tipo porcentaje debe especificar porcentaje_mora mayor a 0');
     }
   }
+
+  if (moraData.tipo_calculo === 'fijo') {
+    if (!moraData.valor_fijo || moraData.valor_fijo <= 0) {
+      throw new Error('Para tipo fijo debe especificar valor_fijo mayor a 0');
+    }
+  }
+
+  if (moraData.tipo_calculo === 'interes_diario') {
+    if (!moraData.interes_diario || moraData.interes_diario <= 0) {
+      throw new Error('Para tipo interes_diario debe especificar interes_diario mayor a 0');
+    }
+  }
+
+  if (!moraData.vigencia_desde) {
+    throw new Error('La fecha de vigencia desde es requerida');
+  }
+
+  // ✅ Validaciones específicas por tipo de periodo
+  if (moraData.tipo_periodo === 'dias' && moraData.dias_gracia < 0) {
+    throw new Error('Los días de gracia no pueden ser negativos');
+  }
+
+  if (moraData.tipo_periodo === 'meses') {
+    if (moraData.meses_gracia < 0) {
+      throw new Error('Los meses de gracia no pueden ser negativos');
+    }
+    if (moraData.meses_gracia > 12) {
+      throw new Error('Los meses de gracia no pueden ser mayores a 12');
+    }
+  }
+}
+
+/**
+ * Formatear periodo de gracia para mostrar
+ */
+formatPeriodoGracia(config) {
+  if (!config) return '-';
+  
+  if (config.tipo_periodo === 'meses') {
+    const meses = config.meses_gracia || 0;
+    return `${meses} ${meses === 1 ? 'mes' : 'meses'}`;
+  } else {
+    const dias = config.dias_gracia || 0;
+    return `${dias} ${dias === 1 ? 'día' : 'días'}`;
+  }
+}
+
+/**
+ * Obtener descripción detallada del periodo de gracia
+ */
+getDescripcionPeriodo(config) {
+  if (!config) return '';
+  
+  if (config.tipo_periodo === 'meses') {
+    if (config.meses_gracia === 0) {
+      return 'Mora aplica el primer día del siguiente mes';
+    } else {
+      return `Mora aplica después de ${config.meses_gracia} ${config.meses_gracia === 1 ? 'mes' : 'meses'} de cambio de mes`;
+    }
+  } else {
+    if (config.dias_gracia === 0) {
+      return 'Mora aplica al día siguiente del vencimiento';
+    } else {
+      return `${config.dias_gracia} ${config.dias_gracia === 1 ? 'día' : 'días'} de gracia después del vencimiento`;
+    }
+  }
+}
+
+
 
   // ========================================
   // UTILIDADES

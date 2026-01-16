@@ -372,3 +372,388 @@ class ComprobanteUploadResponse(BaseModel):
     id_pago: int
     nombre_archivo: str
     tamano_kb: float
+
+# schemas/pago.py - AGREGAR AL FINAL DEL ARCHIVO
+
+# ========================================
+# SCHEMAS PARA PAGO MÚLTIPLE
+# ========================================
+
+class ItemPagoMultiple(BaseModel):
+    """Schema para un item individual en un pago múltiple"""
+    id_factura: int = Field(..., gt=0, description="ID de la factura a pagar")
+    monto_a_pagar: Decimal = Field(..., gt=0, decimal_places=2, description="Monto a pagar de esta factura")
+    incluir_multas: bool = Field(True, description="Incluir multas en este pago")
+    incluir_mora: bool = Field(True, description="Incluir mora en este pago")
+    incluir_consumos: bool = Field(True, description="Incluir consumos y servicios en este pago")
+    
+    @field_validator('monto_a_pagar')
+    @classmethod
+    def validar_monto(cls, v: Decimal) -> Decimal:
+        """Valida que el monto sea positivo"""
+        if v <= 0:
+            raise ValueError('El monto a pagar debe ser mayor a 0')
+        return round(v, 2)
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id_factura": 123,
+                "monto_a_pagar": 45.50,
+                "incluir_multas": True,
+                "incluir_mora": True,
+                "incluir_consumos": True
+            }
+        }
+
+
+class PagoMultipleCreate(BaseModel):
+    """Schema para crear un pago múltiple"""
+    facturas: List[ItemPagoMultiple] = Field(
+        ..., 
+        min_length=2, 
+        max_length=5,
+        description="Lista de facturas a pagar (mínimo 2, máximo 5)"
+    )
+    metodo_pago: str = Field(
+        ..., 
+        max_length=50, 
+        description="Método de pago (EFECTIVO, TARJETA, TRANSFERENCIA, etc.)"
+    )
+    id_usuario_afi: Optional[int] = Field(
+        None, 
+        description="ID del usuario afiliado que realiza el pago"
+    )
+    id_cajero: int = Field(..., description="ID del cajero que registra el pago")
+    observaciones: Optional[str] = Field(
+        None, 
+        max_length=1000, 
+        description="Observaciones generales del pago múltiple"
+    )
+    
+    @field_validator('facturas')
+    @classmethod
+    def validar_facturas(cls, v: List[ItemPagoMultiple]) -> List[ItemPagoMultiple]:
+        """Valida la lista de facturas"""
+        if not v or len(v) < 2:
+            raise ValueError('Debe incluir al menos 2 facturas para pago múltiple')
+        if len(v) > 5:
+            raise ValueError('No puede incluir más de 5 facturas en un pago múltiple')
+        
+        # Validar que no haya facturas duplicadas
+        ids_facturas = [item.id_factura for item in v]
+        if len(ids_facturas) != len(set(ids_facturas)):
+            raise ValueError('No puede incluir facturas duplicadas en el pago múltiple')
+        
+        return v
+    
+    @field_validator('metodo_pago')
+    @classmethod
+    def validar_metodo_pago(cls, v: str) -> str:
+        """Valida que el método de pago sea válido"""
+        metodos_validos = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'DEPOSITO', 'OTRO']
+        v_upper = v.strip().upper()
+        if v_upper not in metodos_validos:
+            raise ValueError(f'Método de pago inválido. Debe ser uno de: {", ".join(metodos_validos)}')
+        return v_upper
+    
+    @field_validator('observaciones')
+    @classmethod
+    def validar_observaciones(cls, v: Optional[str]) -> Optional[str]:
+        """Valida y limpia las observaciones"""
+        if v is None or not v.strip():
+            return None
+        return v.strip()
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "facturas": [
+                    {
+                        "id_factura": 123,
+                        "monto_a_pagar": 45.50,
+                        "incluir_multas": True,
+                        "incluir_mora": True,
+                        "incluir_consumos": True
+                    },
+                    {
+                        "id_factura": 124,
+                        "monto_a_pagar": 38.75,
+                        "incluir_multas": True,
+                        "incluir_mora": True,
+                        "incluir_consumos": True
+                    }
+                ],
+                "metodo_pago": "EFECTIVO",
+                "id_usuario_afi": 10,
+                "id_cajero": 3,
+                "observaciones": "Pago múltiple de 2 facturas atrasadas"
+            }
+        }
+
+
+class FacturaResumenPagoMultiple(BaseModel):
+    """Resumen de una factura en el pago múltiple"""
+    id_factura: int
+    num_factura: str
+    periodo: str
+    monto_pagado: Decimal
+    mora_aplicada: Decimal
+    estado_final: str
+    esta_totalmente_pagada: bool
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id_factura": 123,
+                "num_factura": "FACT-2024-123",
+                "periodo": "12/2024",
+                "monto_pagado": 45.50,
+                "mora_aplicada": 2.50,
+                "estado_final": "pagada",
+                "esta_totalmente_pagada": True
+            }
+        }
+
+
+class PagoMultipleResponse(BaseModel):
+    """Schema para la respuesta de pago múltiple"""
+    success: bool = Field(..., description="Indica si la operación fue exitosa")
+    total_pagado: Decimal = Field(..., description="Monto total pagado en todas las facturas")
+    cantidad_facturas: int = Field(..., description="Cantidad de facturas procesadas")
+    pagos_creados: List[int] = Field(..., description="Lista de IDs de pagos creados")
+    facturas_pagadas_completas: List[int] = Field(
+        ..., 
+        description="IDs de facturas que quedaron totalmente pagadas"
+    )
+    facturas_pagadas_parciales: List[int] = Field(
+        ..., 
+        description="IDs de facturas con pago parcial"
+    )
+    detalle_mora_total: Decimal = Field(..., description="Total de mora aplicada en todas las facturas")
+    observaciones: str = Field(..., description="Observaciones y detalles del pago múltiple")
+    
+    # Detalle de cada factura procesada
+    detalle_facturas: Optional[List[FacturaResumenPagoMultiple]] = Field(
+        None,
+        description="Detalle de cada factura procesada"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "total_pagado": 92.75,
+                "cantidad_facturas": 2,
+                "pagos_creados": [501, 502],
+                "facturas_pagadas_completas": [123],
+                "facturas_pagadas_parciales": [124],
+                "detalle_mora_total": 5.00,
+                "observaciones": "Factura #FACT-2024-123: $48.00\nFactura #FACT-2024-124: $44.75",
+                "detalle_facturas": [
+                    {
+                        "id_factura": 123,
+                        "num_factura": "FACT-2024-123",
+                        "periodo": "12/2024",
+                        "monto_pagado": 48.00,
+                        "mora_aplicada": 2.50,
+                        "estado_final": "pagada",
+                        "esta_totalmente_pagada": True
+                    },
+                    {
+                        "id_factura": 124,
+                        "num_factura": "FACT-2024-124",
+                        "periodo": "11/2024",
+                        "monto_pagado": 44.75,
+                        "mora_aplicada": 2.50,
+                        "estado_final": "parcial",
+                        "esta_totalmente_pagada": False
+                    }
+                ]
+            }
+        }
+
+
+class PagoMultipleError(BaseModel):
+    """Schema para error en pago múltiple"""
+    success: bool = False
+    error: str = Field(..., description="Mensaje de error")
+    factura_error: Optional[int] = Field(None, description="ID de la factura que causó el error")
+    facturas_procesadas: List[int] = Field(
+        default_factory=list,
+        description="IDs de facturas que sí se procesaron antes del error"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": False,
+                "error": "La factura 125 ya está completamente pagada",
+                "factura_error": 125,
+                "facturas_procesadas": [123, 124]
+            }
+        }
+
+
+# ========================================
+# SCHEMAS PARA COMPROBANTE DE PAGO MÚLTIPLE
+# ========================================
+
+class ComprobanteMultipleData(BaseModel):
+    """Datos para generar comprobante de pago múltiple"""
+    id_pago_principal: int = Field(..., description="ID del primer pago (usado como referencia)")
+    total_pagado: Decimal = Field(..., description="Total pagado")
+    cantidad_facturas: int = Field(..., description="Cantidad de facturas")
+    metodo_pago: str = Field(..., description="Método de pago")
+    fecha_pago: datetime = Field(..., description="Fecha del pago")
+    cajero_nombre: str = Field(..., description="Nombre del cajero")
+    afiliado_nombre: str = Field(..., description="Nombre del afiliado")
+    afiliado_cedula: str = Field(..., description="Cédula del afiliado")
+    afiliado_codigo: str = Field(..., description="Código del afiliado")
+    facturas_detalle: List[FacturaResumenPagoMultiple] = Field(
+        ...,
+        description="Detalle de cada factura pagada"
+    )
+    observaciones: Optional[str] = Field(None, description="Observaciones del pago")
+
+
+class ComprobanteMultipleUploadResponse(BaseModel):
+    """Respuesta al subir comprobante múltiple"""
+    success: bool
+    message: str
+    id_pago_principal: int
+    nombre_archivo: str
+    tamano_kb: float
+    cantidad_facturas: int
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Comprobante múltiple guardado exitosamente",
+                "id_pago_principal": 501,
+                "nombre_archivo": "Comprobante_Multiple_000501.pdf",
+                "tamano_kb": 85.3,
+                "cantidad_facturas": 3
+            }
+        }
+
+
+# ========================================
+# SCHEMAS PARA VALIDACIÓN DE PAGO MÚLTIPLE
+# ========================================
+
+class ValidacionFacturaMultiple(BaseModel):
+    """Resultado de validación de una factura para pago múltiple"""
+    id_factura: int
+    es_valida: bool
+    saldo_pendiente: Decimal
+    tiene_multas: bool
+    mora_aplicable: Decimal
+    mensaje: Optional[str] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id_factura": 123,
+                "es_valida": True,
+                "saldo_pendiente": 45.50,
+                "tiene_multas": True,
+                "mora_aplicable": 2.50,
+                "mensaje": None
+            }
+        }
+
+
+class ValidacionPagoMultipleRequest(BaseModel):
+    """Request para validar facturas antes de pago múltiple"""
+    ids_facturas: List[int] = Field(
+        ...,
+        min_length=2,
+        max_length=5,
+        description="Lista de IDs de facturas a validar"
+    )
+    id_usuario_afi: Optional[int] = Field(
+        None,
+        description="ID del afiliado (para validar que todas sean del mismo afiliado)"
+    )
+    
+    @field_validator('ids_facturas')
+    @classmethod
+    def validar_ids_facturas(cls, v: List[int]) -> List[int]:
+        """Valida la lista de IDs de facturas"""
+        if not v or len(v) < 2:
+            raise ValueError('Debe incluir al menos 2 facturas')
+        if len(v) > 5:
+            raise ValueError('No puede validar más de 5 facturas')
+        
+        # Validar que no haya IDs duplicados
+        if len(v) != len(set(v)):
+            raise ValueError('No puede incluir IDs de facturas duplicados')
+        
+        # Validar que todos sean positivos
+        if any(id_factura <= 0 for id_factura in v):
+            raise ValueError('Todos los IDs de facturas deben ser mayores a 0')
+        
+        return v
+
+
+class ValidacionPagoMultipleResponse(BaseModel):
+    """Respuesta de validación de pago múltiple"""
+    es_valido: bool = Field(..., description="Indica si todas las facturas son válidas para pago múltiple")
+    total_a_pagar: Decimal = Field(..., description="Total que se pagaría en todas las facturas")
+    total_mora: Decimal = Field(..., description="Total de mora en todas las facturas")
+    facturas: List[ValidacionFacturaMultiple] = Field(..., description="Detalle de validación de cada factura")
+    errores: List[str] = Field(default_factory=list, description="Lista de errores encontrados")
+    advertencias: List[str] = Field(default_factory=list, description="Lista de advertencias")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "es_valido": True,
+                "total_a_pagar": 92.75,
+                "total_mora": 5.00,
+                "facturas": [
+                    {
+                        "id_factura": 123,
+                        "es_valida": True,
+                        "saldo_pendiente": 45.50,
+                        "tiene_multas": True,
+                        "mora_aplicable": 2.50,
+                        "mensaje": None
+                    },
+                    {
+                        "id_factura": 124,
+                        "es_valida": True,
+                        "saldo_pendiente": 42.25,
+                        "tiene_multas": False,
+                        "mora_aplicable": 2.50,
+                        "mensaje": None
+                    }
+                ],
+                "errores": [],
+                "advertencias": ["La factura 123 tiene multas pendientes"]
+            }
+        }
+
+
+# ========================================
+# SCHEMAS PARA ESTADÍSTICAS DE PAGO MÚLTIPLE
+# ========================================
+
+class PagoMultipleStats(BaseModel):
+    """Estadísticas de pagos múltiples"""
+    total_pagos_multiples: int = Field(..., description="Total de pagos múltiples realizados")
+    promedio_facturas_por_pago: float = Field(..., description="Promedio de facturas por pago múltiple")
+    monto_total_pagos_multiples: Decimal = Field(..., description="Monto total en pagos múltiples")
+    pago_multiple_mas_grande: int = Field(..., description="Mayor cantidad de facturas en un solo pago")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total_pagos_multiples": 45,
+                "promedio_facturas_por_pago": 2.8,
+                "monto_total_pagos_multiples": 4567.89,
+                "pago_multiple_mas_grande": 5
+            }
+        }

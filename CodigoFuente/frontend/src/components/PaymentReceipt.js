@@ -1,7 +1,7 @@
 // src/components/PaymentReceipt.js
 
 import React, { useState } from 'react';
-import { X, Printer, Download, CheckCircle, AlertCircle, FileText } from 'lucide-react';
+import { X, Printer, Download, CheckCircle, AlertCircle } from 'lucide-react';
 import './PaymentReceipt.css';
 import jsPDF from 'jspdf';
 
@@ -82,10 +82,8 @@ const extraerDatos = () => {
   const numMedidor = String(afiliado?.num_medidor || 'N/A');
   const nombreSector = String(afiliado?.sector?.nombre_sector || 'N/A');
 
-  // ✅ CAJERO CORRECTO
   const nombreCajero = String(pagoActual?.cajero || 'N/A');
 
-  // Separar detalles por tipo
   const detalles = factura?.detalles || [];
   const detallesConsumo = detalles.filter(d => d.tipo_detalle === 'consumo');
   const detallesServicios = detalles.filter(d => d.tipo_detalle === 'servicio');
@@ -1339,9 +1337,7 @@ export const generatePaymentPDF = async (pago, factura) => {
   // Extraer datos
   const usuario = factura?.usuario_afiliado?.usuario_sistema;
   const afiliado = factura?.usuario_afiliado;
-  const cajero = pago?.usuario_cajero;
-
-    const pagoActual = factura?.pagos?.[0];
+  const pagoActual = factura?.pagos?.[0];
 
   // ✅ CONVERTIR TODOS LOS VALORES A STRING
   const nombreCliente = toString(usuario?.nombre_completo || 'N/A');
@@ -1351,8 +1347,6 @@ export const generatePaymentPDF = async (pago, factura) => {
   const codigoAfiliado = toString(afiliado?.cod_usuario_afi || 'N/A');
   const numMedidor = toString(afiliado?.num_medidor || 'N/A');
   const nombreSector = toString(afiliado?.sector?.nombre_sector || 'N/A');
-
-   // ✅ CAJERO CORRECTO
   const nombreCajero = String(pagoActual?.cajero || 'N/A');
 
   const detalles = factura?.detalles || [];
@@ -1749,6 +1743,656 @@ doc.text(toString(formatCurrency(factura?.total || 0)), pageWidth - margin, y, {
   
   return pdfFile;
 };
+
+// ============================================================
+// GENERAR PDF PARA PAGO MÚLTIPLE
+// ============================================================
+export const generateMultiplePaymentPDF = async (pagoMultiple, facturas, afiliado) => {
+  const { jsPDF } = window.jspdf || require('jspdf');
+  
+  // Funciones auxiliares
+  const formatCurrency = (value) => {
+    const numValue = parseFloat(value) || 0;
+    return new Intl.NumberFormat('es-EC', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2
+    }).format(numValue);
+  };
+
+  const formatDateShort = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('es-EC', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    } catch {
+      return 'N/A';
+    }
+  };
+
+  const toString = (value) => {
+    if (value === null || value === undefined) return 'N/A';
+    return String(value);
+  };
+
+  try {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+      compress: true
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 15;
+    let y = 20;
+
+    // ========================================
+    // ENCABEZADO
+    // ========================================
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(31, 41, 55);
+    doc.text('JUNTA DE AGUA POTABLE', pageWidth / 2, y, { align: 'center' });
+    y += 7;
+
+    doc.setFontSize(14);
+    doc.setTextColor(59, 130, 246);
+    doc.text('SANJAPAMBA', pageWidth / 2, y, { align: 'center' });
+    y += 5;
+
+    doc.setFontSize(9);
+    doc.setTextColor(107, 114, 128);
+    doc.text('Sanjapamba, Chimborazo, Ecuador', pageWidth / 2, y, { align: 'center' });
+    y += 4;
+    doc.text('Teléfono: 593 3-XXX-XXXX', pageWidth / 2, y, { align: 'center' });
+
+    // Línea divisoria
+    y += 6;
+    doc.setDrawColor(209, 213, 219);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, pageWidth - margin, y);
+
+    // ========================================
+    // TÍTULO - COMPROBANTE MÚLTIPLE
+    // ========================================
+    y += 10;
+    doc.setFontSize(16);
+    doc.setTextColor(31, 41, 55);
+    doc.setFont('helvetica', 'bold');
+    doc.text('COMPROBANTE DE PAGO MÚLTIPLE', pageWidth / 2, y, { align: 'center' });
+
+    y += 6;
+    doc.setFontSize(10);
+    doc.setTextColor(107, 114, 128);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`No. ${String(pagoMultiple.id_pago).padStart(6, '0')}`, pageWidth / 2, y, { align: 'center' });
+
+    y += 4;
+    doc.setFontSize(9);
+    doc.setTextColor(59, 130, 246);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${facturas.length} FACTURAS PAGADAS`, pageWidth / 2, y, { align: 'center' });
+
+    // ========================================
+    // DATOS DEL AFILIADO
+    // ========================================
+    y += 12;
+    doc.setFontSize(11);
+    doc.setTextColor(55, 65, 81);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DATOS DEL AFILIADO', margin, y);
+
+    y += 7;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(31, 41, 55);
+
+    const nombreCliente = toString(afiliado?.usuario_sistema?.nombre_completo);
+    const cedulaCliente = toString(afiliado?.usuario_sistema?.cedula);
+    const codigoAfiliado = toString(afiliado?.cod_usuario_afi);
+    const numMedidor = toString(afiliado?.num_medidor);
+    const direccion = toString(afiliado?.usuario_sistema?.direccion);
+
+    doc.text('Cliente:', margin, y);
+    doc.setFont('helvetica', 'bold');
+    doc.text(nombreCliente, margin + 20, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Cédula:', pageWidth / 2, y);
+    doc.setFont('helvetica', 'bold');
+    doc.text(cedulaCliente, pageWidth / 2 + 20, y);
+
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.text('Código Afiliado:', margin, y);
+    doc.setFont('helvetica', 'bold');
+    doc.text(codigoAfiliado, margin + 30, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text('No. Medidor:', pageWidth / 2, y);
+    doc.setFont('helvetica', 'bold');
+    doc.text(numMedidor, pageWidth / 2 + 25, y);
+
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.text('Dirección:', margin, y);
+    doc.text(direccion, margin + 20, y);
+
+    // ========================================
+    // TABLA DE FACTURAS PAGADAS
+    // ========================================
+    y += 12;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(55, 65, 81);
+    doc.text('DETALLE DE FACTURAS PAGADAS', margin, y);
+
+    y += 7;
+
+    // Encabezados de tabla
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(59, 130, 246);
+    doc.setTextColor(255, 255, 255);
+    doc.roundedRect(margin, y - 4, pageWidth - margin * 2, 8, 2, 2, 'F');
+
+    doc.text('#', margin + 3, y);
+    doc.text('Factura', margin + 10, y);
+    doc.text('Periodo', margin + 35, y);
+    doc.text('F. Emisión', margin + 60, y);
+    doc.text('Consumo', margin + 85, y);
+    doc.text('Mora', margin + 105, y);
+    doc.text('Total', pageWidth - margin - 20, y, { align: 'right' });
+
+    y += 6;
+
+    // Filas de facturas
+    let totalGeneral = 0;
+    let totalMoraGeneral = 0;
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(31, 41, 55);
+
+    facturas.forEach((factura, idx) => {
+      const totalFactura = parseFloat(factura.saldo_pendiente || factura.total_con_mora || 0);
+      const moraFactura = parseFloat(factura.mora_monto || 0);
+      totalGeneral += totalFactura;
+      totalMoraGeneral += moraFactura;
+
+      // Alternar color de fila
+      if (idx % 2 === 0) {
+        doc.setFillColor(249, 250, 251);
+        doc.rect(margin, y - 4, pageWidth - margin * 2, 6, 'F');
+      }
+
+      doc.text(String(idx + 1), margin + 3, y);
+      doc.text(toString(factura.num_factura), margin + 10, y);
+      doc.text(toString(factura.periodo), margin + 35, y);
+      doc.text(formatDateShort(factura.fecha_emision), margin + 60, y);
+      doc.text(`${factura.consumo_m3 || 0} m³`, margin + 85, y);
+      doc.text(moraFactura > 0 ? formatCurrency(moraFactura) : '-', margin + 105, y);
+      doc.text(formatCurrency(totalFactura), pageWidth - margin - 3, y, { align: 'right' });
+
+      y += 6;
+
+      // Nueva página si es necesario
+      if (y > pageHeight - 60) {
+        doc.addPage();
+        y = 20;
+      }
+    });
+
+    // Línea de separación
+    y += 2;
+    doc.setDrawColor(209, 213, 219);
+    doc.line(margin, y, pageWidth - margin, y);
+
+    // ========================================
+    // RESUMEN TOTAL
+    // ========================================
+    y += 8;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+
+    doc.text('Cantidad de facturas:', pageWidth - 70, y);
+    doc.text(String(facturas.length), pageWidth - margin, y, { align: 'right' });
+
+    if (totalMoraGeneral > 0) {
+      y += 5;
+      doc.text('Total Mora aplicada:', pageWidth - 70, y);
+      doc.text(formatCurrency(totalMoraGeneral), pageWidth - margin, y, { align: 'right' });
+    }
+
+    y += 8;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(31, 41, 55);
+    doc.text('TOTAL PAGADO:', pageWidth - 70, y);
+    doc.text(formatCurrency(totalGeneral), pageWidth - margin, y, { align: 'right' });
+
+    // ========================================
+    // DETALLES DEL PAGO
+    // ========================================
+    y += 15;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(55, 65, 81);
+    doc.text('DETALLES DEL PAGO', margin, y);
+
+    y += 7;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(31, 41, 55);
+
+    doc.text('Fecha de Pago:', margin, y);
+    doc.text(formatDateShort(pagoMultiple.fecha_pago), margin + 30, y);
+
+    y += 5;
+    doc.text('Método de Pago:', margin, y);
+    doc.setFont('helvetica', 'bold');
+    doc.text(toString(pagoMultiple.metodo_pago), margin + 35, y);
+
+    // ========================================
+    // MONTO PAGADO DESTACADO
+    // ========================================
+    y += 15;
+    doc.setFillColor(16, 185, 129);
+    doc.roundedRect(margin, y - 5, pageWidth - margin * 2, 18, 3, 3, 'F');
+
+    y += 4;
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('MONTO TOTAL PAGADO', margin + 5, y);
+
+    doc.setFontSize(18);
+    doc.text(formatCurrency(pagoMultiple.monto_pago), pageWidth - margin - 5, y, { align: 'right' });
+
+    // ========================================
+    // OBSERVACIONES
+    // ========================================
+    if (pagoMultiple.observaciones && pagoMultiple.observaciones.trim() !== '') {
+      y += 15;
+      doc.setFillColor(254, 243, 199);
+      const obsHeight = 12;
+      doc.roundedRect(margin, y - 3, pageWidth - margin * 2, obsHeight, 2, 2, 'F');
+
+      y += 3;
+      doc.setTextColor(120, 53, 15);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'italic');
+      
+      const obsTexto = `Observaciones: ${pagoMultiple.observaciones}`;
+      const obsLineas = doc.splitTextToSize(obsTexto, pageWidth - margin * 2 - 10);
+      doc.text(obsLineas, margin + 5, y);
+    }
+
+    // ========================================
+    // FIRMAS
+    // ========================================
+    y += 25;
+    if (y > pageHeight - 50) {
+      doc.addPage();
+      y = 20;
+    }
+
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.3);
+    doc.line(margin + 10, y, margin + 70, y);
+    doc.line(pageWidth - margin - 70, y, pageWidth - margin - 10, y);
+
+    y += 4;
+    doc.setFontSize(8);
+    doc.setTextColor(107, 114, 128);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Firma del Cajero', margin + 40, y, { align: 'center' });
+    doc.text('Firma del Cliente', pageWidth - margin - 40, y, { align: 'center' });
+
+    // ========================================
+    // PIE DE PÁGINA
+    // ========================================
+    y += 15;
+    doc.setFontSize(7);
+    doc.setTextColor(156, 163, 175);
+    doc.text('Este comprobante certifica el pago múltiple realizado', pageWidth / 2, y, { align: 'center' });
+    y += 4;
+    doc.text(`Generado el ${new Date().toLocaleString('es-EC')}`, pageWidth / 2, y, { align: 'center' });
+
+    // ========================================
+    // CONVERTIR A FILE
+    // ========================================
+    const pdfBlob = doc.output('blob');
+    const pdfFile = new File(
+      [pdfBlob],
+      `Comprobante_Multiple_${String(pagoMultiple.id_pago).padStart(6, '0')}.pdf`,
+      { type: 'application/pdf' }
+    );
+
+    return pdfFile;
+
+  } catch (error) {
+    console.error('❌ Error al generar PDF múltiple:', error);
+    throw error;
+  }
+};
+
+// ============================================================
+// FUNCIÓN MEJORADA PARA TICKET TÉRMICO MÚLTIPLE 58mm
+// ============================================================
+export const printMultipleThermalTicket = (pagoMultiple, facturas, afiliado) => {
+  const formatCurrency = (v) => new Intl.NumberFormat('es-EC', { 
+    style: 'currency', 
+    currency: 'USD' 
+  }).format(v || 0);
+  
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleString('es-EC', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
+  // ✅ CALCULAR TOTALES GENERALES Y POR CONCEPTO
+  let totalGeneral = 0;
+  let totalConsumo = 0;
+  let totalServicios = 0;
+  let totalMultas = 0;
+  let totalMora = 0;
+  let totalConsumoM3 = 0;
+
+  // Procesar cada factura para extraer detalles
+  const facturasDetalladas = facturas.map((f) => {
+    const totalFactura = parseFloat(f.saldo_pendiente || f.total_con_mora || 0);
+    const moraFactura = parseFloat(f.mora_monto || f.mora?.monto || 0);
+    const consumoM3 = parseFloat(f.consumo_m3 || 0);
+    
+    // Extraer desglose de conceptos
+    const desglose = f.desglose || {};
+    const consumoTotal = desglose.consumo?.total || 0;
+    const serviciosTotal = desglose.servicios?.total || 0;
+    const multasTotal = desglose.multas?.total || 0;
+    
+    // Acumular totales generales
+    totalGeneral += totalFactura;
+    totalConsumo += consumoTotal;
+    totalServicios += serviciosTotal;
+    totalMultas += multasTotal;
+    totalMora += moraFactura;
+    totalConsumoM3 += consumoM3;
+    
+    return {
+      ...f,
+      totalFactura,
+      moraFactura,
+      consumoM3,
+      consumoTotal,
+      serviciosTotal,
+      multasTotal
+    };
+  });
+
+  const win = window.open('', 'PRINT', 'height=600,width=900');
+  
+  win.document.write(`
+    <html>
+    <head>
+      <title>Comprobante Múltiple</title>
+      <meta charset="UTF-8">
+      <style>
+        @page { 
+          size: 58mm auto; 
+          margin: 0; 
+        }
+        body {
+          font-family: 'Courier New', monospace;
+          font-size: 11px;
+          width: 58mm;
+          margin: 0;
+          padding: 3mm;
+          line-height: 1.3;
+        }
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .line { 
+          border-top: 1px dashed #000; 
+          margin: 4px 0; 
+        }
+        .row { 
+          display: flex; 
+          justify-content: space-between; 
+          margin: 2px 0; 
+        }
+        .header { 
+          font-size: 13px; 
+          font-weight: bold; 
+          margin-bottom: 3px; 
+        }
+        .subheader { 
+          font-size: 10px; 
+          margin-bottom: 2px; 
+        }
+        .total-box {
+          background: #000;
+          color: #fff;
+          padding: 4px;
+          margin: 6px 0;
+          text-align: center;
+          font-weight: bold;
+        }
+        .small { font-size: 9px; }
+        .factura-item {
+          background: #f5f5f5;
+          padding: 4px;
+          margin: 3px 0;
+          border-radius: 2px;
+          border: 1px solid #ddd;
+        }
+        .concepto-row {
+          display: flex;
+          justify-content: space-between;
+          font-size: 9px;
+          padding: 1px 0;
+        }
+        .concepto-label {
+          color: #666;
+        }
+        .resumen-box {
+          background: #f9f9f9;
+          padding: 4px;
+          margin: 4px 0;
+          border: 1px solid #ddd;
+          border-radius: 2px;
+        }
+        @media print {
+          body { width: 58mm; }
+        }
+      </style>
+    </head>
+    <body>
+      
+      <!-- ENCABEZADO -->
+      <div class="center">
+        <div class="header">JUNTA DE AGUA POTABLE</div>
+        <div class="subheader">SANJAPAMBA</div>
+        <div class="small">Chimborazo, Ecuador</div>
+      </div>
+      <div class="line"></div>
+      
+      <!-- INFO DEL COMPROBANTE -->
+      <div class="center">
+        <div class="bold">PAGO MÚLTIPLE</div>
+        <div>No. ${String(pagoMultiple.id_pago).padStart(6, '0')}</div>
+        <div class="small">${formatDate(pagoMultiple.fecha_pago)}</div>
+      </div>
+      <div class="line"></div>
+      
+      <!-- DATOS DEL AFILIADO -->
+      <div>
+        <div class="bold">AFILIADO</div>
+        <div>${String(afiliado?.usuario_sistema?.nombre_completo || 'N/A')}</div>
+        <div class="row">
+          <span>Código:</span>
+          <span>${String(afiliado?.cod_usuario_afi || 'N/A')}</span>
+        </div>
+        <div class="row">
+          <span>Medidor:</span>
+          <span>${String(afiliado?.num_medidor || 'N/A')}</span>
+        </div>
+      </div>
+      <div class="line"></div>
+      
+      <!-- ✅ RESUMEN GENERAL POR CONCEPTOS -->
+      <div class="bold center">RESUMEN GENERAL</div>
+      <div class="resumen-box">
+        <div class="concepto-row">
+          <span class="concepto-label">Consumo Total:</span>
+          <span class="bold">${formatCurrency(totalConsumo)}</span>
+        </div>
+        ${totalConsumoM3 > 0 ? `
+        <div class="concepto-row small">
+          <span class="concepto-label">${totalConsumoM3.toFixed(2)} m³ consumidos</span>
+        </div>
+        ` : ''}
+        
+        ${totalServicios > 0 ? `
+        <div class="concepto-row">
+          <span class="concepto-label"> Servicios:</span>
+          <span class="bold">${formatCurrency(totalServicios)}</span>
+        </div>
+        ` : ''}
+        
+        ${totalMultas > 0 ? `
+        <div class="concepto-row">
+          <span class="concepto-label">Multas:</span>
+          <span class="bold">${formatCurrency(totalMultas)}</span>
+        </div>
+        ` : ''}
+        
+        ${totalMora > 0 ? `
+        <div class="concepto-row">
+          <span class="concepto-label"> Mora:</span>
+          <span class="bold">${formatCurrency(totalMora)}</span>
+        </div>
+        ` : ''}
+      </div>
+      <div class="line"></div>
+      
+      <!-- ✅ FACTURAS DETALLADAS (${facturas.length}) -->
+      <div class="bold center">FACTURAS (${facturas.length})</div>
+      
+      ${facturasDetalladas.map((f, idx) => `
+        <div class="factura-item">
+          <!-- Header de factura -->
+          <div class="row bold">
+            <span>${idx + 1}. ${f.num_factura}</span>
+            <span>${formatCurrency(f.totalFactura)}</span>
+          </div>
+          
+          <div class="concepto-row small">
+            <span>${f.periodo}</span>
+            ${f.consumoM3 > 0 ? `<span>${f.consumoM3} m³</span>` : ''}
+          </div>
+          
+          <!-- Desglose de conceptos -->
+          ${f.consumoTotal > 0 ? `
+          <div class="concepto-row">
+            <span class="concepto-label">💧 Consumo:</span>
+            <span>${formatCurrency(f.consumoTotal)}</span>
+          </div>
+          ` : ''}
+          
+          ${f.serviciosTotal > 0 ? `
+          <div class="concepto-row">
+            <span class="concepto-label">🔧 Servicios:</span>
+            <span>${formatCurrency(f.serviciosTotal)}</span>
+          </div>
+          ` : ''}
+          
+          ${f.multasTotal > 0 ? `
+          <div class="concepto-row">
+            <span class="concepto-label">🚨 Multas:</span>
+            <span>${formatCurrency(f.multasTotal)}</span>
+          </div>
+          ` : ''}
+          
+          ${f.moraFactura > 0 ? `
+          <div class="concepto-row">
+            <span class="concepto-label">⏰ Mora:</span>
+            <span>${formatCurrency(f.moraFactura)}</span>
+          </div>
+          ` : ''}
+        </div>
+      `).join('')}
+      
+      <div class="line"></div>
+      
+      <!-- TOTALES FINALES -->
+      <div class="row small">
+        <span>Cantidad facturas:</span>
+        <span class="bold">${facturas.length}</span>
+      </div>
+      
+      ${totalMora > 0 ? `
+      <div class="row small">
+        <span>Total Mora:</span>
+        <span>${formatCurrency(totalMora)}</span>
+      </div>
+      ` : ''}
+      
+      <div class="line"></div>
+      
+      <!-- TOTAL PAGADO -->
+      <div class="total-box">
+        <div>TOTAL PAGADO</div>
+        <div style="font-size: 16px">${formatCurrency(pagoMultiple.monto_pago)}</div>
+      </div>
+      
+      <!-- MÉTODO DE PAGO -->
+      <div>
+        <div class="row">
+          <span>Método:</span>
+          <span class="bold">${String(pagoMultiple.metodo_pago)}</span>
+        </div>
+      </div>
+      
+      <div class="line"></div>
+      
+      ${pagoMultiple.observaciones ? `
+      <div class="small">
+        <div class="bold">Observaciones:</div>
+        <div>${pagoMultiple.observaciones}</div>
+      </div>
+      <div class="line"></div>
+      ` : ''}
+      
+      <!-- PIE -->
+      <div class="center small">
+        <div>Gracias por su pago</div>
+        <div style="margin-top: 4px">Documento interno</div>
+      </div>
+      
+      <script>
+        window.onload = function() {
+          window.print();
+          setTimeout(function() { window.close(); }, 100);
+        };
+      </script>
+    </body>
+    </html>
+  `);
+  
+  win.document.close();
+};
+
 
 
 export default PaymentReceipt;

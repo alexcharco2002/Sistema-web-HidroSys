@@ -1,11 +1,12 @@
 """
 utils/mora_utils.py
 Funciones auxiliares para el cálculo y aplicación de mora
+ACTUALIZADO: Soporte para tipo_periodo (dias/meses)
 """
-
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 from typing import Tuple, Optional
 from models.mora import ConfiguracionMora, MoraFactura
@@ -26,7 +27,6 @@ def obtener_configuracion_mora_activa(db: Session) -> Optional[ConfiguracionMora
         ConfiguracionMora o None si no hay configuración activa
     """
     hoy = date.today()
-    
     config_mora = db.query(ConfiguracionMora).filter(
         ConfiguracionMora.activo == True,
         ConfiguracionMora.aplicar_mora == True,
@@ -36,7 +36,9 @@ def obtener_configuracion_mora_activa(db: Session) -> Optional[ConfiguracionMora
     ).first()
     
     if config_mora:
+        periodo_info = f"{config_mora.dias_gracia} días" if config_mora.tipo_periodo == 'dias' else f"{config_mora.meses_gracia} meses"
         print(f"✅ Configuración de mora activa encontrada: {config_mora.nombre}")
+        print(f"   Tipo de periodo: {config_mora.tipo_periodo} ({periodo_info} de gracia)")
     else:
         print(f"⚠️ No hay configuración de mora activa")
     
@@ -54,7 +56,7 @@ def factura_tiene_mora_aplicada(factura_id: int, db: Session) -> bool:
     Args:
         factura_id: ID de la factura
         db: Sesión de base de datos
-    
+        
     Returns:
         True si ya tiene mora aplicada, False si no
     """
@@ -67,30 +69,114 @@ def factura_tiene_mora_aplicada(factura_id: int, db: Session) -> bool:
 
 
 # ========================================
-# CALCULAR DÍAS DE MORA
+# ✅ NUEVO: CALCULAR FECHA DE INICIO DE MORA
 # ========================================
 
-def calcular_dias_mora(factura: Factura, fecha_pago: datetime) -> int:
+# ========================================
+# ✅ ACTUALIZADO: CALCULAR FECHA DE INICIO DE MORA
+# ========================================
+
+def calcular_fecha_inicio_mora(
+    factura: Factura, 
+    config_mora: ConfiguracionMora
+) -> date:
     """
-    Calcula los días de mora desde la fecha de emisión de la factura.
+    Calcula la fecha en que empieza a aplicar la mora según el tipo de periodo.
+    IMPORTANTE: Usa fecha_emision de la factura.
+    
+    Args:
+        factura: Objeto Factura
+        config_mora: Configuración de mora activa
+        
+    Returns:
+        Fecha en que empieza a contar la mora
+    """
+    # ✅ USAR FECHA_EMISION
+    fecha_base = factura.fecha_emision
+    
+    # Convertir a date si es datetime
+    if isinstance(fecha_base, datetime):
+        fecha_base = fecha_base.date()
+    
+    if config_mora.tipo_periodo == 'dias':
+        # ✅ MODO DÍAS: Sumar días de gracia a la fecha de emisión
+        dias_gracia = config_mora.dias_gracia or 0
+        from datetime import timedelta
+        fecha_inicio = fecha_base + timedelta(days=dias_gracia)
+        
+        print(f"📅 Tipo: DÍAS")
+        print(f"   Fecha emisión: {fecha_base}")
+        print(f"   Días de gracia: {dias_gracia}")
+        print(f"   Mora aplica desde: {fecha_inicio}")
+        
+    else:  # tipo_periodo == 'meses'
+        # ✅ MODO MESES: Avanzar al primer día del siguiente mes + meses de gracia
+        meses_gracia = config_mora.meses_gracia or 0
+        
+        # Primer día del mes siguiente a la emisión
+        if fecha_base.month == 12:
+            # Diciembre → Enero del año siguiente
+            primer_dia_siguiente = date(fecha_base.year + 1, 1, 1)
+        else:
+            # Cualquier otro mes
+            primer_dia_siguiente = date(fecha_base.year, fecha_base.month + 1, 1)
+        
+        # Agregar meses de gracia
+        fecha_inicio = primer_dia_siguiente + relativedelta(months=meses_gracia)
+        
+        print(f"📅 Tipo: MESES")
+        print(f"   Fecha emisión: {fecha_base}")
+        print(f"   Primer día del mes siguiente: {primer_dia_siguiente}")
+        print(f"   Meses de gracia: {meses_gracia}")
+        print(f"   Mora aplica desde: {fecha_inicio}")
+    
+    return fecha_inicio
+
+
+# ========================================
+# ✅ ACTUALIZADO: CALCULAR DÍAS DE MORA
+# ========================================
+
+def calcular_dias_mora(
+    factura: Factura, 
+    fecha_pago: datetime,
+    config_mora: ConfiguracionMora
+) -> Tuple[int, bool]:
+    """
+    Calcula los días de mora considerando el tipo de periodo.
     
     Args:
         factura: Objeto Factura
         fecha_pago: Fecha en que se registra el pago
-    
+        config_mora: Configuración de mora activa
+        
     Returns:
-        Número de días transcurridos desde la emisión
+        Tuple[dias_mora, aplica_mora]
+        - dias_mora: Número de días de mora efectivos
+        - aplica_mora: True si aplica mora, False si está dentro del periodo de gracia
     """
     fecha_pago_date = fecha_pago.date() if isinstance(fecha_pago, datetime) else fecha_pago
-    fecha_emision_date = factura.fecha_emision.date() if isinstance(factura.fecha_emision, datetime) else factura.fecha_emision
     
-    dias_transcurridos = (fecha_pago_date - fecha_emision_date).days
+    # Calcular fecha de inicio de mora
+    fecha_inicio_mora = calcular_fecha_inicio_mora(factura, config_mora)
     
-    print(f"📅 Fecha emisión: {fecha_emision_date}")
-    print(f"📅 Fecha pago: {fecha_pago_date}")
-    print(f"📊 Días transcurridos: {dias_transcurridos}")
+    # Verificar si aplica mora
+    if fecha_pago_date < fecha_inicio_mora:
+        # Pago realizado antes de que empiece la mora
+        print(f"✅ Pago dentro del periodo de gracia")
+        print(f"   Fecha pago: {fecha_pago_date}")
+        print(f"   Mora aplica desde: {fecha_inicio_mora}")
+        return 0, False
     
-    return dias_transcurridos
+    # Calcular días de mora efectivos
+    dias_mora = (fecha_pago_date - fecha_inicio_mora).days
+    
+    print(f"⚠️ FACTURA EN MORA")
+    print(f"   Fecha inicio mora: {fecha_inicio_mora}")
+    print(f"   Fecha pago: {fecha_pago_date}")
+    print(f"   Días de mora: {dias_mora}")
+    
+    return dias_mora, True
 
 
 # ========================================
@@ -105,7 +191,7 @@ def obtener_monto_base_mora(factura: Factura, config_mora: ConfiguracionMora, db
         factura: Objeto Factura
         config_mora: Configuración de mora activa
         db: Sesión de base de datos
-    
+        
     Returns:
         Monto base según configuración (SIEMPRE CON IVA INCLUIDO)
     """
@@ -142,17 +228,16 @@ def obtener_monto_base_mora(factura: Factura, config_mora: ConfiguracionMora, db
         tipo = "total factura (default)"
     
     print(f"💵 Monto base para mora ({tipo}): ${monto_base:.2f}")
-    
     return Decimal(str(monto_base))
 
 
 # ========================================
-# CALCULAR MONTO DE MORA
+# ✅ ACTUALIZADO: CALCULAR MONTO DE MORA
 # ========================================
 
 def calcular_monto_mora(
     monto_base: Decimal,
-    dias_transcurridos: int,
+    dias_mora: int,
     config_mora: ConfiguracionMora
 ) -> Tuple[Decimal, str]:
     """
@@ -160,38 +245,44 @@ def calcular_monto_mora(
     
     Args:
         monto_base: Monto sobre el cual calcular la mora
-        dias_transcurridos: Días desde la emisión hasta el pago
+        dias_mora: Días de mora efectivos (ya calculados con el periodo de gracia)
         config_mora: Configuración de mora activa
-    
+        
     Returns:
         Tuple[monto_mora, detalle_calculo]
     """
     monto_mora = Decimal('0.00')
     detalle = ""
     
+    # Si no hay días de mora, retornar 0
+    if dias_mora <= 0:
+        detalle = "Sin mora (pago dentro del periodo de gracia)"
+        print(f"✅ Sin mora aplicable")
+        return monto_mora, detalle
+    
     if config_mora.tipo_calculo == 'porcentaje':
         tasa = Decimal(str(config_mora.porcentaje_mora)) / Decimal('100')
         monto_mora = monto_base * tasa
-        detalle = f"Mora {config_mora.porcentaje_mora}% sobre ${monto_base}"
+        detalle = f"Mora {config_mora.porcentaje_mora}% sobre ${monto_base} ({dias_mora} días)"
         print(f"📊 Cálculo porcentaje: {config_mora.porcentaje_mora}% × ${monto_base} = ${monto_mora}")
         
     elif config_mora.tipo_calculo == 'fijo':
         monto_mora = Decimal(str(config_mora.valor_fijo))
-        detalle = f"Mora fija de ${config_mora.valor_fijo}"
+        detalle = f"Mora fija de ${config_mora.valor_fijo} ({dias_mora} días)"
         print(f"📊 Cálculo fijo: ${monto_mora}")
         
     elif config_mora.tipo_calculo == 'interes_diario':
         tasa_diaria = Decimal(str(config_mora.interes_diario))
-        dias_efectivos = max(0, dias_transcurridos - config_mora.dias_gracia)
         
-        if dias_efectivos > 0:
+        # dias_mora ya viene con el periodo de gracia aplicado
+        if dias_mora > 0:
             # Fórmula: Deuda × (días_mora/365) × tasa_interes_anual
-            factor_dias = Decimal(str(dias_efectivos)) / Decimal('365')
+            factor_dias = Decimal(str(dias_mora)) / Decimal('365')
             monto_mora = monto_base * factor_dias * (tasa_diaria / Decimal('100'))
-            detalle = f"Interés diario {config_mora.interes_diario}% × {dias_efectivos} días sobre ${monto_base}"
-            print(f"📊 Cálculo interés diario: ${monto_base} × ({dias_efectivos}/365) × {config_mora.interes_diario}% = ${monto_mora}")
+            detalle = f"Interés diario {config_mora.interes_diario}% × {dias_mora} días sobre ${monto_base}"
+            print(f"📊 Cálculo interés diario: ${monto_base} × ({dias_mora}/365) × {config_mora.interes_diario}% = ${monto_mora}")
         else:
-            detalle = f"Sin mora (dentro de {config_mora.dias_gracia} días de gracia)"
+            detalle = "Sin mora (pago dentro del periodo de gracia)"
             print(f"✅ Dentro del período de gracia")
     
     # Aplicar límite máximo si existe
@@ -208,7 +299,7 @@ def calcular_monto_mora(
 
 
 # ========================================
-# CALCULAR MORA COMPLETA PARA FACTURA
+# ✅ ACTUALIZADO: CALCULAR MORA COMPLETA PARA FACTURA
 # ========================================
 
 def calcular_mora_factura(
@@ -225,40 +316,41 @@ def calcular_mora_factura(
         fecha_pago: Fecha en que se registra el pago
         config_mora: Configuración de mora activa
         db: Sesión de base de datos
-    
+        
     Returns:
         Tuple[monto_mora, dias_mora, detalle]
     """
     print(f"\n{'='*60}")
     print(f"📊 CÁLCULO DE MORA - Factura #{factura.num_factura}")
     print(f"{'='*60}")
-    print(f"   Configuración: {config_mora.nombre}")
-    print(f"   Tipo: {config_mora.tipo_calculo}")
-    print(f"   Días de gracia: {config_mora.dias_gracia}")
+    print(f"  Configuración: {config_mora.nombre}")
+    print(f"  Tipo: {config_mora.tipo_calculo}")
     
-    # 1. Calcular días transcurridos desde la emisión
-    dias_transcurridos = calcular_dias_mora(factura, fecha_pago)
+    if config_mora.tipo_periodo == 'dias':
+        print(f"  Periodo: {config_mora.dias_gracia} días de gracia")
+    else:
+        print(f"  Periodo: {config_mora.meses_gracia} meses de gracia")
     
-    # 2. Verificar días de gracia
-    dias_efectivos = dias_transcurridos - config_mora.dias_gracia
+    # 1. Calcular días de mora y verificar si aplica
+    dias_mora, aplica_mora = calcular_dias_mora(factura, fecha_pago, config_mora)
     
-    if dias_efectivos <= 0:
-        print(f"   ✅ NO aplica mora (dentro del período de gracia)")
+    if not aplica_mora:
+        print(f"  ✅ NO aplica mora (dentro del período de gracia)")
         print(f"{'='*60}\n")
-        return Decimal('0.00'), dias_transcurridos, "Pago dentro del período de gracia"
+        return Decimal('0.00'), 0, "Pago dentro del período de gracia"
     
-    print(f"   ⚠️ Días efectivos de mora: {dias_efectivos}")
+    print(f"  ⚠️ Días efectivos de mora: {dias_mora}")
     
-    # 3. Obtener monto base
+    # 2. Obtener monto base
     monto_base = obtener_monto_base_mora(factura, config_mora, db)
     
-    # 4. Calcular mora
-    monto_mora, detalle = calcular_monto_mora(monto_base, dias_transcurridos, config_mora)
+    # 3. Calcular mora
+    monto_mora, detalle = calcular_monto_mora(monto_base, dias_mora, config_mora)
     
-    print(f"   💰 MORA CALCULADA: ${monto_mora}")
+    print(f"  💰 MORA CALCULADA: ${monto_mora}")
     print(f"{'='*60}\n")
     
-    return monto_mora, dias_efectivos, detalle
+    return monto_mora, dias_mora, detalle
 
 
 # ========================================
@@ -289,7 +381,7 @@ def registrar_mora_en_bd(
         monto_mora: Monto final de mora calculado
         observaciones: Detalles del cálculo
         db: Sesión de base de datos
-    
+        
     Returns:
         ID de la mora registrada
     """
@@ -331,7 +423,7 @@ def evaluar_y_aplicar_mora(
         factura: Objeto Factura
         fecha_pago: Fecha en que se registra el pago
         db: Sesión de base de datos
-    
+        
     Returns:
         Tuple[monto_mora, mora_aplicada, detalle]
     """
@@ -347,7 +439,6 @@ def evaluar_y_aplicar_mora(
     
     # Buscar configuración activa
     config_mora = obtener_configuracion_mora_activa(db)
-    
     if not config_mora:
         print(f"⚠️ No hay configuración de mora activa")
         print(f"{'='*70}\n")
@@ -402,7 +493,7 @@ def obtener_mora_de_factura(factura_id: int, db: Session) -> Optional[MoraFactur
     Args:
         factura_id: ID de la factura
         db: Sesión de base de datos
-    
+        
     Returns:
         MoraFactura o None si no tiene mora
     """
@@ -410,23 +501,3 @@ def obtener_mora_de_factura(factura_id: int, db: Session) -> Optional[MoraFactur
         MoraFactura.id_factura == factura_id,
         MoraFactura.aplicada == True
     ).first()
-
-# ========================================
-# CONSULTAR MORA DE FACTURA
-# ========================================
-def obtener_mora_de_factura(factura_id: int, db: Session) -> Optional[MoraFactura]:
-    """
-    Obtiene el registro de mora aplicada a una factura.
-    
-    Args:
-        factura_id: ID de la factura
-        db: Sesión de base de datos
-    
-    Returns:
-        MoraFactura o None si no tiene mora
-    """
-    return db.query(MoraFactura).filter(
-        MoraFactura.id_factura == factura_id,
-        MoraFactura.aplicada == True
-    ).first()
-

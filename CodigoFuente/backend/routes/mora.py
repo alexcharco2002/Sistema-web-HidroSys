@@ -131,6 +131,38 @@ def validar_valores_tipo_calculo(tipo_calculo: str, porcentaje: float = None, va
             )
 
 
+# FUNCIÓN: Validar tipo_periodo
+def validar_tipo_periodo(tipo_periodo: str, dias_gracia: int = None, meses_gracia: int = None):
+    """Valida que los valores correspondan con el tipo de periodo"""
+    if tipo_periodo == 'dias':
+        if dias_gracia is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Para tipo_periodo 'dias' debe especificar dias_gracia"
+            )
+        if dias_gracia < 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="dias_gracia no puede ser negativo"
+            )
+    elif tipo_periodo == 'meses':
+        if meses_gracia is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Para tipo_periodo 'meses' debe especificar meses_gracia"
+            )
+        if meses_gracia < 0 or meses_gracia > 12:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="meses_gracia debe estar entre 0 y 12"
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tipo_periodo debe ser 'dias' o 'meses'"
+        )
+
+
 # ============================================================================
 # ENDPOINTS
 # ============================================================================
@@ -246,15 +278,22 @@ def crear_configuracion(
 ):
     """
     Crea una nueva configuración de mora.
-    
     REGLAS:
     - Debe especificar el valor correcto según tipo_calculo
+    - Debe especificar el campo correcto según tipo_periodo (dias_gracia o meses_gracia)
     - Se crea como INACTIVA por defecto (activo=False)
     - Se debe activar manualmente después de crear
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "configuracion", "crear")
-    
+
+    # Validar tipo_periodo y valores
+    validar_tipo_periodo(
+        config_data.tipo_periodo,
+        config_data.dias_gracia,
+        config_data.meses_gracia
+    )
+
     # Validar que los valores correspondan con el tipo de cálculo
     validar_valores_tipo_calculo(
         config_data.tipo_calculo,
@@ -262,27 +301,33 @@ def crear_configuracion(
         config_data.valor_fijo,
         config_data.interes_diario
     )
-    
+
     # Validar fechas de vigencia
     if config_data.vigencia_hasta and config_data.vigencia_hasta < config_data.vigencia_desde:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="La fecha vigencia_hasta debe ser posterior a vigencia_desde"
         )
-    
+
     try:
         datos_config = config_data.model_dump()
+        
+        #  Limpiar campos no usados según tipo_periodo
+        if config_data.tipo_periodo == 'dias':
+            datos_config['meses_gracia'] = None
+        else:  # tipo_periodo == 'meses'
+            datos_config['dias_gracia'] = None
+        
         # FORZAR que se cree inactiva
         datos_config["activo"] = False
         datos_config["aplicar_mora"] = False
-        
+
         nueva_config = ConfiguracionMora(**datos_config)
         db.add(nueva_config)
         db.commit()
         db.refresh(nueva_config)
-        
         return nueva_config
-    
+
     except IntegrityError:
         db.rollback()
         raise HTTPException(
@@ -300,57 +345,68 @@ def actualizar_configuracion(
 ):
     """
     Actualiza una configuración de mora existente.
-    
     REGLAS:
     - No permite activar directamente (usar endpoint /activar)
     - Valida coherencia entre tipo_calculo y valores
+    - Valida coherencia entre tipo_periodo y valores
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "configuracion", "actualizar")
-    
+
     config = db.query(ConfiguracionMora).filter(
         ConfiguracionMora.id_configuracion_mora == config_id
     ).first()
-    
+
     if not config:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Configuración de mora no encontrada"
         )
-    
+
     datos_actualizacion = config_data.model_dump(exclude_unset=True)
-    
+
     # Prevenir activación directa
     if "activo" in datos_actualizacion and datos_actualizacion["activo"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Para activar una configuración, use el endpoint /{config_id}/activar"
         )
-    
+
+    # Validar tipo_periodo si se está cambiando
+    if "tipo_periodo" in datos_actualizacion:
+        tipo_nuevo = datos_actualizacion["tipo_periodo"]
+        dias = datos_actualizacion.get("dias_gracia", config.dias_gracia)
+        meses = datos_actualizacion.get("meses_gracia", config.meses_gracia)
+        validar_tipo_periodo(tipo_nuevo, dias, meses)
+        
+        # Limpiar campos no usados según tipo_periodo
+        if tipo_nuevo == 'dias':
+            datos_actualizacion['meses_gracia'] = None
+        else:  # tipo_periodo == 'meses'
+            datos_actualizacion['dias_gracia'] = None
+
     # Validar tipo_calculo si se está cambiando
     if "tipo_calculo" in datos_actualizacion:
         tipo_nuevo = datos_actualizacion["tipo_calculo"]
         porcentaje = datos_actualizacion.get("porcentaje_mora", config.porcentaje_mora)
         valor_fijo = datos_actualizacion.get("valor_fijo", config.valor_fijo)
         interes = datos_actualizacion.get("interes_diario", config.interes_diario)
-        
         validar_valores_tipo_calculo(tipo_nuevo, porcentaje, valor_fijo, interes)
-    
+
     # Validar fechas de vigencia
     if "vigencia_hasta" in datos_actualizacion or "vigencia_desde" in datos_actualizacion:
         vigencia_desde = datos_actualizacion.get("vigencia_desde", config.vigencia_desde)
         vigencia_hasta = datos_actualizacion.get("vigencia_hasta", config.vigencia_hasta)
-        
         if vigencia_hasta and vigencia_hasta < vigencia_desde:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La fecha vigencia_hasta debe ser posterior a vigencia_desde"
             )
-    
+
     # Actualizar campos
     for campo, valor in datos_actualizacion.items():
         setattr(config, campo, valor)
-    
+
     try:
         db.commit()
         db.refresh(config)

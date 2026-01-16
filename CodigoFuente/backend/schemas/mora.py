@@ -2,12 +2,10 @@
 TITLE: schemas/mora.py
 Schemas Pydantic para validación de datos de mora
 """
-
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 from datetime import date, datetime
 from decimal import Decimal
-
 
 class ConfiguracionMoraBase(BaseModel):
     """Schema base con campos comunes"""
@@ -15,7 +13,14 @@ class ConfiguracionMoraBase(BaseModel):
     descripcion: Optional[str] = Field(None, description="Descripción detallada")
     aplicar_mora: bool = Field(True, description="Si se aplica mora con esta configuración")
     activo: bool = Field(True, description="Si la configuración está activa")
-    dias_gracia: int = Field(0, ge=0, description="Días de gracia después del vencimiento")
+    
+    # ✅ Tipo de periodo
+    tipo_periodo: str = Field('dias', description="Tipo de periodo: 'dias' o 'meses'")
+    
+    # ✅ CAMBIADO: Ahora son opcionales (pueden ser None)
+    dias_gracia: Optional[int] = Field(None, ge=0, description="Días de gracia después del vencimiento")
+    meses_gracia: Optional[int] = Field(None, ge=0, le=12, description="Meses de gracia (0-12)")
+    
     tipo_calculo: str = Field(..., description="Tipo: 'porcentaje', 'fijo', 'interes_diario'")
     porcentaje_mora: Optional[Decimal] = Field(None, ge=0, le=100, decimal_places=2, description="Porcentaje de mora")
     valor_fijo: Optional[Decimal] = Field(None, ge=0, decimal_places=2, description="Valor fijo de mora")
@@ -25,6 +30,14 @@ class ConfiguracionMoraBase(BaseModel):
     es_vigente: bool = Field(True, description="Si está vigente actualmente")
     mora_maxima: Optional[Decimal] = Field(None, ge=0, decimal_places=2, description="Límite máximo de mora")
     aplicar_sobre: str = Field('total', description="Sobre qué aplicar: 'total', 'consumo', 'base'")
+
+    @field_validator('tipo_periodo')
+    @classmethod
+    def validar_tipo_periodo(cls, v):
+        tipos_validos = ['dias', 'meses']
+        if v not in tipos_validos:
+            raise ValueError(f"tipo_periodo debe ser uno de: {', '.join(tipos_validos)}")
+        return v
 
     @field_validator('tipo_calculo')
     @classmethod
@@ -42,15 +55,21 @@ class ConfiguracionMoraBase(BaseModel):
             raise ValueError(f"aplicar_sobre debe ser uno de: {', '.join(opciones_validas)}")
         return v
 
+    @model_validator(mode='after')
+    def validar_periodo_valores(self):
+        """Valida que tenga el campo correcto según tipo_periodo"""
+        if self.tipo_periodo == 'dias':
+            if self.dias_gracia is None:
+                raise ValueError("Para tipo_periodo='dias' debe especificar dias_gracia")
+        elif self.tipo_periodo == 'meses':
+            if self.meses_gracia is None:
+                raise ValueError("Para tipo_periodo='meses' debe especificar meses_gracia")
+        return self
+
 
 class ConfiguracionMoraCreate(ConfiguracionMoraBase):
     """Schema para crear nueva configuración de mora"""
-    
-    @field_validator('porcentaje_mora', 'valor_fijo', 'interes_diario')
-    @classmethod
-    def validar_valores_segun_tipo(cls, v, info):
-        # Esta validación adicional se hará en el router
-        return v
+    pass
 
 
 class ConfiguracionMoraUpdate(BaseModel):
@@ -59,7 +78,11 @@ class ConfiguracionMoraUpdate(BaseModel):
     descripcion: Optional[str] = None
     aplicar_mora: Optional[bool] = None
     activo: Optional[bool] = None
+    
+    tipo_periodo: Optional[str] = None
     dias_gracia: Optional[int] = Field(None, ge=0)
+    meses_gracia: Optional[int] = Field(None, ge=0, le=12)
+    
     tipo_calculo: Optional[str] = None
     porcentaje_mora: Optional[Decimal] = Field(None, ge=0, le=100)
     valor_fijo: Optional[Decimal] = Field(None, ge=0)
@@ -69,6 +92,15 @@ class ConfiguracionMoraUpdate(BaseModel):
     es_vigente: Optional[bool] = None
     mora_maxima: Optional[Decimal] = Field(None, ge=0)
     aplicar_sobre: Optional[str] = None
+
+    @field_validator('tipo_periodo')
+    @classmethod
+    def validar_tipo_periodo(cls, v):
+        if v is not None:
+            tipos_validos = ['dias', 'meses']
+            if v not in tipos_validos:
+                raise ValueError(f"tipo_periodo debe ser uno de: {', '.join(tipos_validos)}")
+        return v
 
     @field_validator('tipo_calculo')
     @classmethod
@@ -98,6 +130,7 @@ class ConfiguracionMoraResponse(ConfiguracionMoraBase):
         from_attributes = True
 
 
+# ✅ ACTUALIZADO: Este es el que está fallando
 class ConfiguracionMoraListResponse(BaseModel):
     """Schema para listados con todos los campos necesarios"""
     id_configuracion_mora: int
@@ -107,13 +140,18 @@ class ConfiguracionMoraListResponse(BaseModel):
     aplicar_mora: bool
     activo: bool
     es_vigente: bool
-    dias_gracia: int
     
+    tipo_periodo: str
+    
+    # ✅ CAMBIADO: Ahora son Optional para permitir None
+    dias_gracia: Optional[int] = None
+    meses_gracia: Optional[int] = None
+
     # Valores según tipo de cálculo
     porcentaje_mora: Optional[Decimal]
     valor_fijo: Optional[Decimal]
     interes_diario: Optional[Decimal]
-    
+
     # Configuración adicional
     vigencia_desde: date
     vigencia_hasta: Optional[date]
@@ -123,7 +161,6 @@ class ConfiguracionMoraListResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 
 class ConfiguracionMoraStats(BaseModel):

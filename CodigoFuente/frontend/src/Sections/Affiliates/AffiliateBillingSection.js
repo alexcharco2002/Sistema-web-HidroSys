@@ -706,14 +706,15 @@ const getEstadoPagoBadgeForPayment = (estadoPago) => {
 
   if (loading && facturas.length === 0) {
     return (
-      <div className="loading-state">
-        <div className="loading-content">
-          <RefreshCw className="loading-icon" />
-          <p>Cargando tus facturas...</p>
+       <div className="affiliates-section">
+          <div className="empty-state">
+            <RefreshCw className="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin" />
+            <h3> Espere mientras cargamos sus facturas...</h3>
+          </div>
         </div>
-      </div>
     );
   }
+
 
   // ============================================================
   // RENDERIZADO PRINCIPAL
@@ -1118,418 +1119,444 @@ const getEstadoPagoBadgeForPayment = (estadoPago) => {
         )}
       </div>
 
-      {/* ============================================================ */}
-      {/* MODAL DE DETALLE DE FACTURA */}
-      {/* ============================================================ */}
-      {showModal && selectedFactura && (
-        <div className="modal-overlay">
-          <div className="modal modal-factura">
-            <div className="modal-header">
-              <h3>
-                <FileText className="w-5 h-5 inline mr-2" />
-                Detalle de Factura {selectedFactura.num_factura}
-              </h3>
-              <button className="modal-close" onClick={closeModal}>
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+{/* ============================================================ */}
+{/* MODAL DE DETALLE DE FACTURA - VERSIÓN MEJORADA */}
+{/* ============================================================ */}
+{showModal && selectedFactura && (
+  <div className="modal-overlay">
+    <div className="modal modal-factura">
+      <div className="modal-header">
+        <h3>
+          <FileText className="w-5 h-5 inline mr-2" />
+          Detalle de Factura {selectedFactura.num_factura}
+        </h3>
+        <button className="modal-close" onClick={closeModal}>
+          <X className="w-5 h-5" />
+        </button>
+      </div>
 
-            <div className="modal-body">
-              {/* SECCIÓN DE INFORMACIÓN DE LA FACTURA */}
-              <div className="factura-section">
-                <h4 className="section-title">
-                  <FileText className="w-4 h-4" />
-                  Información de la Factura
-                </h4>
-                <div className="user-details">
-                  <div className="detail-group">
-                    <label>Número de Factura</label>
-                    <p className="font-mono font-semibold">{selectedFactura.num_factura}</p>
-                  </div>
-                  <div className="detail-group">
-                    <label>Fecha de Emisión</label>
-                    <p>{formatDateShort(selectedFactura.fecha_emision)}</p>
-                  </div>
-                  <div className="detail-group">
-                    <label>Periodo</label>
-                    <p>{formatPeriodoDisplay(selectedFactura.periodo)}</p>
-                  </div>
-                  <div className="detail-group">
-                    <label>Estado</label>
-                    {getEstadoPagoBadge(selectedFactura)}
-                  </div>
-                </div>
+      <div className="modal-body">
+        {/* SECCIÓN DE INFORMACIÓN DE LA FACTURA */}
+        <div className="factura-section">
+          <h4 className="section-title">
+            <FileText className="w-4 h-4" />
+            Información de la Factura
+          </h4>
+          <br />
+          
+          <div className="user-details">
+            <div className="detail-group">
+              <label>Número de Factura</label>
+              <p className="font-mono font-semibold">{selectedFactura.num_factura}</p>
+            </div>
+            <div className="detail-group">
+              <label>Fecha de Emisión</label>
+              <p>{formatDateShort(selectedFactura.fecha_emision)}</p>
+            </div>
+            <div className="detail-group">
+              <label>Periodo</label>
+              <p>{formatPeriodoDisplay(selectedFactura.periodo)}</p>
+            </div>
+            <div className="detail-group">
+              <label>Estado</label>
+              {getEstadoPagoBadge(selectedFactura)}
+            </div>
+          </div>
+        </div>
+
+        {/* SECCIÓN DE AFILIADO */}
+        {selectedFactura.usuario_afiliado && (
+          <div className="factura-section">
+            <br />
+            <h4 className="section-title">
+              <User className="w-4 h-4" />
+              Datos del Afiliado
+            </h4>
+            <br />
+            
+            <div className="user-details">
+              <div className="detail-group form-group-full">
+                <label>Nombre Afiliado:</label>
+                <p>
+                  {selectedFactura.usuario_afiliado.usuario_sistema?.nombre_completo || 'Sin nombre'}{' '}
+                  - {selectedFactura.usuario_afiliado.usuario_sistema?.cedula || 'N/A'}
+                </p>
               </div>
 
-              {/* SECCIÓN DE AFILIADO */}
-              {selectedFactura.usuario_afiliado && (
-                <div className="factura-section">
-                  <h4 className="section-title">
-                    <User className="w-4 h-4" />
-                    Datos del Afiliado
-                  </h4>
-                  <div className="user-details">
-                    <div className="detail-group form-group-full">
-                      <label>Nombre Afiliado:</label>
-                      <p>
-                        {selectedFactura.usuario_afiliado.usuario_sistema?.nombre_completo || 'Sin nombre'}{' '}
-                        - {selectedFactura.usuario_afiliado.usuario_sistema?.cedula || 'N/A'}
-                      </p>
-                    </div>
+              <div className="detail-group">
+                <label>Código Afiliado:</label>
+                <p className="font-mono">{selectedFactura.usuario_afiliado.cod_usuario_afi}</p>
+              </div>
 
-                    <div className="detail-group">
-                      <label>Código Afiliado:</label>
-                      <p className="font-mono">{selectedFactura.usuario_afiliado.cod_usuario_afi}</p>
-                    </div>
+              <div className="detail-group">
+                <label>Medidor:</label>
+                <p className="font-mono font-semibold text-green-600">
+                  {selectedFactura.usuario_afiliado.num_medidor}
+                </p>
+              </div>
 
-                    <div className="detail-group">
-                      <label>Medidor:</label>
-                      <p className="font-mono font-semibold text-green-600">
-                        {selectedFactura.usuario_afiliado.num_medidor}
-                      </p>
-                    </div>
+              <div className="detail-group">
+                <label>Email:</label>
+                <p>{selectedFactura.usuario_afiliado.usuario_sistema?.email || 'N/A'}</p>
+              </div>
 
-                    <div className="detail-group">
-                      <label>Email:</label>
-                      <p>{selectedFactura.usuario_afiliado.usuario_sistema?.email || 'N/A'}</p>
-                    </div>
+              <div className="detail-group">
+                <label>Teléfono:</label>
+                <p>{selectedFactura.usuario_afiliado.usuario_sistema?.telefono || 'N/A'}</p>
+              </div>
 
-                    <div className="detail-group">
-                      <label>Teléfono:</label>
-                      <p>{selectedFactura.usuario_afiliado.usuario_sistema?.telefono || 'N/A'}</p>
-                    </div>
-
-                    {selectedFactura.usuario_afiliado.sector && (
-                      <div className="detail-group form-group-full">
-                        <label>Sector</label>
-                        <p className="flex items-center gap-1">
-                          <MapPin className="w-4 h-4 text-blue-500" />
-                          {selectedFactura.usuario_afiliado.sector.nombre_sector}
-                        </p>
-                      </div>
-                    )}
-
-                    {selectedFactura.usuario_afiliado.usuario_sistema?.direccion && (
-                      <div className="detail-group form-group-full">
-                        <label>Dirección</label>
-                        <p>{selectedFactura.usuario_afiliado.usuario_sistema.direccion}</p>
-                      </div>
-                    )}
-                  </div>
+              {selectedFactura.usuario_afiliado.sector && (
+                <div className="detail-group form-group-full">
+                  <label>Sector</label>
+                  <p className="flex items-center gap-1">
+                    <MapPin className="w-4 h-4 text-blue-500" />
+                    {selectedFactura.usuario_afiliado.sector.nombre_sector}
+                  </p>
                 </div>
               )}
 
-              {/* Sección de CONSUMO */}
-              <div className="factura-section">
-                <h4 className="section-title">
-                  <Activity className="w-4 h-4" />
-                  Consumo del Periodo
-                </h4>
-                <div className="user-details">
-                  <div className="detail-group">
-                    <label>Consumo Total</label>
-                    <p className="font-bold text-lg">{selectedFactura.consumo_m3} m³</p>
-                  </div>
-                  <div className="detail-group">
-                    <label>Exceso</label>
-                    <p className="font-bold text-lg">{selectedFactura.exceso_m3 || 0} m³</p>
-                  </div>
-                  <div className="detail-group">
-                    <label>Valor Consumo</label>
-                    <p>{formatCurrency(selectedFactura.valor_consumo)}</p>
-                  </div>
-                  <div className="detail-group">
-                    <label>Valor Exceso</label>
-                    <p>{formatCurrency(selectedFactura.valor_exceso)}</p>
-                  </div>
+              {selectedFactura.usuario_afiliado.usuario_sistema?.direccion && (
+                <div className="detail-group form-group-full">
+                  <label>Dirección</label>
+                  <p>{selectedFactura.usuario_afiliado.usuario_sistema.direccion}</p>
                 </div>
-              </div>
+              )}
+            </div>
+          </div>
+        )}
 
-              {/* Sección de DETALLES/CONCEPTOS DE FACTURACIÓN */}
-              {selectedFactura.detalles && selectedFactura.detalles.length > 0 && (
-                <div className="factura-section">
-                  <h4 className="section-title">
-                    <FileText className="w-4 h-4" />
-                    Conceptos de Facturación ({selectedFactura.detalles.length})
-                  </h4>
-                  <div className="detalles-factura-list">
-                    {selectedFactura.detalles.map((detalle, index) => {
-                      const getTipoConfig = (tipo) => {
-                        switch (tipo?.toLowerCase()) {
-                          case 'consumo':
-                            return {
-                              icon: <DollarSign className="w-4 h-4" />,
-                              color: '#10b981',
-                              label: 'Consumo'
-                            };
-                          case 'servicio':
-                            return {
-                              icon: <CreditCard className="w-4 h-4" />,
-                              color: '#3b82f6',
-                              label: 'Servicio'
-                            };
-                          case 'multa':
-                            return {
-                              icon: <AlertCircle className="w-4 h-4" />,
-                              color: '#ef4444',
-                              label: 'Multa'
-                            };
-                          case 'otros':
-                            return {
-                              icon: <FileText className="w-4 h-4" />,
-                              color: '#6b7280',
-                              label: 'Otros'
-                            };
-                          default:
-                            return {
-                              icon: <FileText className="w-4 h-4" />,
-                              color: '#6b7280',
-                              label: tipo || 'Concepto'
-                            };
-                        }
+        {/* Sección de CONSUMO */}
+        <div className="factura-section">
+          <br />
+          <h4 className="section-title">
+            <Activity className="w-4 h-4" />
+            Consumo del Periodo
+          </h4>
+          <br />
+          
+          <div className="user-details">
+            <div className="detail-group">
+              <label>Consumo Total</label>
+              <p className="font-bold text-lg">{selectedFactura.consumo_m3} m³</p>
+            </div>
+            <div className="detail-group">
+              <label>Exceso</label>
+              <p className="font-bold text-lg">{selectedFactura.exceso_m3 || 0} m³</p>
+            </div>
+            <div className="detail-group">
+              <label>Valor Consumo</label>
+              <p>{formatCurrency(selectedFactura.valor_consumo)}</p>
+            </div>
+            <div className="detail-group">
+              <label>Valor Exceso</label>
+              <p>{formatCurrency(selectedFactura.valor_exceso)}</p>
+            </div>
+          </div>
+            <br />
+          <h4 className="section-title">
+            <FileText className="w-4 h-4" />
+            Conceptos y pagos asociados
+          </h4>
+          <br />
+
+        </div>
+
+        {/* Sección de CONCEPTOS DE FACTURACIÓN */}
+        {selectedFactura.detalles && selectedFactura.detalles.length > 0 && (
+          <div className="conceptos-section">
+            <h4 className="conceptos-section-title">
+              Conceptos de Facturación ({selectedFactura.detalles.length})
+            </h4>
+
+            <div className="conceptos-factura-lista">
+              {selectedFactura.detalles.map((detalle, index) => {
+                const getTipoConfig = (tipo) => {
+                  switch (tipo?.toLowerCase()) {
+                    case 'consumo':
+                      return {
+                        icon: <DollarSign className="w-4 h-4" />,
+                        color: '#10b981',
+                        label: 'Consumo'
                       };
+                    case 'servicio':
+                      return {
+                        icon: <CreditCard className="w-4 h-4" />,
+                        color: '#3b82f6',
+                        label: 'Servicio'
+                      };
+                    case 'multa':
+                      return {
+                        icon: <AlertCircle className="w-4 h-4" />,
+                        color: '#ef4444',
+                        label: 'Multa'
+                      };
+                    case 'otros':
+                      return {
+                        icon: <FileText className="w-4 h-4" />,
+                        color: '#6b7280',
+                        label: 'Otros'
+                      };
+                    default:
+                      return {
+                        icon: <FileText className="w-4 h-4" />,
+                        color: '#6b7280',
+                        label: tipo || 'Concepto'
+                      };
+                  }
+                };
 
-                      const tipoConfig = getTipoConfig(detalle.tipo_detalle);
+                const tipoConfig = getTipoConfig(detalle.tipo_detalle);
 
-                      return (
-                        <div key={detalle.id_detalle} className="detalle-factura-item">
-                          <div className="detalle-header">
-                            <div className="detalle-tipo" style={{ color: tipoConfig.color }}>
-                              {tipoConfig.icon}
-                              <span className="detalle-tipo-label">{tipoConfig.label}</span>
-                            </div>
-                            <span className="detalle-numero">#{index + 1}</span>
-                          </div>
-                          <div className="detalle-body">
-                            <p className="detalle-descripcion">{detalle.descripcion}</p>
-                            <div className="detalle-footer">
-                              <span className="detalle-subtotal-label">Subtotal:</span>
-                              <span className="detalle-subtotal-value" style={{ color: tipoConfig.color }}>
-                                {formatCurrency(detalle.subtotal_detalle)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* TOTALES DE LA FACTURA */}
-                    <div className="detalles-totales">
-                      <div className="total-row">
-                        <span>Subtotal:</span>
-                        <span>{formatCurrency(selectedFactura.subtotal)}</span>
+                return (
+                  <div key={detalle.id_detalle} className="concepto-item">
+                    <div className="concepto-header">
+                      <div className="concepto-tipo" style={{ color: tipoConfig.color }}>
+                        {tipoConfig.icon}
+                        <span className="concepto-tipo-label">{tipoConfig.label}</span>
                       </div>
-                      {parseFloat(selectedFactura.descuento) > 0 && (
-                        <div className="total-row descuento">
-                          <span>Descuento:</span>
-                          <span className="text-green-600">
-                            - {formatCurrency(selectedFactura.descuento)}
-                          </span>
-                        </div>
-                      )}
-                      {parseFloat(selectedFactura.impuesto) > 0 && (
-                        <div className="total-row">
-                          <span>Impuesto:</span>
-                          <span>{formatCurrency(selectedFactura.impuesto)}</span>
-                        </div>
-                      )}
-                      <div className="total-row total">
-                        <span>Total:</span>
-                        <span className="font-bold text-xl">
-                          {formatCurrency(selectedFactura.total)}
+                      <span className="concepto-numero">#{index + 1}</span>
+                    </div>
+                    <div className="concepto-body">
+                      <p className="concepto-descripcion">{detalle.descripcion}</p>
+                      <div className="concepto-footer">
+                        <span className="concepto-subtotal-label">Subtotal:</span>
+                        <span className="concepto-subtotal-value" style={{ color: tipoConfig.color }}>
+                          {formatCurrency(detalle.subtotal_detalle)}
                         </span>
                       </div>
                     </div>
                   </div>
+                );
+              })}
+
+              {/* TOTALES DE LA FACTURA */}
+              <div className="conceptos-totales">
+                <div className="conceptos-total-row">
+                  <span>Subtotal:</span>
+                  <span>{formatCurrency(selectedFactura.subtotal)}</span>
                 </div>
-              )}
-
-              {/* ✅ SECCIÓN DE PAGOS (MÚLTIPLES) */}
-              {selectedFactura.pagos && selectedFactura.pagos.length > 0 && (
-                <div className="factura-section">
-                  <h4 className="section-title">
-                    <DollarSign className="w-4 h-4" />
-                    Información de Pagos ({selectedFactura.pagos.length})
-                  </h4>
-                  <div className="pagos-list">
-                    {selectedFactura.pagos.map((pago, index) => (
-                      <div
-                        key={pago.id_pago}
-                        className={`pago-item ${pago.estado_pago === 'ANULADO' ? 'pago-anulado' : ''}`}
-                      >
-                        {/* CABECERA DEL PAGO */}
-                        <div className="pago-header">
-                          <div className="pago-header-left">
-                            <span className="pago-numero">Pago #{index + 1} (ID: {pago.id_pago})</span>
-                          </div>
-                          {getEstadoPagoBadgeForPayment(pago.estado_pago)}
-                        </div>
-
-                        {/* DETALLES DEL PAGO */}
-                        <div className="pago-details">
-                          <div className="pago-detail">
-                            <span className="pago-label">
-                              <Calendar className="w-3 h-3" />
-                              Fecha:
-                            </span>
-                            <span className="pago-value">{formatDate(pago.fecha_pago)}</span>
-                          </div>
-
-                          <div className="pago-detail">
-                            <span className="pago-label">
-                              <DollarSign className="w-3 h-3" />
-                              Monto:
-                            </span>
-                            <span className="pago-value font-bold text-green-600">
-                              {formatCurrency(pago.monto_pago)}
-                            </span>
-                          </div>
-
-                          <div className="pago-detail">
-                            <span className="pago-label">
-                              {getMetodoIcon(pago.metodo_pago)}
-                              Método:
-                            </span>
-                            <span className="pago-value">
-                              {pago.metodo_pago}
-                            </span>
-                          </div>
-
-                          {/* CAJERO */}
-                          {pago.cajero && (
-                            <div className="pago-detail">
-                              <span className="pago-label">
-                                <User className="w-3 h-3" />
-                                Cajero:
-                              </span>
-                              <span className="pago-value">
-                                {pago.cajero}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* COMPROBANTE CON BOTÓN DE DESCARGA */}
-                          {pago.tiene_comprobante && (
-                            <div className="pago-detail">
-                              <span className="pago-label">
-                                <Paperclip className="w-3 h-3" />
-                                Comprobante:
-                              </span>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  descargarComprobante(pago.id_pago, pago.nombre_archivo);
-                                }}
-                                className="pago-value text-green-600 hover:text-green-700 underline cursor-pointer"
-                                title={`Descargar: ${pago.nombre_archivo}`}
-                              >
-                                <FileCheck className="w-3 h-3 inline mr-1" />
-                                {pago.nombre_archivo}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* OBSERVACIONES */}
-                        {pago.observaciones && (
-                          <div className="pago-observaciones">
-                            <span className="pago-obs-label">
-                              <FileText className="w-3 h-3" />
-                              Observaciones:
-                            </span>
-                            <p className="pago-obs-text">{pago.observaciones}</p>
-                          </div>
-                        )}
-
-                        {/* INFORMACIÓN DE ANULACIÓN */}
-                        {pago.estado_pago === 'ANULADO' && (
-                          <div className="pago-anulacion-info">
-                            <div className="anulacion-header">
-                              <Ban className="w-4 h-4" />
-                              <span>Pago Anulado</span>
-                            </div>
-                            {pago.fecha_anulacion && (
-                              <div className="anulacion-detail">
-                                <span className="anulacion-label">Fecha de anulación:</span>
-                                <span className="anulacion-value">
-                                  {formatDate(pago.fecha_anulacion)}
-                                </span>
-                              </div>
-                            )}
-                            {pago.motivo_anulacion && (
-                              <div className="anulacion-detail">
-                                <span className="anulacion-label">Motivo:</span>
-                                <span className="anulacion-value">{pago.motivo_anulacion}</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                
+                {parseFloat(selectedFactura.descuento) > 0 && (
+                  <div className="conceptos-total-row descuento">
+                    <span>Descuento:</span>
+                    <span className="text-green-600">
+                      - {formatCurrency(selectedFactura.descuento)}
+                    </span>
                   </div>
-
-                  {/* RESUMEN DE PAGOS */}
-                  <div className="pagos-summary">
-                    <div className="summary-header">
-                      <TrendingUp className="w-4 h-4" />
-                      <span>Resumen de Pagos</span>
-                    </div>
-                    <div className="summary-row">
-                      <span>Total Factura:</span>
-                      <span className="font-bold">{formatCurrency(selectedFactura.total)}</span>
-                    </div>
-                    <div className="summary-row pagado">
-                      <span>Total Pagado ({selectedFactura.cantidad_pagos} {selectedFactura.cantidad_pagos === 1 ? 'pago' : 'pagos'}):</span>
-                      <span className="font-bold text-green-600">
-                        {formatCurrency(selectedFactura.monto_pagado)}
-                      </span>
-                    </div>
-                    <div className="summary-row total">
-                      <span>Saldo Pendiente:</span>
-                      <span className={`font-bold ${
-                        selectedFactura.saldo_pendiente > 0 ? 'text-red-600' : 'text-green-600'
-                      }`}>
-                        {formatCurrency(selectedFactura.saldo_pendiente)}
-                      </span>
-                    </div>
-
-                    {/* INDICADOR VISUAL DEL PROGRESO */}
-                    <div className="payment-progress">
-                      <div className="progress-bar">
-                        <div
-                          className="progress-fill"
-                          style={{
-                            width: `${(selectedFactura.monto_pagado / parseFloat(selectedFactura.total)) * 100}%`
-                          }}
-                        />
-                      </div>
-                      <span className="progress-percentage">
-                        {((selectedFactura.monto_pagado / parseFloat(selectedFactura.total)) * 100).toFixed(1)}% pagado
-                      </span>
-                    </div>
+                )}
+                
+                {parseFloat(selectedFactura.impuesto) > 0 && (
+                  <div className="conceptos-total-row">
+                    <span>Impuesto (IVA):</span>
+                    <span>{formatCurrency(selectedFactura.impuesto)}</span>
                   </div>
+                )}
+                
+                <div className="conceptos-total-row total">
+                  <span>Total:</span>
+                  <span className="font-bold text-xl">
+                    {formatCurrency(selectedFactura.total)}
+                  </span>
                 </div>
-              )}
-
-              {/* MENSAJE SI NO HAY PAGOS */}
-              {(!selectedFactura.pagos || selectedFactura.pagos.length === 0) && (
-                <div className="factura-section">
-                  <div className="empty-state-small">
-                    <AlertCircle className="w-8 h-8 text-gray-400" />
-                    <p>No hay pagos registrados para esta factura</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={closeModal}>
-                Cerrar
-              </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* SECCIÓN DE HISTORIAL DE PAGOS */}
+        {selectedFactura.pagos && selectedFactura.pagos.length > 0 && (
+          <div className="historial-pagos-section">
+
+            <h4 className="historial-pagos-title">
+              <DollarSign className="w-4 h-4" />
+              Historial de Pagos ({selectedFactura.pagos.length})
+            </h4>
+
+            
+            <div className="historial-pagos-lista">
+              {selectedFactura.pagos.map((pago, index) => (
+                <div
+                  key={pago.id_pago}
+                  className={`historial-pago-item ${pago.estado_pago === 'ANULADO' ? 'anulado' : ''}`}
+                >
+                  {/* CABECERA DEL PAGO */}
+                  <div className="historial-pago-header">
+                    <div className="historial-pago-header-left">
+                      <span className="historial-pago-numero">
+                        Pago #{index + 1} 
+                      </span>
+                    </div>
+                    {getEstadoPagoBadgeForPayment(pago.estado_pago)}
+                  </div>
+
+                  {/* DETALLES DEL PAGO */}
+                  <div className="historial-pago-detalles">
+                    <div className="historial-pago-detalle">
+                      <span className="historial-pago-label">
+                        <Calendar className="w-3 h-3" /> Fecha
+                      </span>
+                      <span className="historial-pago-value">
+                        {formatDate(pago.fecha_pago)}
+                      </span>
+                    </div>
+
+                    <div className="historial-pago-detalle">
+                      <span className="historial-pago-label">
+                        <DollarSign className="w-3 h-3" /> Monto
+                      </span>
+                      <span className="historial-pago-value font-bold text-green-600">
+                        {formatCurrency(pago.monto_pago)}
+                      </span>
+                    </div>
+
+                    <div className="historial-pago-detalle">
+                      <span className="historial-pago-label">
+                        {getMetodoIcon(pago.metodo_pago)} Método
+                      </span>
+                      <span className="historial-pago-value">
+                        {pago.metodo_pago}
+                      </span>
+                    </div>
+
+                    {/* CAJERO */}
+                    {pago.cajero && (
+                      <div className="historial-pago-detalle">
+                        <span className="historial-pago-label">
+                          <User className="w-3 h-3" /> Cajero
+                        </span>
+                        <span className="historial-pago-value">
+                          {pago.cajero}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* OBSERVACIONES */}
+                  {pago.observaciones && (
+                    <div className="historial-pago-observaciones">
+                      <span className="historial-pago-obs-label">
+                        <FileText className="w-3 h-3" /> Observaciones
+                      </span>
+                      <p className="historial-pago-obs-text">{pago.observaciones}</p>
+                    </div>
+                  )}
+
+                  {/* INFORMACIÓN DE ANULACIÓN */}
+                  {pago.estado_pago === 'ANULADO' && (
+                    <div className="historial-pago-anulacion-info">
+                      <div className="historial-anulacion-header">
+                        <Ban className="w-4 h-4" />
+                        <span>Pago Anulado</span>
+                      </div>
+
+                      {pago.fecha_anulacion && (
+                        <div className="historial-anulacion-detalle">
+                          <span className="historial-anulacion-label">Fecha de anulación</span>
+                          <span className="historial-anulacion-value">
+                            {formatDate(pago.fecha_anulacion)}
+                          </span>
+                        </div>
+                      )}
+
+                      {pago.motivo_anulacion && (
+                        <div className="historial-anulacion-detalle">
+                          <span className="historial-anulacion-label">Motivo</span>
+                          <span className="historial-anulacion-value">
+                            {pago.motivo_anulacion}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* BOTÓN DESCARGAR COMPROBANTE */}
+                  {pago.tiene_comprobante && (
+                    <div className="historial-pago-comprobante-btn">
+                      <button
+                        className="btn-secondary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          descargarComprobante(pago.id_pago, pago.nombre_archivo);
+                        }}
+                        title={pago.nombre_archivo || 'Descargar comprobante'}
+                      >
+                        <FileCheck className="w-4 h-4 mr-2" />
+                        Descargar Comprobante
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* RESUMEN DE PAGOS */}
+            <div className="historial-pagos-resumen">
+              <div className="resumen-header">
+                <TrendingUp className="w-4 h-4" />
+                <span>Resumen de Pagos</span>
+              </div>
+              <div className="resumen-row">
+                <span>Total Factura</span>
+                <span className="font-bold">{formatCurrency(selectedFactura.total)}</span>
+              </div>
+              <div className="resumen-row pagado">
+                <span>
+                  Total Pagado ({selectedFactura.cantidad_pagos}{' '}
+                  {selectedFactura.cantidad_pagos === 1 ? 'pago' : 'pagos'})
+                </span>
+                <span className="font-bold text-green-600">
+                  {formatCurrency(selectedFactura.monto_pagado)}
+                </span>
+              </div>
+              <div className="resumen-row total">
+                <span>Saldo Pendiente</span>
+                <span
+                  className={`font-bold ${
+                    selectedFactura.saldo_pendiente > 0 ? 'text-red-600' : 'text-green-600'
+                  }`}
+                >
+                  {formatCurrency(selectedFactura.saldo_pendiente)}
+                </span>
+              </div>
+
+              {/* INDICADOR VISUAL DEL PROGRESO */}
+              <div className="historial-payment-progress">
+                <div className="historial-progress-bar">
+                  <div
+                    className="historial-progress-fill"
+                    style={{
+                      width: `${(selectedFactura.monto_pagado / parseFloat(selectedFactura.total)) * 100}%`
+                    }}
+                  />
+                </div>
+                <span className="historial-progress-percentage">
+                  {((selectedFactura.monto_pagado / parseFloat(selectedFactura.total)) * 100).toFixed(1)}% pagado
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MENSAJE SI NO HAY PAGOS */}
+        {(!selectedFactura.pagos || selectedFactura.pagos.length === 0) && (
+          <div className="factura-section">
+            <div className="empty-state-small">
+              <AlertCircle className="w-8 h-8 text-gray-400" />
+              <p>No hay pagos registrados para esta factura</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="modal-footer">
+        <button className="btn-secondary" onClick={closeModal}>
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
       {/* ============================================================ */}
       {/* MODAL DE SUBIDA DE COMPROBANTE */}

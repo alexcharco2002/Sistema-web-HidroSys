@@ -1,10 +1,10 @@
 // src/pages/ForgotPassword.js
 // Página para recuperar la contraseña en varios pasos con CODIGO de verificación
 import React, { useState, useEffect } from 'react';
-import { Mail, ArrowLeft, AlertCircle, CheckCircle, Key, Lock, RefreshCw, User } from 'lucide-react';
+import { Mail, ArrowLeft, AlertCircle, CheckCircle, Key, Lock, RefreshCw, User, Droplets } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import authService from '../services/authServices';
-import './Login.css';
+import './ForgotPassword.css';
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
@@ -39,50 +39,48 @@ const ForgotPassword = () => {
   }, [step, resendTimer]);
 
   // PASO 1: Solicitar código
-// PASO 1: Solicitar código
-const handleRequestCode = async (e) => {
-  e.preventDefault();
-  
-  // ✅ Validar ambos campos
-  if (!username.trim() || !email.trim()) {
-    setMessage('Por favor ingresa tu usuario y correo electrónico.');
-    setIsError(true);
-    return;
-  }
-
-  // Validar formato de email
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    setMessage('Por favor ingresa un correo válido.');
-    setIsError(true);
-    return;
-  }
-
-  setIsLoading(true);
-  setMessage('');
-
-  try {
-    // ✅ ORDEN CORRECTO: (username, email)
-    const result = await authService.forgotPassword(username, email);
+  const handleRequestCode = async (e) => {
+    e.preventDefault();
     
-    if (result.success) {
-      setIsError(false);
-      setMessage('Se ha enviado un código de verificación a tu correo.');
-      setStep(2);
-      setResendTimer(60);
-      setCanResend(false);
-    } else {
+    // ✅ Validar ambos campos
+    if (!username.trim() || !email.trim()) {
+      setMessage('Por favor ingresa tu usuario y correo electrónico.');
       setIsError(true);
-      setMessage(result.message || 'No se pudo enviar el correo.');
+      return;
     }
-  } catch (error) {
-    setIsError(true);
-    setMessage('Error de conexión. Intenta nuevamente.');
-  } finally {
-    setIsLoading(false);
-  }
-};
 
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setMessage('Por favor ingresa un correo válido.');
+      setIsError(true);
+      return;
+    }
+
+    setIsLoading(true);
+    setMessage('');
+
+    try {
+      // ✅ ORDEN CORRECTO: (username, email)
+      const result = await authService.forgotPassword(username, email);
+      
+      if (result.success) {
+        setIsError(false);
+        setMessage('Se ha enviado un código de verificación a tu correo.');
+        setStep(2);
+        setResendTimer(60);
+        setCanResend(false);
+      } else {
+        setIsError(true);
+        setMessage(result.message || 'No se pudo enviar el correo.');
+      }
+    } catch (error) {
+      setIsError(true);
+      setMessage('Error de conexión. Intenta nuevamente.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // PASO 2: Verificar código
   const handleVerifyCode = async (e) => {
@@ -173,35 +171,33 @@ const handleRequestCode = async (e) => {
   };
 
   // Reenviar código
-// Reenviar código
-const handleResendCode = async () => {
-  if (!canResend) return;
+  const handleResendCode = async () => {
+    if (!canResend) return;
 
-  setIsLoading(true);
-  setMessage('');
+    setIsLoading(true);
+    setMessage('');
 
-  try {
-    // ✅ ORDEN CORRECTO: (username, email)
-    const result = await authService.resendCode(username, email);
-    
-    if (result.success) {
-      setIsError(false);
-      setMessage('Código reenviado exitosamente.');
-      setResendTimer(60);
-      setCanResend(false);
-      setCode('');
-    } else {
+    try {
+      // ✅ ORDEN CORRECTO: (username, email)
+      const result = await authService.resendCode(username, email);
+      
+      if (result.success) {
+        setIsError(false);
+        setMessage('Código reenviado exitosamente.');
+        setResendTimer(60);
+        setCanResend(false);
+        setCode('');
+      } else {
+        setIsError(true);
+        setMessage(result.message || 'No se pudo reenviar el código.');
+      }
+    } catch (error) {
       setIsError(true);
-      setMessage(result.message || 'No se pudo reenviar el código.');
+      setMessage('Error al reenviar el código.');
+    } finally {
+      setIsLoading(false);
     }
-  } catch (error) {
-    setIsError(true);
-    setMessage('Error al reenviar el código.');
-  } finally {
-    setIsLoading(false);
-  }
-};
-
+  };
 
   // Volver al paso anterior
   const handleGoBack = () => {
@@ -213,34 +209,44 @@ const handleResendCode = async () => {
   };
 
   return (
-    <div className="login-container">
-      <div className="login-content">
-        <div className="system-header">
-          <h1 className="system-title">
+    <div className="forgot-container">
+      <div className="forgot-background"></div>
+      
+      {/* Decoraciones de fondo */}
+      <div className="forgot-bg-decoration forgot-bg-decoration-1"></div>
+      <div className="forgot-bg-decoration forgot-bg-decoration-2"></div>
+      <div className="forgot-bg-decoration forgot-bg-decoration-3"></div>
+
+      <div className="forgot-content">
+        <div className="forgot-system-header">
+          <div className="forgot-system-logo">
+            <Droplets className="forgot-logo-icon" />
+          </div>
+          <h1 className="forgot-system-title">
             {step === 1 && '🔐 Recuperar Contraseña'}
             {step === 2 && '📧 Verificar Código'}
             {step === 3 && '🔑 Nueva Contraseña'}
           </h1>
-          <p className="system-subtitle">
+          <p className="forgot-system-subtitle">
             {step === 1 && 'Ingresa tu usuario y correo para recibir un código de verificación'}
             {step === 2 && 'Ingresa el código enviado a tu correo'}
             {step === 3 && 'Crea tu nueva contraseña segura'}
           </p>
         </div>
 
-        <div className="login-form-container">
+        <div className="forgot-form-container">
           {/* PASO 1: Solicitar código */}
           {step === 1 && (
-            <form onSubmit={handleRequestCode} className="login-form">
+            <form onSubmit={handleRequestCode} className="forgot-login-form">
               {message && (
-                <div className={`error-message ${isError ? '' : 'success-message'}`}>
-                  {isError ? <AlertCircle className="error-icon" /> : <CheckCircle className="error-icon" />}
+                <div className={`forgot-error-message ${isError ? '' : 'forgot-success-message'}`}>
+                  {isError ? <AlertCircle className="forgot-error-icon" /> : <CheckCircle className="forgot-error-icon" />}
                   <span>{message}</span>
                 </div>
               )}
-              <div className="input-group">
-                <label htmlFor="username" className="input-label">
-                  <User className="label-icon" /> Usuario
+              <div className="forgot-input-group">
+                <label htmlFor="username" className="forgot-input-label">
+                  <User className="forgot-label-icon" /> Usuario
                 </label>
                 <input
                   id="username"
@@ -248,15 +254,15 @@ const handleResendCode = async () => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Ej: user"
-                  className="form-input"
+                  className="forgot-form-input"
                   disabled={isLoading}
                   autoComplete="username"
                 />
               </div>
 
-              <div className="input-group">
-                <label htmlFor="email" className="input-label">
-                  <Mail className="label-icon" /> Correo Electrónico
+              <div className="forgot-input-group">
+                <label htmlFor="email" className="forgot-input-label">
+                  <Mail className="forgot-label-icon" /> Correo Electrónico
                 </label>
                 <input
                   id="email"
@@ -264,7 +270,7 @@ const handleResendCode = async () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="ejemplo@correo.com"
-                  className="form-input"
+                  className="forgot-form-input"
                   disabled={isLoading}
                   autoComplete="email"
                 />
@@ -272,15 +278,22 @@ const handleResendCode = async () => {
 
               <button
                 type="submit"
-                className="login-button"
-                disabled={isLoading || !email.trim()}
+                className="forgot-login-button"
+                disabled={isLoading || !email.trim() || !username.trim()}
               >
-                {isLoading ? 'Enviando...' : 'Enviar Código'}
+                {isLoading ? (
+                  <div className="forgot-loading-content">
+                    <div className="forgot-loading-spinner"></div>
+                    <span>Enviando...</span>
+                  </div>
+                ) : (
+                  'Enviar Código'
+                )}
               </button>
 
-              <div className="form-links">
-                <Link to="/login" className="forgot-link">
-                  <ArrowLeft className="inline-icon" /> Volver al inicio de sesión
+              <div className="forgot-form-links">
+                <Link to="/login" className="forgot-forgot-link">
+                  <ArrowLeft className="forgot-inline-icon" /> Volver al inicio de sesión
                 </Link>
               </div>
             </form>
@@ -288,17 +301,17 @@ const handleResendCode = async () => {
 
           {/* PASO 2: Verificar código */}
           {step === 2 && (
-            <form onSubmit={handleVerifyCode} className="login-form">
+            <form onSubmit={handleVerifyCode} className="forgot-login-form">
               {message && (
-                <div className={`error-message ${isError ? '' : 'success-message'}`}>
-                  {isError ? <AlertCircle className="error-icon" /> : <CheckCircle className="error-icon" />}
+                <div className={`forgot-error-message ${isError ? '' : 'forgot-success-message'}`}>
+                  {isError ? <AlertCircle className="forgot-error-icon" /> : <CheckCircle className="forgot-error-icon" />}
                   <span>{message}</span>
                 </div>
               )}
 
-              <div className="input-group">
-                <label htmlFor="code" className="input-label">
-                  <Key className="label-icon" /> Código de Verificación
+              <div className="forgot-input-group">
+                <label htmlFor="code" className="forgot-input-label">
+                  <Key className="forgot-label-icon" /> Código de Verificación
                 </label>
                 <input
                   id="code"
@@ -309,58 +322,43 @@ const handleResendCode = async () => {
                     setCode(value);
                   }}
                   placeholder="123456"
-                  className="form-input"
+                  className="forgot-form-input forgot-code-input"
                   disabled={isLoading}
                   maxLength={6}
-                  style={{ 
-                    fontSize: '20px', 
-                    letterSpacing: '8px', 
-                    textAlign: 'center',
-                    fontWeight: 'bold'
-                  }}
                   autoComplete="off"
                 />
-                <small style={{ 
-                  color: '#666', 
-                  fontSize: '12px', 
-                  marginTop: '5px',
-                  display: 'block'
-                }}>
+                <small className="forgot-code-hint">
                   Revisa tu bandeja de entrada y spam
                 </small>
               </div>
 
               <button
                 type="submit"
-                className="login-button"
+                className="forgot-login-button"
                 disabled={isLoading || code.length !== 6}
               >
-                {isLoading ? 'Verificando...' : 'Verificar Código'}
+                {isLoading ? (
+                  <div className="forgot-loading-content">
+                    <div className="forgot-loading-spinner"></div>
+                    <span>Verificando...</span>
+                  </div>
+                ) : (
+                  'Verificar Código'
+                )}
               </button>
 
-              <div className="form-links" style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                gap: '10px',
-                alignItems: 'center'
-              }}>
+              <div className="forgot-links-container">
                 {canResend ? (
                   <button
                     type="button"
                     onClick={handleResendCode}
-                    className="forgot-link"
-                    style={{ 
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: '#2563eb'
-                    }}
+                    className="forgot-secondary-button"
                     disabled={isLoading}
                   >
-                    <RefreshCw className="inline-icon" /> Reenviar código
+                    <RefreshCw className="forgot-inline-icon" /> Reenviar código
                   </button>
                 ) : (
-                  <span style={{ color: '#666', fontSize: '14px' }}>
+                  <span className="forgot-resend-timer">
                     Reenviar código en {resendTimer}s
                   </span>
                 )}
@@ -368,15 +366,10 @@ const handleResendCode = async () => {
                 <button
                   type="button"
                   onClick={handleGoBack}
-                  className="forgot-link"
-                  style={{ 
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer'
-                  }}
+                  className="forgot-secondary-button"
                   disabled={isLoading}
                 >
-                  <ArrowLeft className="inline-icon" /> Cambiar correo
+                  <ArrowLeft className="forgot-inline-icon" /> Cambiar correo
                 </button>
               </div>
             </form>
@@ -384,17 +377,17 @@ const handleResendCode = async () => {
 
           {/* PASO 3: Nueva contraseña */}
           {step === 3 && (
-            <form onSubmit={handleResetPassword} className="login-form">
+            <form onSubmit={handleResetPassword} className="forgot-login-form">
               {message && (
-                <div className={`error-message ${isError ? '' : 'success-message'}`}>
-                  {isError ? <AlertCircle className="error-icon" /> : <CheckCircle className="error-icon" />}
+                <div className={`forgot-error-message ${isError ? '' : 'forgot-success-message'}`}>
+                  {isError ? <AlertCircle className="forgot-error-icon" /> : <CheckCircle className="forgot-error-icon" />}
                   <span>{message}</span>
                 </div>
               )}
 
-              <div className="input-group">
-                <label htmlFor="newPassword" className="input-label">
-                  <Lock className="label-icon" /> Nueva Contraseña
+              <div className="forgot-input-group">
+                <label htmlFor="newPassword" className="forgot-input-label">
+                  <Lock className="forgot-label-icon" /> Nueva Contraseña
                 </label>
                 <input
                   id="newPassword"
@@ -402,15 +395,15 @@ const handleResendCode = async () => {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Mínimo 8 caracteres"
-                  className="form-input"
+                  className="forgot-form-input"
                   disabled={isLoading}
                   autoComplete="new-password"
                 />
               </div>
 
-              <div className="input-group">
-                <label htmlFor="confirmPassword" className="input-label">
-                  <Lock className="label-icon" /> Confirmar Contraseña
+              <div className="forgot-input-group">
+                <label htmlFor="confirmPassword" className="forgot-input-label">
+                  <Lock className="forgot-label-icon" /> Confirmar Contraseña
                 </label>
                 <input
                   id="confirmPassword"
@@ -418,7 +411,7 @@ const handleResendCode = async () => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Repite la contraseña"
-                  className="form-input"
+                  className="forgot-form-input"
                   disabled={isLoading}
                   autoComplete="new-password"
                 />
@@ -426,18 +419,11 @@ const handleResendCode = async () => {
 
               {/* Indicador de fortaleza de contraseña */}
               {newPassword && (
-                <div style={{ marginBottom: '15px' }}>
-                  <div style={{ 
-                    fontSize: '12px', 
-                    color: newPassword.length >= 8 ? '#10b981' : '#ef4444',
-                    marginBottom: '5px'
-                  }}>
+                <div className="forgot-validation-list">
+                  <div className={`forgot-validation-item ${newPassword.length >= 8 ? 'valid' : 'invalid'}`}>
                     {newPassword.length >= 8 ? '✓' : '✗'} Mínimo 8 caracteres
                   </div>
-                  <div style={{ 
-                    fontSize: '12px', 
-                    color: newPassword === confirmPassword && confirmPassword ? '#10b981' : '#ef4444'
-                  }}>
+                  <div className={`forgot-validation-item ${newPassword === confirmPassword && confirmPassword ? 'valid' : 'invalid'}`}>
                     {newPassword === confirmPassword && confirmPassword ? '✓' : '✗'} Las contraseñas coinciden
                   </div>
                 </div>
@@ -445,7 +431,7 @@ const handleResendCode = async () => {
 
               <button
                 type="submit"
-                className="login-button"
+                className="forgot-login-button"
                 disabled={
                   isLoading || 
                   !newPassword.trim() || 
@@ -454,22 +440,24 @@ const handleResendCode = async () => {
                   newPassword !== confirmPassword
                 }
               >
-                {isLoading ? 'Guardando...' : 'Restablecer Contraseña'}
+                {isLoading ? (
+                  <div className="forgot-loading-content">
+                    <div className="forgot-loading-spinner"></div>
+                    <span>Guardando...</span>
+                  </div>
+                ) : (
+                  'Restablecer Contraseña'
+                )}
               </button>
 
-              <div className="form-links">
+              <div className="forgot-form-links">
                 <button
                   type="button"
                   onClick={handleGoBack}
-                  className="forgot-link"
-                  style={{ 
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer'
-                  }}
+                  className="forgot-secondary-button"
                   disabled={isLoading}
                 >
-                  <ArrowLeft className="inline-icon" /> Volver
+                  <ArrowLeft className="forgot-inline-icon" /> Volver
                 </button>
               </div>
             </form>
@@ -477,30 +465,10 @@ const handleResendCode = async () => {
         </div>
 
         {/* Indicador de progreso */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '10px',
-          marginTop: '20px'
-        }}>
-          <div style={{
-            width: '30px',
-            height: '4px',
-            borderRadius: '2px',
-            backgroundColor: step >= 1 ? '#2563eb' : '#e5e7eb'
-          }} />
-          <div style={{
-            width: '30px',
-            height: '4px',
-            borderRadius: '2px',
-            backgroundColor: step >= 2 ? '#2563eb' : '#e5e7eb'
-          }} />
-          <div style={{
-            width: '30px',
-            height: '4px',
-            borderRadius: '2px',
-            backgroundColor: step >= 3 ? '#2563eb' : '#e5e7eb'
-          }} />
+        <div className="forgot-progress-container">
+          <div className={`forgot-progress-step ${step >= 1 ? 'active' : ''}`} />
+          <div className={`forgot-progress-step ${step >= 2 ? 'active' : ''}`} />
+          <div className={`forgot-progress-step ${step >= 3 ? 'active' : ''}`} />
         </div>
       </div>
     </div>

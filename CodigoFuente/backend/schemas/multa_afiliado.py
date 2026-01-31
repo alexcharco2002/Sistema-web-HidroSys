@@ -30,7 +30,7 @@ class SectorInfo(BaseModel):
 
 class UsuarioAfiliadoInfo(BaseModel):
     """Info simplificada del afiliado para respuestas"""
-    cod_usuario_afi: int
+    cod_usuario_afi: str
     nombre_completo: str
     cedula: str
     id_sector: Optional[int] = None

@@ -499,3 +499,123 @@
     padding: 3rem 1.5rem;
   }
 }
+
+/* ============================================================================
+   WIDGETS - ESTILO LIMPIO CON BORDES DE COLOR
+   ============================================================================ */
+.home-widgets-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+/* ============================================================================
+   WIDGETS - ESTILO MINIMALISTA CON SOMBRA DE COLOR
+   ============================================================================ */
+.home-widget-clock,
+.home-widget-weather {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: var(--bg-white);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  border: 1px solid var(--border-color);
+}
+
+.home-widget-clock {
+  box-shadow: 0 4px 6px -1px rgba(30, 64, 175, 0.1), 0 2px 4px -1px rgba(30, 64, 175, 0.06);
+}
+
+.home-widget-clock:hover {
+  box-shadow: 0 10px 15px -3px rgba(30, 64, 175, 0.2), 0 4px 6px -2px rgba(30, 64, 175, 0.1);
+  transform: translateY(-2px);
+}
+
+.home-widget-weather {
+  box-shadow: 0 4px 6px -1px rgba(14, 165, 233, 0.1), 0 2px 4px -1px rgba(14, 165, 233, 0.06);
+}
+
+.home-widget-weather:hover {
+  box-shadow: 0 10px 15px -3px rgba(14, 165, 233, 0.2), 0 4px 6px -2px rgba(14, 165, 233, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Resto de estilos igual que la Opción 1 */
+
+
+.home-widget-icon {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 50%, var(--accent-color) 100%);
+  padding: 0.75rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.home-widget-content {
+  flex: 1;
+}
+
+.home-widget-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.home-widget-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
+.home-widget-details {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.home-widget-details span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--bg-gray-100);
+  color: var(--text-secondary);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+}
+
+.home-widget-loading,
+.home-widget-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.home-widget-loading .spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  .home-widgets-container {
+    grid-template-columns: 1fr;
+  }
+  .home-widget-value {
+    font-size: 1.5rem;
+  }
+}

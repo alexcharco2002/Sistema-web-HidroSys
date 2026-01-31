@@ -1,7 +1,7 @@
 # routes/affiliates.py
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from openpyxl import Workbook
-from openpyxl.styles import PatternFill, Font, Alignment
+from openpyxl.styles import PatternFill, Font, Alignment, Protection
 
 from sqlalchemy import String, cast
 
@@ -345,23 +345,41 @@ def crear_afiliado(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"El usuario '{user.nombres} {user.apellidos}' ya está afiliado"
         )
-    
-    # Generar código de afiliado (último código + 1)
-    ultimo_codigo = db.query(UsuarioAfiliado.cod_usuario_afi).order_by(
-        UsuarioAfiliado.cod_usuario_afi.desc()
-    ).first()
-    
-    nuevo_codigo = (ultimo_codigo[0] + 1) if ultimo_codigo else 1
-    
+
+    # ✅ VALIDAR SI EL USUARIO PROPORCIONÓ UN CÓDIGO O SE GENERA AUTOMÁTICAMENTE
+    if affiliate_data.cod_usuario_afi:
+        # Usuario proporcionó el código
+        codigo_afiliado = affiliate_data.cod_usuario_afi
+        
+        # Validar que el código no exista
+        codigo_existente = db.query(UsuarioAfiliado).filter(
+            UsuarioAfiliado.cod_usuario_afi == codigo_afiliado
+        ).first()
+        
+        if codigo_existente:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El código de afiliado '{codigo_afiliado}' ya está en uso"
+            )
+        
+        print(f"✅ Usando código personalizado: {codigo_afiliado}")
+    else:
+        # Generar automáticamente (último código + 1)
+        ultimo_codigo = db.query(UsuarioAfiliado.cod_usuario_afi).order_by(
+            UsuarioAfiliado.cod_usuario_afi.desc()
+        ).first()
+        codigo_afiliado = (ultimo_codigo[0] + 1) if ultimo_codigo else 1
+        print(f"✅ Generando código automático: {codigo_afiliado}")
+
     # Crear nuevo afiliado
     nuevo_afiliado = UsuarioAfiliado(
-        cod_usuario_afi=nuevo_codigo,
+        cod_usuario_afi=codigo_afiliado,  # ✅ Usar el código validado
         fecha_afiliacion=date.today(),
         id_sector=affiliate_data.id_sector,
         id_usuario_sistema=affiliate_data.id_usuario_sistema,
         activo=True
     )
-    
+
     try:
         db.add(nuevo_afiliado)
         db.commit()
@@ -371,19 +389,19 @@ def crear_afiliado(
         registrar_auditoria(
             db=db,
             accion="CREATE",
-            descripcion=f"Afiliado creado: {user.nombres} {user.apellidos} (Código: {nuevo_codigo}) en sector '{sector.nombre_sector}' por '{payload['sub']}'",
+            descripcion=f"Afiliado creado: {user.nombres} {user.apellidos} (Código: {codigo_afiliado}) en sector '{sector.nombre_sector}' por '{payload['sub']}'",  # ✅ Cambiar nuevo_codigo por codigo_afiliado
             id_usuario=current_user.id_usuario_sistema
         )
-        
+
         # Notificación
         registrar_notificacion(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
             titulo="Afiliado creado",
-            mensaje=f"El usuario '{user.nombres} {user.apellidos}' fue afiliado correctamente con código {nuevo_codigo}.",
+            mensaje=f"El usuario '{user.nombres} {user.apellidos}' fue afiliado correctamente con código {codigo_afiliado}.",  # ✅ Cambiar nuevo_codigo por codigo_afiliado
             tipo="exito"
         )
-        
+ 
         return affiliate_to_response(nuevo_afiliado, db)
     
     except IntegrityError as e:
@@ -445,6 +463,19 @@ def actualizar_afiliado(
                 detail="Sector no encontrado"
             )
     
+    # ✅ Si se cambia el código de afiliado, verificar que no exista
+    if affiliate_data.cod_usuario_afi and affiliate_data.cod_usuario_afi != affiliate.cod_usuario_afi:
+        codigo_existente = db.query(UsuarioAfiliado).filter(
+            UsuarioAfiliado.cod_usuario_afi == affiliate_data.cod_usuario_afi,
+            UsuarioAfiliado.id_usuario_afi != id_usuario_afi  # Excluir el afiliado actual
+        ).first()
+        
+        if codigo_existente:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El código de afiliado '{affiliate_data.cod_usuario_afi}' ya está en uso"
+            )
+        
     # Actualizar campos
     update_data = affiliate_data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -658,6 +689,8 @@ def obtener_estadisticas_afiliados(
         "inactivos": inactivos,
         "por_sector": [{"sector": s[0], "cantidad": s[1]} for s in por_sector]
     }
+
+
 # ========================================
 # DESCARGAR PLANTILLA EXCEL 
 # ========================================
@@ -671,6 +704,7 @@ def download_template(
     - Usuarios disponibles (no afiliados)
     - Sectores disponibles
     - Formato correcto para carga masiva
+    - VALIDACIÓN de lista desplegable para id_sector
     """
     current_user = get_current_user(payload, db)
     
@@ -686,7 +720,6 @@ def download_template(
             UsuarioSistema.activo == True,
             ~UsuarioSistema.id_usuario_sistema.in_(afiliados_ids) if afiliados_ids else True
         ).order_by(UsuarioSistema.nombres).all()
-
         
         # Obtener sectores
         sectores = db.query(Sector).filter(Sector.activo == True).all()
@@ -696,22 +729,23 @@ def download_template(
         # Crear libro de Excel
         wb = Workbook()
         
-       # ===============================
+        # ===============================
         # HOJA 1: PLANTILLA PARA LLENAR
         # ===============================
         ws_plantilla = wb.active
         ws_plantilla.title = "Plantilla Afiliados"
 
-        # Encabezados
+        # Encabezados actualizados
         headers = [
             "id_usuario_sistema",
             "nombres",
             "apellidos",
-            "id_sector",      # usuario llena
-            "num_medidor",    # usuario llena
-            "latitud",        # usuario llena
-            "longitud",       # usuario llena
-            "altitud"         # usuario llena
+            "cod_usuario_afi",
+            "id_sector",
+            "num_medidor",
+            "latitud",
+            "longitud",
+            "altitud"
         ]
 
         # Estilo encabezado
@@ -724,34 +758,51 @@ def download_template(
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.protection = Protection(locked=True)
 
         # ANCHOS DE COLUMNA
-        column_widths = [20, 25, 25, 15, 18, 15, 15, 15]
-        for col, width in zip("ABCDEFGH", column_widths):
+        column_widths = [20, 25, 25, 18, 15, 18, 15, 15, 15]
+        for col, width in zip("ABCDEFGHI", column_widths):
             ws_plantilla.column_dimensions[col].width = width
-
 
         # =======================================================
         # AGREGAR TODAS LAS FILAS AUTOMÁTICAMENTE (USUARIOS)
         # =======================================================
         for row_num, usuario in enumerate(usuarios_disponibles, 2):
-            ws_plantilla.cell(row=row_num, column=1, value=usuario.id_usuario_sistema)
-            ws_plantilla.cell(row=row_num, column=2, value=usuario.nombres)
-            ws_plantilla.cell(row=row_num, column=3, value=usuario.apellidos)
+            # COLUMNAS BLOQUEADAS (1-4)
+            cell = ws_plantilla.cell(row=row_num, column=1, value=usuario.id_usuario_sistema)
+            cell.protection = Protection(locked=True)
+            
+            cell = ws_plantilla.cell(row=row_num, column=2, value=usuario.nombres)
+            cell.protection = Protection(locked=True)
+            
+            cell = ws_plantilla.cell(row=row_num, column=3, value=usuario.apellidos)
+            cell.protection = Protection(locked=True)
+            
+            cell = ws_plantilla.cell(row=row_num, column=4, value="")  # cod_usuario_afi (opcional)
+            cell.protection = Protection(locked=False)
+            
+            # COLUMNAS DESBLOQUEADAS (5-9)
+            cell = ws_plantilla.cell(row=row_num, column=5, value="")
+            cell.protection = Protection(locked=False)
+            
+            cell = ws_plantilla.cell(row=row_num, column=6, value="")
+            cell.protection = Protection(locked=False)
+            
+            cell = ws_plantilla.cell(row=row_num, column=7, value="")
+            cell.protection = Protection(locked=False)
+            
+            cell = ws_plantilla.cell(row=row_num, column=8, value="")
+            cell.protection = Protection(locked=False)
+            
+            cell = ws_plantilla.cell(row=row_num, column=9, value="")
+            cell.protection = Protection(locked=False)
 
-            ws_plantilla.cell(row=row_num, column=4, value="")    # id_sector -> usuario llena
-            ws_plantilla.cell(row=row_num, column=5, value="")    # num_medidor
-            ws_plantilla.cell(row=row_num, column=6, value="")    # latitud
-            ws_plantilla.cell(row=row_num, column=7, value="")    # longitud
-            ws_plantilla.cell(row=row_num, column=8, value="")    # altitud
-
-                
         # ===============================
         # HOJA 2: USUARIOS DISPONIBLES
         # ===============================
         ws_usuarios = wb.create_sheet("Usuarios Disponibles")
         
-        # Encabezados
         headers_usuarios = ["id_usuario_sistema", "nombres", "apellidos", "cedula", "email"]
         
         for col_num, header in enumerate(headers_usuarios, 1):
@@ -761,7 +812,6 @@ def download_template(
             cell.font = Font(color="FFFFFF", bold=True)
             cell.alignment = Alignment(horizontal="center")
         
-        # Datos de usuarios
         if usuarios_disponibles:
             for row_num, usuario in enumerate(usuarios_disponibles, 2):
                 ws_usuarios.cell(row=row_num, column=1, value=usuario.id_usuario_sistema)
@@ -770,11 +820,9 @@ def download_template(
                 ws_usuarios.cell(row=row_num, column=4, value=usuario.cedula)
                 ws_usuarios.cell(row=row_num, column=5, value=usuario.email)
         else:
-            # Mensaje si no hay usuarios
             ws_usuarios.cell(row=2, column=1, value="No hay usuarios disponibles")
             ws_usuarios.merge_cells('A2:E2')
         
-        # Ajustar anchos
         ws_usuarios.column_dimensions['A'].width = 20
         ws_usuarios.column_dimensions['B'].width = 25
         ws_usuarios.column_dimensions['C'].width = 25
@@ -786,7 +834,6 @@ def download_template(
         # ===============================
         ws_sectores = wb.create_sheet("Sectores Disponibles")
         
-        # Encabezados
         headers_sectores = ["id_sector", "nombre_sector"]
         
         for col_num, header in enumerate(headers_sectores, 1):
@@ -796,7 +843,6 @@ def download_template(
             cell.font = Font(color="FFFFFF", bold=True)
             cell.alignment = Alignment(horizontal="center")
         
-        # Datos de sectores
         if sectores:
             for row_num, sector in enumerate(sectores, 2):
                 ws_sectores.cell(row=row_num, column=1, value=sector.id_sector)
@@ -805,9 +851,47 @@ def download_template(
             ws_sectores.cell(row=2, column=1, value="No hay sectores disponibles")
             ws_sectores.merge_cells('A2:B2')
         
-        # Ajustar anchos
         ws_sectores.column_dimensions['A'].width = 15
         ws_sectores.column_dimensions['B'].width = 30
+        
+        # ✅ ===============================================
+        # ✅ AGREGAR VALIDACIÓN DE LISTA DESPLEGABLE
+        # ✅ ===============================================
+        if sectores and usuarios_disponibles:
+            from openpyxl.worksheet.datavalidation import DataValidation
+            
+            # Crear referencia dinámica a la columna id_sector en hoja "Sectores Disponibles"
+            total_sectores = len(sectores)
+            
+            # Fórmula: ='Sectores Disponibles'!$A$2:$A$[última_fila]
+            formula_sectores = f"='Sectores Disponibles'!$A$2:$A${total_sectores + 1}"
+            
+            # Crear validación de datos
+            dv = DataValidation(
+                type="list",
+                formula1=formula_sectores,
+                allow_blank=False,  # ✅ Obligatorio seleccionar
+                showErrorMessage=True,
+                errorTitle="⚠️ Sector Inválido",
+                error="❌ Debe seleccionar un ID de sector válido de la lista desplegable. Consulte la hoja 'Sectores Disponibles'.",
+                showInputMessage=True,
+                promptTitle="🏘️ Seleccionar Sector",
+                prompt=f"Seleccione el ID del sector de la lista. Sectores disponibles: {', '.join([s.nombre_sector for s in sectores])}"
+            )
+            
+            # Aplicar validación a la columna E (id_sector) desde fila 2 hasta la última fila de usuarios
+            total_usuarios = len(usuarios_disponibles)
+            rango_validacion = f"E2:E{total_usuarios + 1}"
+            
+            dv.add(rango_validacion)
+            ws_plantilla.add_data_validation(dv)
+            
+            print(f"✅ Validación de lista agregada al rango {rango_validacion}")
+            print(f"✅ Fórmula de validación: {formula_sectores}")
+        
+        # ✅ ACTIVAR PROTECCIÓN DE LA HOJA
+        ws_plantilla.protection.sheet = True
+        ws_plantilla.protection.enable()
         
         # ===============================
         # HOJA 4: INSTRUCCIONES
@@ -818,30 +902,41 @@ def download_template(
             ["📋 INSTRUCCIONES PARA CARGA MASIVA DE AFILIADOS Y MEDIDORES"],
             [""],
             ["1️⃣ USO DE LA PLANTILLA:"],
-            ["   • Complete SOLO la hoja 'Plantilla Afiliados'"],
+            ["   • Complete SOLO las columnas editables: id_sector, num_medidor, latitud, longitud, altitud"],
+            ["   • Las columnas bloqueadas NO se pueden modificar: id_usuario_sistema, nombres, apellidos, cod_usuario_afi"],
             ["   • NO modifique las hojas 'Usuarios Disponibles' ni 'Sectores Disponibles'"],
-            ["   • Borre las filas de ejemplo antes de agregar sus datos"],
             [""],
-            ["2️⃣ COLUMNAS REQUERIDAS:"],
-            ["   • id_usuario_sistema: ID del usuario (consultar hoja 'Usuarios Disponibles')"],
-            ["   • id_sector: ID del sector (consultar hoja 'Sectores Disponibles')"],
-            ["   • num_medidor: Número único del medidor (ej: MED-001)"],
-            ["   • latitud: Coordenada (opcional, formato: -1.234567)"],
-            ["   • longitud: Coordenada (opcional, formato: -78.123456)"],
-            ["   • altitud: Altura en metros (opcional, formato: 2850.00)"],
+            ["2️⃣ COLUMNAS:"],
+            ["   • id_usuario_sistema: ID del usuario (🔒 BLOQUEADA)"],
+            ["   • nombres: Nombres del usuario (🔒 BLOQUEADA)"],
+            ["   • apellidos: Apellidos del usuario (🔒 BLOQUEADA)"],
+            ["   • cod_usuario_afi: Código de afiliado - Se genera automáticamente (🔓 EDITABLE - opcional)"],
+            ["   • id_sector: ✏️ ID del sector - ⭐ USE LA LISTA DESPLEGABLE ⭐ - OBLIGATORIO"],
+            ["   • num_medidor: ✏️ Número único del medidor (ej: MED-001) - EDITABLE"],
+            ["   • latitud: ✏️ Coordenada (opcional, formato: -1.234567) - EDITABLE"],
+            ["   • longitud: ✏️ Coordenada (opcional, formato: -78.123456) - EDITABLE"],
+            ["   • altitud: ✏️ Altura en metros (opcional, formato: 2850.00) - EDITABLE"],
             [""],
-            ["3️⃣ VALIDACIONES:"],
+            ["3️⃣ SELECCIONAR SECTOR (MUY IMPORTANTE):"],
+            ["   ⭐ HAGA CLIC en la celda de 'id_sector'"],
+            ["   ⭐ APARECERÁ una FLECHA de lista desplegable"],
+            ["   ⭐ SELECCIONE el ID del sector de la lista"],
+            ["   ⚠️ NO escriba manualmente - Use SOLO la lista desplegable"],
+            ["   ℹ️ Consulte la hoja 'Sectores Disponibles' para ver nombres de sectores"],
+            [""],
+            ["4️⃣ VALIDACIONES:"],
             ["   • El usuario NO debe estar ya afiliado"],
             ["   • El número de medidor debe ser único"],
+            ["   • El id_sector debe existir en la base de datos (validado automáticamente)"],
             ["   • Máximo 100 afiliados por carga"],
             [""],
-            ["4️⃣ PROCESO AUTOMÁTICO:"],
-            ["   • Se generará un código de afiliado único automáticamente"],
+            ["5️⃣ PROCESO AUTOMÁTICO:"],
+            ["   • Se generará un código de afiliado único automáticamente (cod_usuario_afi)"],
             ["   • Se creará el afiliado con fecha actual"],
             ["   • Se creará el medidor asociado al afiliado"],
             ["   • Estado por defecto: Activo"],
             [""],
-            ["5️⃣ DESPUÉS DE COMPLETAR:"],
+            ["6️⃣ DESPUÉS DE COMPLETAR:"],
             ["   • Guarde el archivo Excel"],
             ["   • Súbalo en el sistema usando el botón 'Crear desde Excel'"],
             ["   • El sistema validará y creará los registros"],
@@ -849,25 +944,27 @@ def download_template(
             [""],
             [f"📅 Plantilla generada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"],
             [f"👤 Usuario: {current_user.nombres} {current_user.apellidos}"],
+            [f"📊 Total usuarios disponibles: {len(usuarios_disponibles)}"],
+            [f"🏘️ Sectores disponibles: {', '.join([f'{s.id_sector}-{s.nombre_sector}' for s in sectores])}"],
         ]
         
         for row_num, fila in enumerate(instrucciones, 1):
             cell = ws_instrucciones.cell(row=row_num, column=1, value=fila[0])
             if row_num == 1:
                 cell.font = Font(size=14, bold=True, color="4472C4")
-            elif any(emoji in str(fila[0]) for emoji in ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]):
+            elif any(emoji in str(fila[0]) for emoji in ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"]):
                 cell.font = Font(size=12, bold=True)
+            elif "⭐" in str(fila[0]):
+                cell.font = Font(size=11, bold=True, color="FF6B00")
         
         ws_instrucciones.column_dimensions['A'].width = 80
         
         # ===============================
-        # GUARDAR Y RETORNAR - CORREGIDO
+        # GUARDAR Y RETORNAR
         # ===============================
         output = io.BytesIO()
         wb.save(output)
-        output.seek(0)  # ✅ Importante: volver al inicio del buffer
-        
-        # Obtener el contenido como bytes
+        output.seek(0)
         excel_data = output.getvalue()
         output.close()
         
@@ -877,17 +974,13 @@ def download_template(
         registrar_auditoria(
             db=db,
             accion="DOWNLOAD_TEMPLATE",
-            descripcion=f"Plantilla de afiliados descargada por '{current_user.usuario}'",
+            descripcion=f"Plantilla de afiliados descargada por '{current_user.usuario}' - {len(usuarios_disponibles)} usuarios disponibles",
             id_usuario=current_user.id_usuario_sistema
         )
         
-        # Nombre del archivo
         filename = f"plantilla_afiliados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        
-        # ✅ CREAR NUEVO BytesIO CON LOS DATOS
         final_output = io.BytesIO(excel_data)
         
-        # ✅ RETORNAR CON StreamingResponse
         return StreamingResponse(
             final_output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -905,7 +998,8 @@ def download_template(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al generar la plantilla: {str(e)}"
         )
-    
+
+
 # ========================================
 # CREAR AFILIADOS MASIVAMENTE DESDE EXCEL
 # ========================================
@@ -952,7 +1046,29 @@ def create_affiliates_bulk(
         UsuarioAfiliado.cod_usuario_afi.desc()
     ).first()
     
-    siguiente_codigo = (ultimo_afiliado.cod_usuario_afi + 1) if ultimo_afiliado else 1
+    # ✅ =======================================================
+    # ✅ OBTENER EL ÚLTIMO CÓDIGO NUMÉRICO PARA GENERACIÓN
+    # ✅ =======================================================
+    # Obtener todos los códigos que sean numéricos
+    codigos_numericos = db.query(UsuarioAfiliado.cod_usuario_afi).all()
+
+    # Filtrar solo los que sean números válidos
+    codigos_validos = []
+    for codigo_tuple in codigos_numericos:
+        codigo = str(codigo_tuple[0])
+        if codigo.isdigit():
+            codigos_validos.append(int(codigo))
+
+    # Obtener el máximo código numérico
+    if codigos_validos:
+        siguiente_codigo = max(codigos_validos) + 1
+        print(f"📊 Último código numérico en BD: {max(codigos_validos)}")
+    else:
+        siguiente_codigo = 1
+        print(f"📊 No hay códigos numéricos previos, iniciando en: 1")
+
+    print(f"📊 Siguiente código para generación automática: {siguiente_codigo}")
+
     
     # ===============================
     # 🔄 Procesar cada afiliado
@@ -1000,21 +1116,62 @@ def create_affiliates_bulk(
             if medidor_existente:
                 raise ValueError(f"El medidor '{affiliate_data.num_medidor}' ya existe")
             
-            # ===============================
+           # ===============================
             # 4️⃣ Crear afiliado
             # ===============================
+
+            # ✅ VALIDAR SI EL USUARIO PROPORCIONÓ UN CÓDIGO O SE GENERA AUTOMÁTICAMENTE
+            if affiliate_data.cod_usuario_afi:
+                # Usuario proporcionó el código
+                codigo_afiliado = affiliate_data.cod_usuario_afi
+                
+                # Validar que el código no exista
+                codigo_existente = db.query(UsuarioAfiliado).filter(
+                    UsuarioAfiliado.cod_usuario_afi == codigo_afiliado
+                ).first()
+                
+                if codigo_existente:
+                    raise ValueError(f"El código de afiliado '{codigo_afiliado}' ya existe")
+            else:
+                # Generar automáticamente
+                codigo_afiliado = siguiente_codigo
+           
+            # ✅ ============================================
+            # ✅ VALIDAR SI EL EXCEL ENVIÓ UN CÓDIGO
+            # ✅ ============================================
+            if hasattr(affiliate_data, 'cod_usuario_afi') and affiliate_data.cod_usuario_afi:
+                # Usuario proporcionó código en el Excel
+                codigo_afiliado = str(affiliate_data.cod_usuario_afi).strip().upper()
+                
+                # Validar que no exista
+                codigo_existente = db.query(UsuarioAfiliado).filter(
+                    UsuarioAfiliado.cod_usuario_afi == codigo_afiliado
+                ).first()
+                
+                if codigo_existente:
+                    raise ValueError(f"El código de afiliado '{codigo_afiliado}' ya existe")
+                
+                print(f"✅ Usando código personalizado del Excel: {codigo_afiliado}")
+            else:
+                # Generar automáticamente (convertir a string para VARCHAR)
+                codigo_afiliado = str(siguiente_codigo)
+                siguiente_codigo = siguiente_codigo + 1
+                print(f"✅ Generando código automático: {codigo_afiliado}")
+
+
             nuevo_afiliado = UsuarioAfiliado(
                 id_usuario_sistema=affiliate_data.id_usuario_sistema,
                 id_sector=affiliate_data.id_sector,
-                cod_usuario_afi=siguiente_codigo,
+                cod_usuario_afi=codigo_afiliado,  # ✅ Usar el código validado
                 fecha_afiliacion=date.today(),
                 activo=True
             )
-            
+
+
             db.add(nuevo_afiliado)
-            db.flush()  # Obtener el ID generado
-            
-            print(f"   ✅ Afiliado creado: cod={siguiente_codigo}, id={nuevo_afiliado.id_usuario_afi}")
+            db.flush()
+            print(f" ✅ Afiliado creado: cod={codigo_afiliado}, id={nuevo_afiliado.id_usuario_afi}")
+
             
             # ===============================
             # 5️⃣ Crear medidor asociado
@@ -1037,7 +1194,7 @@ def create_affiliates_bulk(
             # Agregar a exitosos
             exitosos.append(AffiliateBulkResult(
                 fila=fila_numero,
-                cod_usuario_afi=siguiente_codigo,
+                cod_usuario_afi=codigo_afiliado,  # ✅ CORRECTO - usa el código asignado
                 nombre_usuario=f"{usuario.nombres} {usuario.apellidos}",
                 cedula=usuario.cedula,
                 sector=sector.nombre_sector,
@@ -1045,9 +1202,6 @@ def create_affiliates_bulk(
                 id_usuario_afi=nuevo_afiliado.id_usuario_afi,
                 id_medidor=nuevo_medidor.id_medidor
             ))
-            
-            # Incrementar código para el siguiente
-            siguiente_codigo += 1
             
         except ValueError as ve:
             print(f"   ❌ Error de validación: {str(ve)}")

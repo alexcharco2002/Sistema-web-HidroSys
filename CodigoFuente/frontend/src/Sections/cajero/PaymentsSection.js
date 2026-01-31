@@ -700,86 +700,6 @@ const closePagoMultipleModal = () => {
   // ============================================================
   // FUNCIONES DE ABRIR MODAL DE PAGO
   // ============================================================
-  const openCreateModal = async (factura = null) => {
-    if (!permissions.canCreate) {
-      alert('❌ No tienes permiso para registrar pagos');
-      return;
-    }
-
-    // Si se proporciona una factura, cargar su información
-    if (factura) {
-      console.log('🔍 Abriendo modal de pago para factura:', factura.id_factura);
-      
-      setSelectedFactura(factura);
-      setNuevoPago({
-        id_factura: factura.id_factura,
-        monto_pago: '',
-        metodo_pago: 'EFECTIVO',
-        id_usuario_afi: factura.usuario_afiliado?.id_usuario_afi,
-        observaciones: ''
-      });
-
-      // 🔹 CARGAR RESUMEN DE PAGO ACTUALIZADO
-      setLoadingResumen(true);
-      try {
-        const resumen = await paymentsServices.calcularResumenPago(factura.id_factura);
-        
-        if (resumen.success) {
-          setResumenPago(resumen.data);
-          console.log('✅ Resumen de pago cargado:', resumen.data);
-          
-          // 🔹 INICIALIZAR CHECKBOXES SEGÚN LO QUE ESTÉ PENDIENTE
-          const consumoTotal = getSafeValue(resumen.data.totales?.opcion_sin_multas?.total_final, 0) - 
-                              (getSafeValue(resumen.data.mora?.monto, 0));
-          const tieneConsumosPendientes = consumoTotal > 0;
-          const tieneMultasPendientes = resumen.data.multas?.tiene_multas && resumen.data.multas?.cantidad > 0;
-          const tieneMoraPendiente = resumen.data.mora?.aplica && resumen.data.mora?.monto > 0;
-          
-          setItemsAPagar({
-            consumos: tieneConsumosPendientes,
-            multas: tieneMultasPendientes,
-            mora: tieneMoraPendiente
-          });
-          
-          console.log('📋 Items pendientes:', {
-            consumos: tieneConsumosPendientes,
-            multas: tieneMultasPendientes,
-            mora: tieneMoraPendiente,
-            consumoTotal: consumoTotal
-          });
-        } else {
-          console.error('❌ Error al cargar resumen:', resumen.message);
-          setResumenPago(null);
-          setItemsAPagar({ consumos: false, multas: false, mora: false });
-          alert('⚠️ No se pudo cargar el resumen de pago. Intente nuevamente.');
-          return; // No abrir el modal si falla
-        }
-      } catch (error) {
-        console.error('❌ Error al calcular resumen:', error);
-        setResumenPago(null);
-        setItemsAPagar({ consumos: false, multas: false, mora: false });
-        alert('⚠️ Error al calcular el resumen de pago.');
-        return; // No abrir el modal si falla
-      } finally {
-        setLoadingResumen(false);
-      }
-    } else {
-      // Modo sin factura preseleccionada (crear pago manual)
-      console.log('🆕 Abriendo modal de pago sin factura');
-      setSelectedFactura(null);
-      setNuevoPago({
-        id_factura: '',
-        id_usuario_afi: '',
-        monto_pago: '',
-        metodo_pago: 'EFECTIVO',
-        observaciones: ''
-      });
-      setResumenPago(null);
-      setItemsAPagar({ consumos: false, multas: false, mora: false });
-    }
-
-    setShowCreateModal(true);
-  };
 
   /**
   * Función para abrir modal de pago CON factura específica
@@ -1803,13 +1723,6 @@ const closePagoMultipleModal = () => {
                 </div>
               </div>
             </div>
-
-            {permissions.canCreate && (
-              <button className="btn-primary" onClick={openCreateModal}>
-                <Plus className="w-4 h-4 mr-2" />
-                Registrar Pago
-              </button>
-            )}
           </div>
 
           {/* ESTADÍSTICAS DEL PERIODO */}
@@ -2303,6 +2216,8 @@ const closePagoMultipleModal = () => {
                   <FileText className="w-4 h-4" />
                   Información de la Factura
                 </h4>
+                <br/> 
+
                 <div className="user-details">
                   <div className="detail-group">
                     <label>Número de Factura</label>
@@ -2329,10 +2244,12 @@ const closePagoMultipleModal = () => {
               {/* SECCIÓN DE AFILIADO */}
               {selectedPago.usuario_afiliado && (
                 <div className="factura-section">
+                <br/> 
                   <h4 className="section-title">
                     <User className="w-4 h-4" />
                     Datos del Afiliado
                   </h4>
+                   <br/> 
                   <div className="user-details">
                     <div className="detail-group form-group-full">
                       <label>Nombre Afiliado:</label>
@@ -2365,16 +2282,17 @@ const closePagoMultipleModal = () => {
                     )}
                     {selectedPago.usuario_afiliado.sector && (
                       <div className="detail-group form-group-full">
-                        <label>Sector</label>
+                        <label>Sector:</label>
                         <p>{selectedPago.usuario_afiliado.sector.nombre_sector}</p>
                       </div>
                     )}
                   </div>
+                   <br/> 
                   <h4 className="section-title">
                     <FileText className="w-4 h-4" />
                     Conceptos de Facturación
                   </h4>
-
+                  <br/> 
                 </div>
               )}
 

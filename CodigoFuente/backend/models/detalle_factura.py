@@ -58,7 +58,11 @@ class DetalleFactura(Base):
     # Valores
     subtotal_detalle = Column(Numeric(10, 2), nullable=False)
     descripcion = Column(Text, nullable=True)
-    
+    id_asignacion_sp = Column(
+        Integer,
+        ForeignKey('facturacion.t_asignacion_servicio_permanente.id_asignacion_sp'),
+        nullable=True
+    )
     # Relaciones
     factura = relationship(
         "Factura",
@@ -76,6 +80,7 @@ class DetalleFactura(Base):
             'tipo_detalle': self.tipo_detalle,
             'id_servicio': self.id_servicio,
             'id_multa_afiliados': self.id_multa_afiliados,
+            'id_asignacion_sp': self.id_asignacion_sp,
             'subtotal_detalle': float(self.subtotal_detalle) if self.subtotal_detalle else 0.0,
             'descripcion': self.descripcion
         }

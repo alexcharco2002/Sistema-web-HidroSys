@@ -111,7 +111,7 @@ class FacturaInfo(BaseModel):
 class UsuarioAfiliadoInfo(BaseModel):
     """Información básica del usuario afiliado"""
     id_usuario_afi: int
-    cod_usuario_afi: int
+    cod_usuario_afi: str
     usuario_sistema: Optional[UsuarioSistemaInfo] = None
     
     class Config:

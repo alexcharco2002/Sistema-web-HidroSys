@@ -485,12 +485,12 @@ const renderClasificacionBadge = (clasificacion) => {
 
   if (loading) {
     return (
-      <div className="users-section">
-        <div className="empty-state">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p>Cargando tu historial de consumos...</p>
+      <div className="affiliates-section">
+          <div className="empty-state">
+            <RefreshCw className="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin" />
+            <h3> Espere mientras cargamos su historial de consumos...</h3>
+          </div>
         </div>
-      </div>
     );
   }
 

@@ -4,7 +4,7 @@
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List
 from datetime import date
-
+import re
 class AffiliateBase(BaseModel):
     """Schema base para afiliados"""
     id_sector: int = Field(..., description="ID del sector")
@@ -43,7 +43,7 @@ class MeterInfoSimple(BaseModel):
 class AffiliateWithUserInfo(BaseModel):
     """Schema completo con información del usuario y sector"""
     id_usuario_afi: int
-    cod_usuario_afi: int
+    cod_usuario_afi: str
     fecha_afiliacion: Optional[date]
     id_sector: int
     id_usuario_sistema: int
@@ -59,21 +59,57 @@ class AffiliateCreate(BaseModel):
     id_usuario_sistema: int
     id_sector: int
     fecha_afiliacion: Optional[date] = None
-    cod_usuario_afi: Optional[int] = None  # ✅ Hacerlo opcional
+    cod_usuario_afi: Optional[str] = None  # ✅ Hacerlo opcional
     activo: bool = True
 
+    @validator('cod_usuario_afi')
+    def validate_cod_usuario_afi(cls, v):
+        """Valida el código de afiliado si el usuario lo proporciona"""
+        if v is not None:
+             # Convertir a string y limpiar espacios
+            v = str(v).strip().upper()
+                
+            # Si está vacío después de limpiar, retornar None
+            if not v:
+                return None
+                
+            # Verificar longitud máxima de 6 caracteres
+            if len(v) > 6:
+                raise ValueError('El código de afiliado no puede tener más de 6 caracteres')
+                
+            # Verificar que solo contenga letras y números
+            if not re.match(r'^[A-Z0-9]+$', v):
+                raise ValueError('El código de afiliado solo puede contener letras y números')
+                
+            return v
+        return None
 
 class AffiliateUpdate(BaseModel):
     """Schema para actualizar afiliado"""
     id_sector: Optional[int] = None
     fecha_afiliacion: Optional[date] = None
+    cod_usuario_afi: Optional[str] = None  # ✅ Agregar este campo
     activo: Optional[bool] = None
+
+    @validator('cod_usuario_afi')
+    def validate_cod_usuario_afi(cls, v):
+        """Valida el código de afiliado si el usuario lo proporciona"""
+        if v is not None:
+            v = str(v).strip().upper()
+            if not v:
+                return None
+            if len(v) > 6:
+                raise ValueError('El código de afiliado no puede tener más de 6 caracteres')
+            if not re.match(r'^[A-Z0-9]+$', v):
+                raise ValueError('El código de afiliado solo puede contener letras y números')
+            return v
+        return None
 
 
 class AffiliateResponse(BaseModel):
     """Schema de respuesta de afiliado"""
     id_usuario_afi: int
-    cod_usuario_afi: int
+    cod_usuario_afi: str
     fecha_afiliacion: Optional[date] = None
     activo: bool
     id_sector: int
@@ -90,6 +126,7 @@ class AffiliateBulkCreate(BaseModel):
     """Schema para crear afiliado desde Excel"""
     id_usuario_sistema: int
     id_sector: int
+    cod_usuario_afi: Optional[str] = None # ✅ Hacerlo opcional
     num_medidor: str
     latitud: Optional[float] = None
     longitud: Optional[float] = None
@@ -110,6 +147,28 @@ class AffiliateBulkCreate(BaseModel):
             raise ValueError('El número de medidor es demasiado largo')
         return v
     
+    @validator('cod_usuario_afi')
+    def validate_cod_usuario_afi(cls, v):
+        """Valida el código de afiliado si el usuario lo proporciona"""
+        if v is not None:
+            # Convertir a string y limpiar espacios
+            v = str(v).strip()
+            
+            # Verificar que no esté vacío después de limpiar
+            if not v:
+                return None
+            
+            # Verificar longitud máxima de 6 caracteres
+            if len(v) > 6:
+                raise ValueError('El código de afiliado no puede tener más de 6 caracteres')
+            
+            # Verificar que solo contenga letras y números (sin caracteres especiales)
+            if not re.match(r'^[A-Za-z0-9]+$', v):
+                raise ValueError('El código de afiliado solo puede contener letras y números')
+            
+            return v
+        return None
+    
     @validator('latitud')
     def validate_latitud(cls, v):
         if v is not None:
@@ -129,6 +188,7 @@ class AffiliateBulkCreate(BaseModel):
             "example": {
                 "id_usuario_sistema": 5,
                 "id_sector": 1,
+                "cod_usuario_afi": None,
                 "num_medidor": "MED-001",
                 "latitud": -1.234567,
                 "longitud": -78.123456,
@@ -145,15 +205,15 @@ class AffiliateBulkCreateRequest(BaseModel):
     def validate_affiliates_list(cls, v):
         if not v or len(v) == 0:
             raise ValueError('La lista de afiliados no puede estar vacía')
-        if len(v) > 100:
-            raise ValueError('Máximo 100 afiliados por carga')
+        if len(v) > 500:
+            raise ValueError('Máximo 500 afiliados por carga')
         return v
 
 
 class AffiliateBulkResult(BaseModel):
     """Resultado de un afiliado creado en masa"""
     fila: int
-    cod_usuario_afi: int
+    cod_usuario_afi: str
     nombre_usuario: str
     cedula: str
     sector: str

@@ -96,32 +96,38 @@ const AffiliatesSection = () => {
       return;
     }
 
-    // ✅ FILTRAR: Solo filas válidas
-    const afiliadosValidos = excelPreview.filter(a => {
-      const camposObligatorios =
-        a.id_usuario_sistema &&
-        a.nombres &&
-        a.apellidos &&
-        a.id_sector;
+// ✅ FILTRAR: Solo filas válidas
+const afiliadosValidos = excelPreview.filter((a) => {
+  // Validar campos obligatorios
+  const camposObligatorios = a.id_usuario_sistema && a.nombres && a.apellidos && a.id_sector;
+  
+  // ✅ Validación código de afiliado OPCIONAL pero si existe debe ser válido
+  let codigoValido = true;
+  if (a.cod_usuario_afi) {
+    const codigo = String(a.cod_usuario_afi).trim().toUpperCase();
+    if (codigo !== '') {
+      // Verificar longitud
+      if (codigo.length > 6) {
+        codigoValido = false;
+      }
+      // Verificar caracteres (solo letras y números)
+      if (!/^[A-Z0-9]+$/.test(codigo)) {
+        codigoValido = false;
+      }
+    }
+  }
+  
+  // Validar medidor
+  const medidorTieneMinLongitud = a.num_medidor && String(a.num_medidor).trim().length >= 3;
+  const medidorSoloAlfanumerico = /^[A-Za-z0-9]+$/.test(String(a.num_medidor).trim());
+  const medidorDuplicado = excelPreview.filter(x => 
+    String(x.num_medidor).trim() === String(a.num_medidor).trim()
+  ).length > 1;
+  const esMedidorValido = a.num_medidor && medidorTieneMinLongitud && medidorSoloAlfanumerico && !medidorDuplicado;
 
-      const medidorTieneMinLongitud =
-        a.num_medidor &&
-        String(a.num_medidor).trim().length >= 3;
+  return camposObligatorios && esMedidorValido && codigoValido;
+});
 
-      const medidorSoloAlfanumerico =
-        /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
-
-      const medidorDuplicado =
-        excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
-
-      const esMedidorValido =
-        a.num_medidor &&
-        medidorTieneMinLongitud &&
-        medidorSoloAlfanumerico &&
-        !medidorDuplicado;
-
-      return camposObligatorios && esMedidorValido;
-    });
 
     if (afiliadosValidos.length === 0) {
       setError("No hay afiliados válidos para importar");
@@ -218,6 +224,7 @@ const AffiliatesSection = () => {
   const [formData, setFormData] = useState({
     id_usuario_sistema: null,
     id_sector: null,
+    cod_usuario_afi: '',
     activo: true
   });
 
@@ -496,6 +503,7 @@ const AffiliatesSection = () => {
     } else if (type === 'edit' && affiliate) {
       setFormData({
         id_sector: affiliate.id_sector,
+        cod_usuario_afi: affiliate.cod_usuario_afi || '',
         activo: affiliate.activo
       });
     } else if (type === 'assignMeter' && affiliate) {
@@ -552,6 +560,22 @@ const AffiliatesSection = () => {
         if (!formData.id_sector) {
           setError('Debe seleccionar un sector');
           return;
+        }
+
+        // ✅ Validar código de afiliado si fue proporcionado
+        if (formData.cod_usuario_afi && formData.cod_usuario_afi.trim() !== '') {
+          const codigo = formData.cod_usuario_afi.trim().toUpperCase();
+          
+          // Validar formato
+          if (codigo.length > 6) {
+            setError('El código de afiliado no puede tener más de 6 caracteres');
+            return;
+          }
+          
+          if (!/^[A-Z0-9]+$/.test(codigo)) {
+            setError('El código de afiliado solo puede contener letras y números');
+            return;
+          }
         }
 
         if (createWithMeter) {
@@ -754,7 +778,8 @@ const AffiliatesSection = () => {
       </div>
     );
   }
-
+ 
+  // ==================== RENDER PRINCIPAL ====================
   return (
     <div className="affiliates-section">
       {/* ==================== ENCABEZADO ==================== */}
@@ -1234,6 +1259,7 @@ const AffiliatesSection = () => {
                                 <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>ID Usuario</th>
                                 <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Nombres</th>
                                 <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Apellidos</th>
+                                <th style={{padding: '10px 8px', textAlign: 'left', fontWeight: '600'}}>Cód. Afiliado</th> {/* ✅ NUEVA COLUMNA */}
                                 <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>ID Sector</th>
                                 <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Medidor</th>
                                 <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600' }}>Lat</th>
@@ -1251,6 +1277,12 @@ const AffiliatesSection = () => {
                                   a.nombres &&
                                   a.apellidos &&
                                   a.id_sector;
+                                
+                                // Validación código de afiliado (OPCIONAL)
+                                const codigoValido = !a.cod_usuario_afi || (
+                                  String(a.cod_usuario_afi).trim().length <= 6 &&
+                                  /^[A-Za-z0-9]+$/.test(String(a.cod_usuario_afi).trim())
+                                );
 
                                 // 🟩 Validación longitud mínima
                                 const medidorTieneMinLongitud =
@@ -1298,6 +1330,19 @@ const AffiliatesSection = () => {
                                     {/* apellidos */}
                                     <td style={{ padding: '8px' }}>
                                       {a.apellidos || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
+                                    </td>
+
+                                    {/* cod_usuario_afi */}
+                                    <td style={{padding: '8px'}}>
+                                      {!a.cod_usuario_afi ? (
+                                        <span style={{color: '#10b981'}}>AUTO</span>
+                                      ) : !codigoValido ? (
+                                        <span style={{color: '#ef4444'}}>
+                                          {String(a.cod_usuario_afi).trim().length > 6 ? '❌ >6 caracteres' : '❌ Caracteres inválidos'}
+                                        </span>
+                                      ) : (
+                                        <span style={{color: '#10b981'}}>{String(a.cod_usuario_afi).trim().toUpperCase()}</span>
+                                      )}
                                     </td>
 
                                     {/* id_sector */}
@@ -1545,6 +1590,30 @@ const AffiliatesSection = () => {
                     </small>
                   </div>
 
+                  {/* CAMPO: Código de Afiliado */}
+                  <div className="form-group form-group-full">
+                    <label>Código de Afiliado (opcional)</label>
+                    <input
+                      type="text"
+                      value={formData.cod_usuario_afi || ''}
+                      onChange={(e) => {
+                        const value = e.target.value.trim().toUpperCase();
+                        // Validar: máximo 6 caracteres alfanuméricos
+                        if (value === '' || /^[A-Z0-9]{1,6}$/.test(value)) {
+                          setFormData({
+                            ...formData,
+                            cod_usuario_afi: value
+                          });
+                        }
+                      }}
+                      placeholder="Ej: AFI001 o 12345"
+                      maxLength={6}
+                    />
+                    <small className="text-gray-500 mt-1">
+                      Déjalo vacío para generar automáticamente. Máximo 6 caracteres (letras y números).
+                    </small>
+                  </div>
+
                   {/* Seleccionar Sector */}
                   <div className="form-group form-group-full">
                     <label>Sector *</label>
@@ -1662,6 +1731,7 @@ const AffiliatesSection = () => {
 
                   <div className="form-actions">
                     <button type="button" className="btn-secondary" onClick={closeModal}>
+                      <X className="w-4 h-4 mr-2" />
                       Cancelar
                     </button>
                     <button type="submit" className="btn-primary">
@@ -1676,6 +1746,30 @@ const AffiliatesSection = () => {
               {modalType === 'edit' && (
                 <form onSubmit={handleSubmit} className="user-form">
                   <div className="form-grid">
+                    {/* ✅ NUEVO CAMPO: Código de Afiliado */}
+                    <div className="form-group form-group-full">
+                      <label>Código de Afiliado</label>
+                      <input
+                        type="text"
+                        value={formData.cod_usuario_afi || ''}
+                        onChange={(e) => {
+                          const value = e.target.value.trim().toUpperCase();
+                          // Validar: máximo 6 caracteres alfanuméricos
+                          if (value === '' || /^[A-Z0-9]{1,6}$/.test(value)) {
+                            setFormData({
+                              ...formData,
+                              cod_usuario_afi: value
+                            });
+                          }
+                        }}
+                        placeholder="Ej: AFI001 o 12345"
+                        maxLength={6}
+                      />
+                      <small className="text-gray-500 mt-1">
+                        Máximo 6 caracteres (letras y números). Déjalo vacío para mantener el actual.
+                      </small>
+                    </div>
+
                     <div className="form-group form-group-full">
                       <label>Sector *</label>
                       <select
@@ -1706,6 +1800,7 @@ const AffiliatesSection = () => {
 
                   <div className="form-actions">
                     <button type="button" className="btn-secondary" onClick={closeModal}>
+                      <X className="w-4 h-4 mr-2" />
                       Cancelar
                     </button>
                     <button type="submit" className="btn-primary">
@@ -1837,7 +1932,8 @@ const AffiliatesSection = () => {
 
                       <div className="form-actions">
                         <button type="button" className="btn-secondary" onClick={closeModal}>
-                          Cancelar
+                          <X className="w-4 h-4 mr-2" />
+                      Cancelar
                         </button>
                         <button type="submit" className="btn-primary">
                           <Gauge className="w-4 h-4 mr-2" />

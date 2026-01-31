@@ -101,8 +101,8 @@ class UserCreate(BaseModel):
         
         if age < 0:
             raise ValueError('La fecha de nacimiento no puede ser futura')
-        if age < 10:
-            raise ValueError('El usuario debe tener al menos 10 años')
+        if age < 2:
+            raise ValueError('El usuario debe tener al menos 2 años')
         if age > 120:
             raise ValueError('La fecha de nacimiento no es válida')
         

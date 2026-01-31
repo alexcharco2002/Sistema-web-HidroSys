@@ -881,6 +881,7 @@ const ServiciosSection = () => {
 
                   <div className="form-actions">
                     <button type="button" className="btn-secondary" onClick={closeModal}>
+                      <X className="w-4 h-4 mr-2" />
                       Cancelar
                     </button>
                     <button type="submit" className="btn-primary">
@@ -944,6 +945,7 @@ const ServiciosSection = () => {
                     setNuevoPrecio('');
                   }}
                 >
+                  <X className="w-4 h-4 mr-2" />
                   Cancelar
                 </button>
                 <button 

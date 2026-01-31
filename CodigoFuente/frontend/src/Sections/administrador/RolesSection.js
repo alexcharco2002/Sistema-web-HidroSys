@@ -10,7 +10,7 @@ import './RolesSection.css';
 import rolesService from '../../services/rolesServices';
 import authService from '../../services/authServices'; // 🔑 Importar authService
 
-import { isPermanentPermission, getPermanentPermissionsForRole } from '../../utils/permanentPermissions';  // 🔑 Importar utilidades de permisos permanentes
+import { isPermanentPermission } from '../../utils/permanentPermissions';  // 🔑 Importar utilidades de permisos permanentes
 import {
   ShieldCheck, Plus, Search, Edit,
   Trash2,
@@ -24,7 +24,7 @@ import {
   CheckCircle,
   XCircle,
   Settings,
-  Calendar,
+  Calendar
 } from 'lucide-react';
 
 // ============================================
@@ -749,8 +749,19 @@ const RolesSection = () => {
                   
                   <div className="role-item-footer">
                     <span className={`status-badge ${role.activo ? 'active' : 'inactive'}`}>
-                      {role.activo ? 'Activo' : 'Inactivo'}
+                      {role.activo ? (
+                        <>
+                          <CheckCircle className="w-3 h-3" />
+                          Activo
+                        </>
+                      ) : (
+                        <>
+                          <X className="w-3 h-3" />
+                          Inactivo
+                        </>
+                      )}
                     </span>
+
                     {role.fecha_creacion && (
                       <span className="date-badge">
                         <Calendar className="w-3 h-3" />
@@ -758,6 +769,8 @@ const RolesSection = () => {
                       </span>
                     )}
                   </div>
+
+
                 </div>
               ))}
             </div>
@@ -969,6 +982,7 @@ const RolesSection = () => {
 
                   <div className="form-actions">
                     <button type="button" className="btn-secondary" onClick={closeModal}>
+                      <X className="w-4 h-4 mr-2" />
                       Cancelar
                     </button>
                     <button type="submit" className="btn-primary">
@@ -1040,6 +1054,7 @@ const RolesSection = () => {
 
                   <div className="form-actions">
                     <button type="button" className="btn-secondary" onClick={closeModal}>
+                      <X className="w-4 h-4 mr-2" />
                       Cancelar
                     </button>
                     <button type="submit" className="btn-primary">

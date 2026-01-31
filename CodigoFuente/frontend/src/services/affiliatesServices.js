@@ -232,13 +232,17 @@ class AffiliatesService {
         });
         throw new Error('Los IDs deben ser números válidos');
       }
-
       const payload = {
         id_usuario_sistema: idUsuarioSistema,
         id_sector: idSector,
         activo: affiliateData.activo !== undefined ? affiliateData.activo : true
       };
 
+      // ✅ AGREGAR código de afiliado si fue proporcionado
+      if (affiliateData.cod_usuario_afi && affiliateData.cod_usuario_afi.trim() !== '') {
+        payload.cod_usuario_afi = affiliateData.cod_usuario_afi.trim().toUpperCase();
+      }
+    
       console.log('📤 Payload final:', payload);
 
       // ✅ CORRECCIÓN: pasar como objeto options
@@ -278,7 +282,9 @@ class AffiliatesService {
       
       if (affiliateData.id_sector) updateData.id_sector = affiliateData.id_sector;
       if (affiliateData.activo !== undefined) updateData.activo = affiliateData.activo;
-
+      if (affiliateData.cod_usuario_afi && affiliateData.cod_usuario_afi.trim() !== '') {
+        updateData.cod_usuario_afi = affiliateData.cod_usuario_afi.trim().toUpperCase();
+      }
       const data = await this.makeRequest(`${API_CONFIG.endpoints.affiliates}/${affiliateId}`, {
         method: 'PUT',
         body: updateData
@@ -636,14 +642,14 @@ downloadBlobFallback(blob, filename) {
           message: 'Máximo 500 afiliados por carga. Actualmente: ' + affiliatesArray.length
         };
       }
-
+      
       // Validar estructura básica
       const afiliadosValidados = affiliatesArray.map((aff, index) => {
         if (!aff.id_usuario_sistema || !aff.id_sector || !aff.num_medidor) {
           throw new Error(`Fila ${index + 1}: Faltan campos obligatorios`);
         }
 
-        return {
+        const afiliado = {
           id_usuario_sistema: parseInt(aff.id_usuario_sistema),
           id_sector: parseInt(aff.id_sector),
           num_medidor: String(aff.num_medidor).trim(),
@@ -651,6 +657,26 @@ downloadBlobFallback(blob, filename) {
           longitud: aff.longitud ? parseFloat(aff.longitud) : null,
           altitud: aff.altitud ? parseFloat(aff.altitud) : null
         };
+
+        // ✅ AGREGAR código de afiliado si existe (sin validación duplicada)
+        if (aff.cod_usuario_afi) {
+          const codigo = String(aff.cod_usuario_afi).trim().toUpperCase();
+          
+          if (codigo !== '') {
+            // Validar formato
+            if (codigo.length > 6) {
+              throw new Error(`Fila ${index + 1}: Código de afiliado no puede tener más de 6 caracteres`);
+            }
+            
+            if (!/^[A-Z0-9]+$/.test(codigo)) {
+              throw new Error(`Fila ${index + 1}: Código de afiliado solo puede contener letras y números`);
+            }
+            
+            afiliado.cod_usuario_afi = codigo;
+            console.log(`📋 Fila ${index + 1}: Código personalizado '${codigo}' será enviado al backend`);
+          }
+        }
+        return afiliado;
       });
 
       console.log('📤 Enviando afiliados al backend:', afiliadosValidados.length);

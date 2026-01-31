@@ -11,7 +11,7 @@ class UsuarioAfiliado(Base):
     id_usuario_afi = Column(Integer, primary_key=True, index=True)
     fecha_afiliacion = Column(Date, nullable=True)
     activo = Column(Boolean, default=True)
-    cod_usuario_afi = Column(Integer, nullable=False)
+    cod_usuario_afi = Column(String(6), unique=True, nullable=False)  # ✅ Cambiar de Integer a String(6)
     num_medidor = Column(String(50), nullable=True)
     
     id_sector = Column(Integer, ForeignKey("medidores.t_sector.id_sector"), nullable=False)

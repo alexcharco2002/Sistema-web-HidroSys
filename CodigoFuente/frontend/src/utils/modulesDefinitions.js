@@ -5,8 +5,8 @@
  */
 import {
   BarChart3, Users, FileText, DollarSign, Gauge, UserCircle,
-  Calendar, Settings, Bell, BookOpen, UserX,
-  TrendingUp, Home, Briefcase, PieChart, Cog, AlertTriangle, MapPin, Layers, ShieldCheck, Handshake, UserCheck
+  Calendar, Settings, Bell, BookOpen, UserX ,ClipboardList,
+  TrendingUp, Home, Briefcase, PieChart, Cog, AlertTriangle, MapPin, Layers, ShieldCheck, UserCheck
 } from "lucide-react";
 
 // ============================================================================
@@ -107,17 +107,6 @@ export const MODULE_DEFINITIONS = {
     componentName: "UsersSection",
     description: "Administración de usuarios del sistema."
   },
-  clientes: {
-    id: "customers",
-    path: "customers", // 🔥 Ruta URL: /admin/dashboard/customers
-    label: "Clientes",
-    icon: Handshake,
-    color: "teal",
-    category: "USER_MANAGEMENT",
-    order: 2,
-    componentName: "CustomersSection",
-    description: "Gestión de clientes y afiliaciones."
-  },
   afiliados: {
     id: "affiliates",
     path: "affiliates", // 🔥 Ruta URL: /admin/dashboard/affiliates
@@ -142,16 +131,16 @@ export const MODULE_DEFINITIONS = {
   },
 
   // ⚙️ OPERACIONES
-  lecturas: {
-    id: "readings",
-    path: "readings", // 🔥 Ruta URL: /admin/dashboard/readings
-    label: "Lecturas",
-    icon: BookOpen,
-    color: "indigo",
+  mi_medidor: {
+    id: "my_meter",
+    path: "my-meter",
+    label: "Mi Medidor",
+    icon: FileText ,
+    color: "blue",
     category: "OPERATIONS",
     order: 1,
-    componentName: "ReadingsSection",
-    description: "Registro y control de lecturas de medidores."
+    componentName: "MiMedidorSection",
+    description: "Visualización y gestión del medidor personal."
   },
   medidores: {
     id: "meters",
@@ -164,6 +153,18 @@ export const MODULE_DEFINITIONS = {
     componentName: "MetersSection",
     description: "Administración de medidores asignados a usuarios."
   },
+  lecturas: {
+    id: "readings",
+    path: "readings", // 🔥 Ruta URL: /admin/dashboard/readings
+    label: "Lecturas",
+    icon: BookOpen,
+    color: "indigo",
+    category: "OPERATIONS",
+    order: 3,
+    componentName: "ReadingsSection",
+    description: "Registro y control de lecturas de medidores."
+  },
+
   geolocalizacion: {
     id: "geolocation",
     path: "geolocation",
@@ -171,7 +172,7 @@ export const MODULE_DEFINITIONS = {
     icon: MapPin,
     color: "rose",
     category: "OPERATIONS",
-    order: 3,
+    order: 4,
     componentName: "GeolocationSection",
     description: "Geolocalización en el mapa."
   },
@@ -182,20 +183,9 @@ export const MODULE_DEFINITIONS = {
     icon: Layers,
     color: "purple",
     category: "OPERATIONS",
-    order: 4,
+    order: 5,
     componentName: "SectorsSection",
     description: "Gestión de sectores geográficos."
-  },
-  mi_medidor: {
-    id: "my_meter",
-    path: "my-meter",
-    label: "Mi Medidor",
-    icon: Home,
-    color: "blue",
-    category: "OPERATIONS",
-    order: 5,
-    componentName: "MiMedidorSection",
-    description: "Visualización y gestión del medidor personal."
   },
 
 
@@ -204,7 +194,7 @@ export const MODULE_DEFINITIONS = {
     id: "invoices",
     path: "invoices",
     label: "Facturación",
-    icon: FileText,
+    icon: ClipboardList,
     color: "green",
     category: "FINANCIAL",
     order: 1,

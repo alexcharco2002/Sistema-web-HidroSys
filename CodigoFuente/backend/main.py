@@ -115,7 +115,7 @@ from routes import (
     afiliates, meters, backups, tarifas, servicios,
     lecturas, multas, multas_afiliados, limite_geografico,
     iva, facturas, pagos, reports, affiliate_billing,
-    afiliatesGeneral, mora
+    afiliatesGeneral, mora, servicio_permanente
 )
 from routes.test_sqli import router as sqli_router
 
@@ -141,6 +141,7 @@ app.include_router(reports.router)
 app.include_router(affiliate_billing.router)
 app.include_router(afiliatesGeneral.router)
 app.include_router(mora.router)
+app.include_router(servicio_permanente.router)
 
 # Router de pruebas (solo desarrollo)
 if os.getenv("ENVIRONMENT", "development") == "development":

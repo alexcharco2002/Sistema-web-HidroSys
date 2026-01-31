@@ -10,6 +10,7 @@ import authService from '../../services/authServices';
 
 import {
   FileText,
+  ClipboardList,
   Search,
   Eye,
   DollarSign,
@@ -927,7 +928,7 @@ const agruparDetallesPorTipo = (detalles) => {
         <div className="periodo-selection-page">
           <div className="section-header">
             <div className="section-title">
-          <FileText className="w-7 h-7 text-blue-600" />
+          <ClipboardList className="w-7 h-7 text-blue-600" />
           <div>
             <h2>Gestión de Facturas</h2>
             <p className="section-subtitle">
@@ -1648,10 +1649,11 @@ const agruparDetallesPorTipo = (detalles) => {
           <div className="modal-body" >
           {/* SECCIÓN DE DATOS DEL CLIENTE */}
           <div className="factura-section">
-            <h4 className="section-title">
+            <h4 className="section-title"> 
               <User className="w-4 h-4" />
               Datos del Cliente
             </h4>
+             <br />
             <div className="user-details">
               <div className="detail-group">
                 <label>Afiliado:</label>
@@ -1685,13 +1687,14 @@ const agruparDetallesPorTipo = (detalles) => {
               </div>
             </div>
           </div>
-
+          <br />
           {/* SECCIÓN DE INFORMACIÓN DE LA FACTURA */}
           <div className="factura-section">
             <h4 className="section-title">
               <FileText className="w-4 h-4" />
               Información de la Factura
             </h4>
+             <br />
             <div className="user-details">
               <div className="detail-group">
                 <label>N° Factura:</label>
@@ -1719,10 +1722,12 @@ const agruparDetallesPorTipo = (detalles) => {
 
           {/* SECCIÓN DE CONSUMO */}
           <div className="factura-section">
+             <br />
             <h4 className="section-title">
               <Gauge className="w-4 h-4" />
               Detalles de Consumo
             </h4>
+             <br />
             <div className="user-details">
               <div className="detail-group">
                 <label>Consumo (m³):</label>
@@ -1748,10 +1753,12 @@ const agruparDetallesPorTipo = (detalles) => {
 
           {/* SECCIÓN DE CÁLCULO */}
           <div className="factura-section">
+             <br />
             <h4 className="section-title">
               <DollarSign className="w-4 h-4" />
               Resumen de Cobro
             </h4>
+             <br />
             <div className="user-details">
               <div className="detail-group">
                 <label>Subtotal:</label>
@@ -1782,11 +1789,12 @@ const agruparDetallesPorTipo = (detalles) => {
           {/* DETALLES ADICIONALES */}
         {selectedFactura.detalles && selectedFactura.detalles.length > 0 && (
           <div className="factura-section">
+             <br />
             <h4 className="section-title">
               <FileText className="w-4 h-4" />
               Conceptos de Facturación ({selectedFactura.detalles.length})
             </h4>
-            
+             <br />
             {(() => {
               const grupos = agruparDetallesPorTipo(selectedFactura.detalles);
               
@@ -1932,6 +1940,7 @@ const agruparDetallesPorTipo = (detalles) => {
 
               {/* SECCIÓN DE DESCUENTO */}
               <div className="discount-section">
+                <br />
                 <h4 className="discount-title">
                   <Tag className="w-4 h-4 text-blue-600" />
                   Descuento (Opcional)
@@ -2151,12 +2160,14 @@ const agruparDetallesPorTipo = (detalles) => {
               {/* Información de la factura */}
               <div className="payment-info-section">
                 <div className="payment-client">
-
-                  <h4 className="discount-title">
+                  <div className='servicios-header'> 
+                    <h4 >
                     <FileText className="w-4 h-4 text-blue-600" />
-                    Detalles de la factura
-                  </h4>
+                   {" "} Detalles de la factura
+                    </h4>
 
+                  </div>
+                  <br />   
                   <div>
                     <p className="client-name">
                       <strong>Factura:</strong>{' '}
@@ -2180,11 +2191,13 @@ const agruparDetallesPorTipo = (detalles) => {
              {/* Lista de servicios disponibles */}
             <div className="servicios-selection">
               <div className="servicios-header">
+                <br />
                 <h4>
                   <Briefcase className="w-4 h-4 text-blue-600" />
                   {" "}Selecciona los servicios a aplicar</h4>
               </div>
-              
+                <br />
+            
               {serviciosDisponibles.length === 0 ? (
                 <div className="empty-state-modal">
                   <Briefcase size={48} className="empty-icon" />
@@ -2260,6 +2273,7 @@ const agruparDetallesPorTipo = (detalles) => {
                 className="btn btn-secondary"
                 disabled={loading}
               >
+                <X className="w-4 h-4 mr-2" />
                 Cancelar
               </button>
               <button
@@ -2370,6 +2384,7 @@ const agruparDetallesPorTipo = (detalles) => {
 
         {/* FORMULARIO */}
         <div className="discount-section">
+          <br />
           <h4 className="discount-title">
             <Ban className="w-4 h-4 text-red-600" />
             Motivo de anulación

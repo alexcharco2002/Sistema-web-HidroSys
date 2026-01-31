@@ -14,12 +14,14 @@ import ivaService from '../../services/ivaServices';
 // importar servicios de mora
 import moraService from '../../services/moraServices';
 
+// importar servcios de servcicios permanetes 
+import serviciosPermanentesService from '../../services/serviciosPermanentesServices';
 
-import './ConfigSection.css';
+import './ConfigSection.css'; // Estilos específicos para ConfigSection
 
 import {
   Settings, Database, Download, Upload, Trash2, Map, 
-  DollarSign,
+  DollarSign, Package, Users, UserPlus, UserCheck, X,
   AlertCircle, CheckCircle, RefreshCw, Calendar, FileText, Clock, Edit, XCircle, Percent, ToggleRight, ToggleLeft
 } from 'lucide-react';
 
@@ -93,6 +95,78 @@ const ConfigSection = () => {
   });
   const [aplicarMora, setAplicarMora] = useState(false); // Toggle para activar/desactivar mora
 
+  // ====================================== 
+  // ESTADOS PARA SERVICIOS PERMANENTES
+  // ======================================
+  const [serviciosPermanentes, setServiciosPermanentes] = useState([]);
+  const [loadingSP, setLoadingSP] = useState(false);
+  const [editingSP, setEditingSP] = useState(null);
+  const [showSPModal, setShowSPModal] = useState(false);
+  const [, setSPActiva] = useState(null);
+  const [spFormData, setSPFormData] = useState({
+      nombre: '',
+      descripcion: '',
+      id_servicio: '',
+      vigencia_desde: '',
+      vigencia_hasta: '',
+      es_vigente: true,
+      aplicar_en_periodo: 'mensual',
+      precio_override: '',
+      observaciones: ''
+  });
+  const [, setAplicarSP] = useState(false);
+
+  // Estados para modal de asignaciones
+  const [showAsignacionesModal, setShowAsignacionesModal] = useState(false);
+  const [configuracionSeleccionada, setConfiguracionSeleccionada] = useState(null);
+  const [asignaciones, setAsignaciones] = useState([]);
+  const [loadingAsignaciones, setLoadingAsignaciones] = useState(false);
+
+  // Estados para selección de usuarios y servicios
+  const [afiliadosDisponibles, setAfiliadosDisponibles] = useState([]);
+  const [serviciosDisponibles, setServiciosDisponibles] = useState([]);
+  const [loadingAfiliados, setLoadingAfiliados] = useState(false);
+  const [loadingServicios, setLoadingServicios] = useState(false);
+  const [usuariosSeleccionados, setUsuariosSeleccionados] = useState([]);
+  const [searchAfiliado, setSearchAfiliado] = useState('');
+
+// ========== ESTADOS ==========
+const [sectoresDisponibles, setSectoresDisponibles] = useState([]);
+const [filtroSector, setFiltroSector] = useState('');
+const [filtroEstadoAfiliado, ] = useState('activos');
+const [searchAsignados, setSearchAsignados] = useState('');
+
+// ========== CARGAR SECTORES ==========
+const loadSectores = useCallback(async () => {
+  try {
+    const result = await serviciosPermanentesService.getSectores({ 
+      activo: true,
+      limit: 900 
+    });
+    
+    if (result.success) {
+      setSectoresDisponibles(result.data);
+      console.log('✅ Sectores cargados:', result.data.length);
+    }
+  } catch (err) {
+    console.error('Error cargando sectores:', err);
+  }
+}, []);
+
+
+// ========== FILTRADO DE ASIGNACIONES ==========
+const asignacionesFiltradas = useMemo(() => {
+  if (!searchAsignados.trim()) return asignaciones;
+
+  const search = searchAsignados.toLowerCase();
+  return asignaciones.filter(asig =>
+    asig.cod_usuario_afi?.toLowerCase().includes(search) ||
+    asig.nombres?.toLowerCase().includes(search) ||
+    asig.apellidos?.toLowerCase().includes(search) ||
+    asig.sector?.toLowerCase().includes(search) ||
+    String(asig.id_usuario_afi).includes(search)
+  );
+}, [asignaciones, searchAsignados]);
 
   // 🔑 PERMISOS DEL USUARIO ACTUAL
   const [permissions, setPermissions] = useState({
@@ -169,6 +243,13 @@ const ConfigSection = () => {
       nombre: 'Mora',
       descripcion: 'Gestión de intereses por pago tardío',
       icon: DollarSign,
+      visible: permissions.canManageBackups
+    },
+    {
+      id: 'servicios-permanentes',
+      nombre: 'Servicios Permanentes',
+      descripcion: 'Servicios que se aplican automáticamente cada mes',
+      icon: Package,
       visible: permissions.canManageBackups
     }
 
@@ -1308,82 +1389,82 @@ const ConfigSection = () => {
   };
 
   // Guardar configuración de mora (crear o actualizar)
-const handleSaveMora = async (e) => {
-  e.preventDefault();
-  
-  if (!permissions.canCreate && !editingMora) {
-    window.alert("❌ No tienes permiso para crear configuraciones de mora.");
-    return;
-  }
-  
-  if (!permissions.canUpdate && editingMora) {
-    window.alert("❌ No tienes permiso para actualizar configuraciones de mora.");
-    return;
-  }
-
-  setLoading(true);
-  setError(null);
-
-  try {
-    const dataToSend = {
-      nombre: moraFormData.nombre.trim(),
-      descripcion: moraFormData.descripcion.trim() || null,
-      tipo_periodo: moraFormData.tipo_periodo, // ✅ NUEVO
-      tipo_calculo: moraFormData.tipo_calculo,
-      vigencia_desde: moraFormData.vigencia_desde,
-      vigencia_hasta: moraFormData.vigencia_hasta || null,
-      es_vigente: moraFormData.es_vigente,
-      mora_maxima: moraFormData.mora_maxima ? parseFloat(moraFormData.mora_maxima) : null,
-      aplicar_sobre: moraFormData.aplicar_sobre
-    };
-
-    // ✅ Incluir días o meses según el tipo_periodo
-    if (moraFormData.tipo_periodo === 'dias') {
-      dataToSend.dias_gracia = parseInt(moraFormData.dias_gracia) || 0;
-      dataToSend.meses_gracia = null; // Limpiar meses
-    } else {
-      dataToSend.meses_gracia = parseInt(moraFormData.meses_gracia) || 0;
-      dataToSend.dias_gracia = null; // Limpiar días
+  const handleSaveMora = async (e) => {
+    e.preventDefault();
+    
+    if (!permissions.canCreate && !editingMora) {
+      window.alert("❌ No tienes permiso para crear configuraciones de mora.");
+      return;
+    }
+    
+    if (!permissions.canUpdate && editingMora) {
+      window.alert("❌ No tienes permiso para actualizar configuraciones de mora.");
+      return;
     }
 
-    // Agregar valores según tipo de cálculo
-    if (moraFormData.tipo_calculo === 'porcentaje') {
-      dataToSend.porcentaje_mora = parseFloat(moraFormData.porcentaje_mora);
-    } else if (moraFormData.tipo_calculo === 'fijo') {
-      dataToSend.valor_fijo = parseFloat(moraFormData.valor_fijo);
-    } else if (moraFormData.tipo_calculo === 'interes_diario') {
-      dataToSend.interes_diario = parseFloat(moraFormData.interes_diario);
-    }
+    setLoading(true);
+    setError(null);
 
-    let result;
-    if (editingMora) {
-      result = await moraService.updateConfiguracion(editingMora.id_configuracion_mora, dataToSend);
-    } else {
-      result = await moraService.createConfiguracion(dataToSend);
-    }
+    try {
+      const dataToSend = {
+        nombre: moraFormData.nombre.trim(),
+        descripcion: moraFormData.descripcion.trim() || null,
+        tipo_periodo: moraFormData.tipo_periodo, // ✅ NUEVO
+        tipo_calculo: moraFormData.tipo_calculo,
+        vigencia_desde: moraFormData.vigencia_desde,
+        vigencia_hasta: moraFormData.vigencia_hasta || null,
+        es_vigente: moraFormData.es_vigente,
+        mora_maxima: moraFormData.mora_maxima ? parseFloat(moraFormData.mora_maxima) : null,
+        aplicar_sobre: moraFormData.aplicar_sobre
+      };
 
-    if (result.success) {
-      const accion = editingMora ? 'actualizada' : 'creada';
-      window.alert(
-        `✔ Configuración de mora ${accion} exitosamente` +
-        (!editingMora ? '\n\n(Creada como desactivada por defecto)' : '')
-      );
-      setSuccess(result.message);
-      closeMoraModal();
-      await loadMoras();
-      setTimeout(() => setSuccess(null), 3000);
-    } else {
-      window.alert(`❌ Error: ${result.message}`);
-      setError(result.message);
+      // ✅ Incluir días o meses según el tipo_periodo
+      if (moraFormData.tipo_periodo === 'dias') {
+        dataToSend.dias_gracia = parseInt(moraFormData.dias_gracia) || 0;
+        dataToSend.meses_gracia = null; // Limpiar meses
+      } else {
+        dataToSend.meses_gracia = parseInt(moraFormData.meses_gracia) || 0;
+        dataToSend.dias_gracia = null; // Limpiar días
+      }
+
+      // Agregar valores según tipo de cálculo
+      if (moraFormData.tipo_calculo === 'porcentaje') {
+        dataToSend.porcentaje_mora = parseFloat(moraFormData.porcentaje_mora);
+      } else if (moraFormData.tipo_calculo === 'fijo') {
+        dataToSend.valor_fijo = parseFloat(moraFormData.valor_fijo);
+      } else if (moraFormData.tipo_calculo === 'interes_diario') {
+        dataToSend.interes_diario = parseFloat(moraFormData.interes_diario);
+      }
+
+      let result;
+      if (editingMora) {
+        result = await moraService.updateConfiguracion(editingMora.id_configuracion_mora, dataToSend);
+      } else {
+        result = await moraService.createConfiguracion(dataToSend);
+      }
+
+      if (result.success) {
+        const accion = editingMora ? 'actualizada' : 'creada';
+        window.alert(
+          `✔ Configuración de mora ${accion} exitosamente` +
+          (!editingMora ? '\n\n(Creada como desactivada por defecto)' : '')
+        );
+        setSuccess(result.message);
+        closeMoraModal();
+        await loadMoras();
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        window.alert(`❌ Error: ${result.message}`);
+        setError(result.message);
+      }
+    } catch (err) {
+      window.alert("❌ Error inesperado al guardar la configuración de mora.");
+      setError("Error al guardar la configuración de mora");
+      console.error("Error:", err);
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    window.alert("❌ Error inesperado al guardar la configuración de mora.");
-    setError("Error al guardar la configuración de mora");
-    console.error("Error:", err);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   // Activar configuración de mora
   const handleActivarMora = async (id, nombre) => {
@@ -1525,6 +1606,577 @@ const handleSaveMora = async (e) => {
       setLoading(false);
     }
   };
+
+  // ======================================
+  // GESTIÓN DE SERVICIOS PERMANENTES
+  // ======================================
+
+// ======================================
+// GESTIÓN DE SERVICIOS PERMANENTES
+// ======================================
+
+const loadServiciosPermanentes = useCallback(async () => {
+    setLoadingSP(true);
+    setError(null);
+    try {
+        const result = await serviciosPermanentesService.listConfiguraciones({});
+        if (result.success) {
+            const spOrdenados = [...result.data].sort((a, b) => {
+                if (a.activo !== b.activo) return b.activo ? 1 : -1;
+                if (a.es_vigente !== b.es_vigente) return Number(b.es_vigente) - Number(a.es_vigente);
+                return new Date(b.fecha_creacion) - new Date(a.fecha_creacion);
+            });
+            setServiciosPermanentes(spOrdenados);
+
+            const estadoSP = await serviciosPermanentesService.obtenerEstadoServicioPermanente();
+            if (estadoSP.success) {
+                setAplicarSP(estadoSP.aplicar_servicio);
+                setSPActiva(estadoSP.configuracion_activa);
+            }
+
+            console.log('✅ Servicios permanentes cargados:', spOrdenados.length);
+        } else {
+            setError(result.message);
+        }
+    } catch (err) {
+        setError('Error al cargar servicios permanentes');
+        console.error('Error:', err);
+    } finally {
+        setLoadingSP(false);
+    }
+}, []);
+
+const loadServicios = useCallback(async () => {
+    console.log('📥 Cargando servicios...');
+    setLoadingServicios(true);
+    try {
+        const result = await serviciosPermanentesService.getServicios({ 
+            activo: true, 
+            vigente: true 
+        });
+        
+        console.log('📦 Respuesta getServicios:', result);
+        
+        if (result.success) {
+            console.log('✅ Servicios cargados:', result.data.length);
+            console.log('📋 Primer servicio:', result.data[0]);
+            setServiciosDisponibles(result.data);
+        } else {
+            console.error('❌ Error al cargar servicios:', result.message);
+        }
+    } catch (err) {
+        console.error('❌ Excepción cargando servicios:', err);
+    } finally {
+        setLoadingServicios(false);
+    }
+}, []);
+
+
+useEffect(() => {
+    if (selectedSection === 'servicios-permanentes') {
+        loadServiciosPermanentes();
+        loadServicios();
+    }
+}, [selectedSection, loadServiciosPermanentes, loadServicios]);
+
+
+// ✅ FUNCIÓN CORREGIDA - handleServicioChange CON DEBUG
+const handleServicioChange = (e) => {
+    const servicioId = e.target.value;
+    
+    console.log('🔍 === DEBUG SELECCIÓN SERVICIO ===');
+    console.log('📋 Valor seleccionado:', servicioId, 'Tipo:', typeof servicioId);
+    console.log('📋 Servicios disponibles:', serviciosDisponibles);
+    
+    if (!servicioId || servicioId === '') {
+        console.log('⚠️ Servicio deseleccionado');
+        setSPFormData(prev => ({
+            ...prev,
+            id_servicio: '',
+            nombre: ''
+        }));
+        return;
+    }
+    
+    // Buscar el servicio
+    const servicioSeleccionado = serviciosDisponibles.find(
+        s => String(s.id_servicio) === String(servicioId)
+    );
+    
+    console.log('🔍 Servicio encontrado:', servicioSeleccionado);
+    
+    if (servicioSeleccionado) {
+        const nuevoNombre = servicioSeleccionado.nombre || '';
+        const nuevoPrecio = servicioSeleccionado.precio_base || '';
+        
+        console.log('✅ Actualizando formulario:');
+        console.log('  - ID:', servicioId);
+        console.log('  - Nombre:', nuevoNombre);
+        console.log('  - Precio base:', nuevoPrecio);
+        
+        setSPFormData(prev => ({
+            ...prev,
+            id_servicio: servicioId,
+            nombre: nuevoNombre
+        }));
+    } else {
+        console.error('❌ NO SE ENCONTRÓ EL SERVICIO');
+        console.log('IDs disponibles:', serviciosDisponibles.map(s => ({
+            id: s.id_servicio, 
+            tipo: typeof s.id_servicio,
+            nombre: s.nombre
+        })));
+        
+        // Aún así guardar el ID por si acaso
+        setSPFormData(prev => ({
+            ...prev,
+            id_servicio: servicioId,
+            nombre: ''
+        }));
+    }
+};
+
+
+
+
+// ✅ FUNCIONES HELPER CORREGIDAS
+const getPrecioBaseServicio = () => {
+    if (!spFormData.id_servicio) {
+        console.log('⚠️ getPrecioBaseServicio: No hay id_servicio');
+        return null;
+    }
+    
+    const servicio = serviciosDisponibles.find(
+        s => String(s.id_servicio) === String(spFormData.id_servicio)
+    );
+    
+    if (!servicio) {
+        console.log('⚠️ getPrecioBaseServicio: Servicio no encontrado');
+        return null;
+    }
+    
+    const precio = parseFloat(servicio.precio_base);
+    console.log('💰 Precio base encontrado:', precio);
+    return precio;
+};
+
+const getInfoServicioSeleccionado = () => {
+    if (!spFormData.id_servicio) {
+        console.log('⚠️ getInfoServicioSeleccionado: No hay id_servicio');
+        return null;
+    }
+    
+    const servicio = serviciosDisponibles.find(
+        s => String(s.id_servicio) === String(spFormData.id_servicio)
+    );
+    
+    if (!servicio) {
+        console.log('⚠️ getInfoServicioSeleccionado: Servicio no encontrado');
+        console.log('Buscando ID:', spFormData.id_servicio, 'Tipo:', typeof spFormData.id_servicio);
+        console.log('IDs disponibles:', serviciosDisponibles.map(s => s.id_servicio));
+    }
+    
+    return servicio || null;
+};
+
+
+
+// ✅ AGREGAR LOG EN openSPModal
+const openSPModal = (sp = null) => {
+    console.log('🔵 === ABRIENDO MODAL ===');
+    console.log('Servicios disponibles:', serviciosDisponibles.length);
+    
+    if (sp) {
+        console.log('✏️ Modo EDICIÓN:', sp);
+        setEditingSP(sp);
+        setSPFormData({
+            nombre: sp.nombre || '',
+            descripcion: sp.descripcion || '',
+            id_servicio: sp.id_servicio ? String(sp.id_servicio) : '',
+            vigencia_desde: sp.vigencia_desde || '',
+            vigencia_hasta: sp.vigencia_hasta || '',
+            es_vigente: sp.es_vigente !== undefined ? sp.es_vigente : true,
+            aplicar_en_periodo: sp.aplicar_en_periodo || 'mensual',
+            precio_override: sp.precio_override || '',
+            observaciones: sp.observaciones || ''
+        });
+    } else {
+        console.log('➕ Modo CREACIÓN');
+        setEditingSP(null);
+        const hoy = new Date().toISOString().split('T')[0];
+        setSPFormData({
+            nombre: '',
+            descripcion: '',
+            id_servicio: '',
+            vigencia_desde: hoy,
+            vigencia_hasta: '',
+            es_vigente: true,
+            aplicar_en_periodo: 'mensual',
+            precio_override: '',
+            observaciones: ''
+        });
+    }
+    setShowSPModal(true);
+};
+
+
+const closeSPModal = () => {
+    setShowSPModal(false);
+    setEditingSP(null);
+};
+
+const handleSaveSP = async (e) => {
+     e.preventDefault();
+    
+    // ✅ DEBUG COMPLETO
+    console.log('📋 Estado completo spFormData:', spFormData);
+    console.log('🔍 id_servicio:', spFormData.id_servicio, 'Tipo:', typeof spFormData.id_servicio);
+    
+    if (!permissions.canCreate && !editingSP) {
+        window.alert("❌ No tienes permiso para crear configuraciones.");
+        return;
+    }
+    if (!permissions.canUpdate && editingSP) {
+        window.alert("❌ No tienes permiso para actualizar configuraciones.");
+        return;
+    }
+
+    // ✅ VALIDACIÓN MEJORADA
+    const idServicioValue = spFormData.id_servicio;
+    
+    if (!idServicioValue || idServicioValue === '' || idServicioValue === 'undefined') {
+        console.error('❌ id_servicio vacío o inválido:', idServicioValue);
+        window.alert("❌ Debe seleccionar un servicio válido");
+        return;
+    }
+
+    const idServicioNum = parseInt(idServicioValue, 10);
+    
+    if (isNaN(idServicioNum) || idServicioNum <= 0) {
+        console.error('❌ Conversión falló. Original:', idServicioValue, 'Convertido:', idServicioNum);
+        window.alert(`❌ El ID del servicio no es válido (recibido: ${idServicioValue})`);
+        return;
+    }
+
+    setLoading(true);
+    setError(null);
+    
+    try {
+        const dataToSend = {
+            nombre: spFormData.nombre.trim(),
+            descripcion: spFormData.descripcion.trim() || null,
+            id_servicio: idServicioNum, // ✅ Ya validado
+            vigencia_desde: spFormData.vigencia_desde,
+            vigencia_hasta: spFormData.vigencia_hasta || null,
+            es_vigente: spFormData.es_vigente,
+            aplicar_en_periodo: spFormData.aplicar_en_periodo,
+            precio_override: spFormData.precio_override ? parseFloat(spFormData.precio_override) : null,
+            observaciones: spFormData.observaciones.trim() || null
+        };
+
+        console.log('📤 Enviando datos:', dataToSend);
+
+        let result;
+        if (editingSP) {
+            result = await serviciosPermanentesService.updateConfiguracion(editingSP.id_configuracion_sp, dataToSend);
+        } else {
+            result = await serviciosPermanentesService.createConfiguracion(dataToSend);
+        }
+
+        if (result.success) {
+            const accion = editingSP ? 'actualizada' : 'creada';
+            window.alert(
+                `✔ Configuración ${accion} exitosamente\n\n` +
+                `Nombre: ${dataToSend.nombre}\n` +
+                `Servicio ID: ${dataToSend.id_servicio}\n` +
+                `Precio: ${dataToSend.precio_override ? `$${dataToSend.precio_override.toFixed(2)}` : 'Base del servicio'}` +
+                (!editingSP ? '\n\n(Creada como desactivada por defecto)' : '')
+            );
+            setSuccess(result.message);
+            closeSPModal();
+            await loadServiciosPermanentes();
+            setTimeout(() => setSuccess(null), 3000);
+        } else {
+            window.alert(`❌ Error: ${result.message}`);
+            setError(result.message);
+        }
+    } catch (err) {
+        window.alert("❌ Error inesperado al guardar.");
+        setError("Error al guardar");
+        console.error("Error:", err);
+    } finally {
+        setLoading(false);
+    }
+};
+
+
+  const handleActivarSP = async (id, nombre) => {
+      if (!permissions.canUpdate) {
+          window.alert("❌ No tienes permiso para activar configuraciones.");
+          return;
+      }
+
+      const confirmed = window.confirm(
+          `¿Deseas activar "${nombre}"?\n\n` +
+          `Esto desactivará automáticamente cualquier otra configuración activa.\n\n` +
+          `Los servicios se aplicarán automáticamente a los usuarios asignados.`
+      );
+      if (!confirmed) return;
+
+      setLoading(true);
+      setError(null);
+      try {
+          const result = await serviciosPermanentesService.activarConfiguracion(id);
+          if (result.success) {
+              window.alert(`✔ Configuración "${nombre}" activada`);
+              setSuccess(result.message);
+              await loadServiciosPermanentes();
+              setTimeout(() => setSuccess(null), 3000);
+          } else {
+              window.alert(`❌ Error: ${result.message}`);
+              setError(result.message);
+          }
+      } catch (err) {
+          window.alert("❌ Error inesperado al activar.");
+          setError("Error al activar");
+          console.error("Error:", err);
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const handleDesactivarSP = async (id, nombre) => {
+      if (!permissions.canUpdate) {
+          window.alert("❌ No tienes permiso para desactivar configuraciones.");
+          return;
+      }
+
+      const confirmed = window.confirm(`¿Deseas desactivar "${nombre}"?\n\nLos servicios dejarán de aplicarse automáticamente.`);
+      if (!confirmed) return;
+
+      setLoading(true);
+      setError(null);
+      try {
+          const result = await serviciosPermanentesService.desactivarConfiguracion(id);
+          if (result.success) {
+              window.alert(`✔ Configuración "${nombre}" desactivada`);
+              setSuccess(result.message);
+              await loadServiciosPermanentes();
+              setTimeout(() => setSuccess(null), 3000);
+          } else {
+              window.alert(`❌ Error: ${result.message}`);
+              setError(result.message);
+          }
+      } catch (err) {
+          window.alert("❌ Error inesperado al desactivar.");
+          console.error("Error:", err);
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const handleDeleteSP = async (id, nombre, activo) => {
+      if (!permissions.canDelete) {
+          window.alert("❌ No tienes permiso para eliminar configuraciones.");
+          return;
+      }
+
+      let mensaje = `⚠️ ELIMINAR CONFIGURACIÓN\n\n` +
+          `Configuración: "${nombre}"\n` +
+          `Estado: ${activo ? 'ACTIVA' : 'Inactiva'}\n\n`;
+
+      if (activo) {
+          mensaje += `⚠️ Esta configuración está ACTIVA\n` +
+              `Al eliminarla, no habrá servicio permanente aplicable.\n\n`;
+      }
+
+      mensaje += `Esta acción eliminará también todas las asignaciones.\n\n` +
+          `¿Estás COMPLETAMENTE SEGURO?`;
+
+      const confirmed = window.confirm(mensaje);
+      if (!confirmed) return;
+
+      setLoading(true);
+      setError(null);
+      try {
+          const result = await serviciosPermanentesService.deleteConfiguracion(id);
+          if (result.success) {
+              window.alert(`✔ Configuración "${nombre}" eliminada`);
+              setSuccess(result.message);
+              await loadServiciosPermanentes();
+              setTimeout(() => setSuccess(null), 3000);
+          } else {
+              window.alert(`❌ Error: ${result.message}`);
+              setError(result.message);
+          }
+      } catch (err) {
+          window.alert("❌ Error inesperado al eliminar.");
+          console.error("Error:", err);
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  // ======================================
+  // GESTIÓN DE ASIGNACIONES
+  // ======================================
+
+// ========== CARGAR AL ABRIR MODAL ==========
+const openAsignacionesModal = async (config) => {
+  setConfiguracionSeleccionada(config);
+  setShowAsignacionesModal(true);
+  
+  // Cargar datos en paralelo
+  await Promise.all([
+    loadAsignaciones(config.id_configuracion_sp),
+    loadAfiliados(),
+    loadSectores()  // ✅ Cargar sectores
+  ]);
+};
+
+  const closeAsignacionesModal = () => {
+      setShowAsignacionesModal(false);
+      setConfiguracionSeleccionada(null);
+      setAsignaciones([]);
+      setUsuariosSeleccionados([]);
+      setSearchAfiliado('');
+  };
+
+  const loadAsignaciones = async (configId) => {
+      setLoadingAsignaciones(true);
+      try {
+          const result = await serviciosPermanentesService.listAsignaciones(configId);
+          if (result.success) {
+              setAsignaciones(result.data);
+              console.log('✅ Asignaciones cargadas:', result.data.length);
+          }
+      } catch (err) {
+          console.error('Error cargando asignaciones:', err);
+      } finally {
+          setLoadingAsignaciones(false);
+      }
+  };
+
+  const loadAfiliados = async () => {
+      setLoadingAfiliados(true);
+      try {
+          const result = await serviciosPermanentesService.getAfiliados({ estado: 'activos', limit: 1000 });
+          if (result.success) {
+              setAfiliadosDisponibles(result.data);
+              console.log('✅ Afiliados cargados:', result.data.length);
+          }
+      } catch (err) {
+          console.error('Error cargando afiliados:', err);
+      } finally {
+          setLoadingAfiliados(false);
+      }
+  };
+
+  const handleAsignarUsuarios = async () => {
+      if (usuariosSeleccionados.length === 0) {
+          window.alert("❌ Selecciona al menos un usuario");
+          return;
+      }
+
+      const confirmar = window.confirm(
+          `¿Deseas asignar ${usuariosSeleccionados.length} usuario(s) al servicio permanente "${configuracionSeleccionada.nombre}"?\n\n` +
+          `Estos usuarios recibirán el servicio automáticamente cada mes.`
+      );
+      if (!confirmar) return;
+
+      setLoading(true);
+      try {
+          const hoy = new Date().toISOString().split('T')[0];
+          const result = await serviciosPermanentesService.createAsignacionBulk(
+              configuracionSeleccionada.id_configuracion_sp,
+              {
+                  ids_usuarios_afi: usuariosSeleccionados,
+                  activo: true,
+                  fecha_inicio: hoy,
+                  fecha_fin: null,
+                  observaciones: null
+              }
+          );
+
+          if (result.success) {
+              window.alert(`✔ Asignaciones creadas:\n\nCreadas: ${result.data.creadas}\nOmitidas: ${result.data.omitidas}`);
+              setSuccess(result.message);
+              setUsuariosSeleccionados([]);
+              await loadAsignaciones(configuracionSeleccionada.id_configuracion_sp);
+              await loadServiciosPermanentes();
+              setTimeout(() => setSuccess(null), 3000);
+          } else {
+              window.alert(`❌ Error: ${result.message}`);
+          }
+      } catch (err) {
+          window.alert("❌ Error al asignar usuarios");
+          console.error(err);
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const handleEliminarAsignacion = async (asignacion) => {
+      const confirmar = window.confirm(`¿Eliminar asignación del usuario ${asignacion.id_usuario_afi}?`);
+      if (!confirmar) return;
+
+      setLoading(true);
+      try {
+          const result = await serviciosPermanentesService.deleteAsignacion(
+              configuracionSeleccionada.id_configuracion_sp,
+              asignacion.id_asignacion_sp
+          );
+
+          if (result.success) {
+              window.alert("✔ Asignación eliminada");
+              setSuccess(result.message);
+              await loadAsignaciones(configuracionSeleccionada.id_configuracion_sp);
+              await loadServiciosPermanentes();
+              setTimeout(() => setSuccess(null), 3000);
+          } else {
+              window.alert(`❌ Error: ${result.message}`);
+          }
+      } catch (err) {
+          window.alert("❌ Error al eliminar asignación");
+          console.error(err);
+      } finally {
+          setLoading(false);
+      }
+  };
+
+// ========== FILTRADO DE AFILIADOS ==========
+const afiliadosFiltrados = useMemo(() => {
+  let filtrados = afiliadosDisponibles;
+
+  // Filtro por búsqueda
+  if (searchAfiliado.trim()) {
+    const search = searchAfiliado.toLowerCase();
+    filtrados = filtrados.filter(afi =>
+      afi.cod_usuario_afi?.toLowerCase().includes(search) ||
+      afi.nombres?.toLowerCase().includes(search) ||
+      afi.apellidos?.toLowerCase().includes(search) ||
+      afi.cedula?.includes(search) ||
+      afi.num_medidor?.toLowerCase().includes(search) ||
+      afi.sector?.toLowerCase().includes(search)
+    );
+  }
+
+  // Filtro por sector
+  if (filtroSector) {
+    filtrados = filtrados.filter(afi => 
+      String(afi.id_sector) === String(filtroSector)
+    );
+  }
+
+  // Filtro por estado
+  if (filtroEstadoAfiliado === 'activos') {
+    filtrados = filtrados.filter(afi => afi.activo === true);
+  } else if (filtroEstadoAfiliado === 'inactivos') {
+    filtrados = filtrados.filter(afi => afi.activo === false);
+  }
+
+  return filtrados;
+}, [afiliadosDisponibles, searchAfiliado, filtroSector, filtroEstadoAfiliado]);
 
 
   // ========================================
@@ -1773,6 +2425,7 @@ const handleSaveMora = async (e) => {
                   )}
                 </>
               )}
+              {/* SECCIÓN: LÍMITES GEOGRÁFICOS */}
               {selectedSection === 'limites' && (
               <div className="content-section">
                 {/* SECCIÓN: LÍMITES GEOGRÁFICOS */}
@@ -2075,7 +2728,8 @@ const handleSaveMora = async (e) => {
                             onClick={closeLimiteModal}
                             disabled={loading}
                           >
-                            Cancelar
+                            <X className="w-4 h-4 mr-2" />
+            Cancelar
                           </button>
                           <button 
                             type="submit"
@@ -2094,6 +2748,7 @@ const handleSaveMora = async (e) => {
 
               </div>
               )}
+              {/* SECCIÓN: IVA */}
               {selectedSection === 'iva' && (
                 <div className="content-section">
                   {/* SECCIÓN: IVA */}
@@ -2488,7 +3143,8 @@ const handleSaveMora = async (e) => {
                               onClick={closeIVAModal}
                               disabled={loading}
                             >
-                              Cancelar
+                              <X className="w-4 h-4 mr-2" />
+            Cancelar
                             </button>
                             <button 
                               type="submit"
@@ -2505,671 +3161,1511 @@ const handleSaveMora = async (e) => {
 
                 </div>
               )}
-{/* ========================================
-    SECCIÓN: CONFIGURACIÓN DE MORA
-    ======================================== */}
-{selectedSection === 'mora' && (
-  <div className="content-section">
-    {/* SECCIÓN: MORA */}
-    <div className="section-header">
-      <div className="section-title-group">
-        <h2>Gestión de Mora</h2>
-        <p className="section-subtitle">
-          Configura los intereses por pago tardío de facturas
-        </p>
-      </div>
-      <div style={{display: 'flex', gap: '0.5rem'}}>
-        <button
-          className="btn-secondary"
-          onClick={loadMoras}
-          disabled={loadingMoras}
-          title="Recargar lista de configuraciones"
-        >
-          <RefreshCw className={`w-4 h-4 ${loadingMoras ? 'animate-spin' : ''}`} />
-        </button>
-        
-        {permissions.canCreate && (
-          <button 
-            className="btn-primary"
-            onClick={() => openMoraModal()}
-            disabled={loading}
-          >
-            <DollarSign className='w-4 h-4 mr-2'/>
-            Nueva Configuración
-          </button>
-        )}
-      </div>
-    </div>
-
-    {/* Alertas */}
-    {error && (
-      <div className="alert alert-error">
-        <AlertCircle size={18} />
-        <span>{error}</span>
-      </div>
-    )}
-
-    {success && (
-      <div className="alert alert-success">
-        <CheckCircle size={18} />
-        <span>{success}</span>
-      </div>
-    )}
-
-    {/* Toggle para activar/desactivar Mora */}
-    <div className="info-card" style={{marginBottom: '1.5rem'}}>
-      <div className="info-item" style={{flex: 1}}>
-        <span className="info-label">Aplicar Mora por Pago Tardío</span>
-        <button
-          className={`toggle-button ${aplicarMora ? 'active' : ''}`}
-          onClick={handleToggleAplicarMora}
-          type="button"
-          style={{marginTop: '0.5rem'}}
-          disabled={loading}
-        >
-          {aplicarMora ? (
-            <>
-              <ToggleRight size={20} />
-              <span>Activado</span>
-            </>
-          ) : (
-            <>
-              <ToggleLeft size={20} />
-              <span>Desactivado</span>
-            </>
-          )}
-        </button>
-        {/* Mostrar configuración activa actual */}
-        {aplicarMora && moraActiva && (
-          <div style={{marginTop: '0.75rem', fontSize: '0.875rem', color: '#666', lineHeight: '1.6'}}>
-            <strong>Configuración actual:</strong> {moraActiva.nombre}
-            <br />
-            <span style={{color: '#999'}}>
-              Tipo: {moraService.formatTipoCalculo(moraActiva.tipo_calculo)} | 
-              Valor: {moraService.formatValorMora(moraActiva)} | 
-              Días de gracia: {moraActiva.dias_gracia}
-            </span>
-          </div>
-        )}
-        {!aplicarMora && (
-          <div style={{marginTop: '0.5rem', fontSize: '0.875rem', color: '#999'}}>
-            Todas las configuraciones de mora están desactivadas
-          </div>
-        )}
-      </div>
-    </div>
-
-    {/* CONTENIDO DINÁMICO: Solo se muestra si aplicarMora está activado */}
-    {aplicarMora ? (
-      <>
-        {/* Información */}
-        <div className="info-card">
-          <div className="info-item">
-            <span className="info-label">Total de Configuraciones</span>
-            <span className="info-value">{moras.length}</span>
-          </div>
-          <div className="info-item">
-            <span className="info-label">Configuraciones Activas</span>
-            <span className="info-value">
-              {moras.filter(m => m.activo).length}
-            </span>
-          </div>
-          <div className="info-item">
-            <span className="info-label">Vigentes</span>
-            <span className="info-value">
-              {moras.filter(m => m.es_vigente).length}
-            </span>
-          </div>
-        </div>
-
-        {/* Lista de Configuraciones de Mora */}
-        {loadingMoras ? (
-          <div className="loading-container">
-            <RefreshCw className="spinner" size={32} />
-            <p>Cargando configuraciones de mora...</p>
-          </div>
-        ) : moras.length === 0 ? (
-          <div className="empty-state">
-            <DollarSign size={48} />
-            <p>No hay configuraciones de mora</p>
-            {permissions.canCreate && (
-              <button 
-                className="btn-primary"
-                onClick={() => openMoraModal()}
-              >
-                Crear Primera Configuración
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Tipo Cálculo</th>
-                  <th>Valor/Tasa</th>
-                  <th>Días Gracia</th>
-                  <th>Meses Gracia</th>
-                  <th>Aplicar Sobre</th>
-                  <th>Vigencia</th>
-                  <th>Estado</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {moras.map((mora) => (
-                  <tr key={mora.id_configuracion_mora}>
-                    <td>
-                      <strong>{mora.nombre}</strong>
-                      {mora.descripcion && (
-                        <><br /><small style={{color: '#666'}}>{mora.descripcion}</small></>
+              {/* SECCIÓN: MORA */}
+              {selectedSection === 'mora' && (
+                <div className="content-section">
+                  {/* SECCIÓN: MORA */}
+                  <div className="section-header">
+                    <div className="section-title-group">
+                      <h2>Gestión de Mora</h2>
+                      <p className="section-subtitle">
+                        Configura los intereses por pago tardío de facturas
+                      </p>
+                    </div>
+                    <div style={{display: 'flex', gap: '0.5rem'}}>
+                      <button
+                        className="btn-secondary"
+                        onClick={loadMoras}
+                        disabled={loadingMoras}
+                        title="Recargar lista de configuraciones"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${loadingMoras ? 'animate-spin' : ''}`} />
+                      </button>
+                      
+                      {permissions.canCreate && (
+                        <button 
+                          className="btn-primary"
+                          onClick={() => openMoraModal()}
+                          disabled={loading}
+                        >
+                          <DollarSign className='w-4 h-4 mr-2'/>
+                          Nueva Configuración
+                        </button>
                       )}
-                    </td>
-                    <td>
-                      <span className="badge badge-info">
-                        {moraService.formatTipoCalculo(mora.tipo_calculo)}
-                      </span>
-                    </td>
-                    <td className="text-center">
-                      <strong style={{color: '#1e40af', fontSize: '0.95rem'}}>
-                        {mora.tipo_calculo === 'porcentaje' && mora.porcentaje_mora && (
-                          `${parseFloat(mora.porcentaje_mora).toFixed(2)}%`
-                        )}
-                        {mora.tipo_calculo === 'fijo' && mora.valor_fijo && (
-                          `$${parseFloat(mora.valor_fijo).toFixed(2)}`
-                        )}
-                        {mora.tipo_calculo === 'interes_diario' && mora.interes_diario && (
-                          `${parseFloat(mora.interes_diario).toFixed(4)}%`
-                        )}
-                      </strong>
-                      {mora.mora_maxima && (
-                        <><br /><small style={{color: '#999'}}>Máx: ${parseFloat(mora.mora_maxima).toFixed(2)}</small></>
-                      )}
-                    </td>
-                    <td className="text-center">
-                      <span className="badge badge-warning">
-                        {mora.dias_gracia} {mora.dias_gracia === 1 ? 'día' : 'días'}
-                      </span>
-                    </td>
+                    </div>
+                  </div>
 
-                                        <td>
-  {mora.tipo_periodo === 'meses' ? (
-    <span className="badge badge-info">
-      {mora.meses_gracia || 0} {mora.meses_gracia === 1 ? 'mes' : 'meses'}
-    </span>
-  ) : (
-    <span className="badge badge-secondary">
-      {mora.dias_gracia || 0} {mora.dias_gracia === 1 ? 'día' : 'días'}
-    </span>
-  )}
-</td>
+                  {/* Alertas */}
+                  {error && (
+                    <div className="alert alert-error">
+                      <AlertCircle size={18} />
+                      <span>{error}</span>
+                    </div>
+                  )}
 
-                    <td>
-                      {mora.aplicar_sobre === 'total' && (
-                        <span className="badge badge-success">Total Factura</span>
-                      )}
-                      {mora.aplicar_sobre === 'consumo' && (
-                        <span className="badge badge-info">Solo Consumo</span>
-                      )}
-                      {mora.aplicar_sobre === 'base' && (
-                        <span className="badge badge-secondary">Base</span>
-                      )}
-                    </td>
-                    <td>
-                      <small>
-                        <strong>Desde:</strong> {new Date(mora.vigencia_desde).toLocaleDateString('es-EC')}
-                        {mora.vigencia_hasta && (
-                          <><br /><strong>Hasta:</strong> {new Date(mora.vigencia_hasta).toLocaleDateString('es-EC')}</>
-                        )}
-                        {!mora.vigencia_hasta && (
-                          <><br /><span style={{color: '#10b981'}}>Sin límite</span></>
-                        )}
-                      </small>
-                    </td>
+                  {success && (
+                    <div className="alert alert-success">
+                      <CheckCircle size={18} />
+                      <span>{success}</span>
+                    </div>
+                  )}
 
+                  {/* Toggle para activar/desactivar Mora */}
+                  <div className="info-card" style={{marginBottom: '1.5rem'}}>
+                    <div className="info-item" style={{flex: 1}}>
+                      <span className="info-label">Aplicar Mora por Pago Tardío</span>
+                      <button
+                        className={`toggle-button ${aplicarMora ? 'active' : ''}`}
+                        onClick={handleToggleAplicarMora}
+                        type="button"
+                        style={{marginTop: '0.5rem'}}
+                        disabled={loading}
+                      >
+                        {aplicarMora ? (
+                          <>
+                            <ToggleRight size={20} />
+                            <span>Activado</span>
+                          </>
+                        ) : (
+                          <>
+                            <ToggleLeft size={20} />
+                            <span>Desactivado</span>
+                          </>
+                        )}
+                      </button>
+                      {/* Mostrar configuración activa actual */}
+                      {aplicarMora && moraActiva && (
+                        <div style={{marginTop: '0.75rem', fontSize: '0.875rem', color: '#666', lineHeight: '1.6'}}>
+                          <strong>Configuración actual:</strong> {moraActiva.nombre}
+                          <br />
+                          <span style={{color: '#999'}}>
+                            Tipo: {moraService.formatTipoCalculo(moraActiva.tipo_calculo)} | 
+                            Valor: {moraService.formatValorMora(moraActiva)} | 
+                            Días de gracia: {moraActiva.dias_gracia}
+                          </span>
+                        </div>
+                      )}
+                      {!aplicarMora && (
+                        <div style={{marginTop: '0.5rem', fontSize: '0.875rem', color: '#999'}}>
+                          Todas las configuraciones de mora están desactivadas
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-                    <td>
-                      {mora.activo && mora.aplicar_mora ? (
-                        <span className="badge badge-success flex items-center gap-1">
-                          <CheckCircle className="w-4 h-4" />
-                          Activa
-                        </span>
-                      ) : (
-                        <span className="badge badge-inactive flex items-center gap-1">
-                          <XCircle className="w-4 h-4" />
-                          Inactiva
-                        </span>
-                      )}
-                      {!mora.es_vigente && (
-                        <><br /><span className="badge badge-warning">No Vigente</span></>
-                      )}
-                    </td>
-                    <td>
-                      <div className="action-buttons">
-                        {!mora.activo && permissions.canUpdate && (
-                          <button
-                            className="btn-icon btn-success"
-                            onClick={() => handleActivarMora(mora.id_configuracion_mora, mora.nombre)}
-                            title="Activar Configuración"
-                          >
-                            <CheckCircle size={16} />
-                          </button>
-                        )}
-                        {mora.activo && permissions.canUpdate && (
-                          <button
-                            className="btn-icon btn-warning"
-                            onClick={() => handleDesactivarMora(mora.id_configuracion_mora, mora.nombre)}
-                            title="Desactivar Configuración"
-                          >
-                            <XCircle size={16} />
-                          </button>
-                        )}
-                        {permissions.canUpdate && (
-                          <button
-                            className="btn-icon btn-primary"
-                            onClick={() => openMoraModal(mora)}
-                            title="Editar"
-                          >
-                            <Edit size={16} />
-                          </button>
-                        )}
-                        {permissions.canDelete && (
-                          <button
-                            className="btn-icon btn-danger"
-                            onClick={() => handleDeleteMora(
-                              mora.id_configuracion_mora,
-                              mora.nombre,
-                              mora.activo
-                            )}
-                            title="Eliminar"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
+                  {/* CONTENIDO DINÁMICO: Solo se muestra si aplicarMora está activado */}
+                  {aplicarMora ? (
+                    <>
+                      {/* Información */}
+                      <div className="info-card">
+                        <div className="info-item">
+                          <span className="info-label">Total de Configuraciones</span>
+                          <span className="info-value">{moras.length}</span>
+                        </div>
+                        <div className="info-item">
+                          <span className="info-label">Configuraciones Activas</span>
+                          <span className="info-value">
+                            {moras.filter(m => m.activo).length}
+                          </span>
+                        </div>
+                        <div className="info-item">
+                          <span className="info-label">Vigentes</span>
+                          <span className="info-value">
+                            {moras.filter(m => m.es_vigente).length}
+                          </span>
+                        </div>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
 
-        {/* Información adicional */}
-        <div className="alert alert-info">
-          <AlertCircle size={18} />
-          <div>
-            <strong>Información importante:</strong>
-            <ul style={{marginTop: '0.5rem', paddingLeft: '1.25rem'}}>
-              <li>Solo puede haber <strong>una configuración de mora activa</strong> a la vez.</li>
-              <li>La mora se aplicará automáticamente a facturas vencidas según los días de gracia.</li>
-              <li>Los <strong>días de gracia</strong> son el período después del vencimiento sin aplicar mora.</li>
-              <li>Puedes establecer un <strong>límite máximo</strong> para el monto de mora calculado.</li>
-              <li>Al activar una configuración, todas las demás se desactivan automáticamente.</li>
-            </ul>
-          </div>
-        </div>
-      </>
-    ) : (
-      // ESTADO DESACTIVADO: Mostrar mensaje cuando toggle está off
-      <div className="empty-state">
-        <ToggleLeft size={48} style={{color: '#94a3b8'}} />
-        <p style={{fontSize: '1.125rem', fontWeight: '500', color: '#64748b'}}>
-          La aplicación de mora está desactivada
-        </p>
-        <p style={{fontSize: '0.875rem', color: '#94a3b8', marginTop: '0.5rem'}}>
-          Activa el interruptor de arriba para gestionar y configurar las moras del sistema.
-        </p>
-        {permissions.canUpdate && (
-          <button 
-            className="btn-primary"
-            onClick={handleToggleAplicarMora}
-            style={{marginTop: '1rem'}}
-          >
-            <ToggleRight className="w-4 h-4 mr-2" />
-            Activar Mora
-          </button>
-        )}
-      </div>
-    )}
+                      {/* Lista de Configuraciones de Mora */}
+                      {loadingMoras ? (
+                        <div className="loading-container">
+                          <RefreshCw className="spinner" size={32} />
+                          <p>Cargando configuraciones de mora...</p>
+                        </div>
+                      ) : moras.length === 0 ? (
+                        <div className="empty-state">
+                          <DollarSign size={48} />
+                          <p>No hay configuraciones de mora</p>
+                          {permissions.canCreate && (
+                            <button 
+                              className="btn-primary"
+                              onClick={() => openMoraModal()}
+                            >
+                              Crear Primera Configuración
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="table-container">
+                          <table className="data-table">
+                            <thead>
+                              <tr>
+                                <th>Nombre</th>
+                                <th>Tipo Cálculo</th>
+                                <th>Valor/Tasa</th>
+                                <th>Días Gracia</th>
+                                <th>Meses Gracia</th>
+                                <th>Aplicar Sobre</th>
+                                <th>Vigencia</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {moras.map((mora) => (
+                                <tr key={mora.id_configuracion_mora}>
+                                  <td>
+                                    <strong>{mora.nombre}</strong>
+                                    {mora.descripcion && (
+                                      <><br /><small style={{color: '#666'}}>{mora.descripcion}</small></>
+                                    )}
+                                  </td>
+                                  <td>
+                                    <span className="badge badge-info">
+                                      {moraService.formatTipoCalculo(mora.tipo_calculo)}
+                                    </span>
+                                  </td>
+                                  <td className="text-center">
+                                    <strong style={{color: '#1e40af', fontSize: '0.95rem'}}>
+                                      {mora.tipo_calculo === 'porcentaje' && mora.porcentaje_mora && (
+                                        `${parseFloat(mora.porcentaje_mora).toFixed(2)}%`
+                                      )}
+                                      {mora.tipo_calculo === 'fijo' && mora.valor_fijo && (
+                                        `$${parseFloat(mora.valor_fijo).toFixed(2)}`
+                                      )}
+                                      {mora.tipo_calculo === 'interes_diario' && mora.interes_diario && (
+                                        `${parseFloat(mora.interes_diario).toFixed(4)}%`
+                                      )}
+                                    </strong>
+                                    {mora.mora_maxima && (
+                                      <><br /><small style={{color: '#999'}}>Máx: ${parseFloat(mora.mora_maxima).toFixed(2)}</small></>
+                                    )}
+                                  </td>
+                                  <td className="text-center">
+                                    <span className="badge badge-warning">
+                                      {mora.dias_gracia} {mora.dias_gracia === 1 ? 'día' : 'días'}
+                                    </span>
+                                  </td>
 
-    {/* MODAL DE CREACIÓN / EDICIÓN DE MORA */}
-    {showMoraModal && (
-      <div className="modal-overlay" onClick={closeMoraModal}>
-        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
-            <h3>{editingMora ? 'Editar' : 'Nueva'} Configuración de Mora</h3>
-            <button type="button" className="btn-close" onClick={closeMoraModal}>×</button>
-          </div>
-          
-          <form onSubmit={handleSaveMora} className="limite-form">
-            <div className="modal-body">
-              {/* Nombre */}
+                                                      <td>
+                {mora.tipo_periodo === 'meses' ? (
+                  <span className="badge badge-info">
+                    {mora.meses_gracia || 0} {mora.meses_gracia === 1 ? 'mes' : 'meses'}
+                  </span>
+                ) : (
+                  <span className="badge badge-secondary">
+                    {mora.dias_gracia || 0} {mora.dias_gracia === 1 ? 'día' : 'días'}
+                  </span>
+                )}
+              </td>
+
+                                  <td>
+                                    {mora.aplicar_sobre === 'total' && (
+                                      <span className="badge badge-success">Total Factura</span>
+                                    )}
+                                    {mora.aplicar_sobre === 'consumo' && (
+                                      <span className="badge badge-info">Solo Consumo</span>
+                                    )}
+                                    {mora.aplicar_sobre === 'base' && (
+                                      <span className="badge badge-secondary">Base</span>
+                                    )}
+                                  </td>
+                                  <td>
+                                    <small>
+                                      <strong>Desde:</strong> {new Date(mora.vigencia_desde).toLocaleDateString('es-EC')}
+                                      {mora.vigencia_hasta && (
+                                        <><br /><strong>Hasta:</strong> {new Date(mora.vigencia_hasta).toLocaleDateString('es-EC')}</>
+                                      )}
+                                      {!mora.vigencia_hasta && (
+                                        <><br /><span style={{color: '#10b981'}}>Sin límite</span></>
+                                      )}
+                                    </small>
+                                  </td>
+
+
+                                  <td>
+                                    {mora.activo && mora.aplicar_mora ? (
+                                      <span className="badge badge-success flex items-center gap-1">
+                                        <CheckCircle className="w-4 h-4" />
+                                        Activa
+                                      </span>
+                                    ) : (
+                                      <span className="badge badge-inactive flex items-center gap-1">
+                                        <XCircle className="w-4 h-4" />
+                                        Inactiva
+                                      </span>
+                                    )}
+                                    {!mora.es_vigente && (
+                                      <><br /><span className="badge badge-warning">No Vigente</span></>
+                                    )}
+                                  </td>
+                                  <td>
+                                    <div className="action-buttons">
+                                      {!mora.activo && permissions.canUpdate && (
+                                        <button
+                                          className="btn-icon btn-success"
+                                          onClick={() => handleActivarMora(mora.id_configuracion_mora, mora.nombre)}
+                                          title="Activar Configuración"
+                                        >
+                                          <CheckCircle size={16} />
+                                        </button>
+                                      )}
+                                      {mora.activo && permissions.canUpdate && (
+                                        <button
+                                          className="btn-icon btn-warning"
+                                          onClick={() => handleDesactivarMora(mora.id_configuracion_mora, mora.nombre)}
+                                          title="Desactivar Configuración"
+                                        >
+                                          <XCircle size={16} />
+                                        </button>
+                                      )}
+                                      {permissions.canUpdate && (
+                                        <button
+                                          className="btn-icon btn-primary"
+                                          onClick={() => openMoraModal(mora)}
+                                          title="Editar"
+                                        >
+                                          <Edit size={16} />
+                                        </button>
+                                      )}
+                                      {permissions.canDelete && (
+                                        <button
+                                          className="btn-icon btn-danger"
+                                          onClick={() => handleDeleteMora(
+                                            mora.id_configuracion_mora,
+                                            mora.nombre,
+                                            mora.activo
+                                          )}
+                                          title="Eliminar"
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* Información adicional */}
+                      <div className="alert alert-info">
+                        <AlertCircle size={18} />
+                        <div>
+                          <strong>Información importante:</strong>
+                          <ul style={{marginTop: '0.5rem', paddingLeft: '1.25rem'}}>
+                            <li>Solo puede haber <strong>una configuración de mora activa</strong> a la vez.</li>
+                            <li>La mora se aplicará automáticamente a facturas vencidas según los días de gracia.</li>
+                            <li>Los <strong>días de gracia</strong> son el período después del vencimiento sin aplicar mora.</li>
+                            <li>Puedes establecer un <strong>límite máximo</strong> para el monto de mora calculado.</li>
+                            <li>Al activar una configuración, todas las demás se desactivan automáticamente.</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    // ESTADO DESACTIVADO: Mostrar mensaje cuando toggle está off
+                    <div className="empty-state">
+                      <ToggleLeft size={48} style={{color: '#94a3b8'}} />
+                      <p style={{fontSize: '1.125rem', fontWeight: '500', color: '#64748b'}}>
+                        La aplicación de mora está desactivada
+                      </p>
+                      <p style={{fontSize: '0.875rem', color: '#94a3b8', marginTop: '0.5rem'}}>
+                        Activa el interruptor de arriba para gestionar y configurar las moras del sistema.
+                      </p>
+                      {permissions.canUpdate && (
+                        <button 
+                          className="btn-primary"
+                          onClick={handleToggleAplicarMora}
+                          style={{marginTop: '1rem'}}
+                        >
+                          <ToggleRight className="w-4 h-4 mr-2" />
+                          Activar Mora
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* MODAL DE CREACIÓN / EDICIÓN DE MORA */}
+                  {showMoraModal && (
+                    <div className="modal-overlay" onClick={closeMoraModal}>
+                      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                          <h3>{editingMora ? 'Editar' : 'Nueva'} Configuración de Mora</h3>
+                          <button type="button" className="btn-close" onClick={closeMoraModal}>×</button>
+                        </div>
+                        
+                        <form onSubmit={handleSaveMora} className="limite-form">
+                          <div className="modal-body">
+                            {/* Nombre */}
+                            <div className="form-group">
+                              <label>Nombre de la Configuración *</label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                value={moraFormData.nombre}
+                                onChange={(e) => setMoraFormData({ ...moraFormData, nombre: e.target.value })}
+                                placeholder="Ej: Mora Estándar 3.75%, Mora Residencial"
+                                required
+                                maxLength={100}
+                              />
+                              <small className="form-help">Nombre descriptivo para identificar esta configuración</small>
+                            </div>
+
+                            {/* Descripción */}
+                            <div className="form-group">
+                              <label>Descripción</label>
+                              <textarea
+                                className="form-input"
+                                value={moraFormData.descripcion}
+                                onChange={(e) => setMoraFormData({ ...moraFormData, descripcion: e.target.value })}
+                                placeholder="Descripción detallada de cuándo y cómo se aplica esta mora"
+                                rows={3}
+                                maxLength={500}
+                              />
+                            </div>
+
+              {/* ✅ SELECTOR DE TIPO DE PERIODO */}
               <div className="form-group">
-                <label>Nombre de la Configuración *</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={moraFormData.nombre}
-                  onChange={(e) => setMoraFormData({ ...moraFormData, nombre: e.target.value })}
-                  placeholder="Ej: Mora Estándar 3.75%, Mora Residencial"
-                  required
-                  maxLength={100}
-                />
-                <small className="form-help">Nombre descriptivo para identificar esta configuración</small>
-              </div>
-
-              {/* Descripción */}
-              <div className="form-group">
-                <label>Descripción</label>
-                <textarea
-                  className="form-input"
-                  value={moraFormData.descripcion}
-                  onChange={(e) => setMoraFormData({ ...moraFormData, descripcion: e.target.value })}
-                  placeholder="Descripción detallada de cuándo y cómo se aplica esta mora"
-                  rows={3}
-                  maxLength={500}
-                />
-              </div>
-
-{/* ✅ SELECTOR DE TIPO DE PERIODO */}
-<div className="form-group">
-  <label className="form-label">
-    <Clock size={16} />
-    Tipo de Periodo de Gracia *
-  </label>
-  <div className="radio-group">
-    <label className="radio-option">
-      <input
-        type="radio"
-        name="tipo_periodo"
-        value="dias"
-        checked={moraFormData.tipo_periodo === 'dias'}
-        onChange={(e) => setMoraFormData({ 
-          ...moraFormData, 
-          tipo_periodo: e.target.value,
-          // Limpiar el campo no usado
-          meses_gracia: 0
-        })}
-      />
-      <span>Por Días</span>
-    </label>
-    <label className="radio-option">
-      <input
-        type="radio"
-        name="tipo_periodo"
-        value="meses"
-        checked={moraFormData.tipo_periodo === 'meses'}
-        onChange={(e) => setMoraFormData({ 
-          ...moraFormData, 
-          tipo_periodo: e.target.value,
-          // Limpiar el campo no usado
-          dias_gracia: 0
-        })}
-      />
-      <span>Por Meses (Cambio de mes)</span>
-    </label>
-  </div>
-  <small className="form-help">
-    {moraFormData.tipo_periodo === 'dias' 
-      ? 'La mora se calculará después de X días de vencida la factura'
-      : 'La mora se aplicará cuando la factura vencida pase al siguiente mes calendario'}
-  </small>
-</div>
-
-{/* ✅ CAMPO CONDICIONAL: DÍAS O MESES */}
-{moraFormData.tipo_periodo === 'dias' ? (
-  <div className="form-group">
-    <label className="form-label">
-      <Calendar size={16} />
-      Días de Gracia
-    </label>
-    <input
-      type="number"
-      className="form-input"
-      value={moraFormData.dias_gracia}
-      onChange={(e) => setMoraFormData({ 
-        ...moraFormData, 
-        dias_gracia: parseInt(e.target.value) || 0 
-      })}
-      min="0"
-      placeholder="0"
-    />
-    <small className="form-help">
-      Días de tolerancia antes de aplicar mora (0 = aplica desde el día siguiente del vencimiento)
-    </small>
-  </div>
-) : (
-  <div className="form-group">
-    <label className="form-label">
-      <Calendar size={16} />
-      Meses de Gracia
-    </label>
-    <input
-      type="number"
-      className="form-input"
-      value={moraFormData.meses_gracia}
-      onChange={(e) => setMoraFormData({ 
-        ...moraFormData, 
-        meses_gracia: parseInt(e.target.value) || 0 
-      })}
-      min="0"
-      max="12"
-      placeholder="0"
-    />
-    <small className="form-help">
-      Meses de tolerancia. Ejemplo: si vence el 15/Enero y meses_gracia=0, la mora aplica el 1/Febrero. Si meses_gracia=1, aplica el 1/Marzo.
-    </small>
-  </div>
-)}
-
-              {/* Tipo de Cálculo */}
-              <div className="form-group">
-                <label>Tipo de Cálculo *</label>
-                <select
-                  className="form-input"
-                  value={moraFormData.tipo_calculo}
-                  onChange={(e) => setMoraFormData({ 
-                    ...moraFormData, 
-                    tipo_calculo: e.target.value,
-                    // Limpiar valores previos
-                    porcentaje_mora: '',
-                    valor_fijo: '',
-                    interes_diario: ''
-                  })}
-                  required
-                >
-                  <option value="porcentaje">Porcentaje del Monto</option>
-                  <option value="fijo">Valor Fijo</option>
-                  <option value="interes_diario">Interés Diario Acumulado</option>
-                </select>
+                <label className="form-label">
+                  <Clock size={16} />
+                  Tipo de Periodo de Gracia *
+                </label>
+                <div className="radio-group">
+                  <label className="radio-option">
+                    <input
+                      type="radio"
+                      name="tipo_periodo"
+                      value="dias"
+                      checked={moraFormData.tipo_periodo === 'dias'}
+                      onChange={(e) => setMoraFormData({ 
+                        ...moraFormData, 
+                        tipo_periodo: e.target.value,
+                        // Limpiar el campo no usado
+                        meses_gracia: 0
+                      })}
+                    />
+                    <span>Por Días</span>
+                  </label>
+                  <label className="radio-option">
+                    <input
+                      type="radio"
+                      name="tipo_periodo"
+                      value="meses"
+                      checked={moraFormData.tipo_periodo === 'meses'}
+                      onChange={(e) => setMoraFormData({ 
+                        ...moraFormData, 
+                        tipo_periodo: e.target.value,
+                        // Limpiar el campo no usado
+                        dias_gracia: 0
+                      })}
+                    />
+                    <span>Por Meses (Cambio de mes)</span>
+                  </label>
+                </div>
                 <small className="form-help">
-                  {moraFormData.tipo_calculo === 'porcentaje' && '📊 Se aplicará un porcentaje sobre el monto de la factura'}
-                  {moraFormData.tipo_calculo === 'fijo' && '💵 Se aplicará un valor fijo sin importar el monto'}
-                  {moraFormData.tipo_calculo === 'interes_diario' && '📈 El interés se acumula día a día: Deuda × (días/365) × tasa'}
+                  {moraFormData.tipo_periodo === 'dias' 
+                    ? 'La mora se calculará después de X días de vencida la factura'
+                    : 'La mora se aplicará cuando la factura vencida pase al siguiente mes calendario'}
                 </small>
               </div>
 
-              {/* Valores según tipo de cálculo - En fila */}
-              <div className="form-row" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
-                {/* Valor según tipo */}
-                {moraFormData.tipo_calculo === 'porcentaje' && (
-                  <div className="form-group">
-                    <label>Porcentaje de Mora (%) *</label>
-                    <input
-                      type="number"
-                      className="form-input"
-                      value={moraFormData.porcentaje_mora}
-                      onChange={(e) => setMoraFormData({ ...moraFormData, porcentaje_mora: e.target.value })}
-                      placeholder="3.75"
-                      step="0.01"
-                      min="0.01"
-                      max="100"
-                      required
-                    />
-                    <small className="form-help">Ej: 3.75 para aplicar 3.75% sobre el monto</small>
-                  </div>
-                )}
-
-                {moraFormData.tipo_calculo === 'fijo' && (
-                  <div className="form-group">
-                    <label>Valor Fijo ($) *</label>
-                    <input
-                      type="number"
-                      className="form-input"
-                      value={moraFormData.valor_fijo}
-                      onChange={(e) => setMoraFormData({ ...moraFormData, valor_fijo: e.target.value })}
-                      placeholder="5.00"
-                      step="0.01"
-                      min="0.01"
-                      required
-                    />
-                    <small className="form-help">Monto fijo que se aplicará como mora</small>
-                  </div>
-                )}
-
-                {moraFormData.tipo_calculo === 'interes_diario' && (
-                  <div className="form-group">
-                    <label>Tasa de Interés Diario (%) *</label>
-                    <input
-                      type="number"
-                      className="form-input"
-                      value={moraFormData.interes_diario}
-                      onChange={(e) => setMoraFormData({ ...moraFormData, interes_diario: e.target.value })}
-                      placeholder="0.1027"
-                      step="0.0001"
-                      min="0.0001"
-                      required
-                    />
-                    <small className="form-help">Tasa anualizada dividida entre 365</small>
-                  </div>
-                )}
-
-                {/* Días de Gracia */}
+              {/* ✅ CAMPO CONDICIONAL: DÍAS O MESES */}
+              {moraFormData.tipo_periodo === 'dias' ? (
                 <div className="form-group">
-                  <label>Días de Gracia *</label>
+                  <label className="form-label">
+                    <Calendar size={16} />
+                    Días de Gracia
+                  </label>
                   <input
                     type="number"
                     className="form-input"
                     value={moraFormData.dias_gracia}
-                    onChange={(e) => setMoraFormData({ ...moraFormData, dias_gracia: e.target.value })}
-                    placeholder="0"
+                    onChange={(e) => setMoraFormData({ 
+                      ...moraFormData, 
+                      dias_gracia: parseInt(e.target.value) || 0 
+                    })}
                     min="0"
-                    max="365"
-                    required
+                    placeholder="0"
                   />
-                  <small className="form-help">Días después del vencimiento sin aplicar mora</small>
+                  <small className="form-help">
+                    Días de tolerancia antes de aplicar mora (0 = aplica desde el día siguiente del vencimiento)
+                  </small>
                 </div>
-              </div>
-
-              {/* Vigencia */}
-              <div className="form-row" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+              ) : (
                 <div className="form-group">
-                  <label>Vigencia Desde *</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={moraFormData.vigencia_desde}
-                    onChange={(e) => setMoraFormData({ ...moraFormData, vigencia_desde: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Vigencia Hasta</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={moraFormData.vigencia_hasta}
-                    onChange={(e) => setMoraFormData({ ...moraFormData, vigencia_hasta: e.target.value })}
-                    min={moraFormData.vigencia_desde}
-                  />
-                  <small className="form-help">Dejar vacío para vigencia indefinida</small>
-                </div>
-              </div>
-
-              {/* Configuración adicional */}
-              <div className="form-row" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
-                <div className="form-group">
-                  <label>Aplicar Mora Sobre *</label>
-                  <select
-                    className="form-input"
-                    value={moraFormData.aplicar_sobre}
-                    onChange={(e) => setMoraFormData({ ...moraFormData, aplicar_sobre: e.target.value })}
-                    required
-                  >
-                    <option value="total">Total de la Factura</option>
-                    <option value="consumo">Solo Consumo de Agua</option>
-                    <option value="base">Tarifa Base</option>
-                  </select>
-                  <small className="form-help">Sobre qué monto se calcula la mora</small>
-                </div>
-
-                <div className="form-group">
-                  <label>Mora Máxima ($)</label>
+                  <label className="form-label">
+                    <Calendar size={16} />
+                    Meses de Gracia
+                  </label>
                   <input
                     type="number"
                     className="form-input"
-                    value={moraFormData.mora_maxima}
-                    onChange={(e) => setMoraFormData({ ...moraFormData, mora_maxima: e.target.value })}
-                    placeholder="Sin límite"
-                    step="0.01"
+                    value={moraFormData.meses_gracia}
+                    onChange={(e) => setMoraFormData({ 
+                      ...moraFormData, 
+                      meses_gracia: parseInt(e.target.value) || 0 
+                    })}
                     min="0"
+                    max="12"
+                    placeholder="0"
                   />
-                  <small className="form-help">Límite máximo del monto de mora (opcional)</small>
-                </div>
-              </div>
-
-              {/* Checkbox es_vigente */}
-              <div className="form-group">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={moraFormData.es_vigente}
-                    onChange={(e) => setMoraFormData({ ...moraFormData, es_vigente: e.target.checked })}
-                  />
-                  <span>Marcar como vigente</span>
-                </label>
-                <small className="form-help">
-                  Una configuración vigente puede ser activada. Las no vigentes son históricas.
-                </small>
-              </div>
-
-              {!editingMora && (
-                <div className="alert alert-info" style={{fontSize: '0.875rem'}}>
-                  <AlertCircle size={16} />
-                  <div>
-                    <strong>Nota:</strong> La configuración se creará <strong>desactivada</strong> por defecto. 
-                    Podrás activarla después de crearla para que empiece a aplicarse a las facturas vencidas.
-                  </div>
+                  <small className="form-help">
+                    Meses de tolerancia. Ejemplo: si vence el 15/Enero y meses_gracia=0, la mora aplica el 1/Febrero. Si meses_gracia=1, aplica el 1/Marzo.
+                  </small>
                 </div>
               )}
+
+                            {/* Tipo de Cálculo */}
+                            <div className="form-group">
+                              <label>Tipo de Cálculo *</label>
+                              <select
+                                className="form-input"
+                                value={moraFormData.tipo_calculo}
+                                onChange={(e) => setMoraFormData({ 
+                                  ...moraFormData, 
+                                  tipo_calculo: e.target.value,
+                                  // Limpiar valores previos
+                                  porcentaje_mora: '',
+                                  valor_fijo: '',
+                                  interes_diario: ''
+                                })}
+                                required
+                              >
+                                <option value="porcentaje">Porcentaje del Monto</option>
+                                <option value="fijo">Valor Fijo</option>
+                                <option value="interes_diario">Interés Diario Acumulado</option>
+                              </select>
+                              <small className="form-help">
+                                {moraFormData.tipo_calculo === 'porcentaje' && '📊 Se aplicará un porcentaje sobre el monto de la factura'}
+                                {moraFormData.tipo_calculo === 'fijo' && '💵 Se aplicará un valor fijo sin importar el monto'}
+                                {moraFormData.tipo_calculo === 'interes_diario' && '📈 El interés se acumula día a día: Deuda × (días/365) × tasa'}
+                              </small>
+                            </div>
+
+                            {/* Valores según tipo de cálculo - En fila */}
+                            <div className="form-row" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+                              {/* Valor según tipo */}
+                              {moraFormData.tipo_calculo === 'porcentaje' && (
+                                <div className="form-group">
+                                  <label>Porcentaje de Mora (%) *</label>
+                                  <input
+                                    type="number"
+                                    className="form-input"
+                                    value={moraFormData.porcentaje_mora}
+                                    onChange={(e) => setMoraFormData({ ...moraFormData, porcentaje_mora: e.target.value })}
+                                    placeholder="3.75"
+                                    step="0.01"
+                                    min="0.01"
+                                    max="100"
+                                    required
+                                  />
+                                  <small className="form-help">Ej: 3.75 para aplicar 3.75% sobre el monto</small>
+                                </div>
+                              )}
+
+                              {moraFormData.tipo_calculo === 'fijo' && (
+                                <div className="form-group">
+                                  <label>Valor Fijo ($) *</label>
+                                  <input
+                                    type="number"
+                                    className="form-input"
+                                    value={moraFormData.valor_fijo}
+                                    onChange={(e) => setMoraFormData({ ...moraFormData, valor_fijo: e.target.value })}
+                                    placeholder="5.00"
+                                    step="0.01"
+                                    min="0.01"
+                                    required
+                                  />
+                                  <small className="form-help">Monto fijo que se aplicará como mora</small>
+                                </div>
+                              )}
+
+                              {moraFormData.tipo_calculo === 'interes_diario' && (
+                                <div className="form-group">
+                                  <label>Tasa de Interés Diario (%) *</label>
+                                  <input
+                                    type="number"
+                                    className="form-input"
+                                    value={moraFormData.interes_diario}
+                                    onChange={(e) => setMoraFormData({ ...moraFormData, interes_diario: e.target.value })}
+                                    placeholder="0.1027"
+                                    step="0.0001"
+                                    min="0.0001"
+                                    required
+                                  />
+                                  <small className="form-help">Tasa anualizada dividida entre 365</small>
+                                </div>
+                              )}
+
+                              {/* Días de Gracia */}
+                              <div className="form-group">
+                                <label>Días de Gracia *</label>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  value={moraFormData.dias_gracia}
+                                  onChange={(e) => setMoraFormData({ ...moraFormData, dias_gracia: e.target.value })}
+                                  placeholder="0"
+                                  min="0"
+                                  max="365"
+                                  required
+                                />
+                                <small className="form-help">Días después del vencimiento sin aplicar mora</small>
+                              </div>
+                            </div>
+
+                            {/* Vigencia */}
+                            <div className="form-row" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+                              <div className="form-group">
+                                <label>Vigencia Desde *</label>
+                                <input
+                                  type="date"
+                                  className="form-input"
+                                  value={moraFormData.vigencia_desde}
+                                  onChange={(e) => setMoraFormData({ ...moraFormData, vigencia_desde: e.target.value })}
+                                  required
+                                />
+                              </div>
+
+                              <div className="form-group">
+                                <label>Vigencia Hasta</label>
+                                <input
+                                  type="date"
+                                  className="form-input"
+                                  value={moraFormData.vigencia_hasta}
+                                  onChange={(e) => setMoraFormData({ ...moraFormData, vigencia_hasta: e.target.value })}
+                                  min={moraFormData.vigencia_desde}
+                                />
+                                <small className="form-help">Dejar vacío para vigencia indefinida</small>
+                              </div>
+                            </div>
+
+                            {/* Configuración adicional */}
+                            <div className="form-row" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+                              <div className="form-group">
+                                <label>Aplicar Mora Sobre *</label>
+                                <select
+                                  className="form-input"
+                                  value={moraFormData.aplicar_sobre}
+                                  onChange={(e) => setMoraFormData({ ...moraFormData, aplicar_sobre: e.target.value })}
+                                  required
+                                >
+                                  <option value="total">Total de la Factura</option>
+                                  <option value="consumo">Solo Consumo de Agua</option>
+                                  <option value="base">Tarifa Base</option>
+                                </select>
+                                <small className="form-help">Sobre qué monto se calcula la mora</small>
+                              </div>
+
+                              <div className="form-group">
+                                <label>Mora Máxima ($)</label>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  value={moraFormData.mora_maxima}
+                                  onChange={(e) => setMoraFormData({ ...moraFormData, mora_maxima: e.target.value })}
+                                  placeholder="Sin límite"
+                                  step="0.01"
+                                  min="0"
+                                />
+                                <small className="form-help">Límite máximo del monto de mora (opcional)</small>
+                              </div>
+                            </div>
+
+                            {/* Checkbox es_vigente */}
+                            <div className="form-group">
+                              <label className="checkbox-label">
+                                <input
+                                  type="checkbox"
+                                  checked={moraFormData.es_vigente}
+                                  onChange={(e) => setMoraFormData({ ...moraFormData, es_vigente: e.target.checked })}
+                                />
+                                <span>Marcar como vigente</span>
+                              </label>
+                              <small className="form-help">
+                                Una configuración vigente puede ser activada. Las no vigentes son históricas.
+                              </small>
+                            </div>
+
+                            {!editingMora && (
+                              <div className="alert alert-info" style={{fontSize: '0.875rem'}}>
+                                <AlertCircle size={16} />
+                                <div>
+                                  <strong>Nota:</strong> La configuración se creará <strong>desactivada</strong> por defecto. 
+                                  Podrás activarla después de crearla para que empiece a aplicarse a las facturas vencidas.
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="modal-footer">
+                            <button 
+                              type="button"
+                              className="btn-secondary" 
+                              onClick={closeMoraModal}
+                              disabled={loading}
+                            >
+                              <X className="w-4 h-4 mr-2" />
+            Cancelar
+                            </button>
+                            <button 
+                              type="submit"
+                              className="btn-primary" 
+                              disabled={loading}
+                            >
+                              {loading ? 'Guardando...' : 'Guardar'}
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+{selectedSection === 'servicios-permanentes' && (
+                <div className="content-section">
+                  {/* SECCIÓN: SERVICIOS PERMANENTES */}
+                  <div className="section-header">
+                    <div className="section-title-group">
+                      <h2>Servicios Permanentes</h2>
+                      <p className="section-subtitle">
+                        Servicios que se aplican automáticamente cada mes a usuarios específicos
+                      </p>
+                    </div>
+                    <div style={{display: 'flex', gap: '0.5rem'}}>
+                      <button
+                        className="btn-secondary"
+                        onClick={loadServiciosPermanentes}
+                        disabled={loadingSP}
+                        title="Recargar lista de configuraciones"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${loadingSP ? 'animate-spin' : ''}`} />
+                      </button>
+                      
+                      {permissions.canCreate && (
+                        <button 
+                          className="btn-primary"
+                          onClick={() => openSPModal()}
+                          disabled={loading}
+                        >
+                          <Package className='w-4 h-4 mr-2'/>
+                          Nueva Configuración
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Alertas */}
+                  {error && (
+                    <div className="alert alert-error">
+                      <AlertCircle size={18} />
+                      <span>{error}</span>
+                    </div>
+                  )}
+
+                  {success && (
+                    <div className="alert alert-success">
+                      <CheckCircle size={18} />
+                      <span>{success}</span>
+                    </div>
+                  )}
+
+                  {/* Información */}
+                  <div className="info-card">
+                    <div className="info-item">
+                      <span className="info-label">Total de Configuraciones</span>
+                      <span className="info-value">{serviciosPermanentes.length}</span>
+                    </div>
+                    <div className="info-item">
+                      <span className="info-label">Configuraciones Activas</span>
+                      <span className="info-value">
+                        {serviciosPermanentes.filter(sp => sp.activo).length}
+                      </span>
+                    </div>
+                    <div className="info-item">
+                      <span className="info-label">Vigentes</span>
+                      <span className="info-value">
+                        {serviciosPermanentes.filter(sp => sp.es_vigente).length}
+                      </span>
+                    </div>
+                    <div className="info-item">
+                      <span className="info-label">Total Asignaciones</span>
+                      <span className="info-value">
+                        {serviciosPermanentes.reduce((sum, sp) => sum + (sp.total_asignaciones || 0), 0)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Lista de Configuraciones de Servicios Permanentes */}
+                  {loadingSP ? (
+                    <div className="loading-container">
+                      <RefreshCw className="spinner" size={32} />
+                      <p>Cargando configuraciones de servicios permanentes...</p>
+                    </div>
+                  ) : serviciosPermanentes.length === 0 ? (
+                    <div className="empty-state">
+                      <Package size={48} />
+                      <p>No hay configuraciones de servicios permanentes</p>
+                      {permissions.canCreate && (
+                        <button 
+                          className="btn-primary"
+                          onClick={() => openSPModal()}
+                        >
+                          Crear Primera Configuración
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="table-container">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Nombre</th>
+                            <th>Servicio</th>
+                            <th>Periodo</th>
+                            <th>Usuarios</th>
+                            <th>Vigencia</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {serviciosPermanentes.map((sp) => (
+                            <tr key={sp.id_configuracion_sp}>
+                              <td>
+                                <strong>{sp.nombre}</strong>
+                                {sp.descripcion && (
+                                  <><br /><small style={{color: '#666'}}>{sp.descripcion}</small></>
+                                )}
+                              </td>
+                              <td>
+                                <small style={{color: '#999'}}>
+                                  {sp.precio_override ? (
+                                    <>Precio: ${parseFloat(sp.precio_override).toFixed(2)}</>
+                                  ) : (
+                                    <>Precio base: ${sp.servicio_info?.precio_base ? parseFloat(sp.servicio_info.precio_base).toFixed(2) : '0.00'}</>
+                                  )}
+                                </small>
+                              </td>
+                              <td className="text-center">
+                                <span className="badge badge-info">
+                                  {serviciosPermanentesService.formatPeriodo(sp.aplicar_en_periodo)}
+                                </span>
+                              </td>
+                              <td className="text-center">
+                                <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center'}}>
+                                  <Users className="w-4 h-4" style={{color: '#6b7280'}} />
+                                  <strong style={{color: '#1e40af'}}>{sp.asignaciones_activas || 0}</strong>
+                                  <span style={{color: '#999'}}>/ {sp.total_asignaciones || 0}</span>
+                                </div>
+                              </td>
+                              <td>
+                                <small>
+                                  <strong>Desde:</strong> {new Date(sp.vigencia_desde).toLocaleDateString('es-EC')}
+                                  {sp.vigencia_hasta && (
+                                    <><br /><strong>Hasta:</strong> {new Date(sp.vigencia_hasta).toLocaleDateString('es-EC')}</>
+                                  )}
+                                  {!sp.vigencia_hasta && (
+                                    <><br /><span style={{color: '#10b981'}}>Sin límite</span></>
+                                  )}
+                                </small>
+                              </td>
+                              <td>
+                                {sp.activo && sp.aplicar_servicio ? (
+                                  <span className="badge badge-success flex items-center gap-1">
+                                    <CheckCircle className="w-4 h-4" />
+                                    Activo
+                                  </span>
+                                ) : (
+                                  <span className="badge badge-inactive flex items-center gap-1">
+                                    <XCircle className="w-4 h-4" />
+                                    Inactivo
+                                  </span>
+                                )}
+                                {!sp.es_vigente && (
+                                  <><br /><span className="badge badge-warning">No Vigente</span></>
+                                )}
+                              </td>
+                              <td>
+                                <div className="action-buttons">
+                                  {permissions.canUpdate && (
+                                    <button
+                                      className="btn-icon btn-primary"
+                                      onClick={() => openAsignacionesModal(sp)}
+                                      title="Gestionar usuarios"
+                                    >
+                                      <UserCheck size={16} />
+                                    </button>
+                                  )}
+                                  {!sp.activo && permissions.canUpdate && (
+                                    <button
+                                      className="btn-icon btn-success"
+                                      onClick={() => handleActivarSP(sp.id_configuracion_sp, sp.nombre)}
+                                      title="Activar Configuración"
+                                    >
+                                      <CheckCircle size={16} />
+                                    </button>
+                                  )}
+                                  {sp.activo && permissions.canUpdate && (
+                                    <button
+                                      className="btn-icon btn-warning"
+                                      onClick={() => handleDesactivarSP(sp.id_configuracion_sp, sp.nombre)}
+                                      title="Desactivar Configuración"
+                                    >
+                                      <XCircle size={16} />
+                                    </button>
+                                  )}
+                                  {permissions.canUpdate && (
+                                    <button
+                                      className="btn-icon btn-primary"
+                                      onClick={() => openSPModal(sp)}
+                                      title="Editar"
+                                    >
+                                      <Edit size={16} />
+                                    </button>
+                                  )}
+                                  {permissions.canDelete && (
+                                    <button
+                                      className="btn-icon btn-danger"
+                                      onClick={() => handleDeleteSP(
+                                        sp.id_configuracion_sp,
+                                        sp.nombre,
+                                        sp.activo
+                                      )}
+                                      title="Eliminar"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Información adicional */}
+                  <div className="alert alert-info">
+                    <AlertCircle size={18} />
+                    <div>
+                      <strong>Información importante:</strong>
+                      <ul style={{marginTop: '0.5rem', paddingLeft: '1.25rem'}}>
+                        <li>Los servicios permanentes se aplican automáticamente según el periodo configurado.</li>
+                        <li>Puedes asignar el servicio a múltiples usuarios de manera individual.</li>
+                        <li>El <strong>precio override</strong> reemplaza el precio base del servicio solo para esta configuración.</li>
+                        <li>La vigencia determina el rango de fechas en que el servicio estará disponible.</li>
+                        <li>Las asignaciones pueden desactivarse sin eliminar la configuración.</li>
+                      </ul>
+                    </div>
+                  </div>
+
+
+{/* MODAL CREAR/EDITAR CONFIGURACIÓN */}
+{showSPModal && (
+  <div className="modal-overlay" onClick={closeSPModal}>
+    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-header">
+        <h3>{editingSP ? 'Editar' : 'Nueva'} Configuración de Servicio Permanente</h3>
+        <button type="button" className="btn-close" onClick={closeSPModal}>×</button>
+      </div>
+      
+      <form onSubmit={handleSaveSP} className="limite-form">
+        <div className="modal-body">
+          {/* Seleccionar Servicio */}
+          <div className="form-group">
+            <label>Servicio Base *</label>
+            <select
+              className="form-input"
+              value={spFormData.id_servicio || ''}
+              onChange={handleServicioChange}
+              required
+              disabled={loadingServicios || editingSP}
+            >
+              <option value="">-- Seleccionar servicio --</option>
+              {serviciosDisponibles.map(serv => (
+                <option 
+                  key={serv.id_servicio} 
+                  value={serv.id_servicio}
+                >
+                  {serv.nombre} - ${parseFloat(serv.precio_base).toFixed(2)}
+                </option>
+              ))}
+            </select>
+            {loadingServicios && (
+              <small className="form-help">Cargando servicios...</small>
+            )}
+            {editingSP && (
+              <small className="form-help" style={{color: '#ef4444'}}>
+                El servicio no puede cambiarse al editar
+              </small>
+            )}
+          </div>
+
+          {/* Mostrar info del servicio seleccionado */}
+          {spFormData.id_servicio && getInfoServicioSeleccionado() && (
+            <div className="info-card" style={{
+              marginBottom: '1.5rem', 
+              backgroundColor: '#eff6ff', 
+              border: '1px solid #bfdbfe',
+              padding: '1rem',
+              borderRadius: '0.5rem',
+              display: 'flex',
+              gap: '1rem'
+            }}>
+              <div className="info-item" style={{flex: 1}}>
+                <span className="info-label" style={{display: 'block', fontSize: '0.875rem', color: '#64748b'}}>
+                  Servicio seleccionado
+                </span>
+                <span className="info-value" style={{display: 'block', fontWeight: '600', color: '#1e40af', marginTop: '0.25rem'}}>
+                  {getInfoServicioSeleccionado().nombre}
+                </span>
+              </div>
+              <div className="info-item" style={{flex: 1}}>
+                <span className="info-label" style={{display: 'block', fontSize: '0.875rem', color: '#64748b'}}>
+                  Precio base
+                </span>
+                <span className="info-value" style={{display: 'block', fontWeight: '600', color: '#1e40af', marginTop: '0.25rem'}}>
+                  ${getPrecioBaseServicio()?.toFixed(2)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Nombre - AUTOCOMPLETADO Y NO EDITABLE */}
+          <div className="form-group">
+            <label>Nombre de la Configuración *</label>
+            <input
+              type="text"
+              className="form-input"
+              value={spFormData.nombre}
+              readOnly
+              required
+              style={{backgroundColor: '#f3f4f6', cursor: 'not-allowed', color: '#374151'}}
+              placeholder="Selecciona un servicio primero"
+            />
+            <small className="form-help">
+              📌 Se genera automáticamente del servicio seleccionado
+            </small>
+          </div>
+
+          {/* Descripción */}
+          <div className="form-group">
+            <label>Descripción</label>
+            <textarea
+              className="form-input"
+              value={spFormData.descripcion}
+              onChange={(e) => setSPFormData({ ...spFormData, descripcion: e.target.value })}
+              placeholder="Descripción detallada de la configuración"
+              rows={3}
+              maxLength={500}
+            />
+          </div>
+
+          {/* Periodo y Precio Override - En fila */}
+          <div className="form-row" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+            <div className="form-group">
+              <label>Aplicar cada *</label>
+              <select
+                className="form-input"
+                value={spFormData.aplicar_en_periodo}
+                onChange={(e) => setSPFormData({...spFormData, aplicar_en_periodo: e.target.value})}
+                required
+              >
+                <option value="mensual">Mensual</option>
+                <option value="bimestral">Bimestral</option>
+                <option value="trimestral">Trimestral</option>
+              </select>
+              <small className="form-help">Frecuencia de aplicación del servicio</small>
             </div>
 
-            <div className="modal-footer">
-              <button 
-                type="button"
-                className="btn-secondary" 
-                onClick={closeMoraModal}
-                disabled={loading}
-              >
-                Cancelar
-              </button>
-              <button 
-                type="submit"
-                className="btn-primary" 
-                disabled={loading}
-              >
-                {loading ? 'Guardando...' : 'Guardar'}
-              </button>
+            <div className="form-group">
+              <label>Precio Personalizado ($)</label>
+              <input
+                type="number"
+                className="form-input"
+                readOnly
+                step="0.01"
+                min="0"
+                value={spFormData.precio_override}
+                onChange={(e) => setSPFormData({...spFormData, precio_override: e.target.value})}
+                placeholder={spFormData.id_servicio ? `Base: $${getPrecioBaseServicio()?.toFixed(2) || '0.00'}` : "Selecciona servicio"}
+              />
+              <small className="form-help">
+                {spFormData.precio_override 
+                  ? `💵 Usando precio personalizado: $${parseFloat(spFormData.precio_override).toFixed(2)}`
+                  : `💰 Se usará precio base del servicio`
+                }
+              </small>
             </div>
-          </form>
+          </div>
+
+          {/* Vigencia */}
+          <div className="form-row" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+            <div className="form-group">
+              <label>Vigencia Desde *</label>
+              <input
+                type="date"
+                className="form-input"
+                value={spFormData.vigencia_desde}
+                onChange={(e) => setSPFormData({ ...spFormData, vigencia_desde: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Vigencia Hasta</label>
+              <input
+                type="date"
+                className="form-input"
+                value={spFormData.vigencia_hasta}
+                onChange={(e) => setSPFormData({ ...spFormData, vigencia_hasta: e.target.value })}
+                min={spFormData.vigencia_desde}
+              />
+              <small className="form-help">Dejar vacío para vigencia indefinida</small>
+            </div>
+          </div>
+
+          {/* Observaciones */}
+          <div className="form-group">
+            <label>Observaciones</label>
+            <textarea
+              className="form-input"
+              value={spFormData.observaciones}
+              onChange={(e) => setSPFormData({ ...spFormData, observaciones: e.target.value })}
+              placeholder="Notas adicionales sobre esta configuración"
+              rows={3}
+              maxLength={500}
+            />
+          </div>
+
+          {/* Checkbox es_vigente */}
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={spFormData.es_vigente}
+                onChange={(e) => setSPFormData({ ...spFormData, es_vigente: e.target.checked })}
+              />
+              <span>Marcar como vigente</span>
+            </label>
+            <small className="form-help">
+              Una configuración vigente puede ser activada. Las no vigentes son históricas.
+            </small>
+          </div>
+
+          {!editingSP && (
+            <div className="alert alert-info" style={{
+              fontSize: '0.875rem',
+              backgroundColor: '#dbeafe',
+              border: '1px solid #93c5fd',
+              borderRadius: '0.5rem',
+              padding: '0.75rem 1rem',
+              display: 'flex',
+              gap: '0.5rem',
+              alignItems: 'start'
+            }}>
+              <AlertCircle size={16} style={{marginTop: '0.125rem', flexShrink: 0}} />
+              <div>
+                <strong>Nota:</strong> La configuración se creará <strong>desactivada</strong> por defecto. 
+                Podrás activarla después de crearla y asignar usuarios.
+              </div>
+            </div>
+          )}
         </div>
-      </div>
-    )}
+
+        <div className="modal-footer">
+          <button 
+            type="button"
+            className="btn-secondary" 
+            onClick={closeSPModal}
+            disabled={loading}
+          >
+            <X className="w-4 h-4 mr-2" />
+            Cancelar
+          </button>
+          <button 
+            type="submit"
+            className="btn-primary" 
+            disabled={loading || !spFormData.id_servicio || !spFormData.nombre}
+          >
+            {loading ? 'Guardando...' : (editingSP ? 'Actualizar' : 'Crear Configuración')}
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 )}
+
+{/* MODAL GESTIONAR ASIGNACIONES - MEJORADO */}
+{showAsignacionesModal && configuracionSeleccionada && (
+  <div className="modal-overlay" onClick={closeAsignacionesModal}>
+    <div className="modal-content modal-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-header">
+        <div>
+          <h3>Gestionar Usuarios Asignados</h3>
+          <p className="section-subtitle" style={{marginTop: '0.25rem'}}>
+            {configuracionSeleccionada.nombre} - {configuracionSeleccionada.servicio_info?.nombre}
+          </p>
+        </div>
+        <button type="button" className="btn-close" onClick={closeAsignacionesModal}>×</button>
+      </div>
+      
+      <div className="modal-body" style={{maxHeight: '75vh', overflowY: 'auto'}}>
+        {/* ========== SECCIÓN: ASIGNAR NUEVOS USUARIOS ========== */}
+        <div style={{
+          marginBottom: '1.5rem', 
+          padding: '1rem', 
+          backgroundColor: '#eff6ff', 
+          borderRadius: '8px', 
+          border: '1px solid #bfdbfe'
+        }}>
+          <h4 style={{
+            fontWeight: '600', 
+            color: '#1e293b', 
+            marginBottom: '0.75rem', 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem'
+          }}>
+            <UserPlus size={20} style={{color: '#4f46e5'}} />
+            Asignar Nuevos Usuarios
+          </h4>
+
+          {/* Filtros y Búsqueda */}
+          <div style={{
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+            gap: '0.75rem',
+            marginBottom: '0.75rem'
+          }}>
+            {/* Buscador */}
+            <div className="form-group" style={{marginBottom: 0}}>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="🔍 Buscar por código, nombre, cédula..."
+                value={searchAfiliado}
+                onChange={(e) => setSearchAfiliado(e.target.value)}
+              />
+            </div>
+
+            {/* Filtro por Sector */}
+            <div className="form-group" style={{marginBottom: 0}}>
+              <select
+                className="form-input"
+                value={filtroSector}
+                onChange={(e) => setFiltroSector(e.target.value)}
+              >
+                <option value="">Todos los sectores</option>
+                {sectoresDisponibles.map(sector => (
+                  <option key={sector.id_sector} value={sector.id_sector}>
+                    {sector.nombre_sector}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Seleccionar Todos / Deseleccionar */}
+          <div style={{
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            marginBottom: '0.75rem',
+            padding: '0.5rem',
+            backgroundColor: '#fff',
+            borderRadius: '6px',
+            border: '1px solid #e5e7eb'
+          }}>
+            <span style={{fontSize: '0.875rem', color: '#6b7280'}}>
+              {usuariosSeleccionados.length} de {afiliadosFiltrados.length} seleccionados
+            </span>
+            <div style={{display: 'flex', gap: '0.5rem'}}>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{padding: '0.25rem 0.75rem', fontSize: '0.875rem'}}
+                onClick={() => {
+                  const idsDisponibles = afiliadosFiltrados
+                    .filter(afi => !asignaciones.some(asig => asig.id_usuario_afi === afi.id_usuario_afi && asig.activo))
+                    .map(afi => afi.id_usuario_afi);
+                  setUsuariosSeleccionados(idsDisponibles);
+                }}
+                disabled={afiliadosFiltrados.length === 0}
+              >
+                Seleccionar Todos
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{padding: '0.25rem 0.75rem', fontSize: '0.875rem'}}
+                onClick={() => setUsuariosSeleccionados([])}
+                disabled={usuariosSeleccionados.length === 0}
+              >
+                Limpiar
+              </button>
+            </div>
+          </div>
+
+          {/* Lista de usuarios disponibles */}
+          <div style={{
+            maxHeight: '300px', 
+            overflowY: 'auto', 
+            border: '1px solid #e5e7eb', 
+            borderRadius: '8px', 
+            padding: '0.5rem', 
+            backgroundColor: '#fff'
+          }}>
+            {loadingAfiliados ? (
+              <div style={{textAlign: 'center', padding: '2rem'}}>
+                <RefreshCw className="spinner" size={24} style={{margin: '0 auto'}} />
+                <p style={{marginTop: '0.5rem', color: '#6b7280'}}>Cargando usuarios...</p>
+              </div>
+            ) : afiliadosFiltrados.length === 0 ? (
+              <div style={{textAlign: 'center', padding: '2rem', color: '#6b7280'}}>
+                <Users size={32} style={{margin: '0 auto', marginBottom: '0.5rem', opacity: 0.5}} />
+                <p>No se encontraron usuarios</p>
+                {searchAfiliado && (
+                  <small style={{color: '#9ca3af'}}>Prueba con otro término de búsqueda</small>
+                )}
+              </div>
+            ) : (
+              afiliadosFiltrados.map(afi => {
+                const yaAsignado = asignaciones.some(
+                  asig => asig.id_usuario_afi === afi.id_usuario_afi && asig.activo
+                );
+                
+                return (
+                  <div
+                    key={afi.id_usuario_afi}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem',
+                      cursor: yaAsignado ? 'not-allowed' : 'pointer',
+                      borderRadius: '4px',
+                      backgroundColor: yaAsignado ? '#f3f4f6' : 'transparent',
+                      opacity: yaAsignado ? 0.6 : 1,
+                      transition: 'background-color 0.15s',
+                      borderBottom: '1px solid #f3f4f6'
+                    }}
+                    onClick={() => {
+                      if (yaAsignado) return;
+                      
+                      if (usuariosSeleccionados.includes(afi.id_usuario_afi)) {
+                        setUsuariosSeleccionados(usuariosSeleccionados.filter(id => id !== afi.id_usuario_afi));
+                      } else {
+                        setUsuariosSeleccionados([...usuariosSeleccionados, afi.id_usuario_afi]);
+                      }
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!yaAsignado) e.currentTarget.style.backgroundColor = '#f9fafb';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!yaAsignado) e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={usuariosSeleccionados.includes(afi.id_usuario_afi)}
+                      disabled={yaAsignado}
+                      readOnly
+                      style={{cursor: yaAsignado ? 'not-allowed' : 'pointer'}}
+                    />
+                    <div style={{flex: 1}}>
+                      <div style={{
+                        fontWeight: '500', 
+                        fontSize: '0.875rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                      }}>
+                        <span>{afi.cod_usuario_afi}</span>
+                        <span>•</span>
+                        <span>{afi.nombres} {afi.apellidos}</span>
+                        {yaAsignado && (
+                          <span style={{
+                            fontSize: '0.75rem',
+                            color: '#10b981',
+                            fontWeight: '600'
+                          }}>
+                            ✓ Ya asignado
+                          </span>
+                        )}
+                      </div>
+                      <div style={{fontSize: '0.75rem', color: '#6b7280', marginTop: '0.125rem'}}>
+                        CI: {afi.cedula} • {afi.sector || 'Sin sector'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Botón asignar */}
+          {usuariosSeleccionados.length > 0 && (
+            <button
+              className="btn-primary"
+              style={{marginTop: '0.75rem', width: '100%'}}
+              onClick={handleAsignarUsuarios}
+              disabled={loading}
+            >
+              <UserPlus size={16} />
+              <span>Asignar {usuariosSeleccionados.length} usuario(s) seleccionado(s)</span>
+            </button>
+          )}
+        </div>
+
+        {/* ========== SECCIÓN: USUARIOS ASIGNADOS ========== */}
+        <div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '0.75rem'
+          }}>
+            <h4 style={{
+              fontWeight: '600', 
+              color: '#1e293b', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem',
+              margin: 0
+            }}>
+              <UserCheck size={20} style={{color: '#10b981'}} />
+              Usuarios Asignados ({asignaciones.filter(a => a.activo).length})
+            </h4>
+
+            {/* Buscador de asignados */}
+            <input
+              type="text"
+              className="form-input"
+              style={{maxWidth: '300px', marginBottom: 0}}
+              placeholder="🔍 Buscar en asignados..."
+              value={searchAsignados}
+              onChange={(e) => setSearchAsignados(e.target.value)}
+            />
+          </div>
+
+          {loadingAsignaciones ? (
+            <div style={{textAlign: 'center', padding: '2rem'}}>
+              <RefreshCw className="spinner" size={24} style={{margin: '0 auto'}} />
+              <p style={{marginTop: '0.5rem', color: '#6b7280'}}>Cargando asignaciones...</p>
+            </div>
+          ) : asignacionesFiltradas.length === 0 ? (
+            <div className="empty-state" style={{padding: '2rem', textAlign: 'center'}}>
+              <Users size={48} style={{color: '#d1d5db', margin: '0 auto'}} />
+              <p style={{marginTop: '0.5rem', color: '#6b7280'}}>
+                {searchAsignados 
+                  ? 'No se encontraron asignaciones con ese término'
+                  : 'No hay usuarios asignados a esta configuración'
+                }
+              </p>
+            </div>
+          ) : (
+            <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem'}}>
+              {asignacionesFiltradas.map(asig => (
+                <div
+                  key={asig.id_asignacion_sp}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0.75rem',
+                    backgroundColor: asig.activo ? '#f0fdf4' : '#f9fafb',
+                    borderRadius: '8px',
+                    border: `1px solid ${asig.activo ? '#bbf7d0' : '#e5e7eb'}`
+                  }}
+                >
+                  <div style={{flex: 1}}>
+                    <div style={{
+                      fontWeight: '500', 
+                      fontSize: '0.875rem',
+                      color: '#1e293b'
+                    }}>
+                      {asig.cod_usuario_afi || `Usuario #${asig.cod_usuario_afi}`} - {asig.nombres || 'N/A'} {asig.apellidos || ''}
+                    </div>
+                    <div style={{
+                      fontSize: '0.75rem', 
+                      color: '#6b7280', 
+                      marginTop: '0.25rem',
+                      display: 'flex',
+                      gap: '0.5rem',
+                      flexWrap: 'wrap'
+                    }}>
+                      <span> CI: {asig.cedula}</span> 
+                      <span>• {asig.nombre_sector || 'Sin sector'}</span>
+                    </div>
+
+                    <div style={{
+                      fontSize: '0.75rem', 
+                      color: '#6b7280', 
+                      marginTop: '0.25rem',
+                      display: 'flex',
+                      gap: '0.5rem',
+                      flexWrap: 'wrap'
+                    }}>
+                      <span>Desde: {asig.fecha_inicio}</span>
+                      {asig.fecha_fin && <span>• Hasta: {asig.fecha_fin}</span>}
+                      {asig.sector && <span>• 📍 {asig.sector}</span>}
+                    </div>
+                  </div>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                    {asig.activo ? (
+                      <span className="badge badge-success" style={{fontSize: '0.75rem'}}>
+                        <CheckCircle className="w-3 h-3" />
+                        Activo
+                      </span>
+                    ) : (
+                      <span className="badge badge-inactive" style={{fontSize: '0.75rem'}}>
+                        <XCircle className="w-3 h-3" />
+                        Inactivo
+                      </span>
+                    )}
+                    {permissions.canDelete && (
+                      <button
+                        className="btn-icon btn-danger"
+                        onClick={() => handleEliminarAsignacion(asig)}
+                        title="Eliminar asignación"
+                        disabled={loading}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      
+      <div className="modal-footer">
+        <button 
+          type="button" 
+          className="btn-secondary" 
+          onClick={closeAsignacionesModal}
+          disabled={loading}
+        >
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
+                </div>
+              )}
+
 
             </>
           ) : (

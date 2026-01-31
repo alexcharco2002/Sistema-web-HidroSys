@@ -8,7 +8,7 @@ from models.tarifa import Tarifa
 from schemas.tarifa import TarifaResponse
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import extract, func
+from sqlalchemy import and_, extract, func
 from typing import List, Optional
 from datetime import date, datetime
 import io
@@ -175,19 +175,50 @@ def lectura_to_response(lectura: Lectura) -> dict:
     }
 
 # ========================================
-# ENDPOINT PARA LISTAR TODOS LOS AFILIADOS CON SUS MEDIDORES
+# ENDPOINT PARA LISTAR AFILIADOS CON MEDIDORES (OPTIMIZADO)
 # ========================================
 
 @router.get("/medidores/lista/completa", response_model=dict)
 def listar_afiliados_con_medidores(
+    mes: Optional[int] = Query(None, ge=1, le=12, description="Mes del periodo para filtrar"),
+    anio: Optional[int] = Query(None, ge=2020, description="Año del periodo para filtrar"),
+    incluir_con_lectura: bool = Query(False, description="Incluir medidores con lectura en el periodo"),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
+    """
+    Lista afiliados con sus medidores para registrar lecturas.
+    
+    Parámetros:
+    - mes, anio: Filtran medidores sin lectura en ese periodo
+    - incluir_con_lectura: Si es True, incluye todos los medidores
+    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "lectura")
 
     try:
-        # 🔹 Subconsulta: última lectura de cada medidor
+        print(f"\n{'='*60}")
+        print(f"📋 LISTANDO AFILIADOS CON MEDIDORES")
+        print(f"{'='*60}")
+        
+        # ============================================
+        # PASO 1: OBTENER MEDIDORES CON LECTURA EN EL PERIODO
+        # ============================================
+        medidores_con_lectura_ids = set()
+        
+        if mes and anio and not incluir_con_lectura:
+            lecturas_periodo = db.query(Lectura.id_medidor).filter(
+                func.extract('month', Lectura.fecha_lectura) == mes,
+                func.extract('year', Lectura.fecha_lectura) == anio
+            ).distinct().all()
+            
+            medidores_con_lectura_ids = {lectura[0] for lectura in lecturas_periodo}
+            print(f"📅 Periodo: {mes:02d}/{anio}")
+            print(f"⚠️ Medidores con lectura en periodo: {len(medidores_con_lectura_ids)}")
+        
+        # ============================================
+        # PASO 2: SUBCONSULTA PARA ÚLTIMA LECTURA
+        # ============================================
         subq_ultima_lectura = (
             db.query(
                 Lectura.id_medidor,
@@ -197,48 +228,112 @@ def listar_afiliados_con_medidores(
             .subquery()
         )
 
-        # 🔹 Consulta principal: TODOS LOS AFILIADOS con sus medidores
-        resultados = (
+        # ============================================
+        # PASO 3: CONSULTA PRINCIPAL OPTIMIZADA
+        # ============================================
+        query = (
             db.query(
                 Medidor.id_medidor,
                 Medidor.num_medidor,
+                Medidor.activo,
+                UsuarioAfiliado.id_usuario_afi,
                 UsuarioAfiliado.cod_usuario_afi,
                 UsuarioSistema.nombres,
                 UsuarioSistema.apellidos,
-                Lectura.lectura_actual.label("lectura_anterior")
+                UsuarioSistema.cedula,
+                Sector.nombre_sector,
+                Lectura.lectura_actual.label("lectura_anterior"),
+                Lectura.fecha_lectura.label("fecha_ultima_lectura")
             )
-            .join(UsuarioAfiliado, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
-            .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
+            .join(
+                UsuarioAfiliado,
+                Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi
+            )
+            .join(
+                UsuarioSistema,
+                UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema
+            )
+            .outerjoin(
+                Sector,
+                Medidor.id_sector == Sector.id_sector
+            )
             .outerjoin(
                 subq_ultima_lectura,
                 subq_ultima_lectura.c.id_medidor == Medidor.id_medidor
             )
             .outerjoin(
                 Lectura,
-                (Lectura.id_medidor == Medidor.id_medidor) &
-                (Lectura.fecha_lectura == subq_ultima_lectura.c.max_fecha)
+                and_(
+                    Lectura.id_medidor == Medidor.id_medidor,
+                    Lectura.fecha_lectura == subq_ultima_lectura.c.max_fecha
+                )
             )
-            # 🔥 SIN FILTRO: listar TODOS los afiliados
-            .order_by(UsuarioAfiliado.cod_usuario_afi)
-            .all()  # 🔥 Cambio clave: .all() en vez de .first()
+            .filter(
+                Medidor.activo == True,
+                UsuarioAfiliado.activo == True
+            )
         )
+        
+        # ============================================
+        # PASO 4: EXCLUIR MEDIDORES CON LECTURA EN PERIODO
+        # ============================================
+        if medidores_con_lectura_ids:
+            query = query.filter(
+                Medidor.id_medidor.notin_(medidores_con_lectura_ids)
+            )
+            print(f"🔍 Filtrando medidores sin lectura en {mes:02d}/{anio}")
+        
+        # Ordenar y ejecutar
+        resultados = query.order_by(UsuarioAfiliado.cod_usuario_afi).all()
+        
+        print(f"✅ Afiliados encontrados: {len(resultados)}")
+        print(f"{'='*60}\n")
 
         if not resultados:
-            return {"afiliados": []}
+            return {
+                "afiliados": [],
+                "total": 0,
+                "periodo": {
+                    "mes": mes,
+                    "anio": anio,
+                    "filtrado": bool(mes and anio)
+                },
+                "mensaje": f"Lecturas Completadas - No hay medidores disponibles para lecturas del periodo {mes:02d}/{anio}" if mes and anio else "No hay medidores activos"
+            }
 
-        # 🔹 Transformar a lista de diccionarios
-        afiliados = [
-            {
+        # ============================================
+        # PASO 5: TRANSFORMAR A LISTA
+        # ============================================
+        afiliados = []
+        for r in resultados:
+            afiliado = {
                 "id_medidor": r.id_medidor,
                 "num_medidor": r.num_medidor,
+                "activo": r.activo,
+                "id_usuario_afi": r.id_usuario_afi,
                 "cod_usuario_afi": r.cod_usuario_afi,
-                "nombre_completo": f"{r.nombres} {r.apellidos}",
-                "lectura_anterior": r.lectura_anterior or 0
+                "nombre_completo": f"{r.nombres or ''} {r.apellidos or ''}".strip(),
+                "nombres": r.nombres,
+                "apellidos": r.apellidos,
+                "cedula": r.cedula,
+                "sector": r.nombre_sector or "Sin sector",
+                "lectura_anterior": float(r.lectura_anterior) if r.lectura_anterior else 0,
+                "fecha_ultima_lectura": r.fecha_ultima_lectura.strftime('%Y-%m-%d') if r.fecha_ultima_lectura else None,
+                "tiene_lectura_anterior": r.lectura_anterior is not None
             }
-            for r in resultados
-        ]
+            afiliados.append(afiliado)
 
-        return {"afiliados": afiliados}
+        return {
+            "success": True,
+            "afiliados": afiliados,
+            "total": len(afiliados),
+            "periodo": {
+                "mes": mes,
+                "anio": anio,
+                "filtrado": bool(mes and anio),
+                "excluidos": len(medidores_con_lectura_ids)
+            }
+        }
 
     except Exception as e:
         import traceback
@@ -589,7 +684,6 @@ def crear_lectura(
 
 
 @router.put("/{id_lectura}", response_model=dict)
-@router.put("/{id_lectura}", response_model=dict)
 def actualizar_lectura(
     id_lectura: int,
     lectura_data: LecturaUpdate,
@@ -883,61 +977,166 @@ def toggle_lectura_status(
             detail="Error al cambiar el estado de la lectura"
         )
 
-
-
-
-
 # ========================================
-# EXPORTAR PLANTILLA EXCEL
+# EXPORTAR PLANTILLA EXCEL OPTIMIZADA
 # ========================================
-
+# ========================================
+# EXPORTAR PLANTILLA EXCEL OPTIMIZADA
+# ========================================
 
 @router.get("/export/template")
 def exportar_plantilla(
+    mes: Optional[int] = Query(None, ge=1, le=12, description="Mes del periodo (1-12)"),
+    anio: Optional[int] = Query(None, ge=2020, description="Año del periodo"),
+    incluir_todos: bool = Query(False, description="Incluir medidores con lectura registrada"),
     payload: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
     """
-    Descarga una plantilla de Excel con:
-    - Medidores activos con información del UsuarioAfiliado y sector
-    - Última lectura registrada
-    - Formato correcto para carga masiva
+    Descarga plantilla Excel optimizada:
+    - Excluye medidores con lectura en el periodo (por defecto)
+    - Si todos tienen lectura, genera Excel informativo
+    - incluir_todos=True: Permite descargar todos (para actualizar)
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "lecturas", "lectura")
     
     try:
-        # ✅ FILTRAR: Solo medidores activos CON usuario afiliado
-        # ✅ CORRECCIÓN: Usar .has() para filtrar por existencia de relación
-        medidores = db.query(Medidor).filter(
-            Medidor.activo == True,
-            Medidor.usuario_afiliado.has()  # ✅ Filtra solo medidores CON usuario afiliado
-        ).order_by(Medidor.num_medidor).all()
-
+        from sqlalchemy import func
         
-        print(f"📊 Generando plantilla con {len(medidores)} medidores con usuarios afiliados")
+        print(f"\n{'='*60}")
+        print(f"📊 GENERANDO PLANTILLA OPTIMIZADA")
+        print(f"{'='*60}")
         
-        # Crear libro de Excel
+        periodo_info = ""
+        if mes and anio:
+            periodo_info = f" {mes:02d}/{anio}"
+            print(f"📅 Periodo: {periodo_info}")
+            print(f"🔧 Incluir todos: {incluir_todos}")
+        
+        # ============================================
+        # PASO 1: OBTENER ESTADÍSTICAS DEL PERIODO
+        # ============================================
+        medidores_con_lectura_ids = set()
+        total_medidores_activos = 0
+        
+        if mes and anio:
+            # Medidores con lectura en el periodo
+            lecturas_periodo = db.query(Lectura.id_medidor).filter(
+                func.extract('month', Lectura.fecha_lectura) == mes,
+                func.extract('year', Lectura.fecha_lectura) == anio
+            ).distinct().all()
+            
+            medidores_con_lectura_ids = {lectura[0] for lectura in lecturas_periodo}
+            
+            # Total de medidores activos
+            total_medidores_activos = db.query(func.count(Medidor.id_medidor)).filter(
+                Medidor.activo == True,
+                Medidor.id_usuario_afi.isnot(None)
+            ).scalar()
+            
+            print(f"📊 Medidores activos: {total_medidores_activos}")
+            print(f"✅ Con lectura: {len(medidores_con_lectura_ids)}")
+            print(f"⚠️ Sin lectura: {total_medidores_activos - len(medidores_con_lectura_ids)}")
+        
+        # ============================================
+        # PASO 2: CONSULTA OPTIMIZADA (1 QUERY)
+        # ============================================
+        subquery_ultima_lectura = (
+            db.query(
+                Lectura.id_medidor,
+                func.max(Lectura.id_lectura).label('max_id_lectura')
+            )
+            .group_by(Lectura.id_medidor)
+            .subquery()
+        )
+        
+        query = (
+            db.query(
+                Medidor.id_medidor,
+                Medidor.num_medidor,
+                UsuarioAfiliado.cod_usuario_afi,
+                UsuarioSistema.nombres,
+                UsuarioSistema.apellidos,
+                Sector.nombre_sector,
+                Lectura.lectura_actual.label('lectura_anterior')
+            )
+            .join(
+                UsuarioAfiliado,
+                UsuarioAfiliado.id_usuario_afi == Medidor.id_usuario_afi
+            )
+            .join(
+                UsuarioSistema,
+                UsuarioSistema.id_usuario_sistema == UsuarioAfiliado.id_usuario_sistema
+            )
+            .outerjoin(
+                Sector,
+                Sector.id_sector == Medidor.id_sector
+            )
+            .outerjoin(
+                subquery_ultima_lectura,
+                subquery_ultima_lectura.c.id_medidor == Medidor.id_medidor
+            )
+            .outerjoin(
+                Lectura,
+                Lectura.id_lectura == subquery_ultima_lectura.c.max_id_lectura
+            )
+            .filter(
+                Medidor.activo == True,
+                Medidor.id_usuario_afi.isnot(None)
+            )
+        )
+        
+        # ============================================
+        # PASO 3: APLICAR FILTRO SEGÚN incluir_todos
+        # ============================================
+        if not incluir_todos and medidores_con_lectura_ids:
+            query = query.filter(Medidor.id_medidor.notin_(medidores_con_lectura_ids))
+        
+        medidores_data = query.order_by(Medidor.num_medidor).all()
+        
+        print(f"✅ Medidores a exportar: {len(medidores_data)}")
+        
+        # ============================================
+        # PASO 4: VALIDAR SI PERIODO ESTÁ COMPLETO
+        # ============================================
+        todos_tienen_lectura = (
+            mes and anio and 
+            len(medidores_con_lectura_ids) == total_medidores_activos and
+            total_medidores_activos > 0 and
+            not incluir_todos
+        )
+        
+        if len(medidores_data) == 0 and todos_tienen_lectura:
+            print("⚠️ PERIODO COMPLETO - Generando Excel informativo")
+            return generar_excel_informativo(
+                mes=mes,
+                anio=anio,
+                total_medidores=total_medidores_activos,
+                total_con_lectura=len(medidores_con_lectura_ids),
+                current_user=current_user,
+                db=db
+            )
+        
+        if len(medidores_data) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No hay medidores activos disponibles"
+            )
+        
+        # ============================================
+        # PASO 5: GENERAR EXCEL NORMAL
+        # ============================================
         wb = Workbook()
-        
-        # ===============================
-        # HOJA 1: PLANTILLA PARA LLENAR
-        # ===============================
         ws_plantilla = wb.active
         ws_plantilla.title = "Plantilla Lecturas"
         
-        # Encabezados actualizados
+        # Encabezados
         headers = [
-            "num_medidor",
-            "sector",
-            "codigo_UsuarioAfiliado",
-            "nombre_UsuarioAfiliado",
-            "lectura_anterior",
-            "lectura_actual",
-            "observacion"
+            "num_medidor", "sector", "codigo_afiliado",
+            "nombre_afiliado", "lectura_anterior", "lectura_actual", "observacion"
         ]
         
-        # Estilo encabezado
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
         header_font = Font(color="FFFFFF", bold=True)
         
@@ -947,7 +1146,6 @@ def exportar_plantilla(
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
-            # ✅ BLOQUEAR encabezados
             cell.protection = Protection(locked=True)
         
         # Anchos de columna
@@ -955,134 +1153,90 @@ def exportar_plantilla(
         for col, width in zip("ABCDEFG", column_widths):
             ws_plantilla.column_dimensions[col].width = width
         
-        # Agregar medidores con información completa
-        for row_num, medidor in enumerate(medidores, 2):
-            # Obtener UsuarioAfiliado del medidor
-            UsuarioAfiliado = medidor.usuario_afiliado
-            usuario_sistema = None
-            codigo_UsuarioAfiliado = "N/A"
-            nombre_UsuarioAfiliado = "Sin UsuarioAfiliado"
+        # Agregar datos
+        for row_num, medidor_row in enumerate(medidores_data, 2):
+            (id_medidor, num_medidor, cod_usuario_afi, nombres,
+             apellidos, nombre_sector, lectura_anterior) = medidor_row
             
-            if UsuarioAfiliado:
-                usuario_sistema = UsuarioAfiliado.usuario_sistema
-                codigo_UsuarioAfiliado = UsuarioAfiliado.cod_usuario_afi if UsuarioAfiliado.cod_usuario_afi else "N/A"
-                
-                if usuario_sistema:
-                    nombre_UsuarioAfiliado = f"{usuario_sistema.nombres} {usuario_sistema.apellidos}"
+            codigo_afiliado = cod_usuario_afi or "N/A"
+            nombre_afiliado = f"{nombres or ''} {apellidos or ''}".strip() or "Sin afiliado"
+            sector_nombre = nombre_sector or "Sin sector"
+            lectura_ant = lectura_anterior or 0
             
-            # Obtener sector
-            sector_nombre = medidor.sector.nombre_sector if medidor.sector else "Sin sector"
+            # Columnas bloqueadas
+            ws_plantilla.cell(row=row_num, column=1, value=num_medidor).protection = Protection(locked=True)
+            ws_plantilla.cell(row=row_num, column=2, value=sector_nombre).protection = Protection(locked=True)
+            ws_plantilla.cell(row=row_num, column=3, value=codigo_afiliado).protection = Protection(locked=True)
+            ws_plantilla.cell(row=row_num, column=4, value=nombre_afiliado).protection = Protection(locked=True)
+            ws_plantilla.cell(row=row_num, column=5, value=lectura_ant).protection = Protection(locked=True)
             
-            # Buscar última lectura del medidor
-            ultima_lectura = db.query(Lectura).filter(
-                Lectura.id_medidor == medidor.id_medidor
-            ).order_by(Lectura.fecha_lectura.desc()).first()
-            
-            lectura_anterior = ultima_lectura.lectura_actual if ultima_lectura else 0
-            
-            # ✅ COLUMNAS BLOQUEADAS (1-5): num_medidor, sector, codigo, nombre, lectura_anterior
-            cell = ws_plantilla.cell(row=row_num, column=1, value=medidor.num_medidor)
-            cell.protection = Protection(locked=True)
-            
-            cell = ws_plantilla.cell(row=row_num, column=2, value=sector_nombre)
-            cell.protection = Protection(locked=True)
-            
-            cell = ws_plantilla.cell(row=row_num, column=3, value=codigo_UsuarioAfiliado)
-            cell.protection = Protection(locked=True)
-            
-            cell = ws_plantilla.cell(row=row_num, column=4, value=nombre_UsuarioAfiliado)
-            cell.protection = Protection(locked=True)
-            
-            cell = ws_plantilla.cell(row=row_num, column=5, value=lectura_anterior)
-            cell.protection = Protection(locked=True)
-            
-            # ✅ COLUMNAS DESBLOQUEADAS (6-7): lectura_actual y observacion
-            cell = ws_plantilla.cell(row=row_num, column=6, value="")
-            cell.protection = Protection(locked=False)  # ✅ Desbloquear
-            
-            cell = ws_plantilla.cell(row=row_num, column=7, value="")
-            cell.protection = Protection(locked=False)  # ✅ Desbloquear
+            # Columnas editables
+            ws_plantilla.cell(row=row_num, column=6, value="").protection = Protection(locked=False)
+            ws_plantilla.cell(row=row_num, column=7, value="").protection = Protection(locked=False)
         
-        # ✅ ACTIVAR PROTECCIÓN DE LA HOJA
         ws_plantilla.protection.sheet = True
-        #ws_plantilla.protection.password = None  # Sin contraseña para facilitar uso
         ws_plantilla.protection.enable()
         
-        # ===============================
-        # HOJA 2: INSTRUCCIONES
-        # ===============================
+        # ============================================
+        # HOJA DE INSTRUCCIONES
+        # ============================================
         ws_instrucciones = wb.create_sheet("Instrucciones")
+        periodo_texto = f"{mes:02d}/{anio}" if mes and anio else "N/A"
+        porcentaje = (len(medidores_con_lectura_ids) / total_medidores_activos * 100) if total_medidores_activos > 0 else 0
         
         instrucciones = [
             ["📋 INSTRUCCIONES PARA CARGA MASIVA DE LECTURAS"],
             [""],
+            [f"📅 PERIODO: {periodo_texto}"],
+            [f"📊 PROGRESO DEL PERIODO: {porcentaje:.1f}% completado"],
+            [f"✅ Lecturas registradas: {len(medidores_con_lectura_ids)} de {total_medidores_activos}"],
+            [f"📝 Medidores en esta plantilla: {len(medidores_data)}"],
+            [""],
             ["1️⃣ USO DE LA PLANTILLA:"],
-            [" • Complete SOLO las columnas 'lectura_actual' y 'observacion' (las demás están bloqueadas)"],
-            [" • La columna 'lectura_anterior' ya está prellenada con la última lectura"],
-            [" • Solo se incluyen medidores CON usuario afiliado"],
-            [" • NO modifique las columnas bloqueadas: num_medidor, sector, codigo, nombre, lectura_anterior"],
+            [" • Complete SOLO 'lectura_actual' y 'observacion'"],
+            [" • Las demás columnas están bloqueadas"],
+            [" • lectura_actual debe ser >= lectura_anterior"],
             [""],
-            ["2️⃣ COLUMNAS:"],
-            [" • num_medidor: Número del medidor (🔒 BLOQUEADA)"],
-            [" • sector: Sector del medidor (🔒 BLOQUEADA)"],
-            [" • codigo_UsuarioAfiliado: Código del UsuarioAfiliado (🔒 BLOQUEADA)"],
-            [" • nombre_UsuarioAfiliado: Nombre completo del UsuarioAfiliado (🔒 BLOQUEADA)"],
-            [" • lectura_anterior: Última lectura registrada (🔒 BLOQUEADA)"],
-            [" • lectura_actual: ✏️ RELLENAR con el nuevo valor (EDITABLE)"],
-            [" • observacion: ✏️ Comentarios opcionales (EDITABLE)"],
+            ["2️⃣ PROCESO:"],
+            [" • Guarde el archivo después de completar"],
+            [" • Suba usando 'Crear desde Excel'"],
+            [" • El sistema validará los datos"],
             [""],
-            ["3️⃣ VALIDACIONES:"],
-            [" • La lectura actual debe ser mayor o igual a la anterior"],
-            [" • El sistema calculará automáticamente el consumo"],
-            [" • Los medidores deben existir en el sistema"],
-            [""],
-            ["4️⃣ PROCESO AUTOMÁTICO:"],
-            [" • Se registrará el usuario actual como lector"],
-            [" • Se usará la fecha de importación para todas las lecturas"],
-            [" • Consumo = lectura_actual - lectura_anterior"],
-            [""],
-            ["5️⃣ DESPUÉS DE COMPLETAR:"],
-            [" • Guarde el archivo Excel"],
-            [" • Súbalo en el sistema usando el botón 'Crear desde Excel'"],
-            [" • El sistema validará y creará los registros"],
-            [" • Recibirá un reporte de exitosos y fallidos"],
-            [""],
-            [f"📅 Plantilla generada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"],
+            [f"📅 Generada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"],
             [f"👤 Usuario: {current_user.nombres} {current_user.apellidos}"],
-            [f"📊 Total medidores con usuarios afiliados: {len(medidores)}"],
         ]
         
         for row_num, fila in enumerate(instrucciones, 1):
             cell = ws_instrucciones.cell(row=row_num, column=1, value=fila[0])
-            if row_num == 1:
+            if "📋" in str(fila[0]):
                 cell.font = Font(size=14, bold=True, color="4472C4")
-            elif any(emoji in str(fila[0]) for emoji in ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]):
+            elif any(emoji in str(fila[0]) for emoji in ["1️⃣", "2️⃣", "📅", "📊"]):
                 cell.font = Font(size=12, bold=True)
         
         ws_instrucciones.column_dimensions['A'].width = 80
         
-        # Guardar y retornar
+        # ============================================
+        # GUARDAR Y RETORNAR
+        # ============================================
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
         excel_data = output.getvalue()
         output.close()
         
-        print(f"✅ Excel generado correctamente: {len(excel_data)} bytes")
+        print(f"✅ Excel generado: {len(excel_data)} bytes\n")
         
-        # Registrar auditoría
         registrar_auditoria(
             db=db,
             accion="DOWNLOAD_TEMPLATE",
-            descripcion=f"Plantilla de lecturas descargada por '{current_user.usuario}' - {len(medidores)} medidores con usuarios afiliados",
+            descripcion=f"Plantilla{periodo_info} - {len(medidores_data)} medidores ({porcentaje:.1f}% completo)",
             id_usuario=current_user.id_usuario_sistema
         )
         
-        filename = f"plantilla_lecturas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        final_output = io.BytesIO(excel_data)
+        filename = f"plantilla_lecturas_{anio}{mes:02d}_{datetime.now().strftime('%H%M%S')}.xlsx" if mes and anio else f"plantilla_lecturas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
         return StreamingResponse(
-            final_output,
+            io.BytesIO(excel_data),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
                 "Content-Disposition": f"attachment; filename={filename}",
@@ -1090,14 +1244,223 @@ def exportar_plantilla(
             }
         )
     
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print(f"❌ Error generando plantilla: {str(e)}")
+        print(f"❌ Error: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al generar la plantilla: {str(e)}"
+            detail=f"Error al generar plantilla: {str(e)}"
         )
+
+
+# ============================================
+# FUNCIÓN: GENERAR EXCEL INFORMATIVO
+# ============================================
+def generar_excel_informativo(
+    mes: int,
+    anio: int,
+    total_medidores: int,
+    total_con_lectura: int,
+    current_user,
+    db: Session
+):
+    """
+    Genera Excel informativo cuando el periodo está 100% completo
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    import io
+    from datetime import datetime
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Periodo Completo"
+    
+    # Bordes
+    thin_border = Border(
+        left=Side(style='thin', color='D1D5DB'),
+        right=Side(style='thin', color='D1D5DB'),
+        top=Side(style='thin', color='D1D5DB'),
+        bottom=Side(style='thin', color='D1D5DB')
+    )
+    
+    # ============================================
+    # TÍTULO PRINCIPAL
+    # ============================================
+    ws.merge_cells('A1:F1')
+    cell_titulo = ws['A1']
+    cell_titulo.value = "✅ PERIODO COMPLETO"
+    cell_titulo.font = Font(size=18, bold=True, color="FFFFFF")
+    cell_titulo.fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
+    cell_titulo.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 35
+    
+    # ============================================
+    # INFORMACIÓN DEL PERIODO
+    # ============================================
+    ws.merge_cells('A3:F3')
+    cell_periodo = ws['A3']
+    cell_periodo.value = f"📅 Periodo: {mes:02d}/{anio}"
+    cell_periodo.font = Font(size=14, bold=True, color="1F2937")
+    cell_periodo.alignment = Alignment(horizontal="center")
+    ws.row_dimensions[3].height = 25
+    
+    # ============================================
+    # ESTADÍSTICAS CON DISEÑO
+    # ============================================
+    row = 5
+    ws.merge_cells(f'A{row}:F{row}')
+    cell_stats_title = ws[f'A{row}']
+    cell_stats_title.value = "📊 ESTADÍSTICAS DEL PERIODO"
+    cell_stats_title.font = Font(size=13, bold=True, color="FFFFFF")
+    cell_stats_title.fill = PatternFill(start_color="3B82F6", end_color="3B82F6", fill_type="solid")
+    cell_stats_title.alignment = Alignment(horizontal="center")
+    ws.row_dimensions[row].height = 25
+    
+    row += 2
+    stats_data = [
+        ("Total de medidores activos", total_medidores, "4B5563"),
+        ("Lecturas registradas", total_con_lectura, "059669"),
+        ("Medidores pendientes", 0, "6B7280"),
+        ("Porcentaje completado", "100%", "059669"),
+    ]
+    
+    for label, value, color in stats_data:
+        ws.merge_cells(f'B{row}:D{row}')
+        cell_label = ws[f'B{row}']
+        cell_label.value = label
+        cell_label.font = Font(size=11, bold=True)
+        cell_label.alignment = Alignment(horizontal="left")
+        cell_label.border = thin_border
+        
+        ws.merge_cells(f'E{row}:F{row}')
+        cell_value = ws[f'E{row}']
+        cell_value.value = value
+        cell_value.font = Font(size=11, bold=True, color=color)
+        cell_value.alignment = Alignment(horizontal="right")
+        cell_value.border = thin_border
+        
+        ws.row_dimensions[row].height = 22
+        row += 1
+    
+    # ============================================
+    # BARRA DE PROGRESO VISUAL
+    # ============================================
+    row += 1
+    ws.merge_cells(f'B{row}:F{row}')
+    cell_progress = ws[f'B{row}']
+    cell_progress.value = "█" * 30 + " 100%"
+    cell_progress.font = Font(size=10, color="059669")
+    cell_progress.alignment = Alignment(horizontal="center")
+    
+    # ============================================
+    # OPCIONES DISPONIBLES
+    # ============================================
+    row += 2
+    ws.merge_cells(f'A{row}:F{row}')
+    cell_opciones = ws[f'A{row}']
+    cell_opciones.value = "💡 ¿QUÉ PUEDES HACER AHORA?"
+    cell_opciones.font = Font(size=13, bold=True, color="FFFFFF")
+    cell_opciones.fill = PatternFill(start_color="8B5CF6", end_color="8B5CF6", fill_type="solid")
+    cell_opciones.alignment = Alignment(horizontal="center")
+    ws.row_dimensions[row].height = 25
+    
+    row += 2
+    opciones = [
+        ("1️⃣", "Ver lecturas registradas", "Consulta el módulo de lecturas con el filtro de este periodo"),
+        ("2️⃣", "Generar reportes", "Exporta reportes de consumo y facturación del periodo"),
+        ("3️⃣", "Generar facturas", "Procede a facturar las lecturas del periodo"),
+        ("4️⃣", "Seleccionar otro periodo", "Trabaja con un periodo diferente que aún tenga pendientes"),
+    ]
+    
+    for emoji, titulo, descripcion in opciones:
+        # Emoji
+        cell_emoji = ws[f'B{row}']
+        cell_emoji.value = emoji
+        cell_emoji.font = Font(size=14)
+        cell_emoji.alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Título
+        ws.merge_cells(f'C{row}:D{row}')
+        cell_titulo = ws[f'C{row}']
+        cell_titulo.value = titulo
+        cell_titulo.font = Font(bold=True, size=11, color="1F2937")
+        cell_titulo.alignment = Alignment(horizontal="left", vertical="center")
+        
+        # Descripción
+        ws.merge_cells(f'E{row}:F{row}')
+        cell_desc = ws[f'E{row}']
+        cell_desc.value = descripcion
+        cell_desc.font = Font(size=9, color="6B7280")
+        cell_desc.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        
+        ws.row_dimensions[row].height = 30
+        row += 2
+    
+    # ============================================
+    # NOTA INFORMATIVA
+    # ============================================
+    row += 1
+    ws.merge_cells(f'A{row}:F{row}')
+    cell_nota = ws[f'A{row}']
+    cell_nota.value = "ℹ️ Este periodo ya no requiere carga de lecturas. Todas las lecturas están completas."
+    cell_nota.font = Font(size=10, italic=True, color="6B7280")
+    cell_nota.fill = PatternFill(start_color="F3F4F6", end_color="F3F4F6", fill_type="solid")
+    cell_nota.alignment = Alignment(horizontal="center", vertical="center")
+    cell_nota.border = thin_border
+    ws.row_dimensions[row].height = 25
+    
+    # ============================================
+    # FOOTER
+    # ============================================
+    row += 2
+    ws.merge_cells(f'A{row}:F{row}')
+    cell_footer = ws[f'A{row}']
+    cell_footer.value = f"📅 Generado: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} | 👤 Usuario: {current_user.nombres} {current_user.apellidos}"
+    cell_footer.font = Font(size=9, color="9CA3AF")
+    cell_footer.alignment = Alignment(horizontal="center")
+    
+    # ============================================
+    # AJUSTAR ANCHOS DE COLUMNA
+    # ============================================
+    ws.column_dimensions['A'].width = 3
+    ws.column_dimensions['B'].width = 8
+    ws.column_dimensions['C'].width = 20
+    ws.column_dimensions['D'].width = 20
+    ws.column_dimensions['E'].width = 20
+    ws.column_dimensions['F'].width = 15
+    
+    # ============================================
+    # GUARDAR
+    # ============================================
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    excel_data = output.getvalue()
+    output.close()
+    
+    print(f"✅ Excel informativo generado: {len(excel_data)} bytes\n")
+    
+    registrar_auditoria(
+        db=db,
+        accion="DOWNLOAD_TEMPLATE_COMPLETE",
+        descripcion=f"Excel informativo {mes:02d}/{anio} - Periodo 100% completo",
+        id_usuario=current_user.id_usuario_sistema
+    )
+    
+    filename = f"periodo_completo_{anio}{mes:02d}_{datetime.now().strftime('%H%M%S')}.xlsx"
+    
+    return StreamingResponse(
+        io.BytesIO(excel_data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Content-Length": str(len(excel_data))
+        }
+    )
 
 
 # =================================================

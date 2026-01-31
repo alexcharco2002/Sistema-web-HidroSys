@@ -31,7 +31,7 @@ import {
   MapPin,
   CalendarDays,
   Clock,
-  Check
+  Check, Info , Activity
 } from 'lucide-react';
 
 const ReadingsSection = () => {
@@ -41,6 +41,7 @@ const ReadingsSection = () => {
   const [readings, setReadings] = useState([]);
   const [meters, setMeters] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [ loadingMeters, setLoadingMeters] = useState(false); 
   const [error, setError] = useState(null);
 
   //const [meterInfo, setMeterInfo] = useState(null); // Objeto único en lugar de array
@@ -111,7 +112,7 @@ const ReadingsSection = () => {
           // Si ya está completo → No generar estimadas
           if (completo) {
               alert(
-                  `No hay lecturas faltantes.\n` +
+                  `⚠️ No hay lecturas faltantes.\n` +
                   `El periodo seleccionado está COMPLETO (${porcentaje}%).\n` +
                   `Total lecturas: ${total_lecturas} / ${total_medidores}`
               );
@@ -355,11 +356,7 @@ const filteredMeters = useMemo(() => {
   // ============================================================
   // EFECTOS
   // ============================================================
-  useEffect(() => {
-    loadUserPermissions();
-    fetchMeters();
-    fetchPeriodosDisponibles();
-  }, []);
+
 
   useEffect(() => {
     if (formData.lectura_actual && formData.lectura_anterior !== '') {
@@ -409,7 +406,7 @@ const fetchReadingsByPeriodo = useCallback(async () => {
 
     if (result.success) {
       console.log(`✅ Lecturas del periodo ${periodoSeleccionado.mes}/${periodoSeleccionado.anio}:`, result.data.length);
-      setReadings(result.data);  // Ya vienen filtradas del backend
+      setReadings(result.data);  
     } else {
       setError(result.message);
     }
@@ -455,26 +452,59 @@ const fetchReadingsByPeriodo = useCallback(async () => {
   // ============================================================
   // FUNCIONES DE CARGA DE DATOS
   // ============================================================
-const fetchMeters = async () => {
+
+  // Fetch meters con filtro de periodo
+const fetchMeters = useCallback(async () => {
+  if (!periodoSeleccionado?.mes || !periodoSeleccionado?.anio) {
+    console.log('⚠️ No hay periodo seleccionado');
+    return;
+  }
+  
   try {
-    const result = await readingsServices.getMedidoresParaLecturas();
+    setLoadingMeters(true);
     
-    console.log('🔍 Resultado completo:', result);
+    console.log(`🔍 Cargando medidores para ${periodoSeleccionado.mes}/${periodoSeleccionado.anio}`);
+    
+    const result = await readingsServices.getMedidoresParaLecturas(
+      periodoSeleccionado.mes,
+      periodoSeleccionado.anio,
+      false // No incluir medidores con lectura
+    );
+    
+    console.log('✅ Resultado:', result);
     
     if (result.success) {
-      console.log('✅ Afiliados recibidos:', result.data);
-      console.log('✅ Total afiliados:', result.data.length);
+      console.log(`✅ Medidores disponibles: ${result.data.length}`);
       
-      setMeters(result.data);  // 🔥 Usar setMeters aquí
+      // Mostrar información del filtrado
+      if (result.periodo?.filtrado && result.periodo?.excluidos > 0) {
+        console.log(`⚠️ Excluidos ${result.periodo.excluidos} medidores con lectura en el periodo`);
+      }
+      
+      setMeters(result.data);
+      
+      // Mensaje informativo si no hay medidores
+      if (result.data.length === 0 && result.mensaje) {
+        setError(result.mensaje);
+      }
     } else {
-      setError(result.message);
+      setError(result.message || 'Error al cargar medidores');
+      setMeters([]);
     }
   } catch (error) {
     console.error('❌ Error en fetchMeters:', error);
-    setError("Error al cargar afiliados");
+    setError("Error al cargar medidores");
+    setMeters([]);
+  } finally {
+    setLoadingMeters(false);
   }
-};
+}, [periodoSeleccionado]);
 
+  useEffect(() => {
+    loadUserPermissions();
+    fetchMeters();
+    fetchPeriodosDisponibles();
+  }, [fetchMeters]);
 
   // ============================================================
   // FUNCIONES DE FILTRADO Y ORDENAMIENTO
@@ -758,18 +788,45 @@ const sortedReadings = [...filteredReadings].sort((a, b) => {
   // ============================================================
   // FUNCIONES DE EXCEL CON PERIODO
   // ============================================================
-  const handleDownloadTemplate = async () => {
-    try {
-      const result = await readingsServices.exportarPlantilla();
-      if (result.success) {
-        alert('✅ Plantilla descargada correctamente');
-      } else {
-        alert('❌ Error: ' + result.message);
-      }
-    } catch (error) {
-      alert('❌ Error al descargar plantilla');
+const handleDownloadTemplate = async () => {
+  try {
+    if (!periodoSeleccionado?.mes || !periodoSeleccionado?.anio) {
+      alert('⚠️ Por favor selecciona un periodo');
+      return;
     }
-  };
+    
+    setLoading(true);
+    
+    const result = await readingsServices.exportarPlantilla(
+      periodoSeleccionado.mes,
+      periodoSeleccionado.anio
+    );
+    
+    if (result.success) {
+      // Mensaje informativo según el caso
+      if (result.message.includes('completas')) {
+        alert(
+          `ℹ️ ${result.message}\n\n` +
+          `📊 Todas las lecturas del periodo ${periodoSeleccionado.mes}/${periodoSeleccionado.anio} están registradas.\n\n` +
+          `💡 Opciones:\n` +
+          `• Ver las lecturas existentes en la tabla\n` +
+          `• Seleccionar otro periodo\n` +
+          `• Descargar reporte de lecturas`
+        );
+      } else {
+        alert(`✅ ${result.message}`);
+      }
+    } else {
+      alert('❌ Error: ' + result.message);
+    }
+  } catch (error) {
+    console.error('❌ Error:', error);
+    alert('❌ Error al descargar plantilla');
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   // funcion para normalizar las llaves del excel
   const normalizeKeys = (obj) => {
@@ -1254,7 +1311,7 @@ return (
                 </button>
                 {/*boton para generar lecturas estimadas*/}
                 <button 
-                    className="btn-success"
+                    className="btn-primary"
                     onClick={handleGenerarEstimadas}
                     disabled={loadingEstimadas}
                     title="Generar lecturas estimadas para medidores sin lectura"
@@ -1270,50 +1327,107 @@ return (
             )}
           </div>
         </div>
+{/* ESTADÍSTICAS DEL PERIODO */}
+<div className="periodo-stats-container">
+  <div className="periodo-stats-header">
+    <Clock className="w-5 h-5 text-blue-600 mr-2" />
+    <h3>Resumen del Periodo</h3>
+  </div>
 
-        {/* ESTADÍSTICAS DEL PERIODO */}
-        <div className="periodo-stats-container">
-          <div className="periodo-stats-header">
-            <Clock className="w-5 h-5 text-blue-600 mr-2" />
-            <h3>Resumen del Periodo</h3>
+  <div className="users-stats">
+    <div className="stat-item">
+      <BookOpen className="stat-icon text-blue-600" />
+      <div>
+        <p className="stat-label">Total Lecturas</p>
+        <p className="stat-value">{readings.length}</p>
+      </div>
+    </div>
+
+    <div className="stat-item">
+      <CheckCircle className="stat-icon text-green-600" />
+      <div>
+        <p className="stat-label">Activas</p>
+        <p className="stat-value">{readings.filter(r => r.activo).length}</p>
+      </div>
+    </div>
+
+    <div className="stat-item">
+      <XCircle className="stat-icon text-red-600" />
+      <div>
+        <p className="stat-label">Inactivas</p>
+        <p className="stat-value">{readings.filter(r => !r.activo).length}</p>
+      </div>
+    </div>
+
+    <div className="stat-item">
+      <TrendingUp className="stat-icon text-purple-600" />
+      <div>
+        <p className="stat-label">Consumo Total (m³)</p>
+        <p className="stat-value">
+          {readings.reduce((sum, r) => sum + (r.consumo_m3 || 0), 0)}
+        </p>
+      </div>
+    </div>
+
+    {/* 🆕 CARD 1: LECTURAS PENDIENTES */}
+    {(() => {
+      const periodoActualData = periodos.find(
+        p => p.mes === periodoSeleccionado.mes && p.anio === periodoSeleccionado.anio
+      );
+      
+      if (!periodoActualData) return null;
+      
+      const totalLecturas = periodoActualData.total_lecturas || 0;
+      const totalMedidores = periodoActualData.total_medidores || 0;
+      const pendientes = totalMedidores - totalLecturas;
+      
+      return (
+        <div className={`stat-item ${pendientes === 0 ? 'stat-complete' : 'stat-pending'}`}>
+          {pendientes === 0 ? (
+            <CheckCircle className="stat-icon text-green-600" />
+          ) : (
+            <AlertCircle className="stat-icon text-orange-600" />
+          )}
+          <div>
+            <p className="stat-label">Lecturas Pendientes</p>
+            <p className="stat-value">{pendientes}</p>
+            {pendientes === 0 && (
+              <span className="stat-badge success">✓ Completo</span>
+            )}
           </div>
+        </div>
+      );
+    })()}
 
-          <div className="users-stats">
-            <div className="stat-item">
-              <BookOpen className="stat-icon text-blue-600" />
-              <div>
-                <p className="stat-label">Total Lecturas</p>
-                <p className="stat-value">{readings.length}</p>
-              </div>
-            </div>
-
-            <div className="stat-item">
-              <CheckCircle className="stat-icon text-green-600" />
-              <div>
-                <p className="stat-label">Activas</p>
-                <p className="stat-value">{readings.filter(r => r.activo).length}</p>
-              </div>
-            </div>
-
-            <div className="stat-item">
-              <XCircle className="stat-icon text-red-600" />
-              <div>
-                <p className="stat-label">Inactivas</p>
-                <p className="stat-value">{readings.filter(r => !r.activo).length}</p>
-              </div>
-            </div>
-
-            <div className="stat-item">
-              <TrendingUp className="stat-icon text-purple-600" />
-              <div>
-                <p className="stat-label">Consumo Total (m³)</p>
-                <p className="stat-value">
-                  {readings.reduce((sum, r) => sum + (r.consumo_m3 || 0), 0)}
-                </p>
-              </div>
+    {/* 🆕 CARD 2: PORCENTAJE DE AVANCE */}
+    {(() => {
+      const periodoActualData = periodos.find(
+        p => p.mes === periodoSeleccionado.mes && p.anio === periodoSeleccionado.anio
+      );
+      
+      if (!periodoActualData) return null;
+      
+      const porcentaje = getPorcentajeCompletado(periodoActualData);
+      const esCompleto = porcentaje >= 100;
+      
+      return (
+        <div className={`stat-item ${esCompleto ? 'stat-complete' : ''}`}>
+          <Activity className={`stat-icon ${esCompleto ? 'text-green-600' : 'text-blue-600'}`} />
+          <div>
+            <p className="stat-label">Progreso del Periodo</p>
+            <p className="stat-value">{porcentaje.toFixed(0)}%</p>
+            <div className="stat-progress-bar">
+              <div 
+                className={`stat-progress-fill ${esCompleto ? 'complete' : ''}`}
+                style={{ width: `${porcentaje}%` }}
+              />
             </div>
           </div>
         </div>
+      );
+    })()}
+  </div>
+</div>
 
         {/* BARRA DE BÚSQUEDA Y FILTROS */}
         <div className="filters-section">
@@ -1756,14 +1870,19 @@ return (
                     type="button"
                     className="btn-plantilla"
                     onClick={handleDownloadTemplate}
+                    disabled={!periodoSeleccionado || loading}
                   >
                     <Download className="w-4 h-4 mr-2" />
-                    Descargar plantilla Excel
+                    {loading ? 'Generando...' : 'Descargar plantilla Excel'}
                   </button>
                   <small className="text-gray-500 mt-1">
-                    Descarga la plantilla con los medidores y sus últimas lecturas.
+                    {periodoSeleccionado 
+                      ? `📅 Periodo: ${periodoSeleccionado.mes}/${periodoSeleccionado.anio} - Solo medidores sin lectura en este periodo`
+                      : '⚠️ Selecciona un periodo primero'
+                    }
                   </small>
                 </div>
+
 
                 {/* Seleccionar Archivo */}
                 <div className="form-group form-group-full">
@@ -2055,66 +2174,129 @@ return (
           )}
 
 
-          {/* ==================== MODAL DE CREACIÓN/EDICIÓN ==================== */}
-          {(modalType === 'create' || modalType === 'edit') && (
-            <form onSubmit={handleSubmit} className="user-form">
-              <div className="form-grid">
-                
-                <div className="form-group form-group-full">
-                  <label>Afiliado / Medidor *</label>
-                  
-                  {modalType === 'create' && (
-                    <div className="meter-search-container">
-                      <div className="meter-search-input-wrapper">
-                        <Search className="w-4 h-4 text-gray-400" />
-                        <input
-                          type="text"
-                          placeholder="Buscar por código, nombre o medidor..."
-                          value={meterSearchTerm}
-                          onChange={(e) => setMeterSearchTerm(e.target.value)}
-                        />
-                        {meterSearchTerm && (
-                          <button
-                            type="button"
-                            onClick={() => setMeterSearchTerm('')}
-                            className="meter-search-clear-btn"
-                          >
-                            <X className="w-4 h-4 text-gray-400" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
+         {/* ==================== MODAL DE CREACIÓN/EDICIÓN ==================== */}
+{(modalType === 'create' || modalType === 'edit') && (
+  <form onSubmit={handleSubmit} className="user-form">
+    <div className="form-grid">
+      
+      <div className="form-group form-group-full">
+        <label>Afiliado / Medidor *</label>
+        
+        {/* Búsqueda - Solo en modo crear */}
+        {modalType === 'create' && (
+          <div className="meter-search-container">
+            <div className="meter-search-input-wrapper">
+              <Search className="w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar por código, nombre o medidor..."
+                value={meterSearchTerm}
+                onChange={(e) => setMeterSearchTerm(e.target.value)}
+                disabled={meters.length === 0} // 🆕 Deshabilitar si no hay medidores
+              />
+              {meterSearchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setMeterSearchTerm('')}
+                  className="meter-search-clear-btn"
+                >
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
-                  <select
-                    required
-                    value={formData.id_medidor || ''}
-                    onChange={(e) => handleMedidorChange(e.target.value)}
-                    disabled={modalType === 'edit'}
-                  >
-                    <option value="">Seleccione un afiliado</option>
-                    {filteredMeters.map(afiliado => (
-                      <option key={afiliado.id_medidor} value={afiliado.id_medidor}>
-                        🏠 {afiliado.num_medidor} | 👤 {afiliado.cod_usuario_afi || 'S/C'} - {afiliado.nombre_completo || 'Sin nombre'}
-                      </option>
-                    ))}
-                  </select>
+        {/* 🆕 MENSAJE DE PERIODO COMPLETO */}
+        {modalType === 'create' && meters.length === 0 && periodoSeleccionado && (
+          <div className="alert alert-success mb-3">
+            <div className="alert-icon">
+            </div>
+            <div className="alert-content">
 
-                  {selectedMeterInfo && (
-                    <div className="meter-info-card">
-                      <h4 className="meter-info-title">
-                        <Gauge className="w-4 h-4 mr-2" />
-                        Información del Afiliado
-                      </h4>
-                      <div className="meter-info-content">
-                        <p><strong>Afiliado:</strong> {selectedMeterInfo.nombre_completo || "Sin nombre"}</p>
-                        <p><strong>Código:</strong> {selectedMeterInfo.cod_usuario_afi || 'Sin código'}</p>
-                        <p><strong>Medidor:</strong> {selectedMeterInfo.num_medidor || 'Sin medidor'}</p>
-                        <p><strong>Lectura Anterior:</strong> {selectedMeterInfo.lectura_anterior || 0} m³</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
+              <h4 className="alert-title"><CheckCircle className="w-5 h-5" /> Periodo Completo</h4>
+              <p className="alert-message">
+                Todos los medidores ya tienen lectura registrada para 
+                <strong>
+                  {new Date(periodoSeleccionado.anio, periodoSeleccionado.mes - 1)
+                    .toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                </strong>
+              </p>
+              <p className="alert-submessage">
+                💡 Selecciona otro periodo
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* 🆕 MENSAJE DE CARGA */}
+        {modalType === 'create' && loadingMeters && (
+          <div className="alert alert-info mb-3">
+            <div className="alert-icon">
+              <Activity className="w-5 h-5 animate-spin" />
+            </div>
+            <div className="alert-content">
+              <p className="alert-message">Cargando medidores disponibles...</p>
+            </div>
+          </div>
+        )}
+
+        {/* SELECT DE MEDIDOR */}
+        <select
+          required
+          value={formData.id_medidor || ''}
+          onChange={(e) => handleMedidorChange(e.target.value)}
+          disabled={modalType === 'edit' || meters.length === 0 || loadingMeters} // 🆕 Deshabilitar si no hay medidores o está cargando
+          className={meters.length === 0 ? 'disabled' : ''}
+        >
+          <option value="">
+            {loadingMeters 
+              ? 'Cargando medidores...'
+              : meters.length === 0 
+                ? 'No hay medidores disponibles'
+                : 'Seleccione un afiliado'
+            }
+          </option>
+          {filteredMeters.map(afiliado => (
+            <option key={afiliado.id_medidor} value={afiliado.id_medidor}>
+              🏠 {afiliado.num_medidor} | 👤 {afiliado.cod_usuario_afi || 'S/C'} - {afiliado.nombre_completo || 'Sin nombre'}
+            </option>
+          ))}
+        </select>
+
+        {/* 🆕 CONTADOR DE MEDIDORES DISPONIBLES */}
+        {modalType === 'create' && !loadingMeters && filteredMeters.length > 0 && (
+          <small className="text-gray-500 mt-1 flex items-center gap-1">
+            <Info className="w-3 h-3" />
+            {filteredMeters.length} medidor{filteredMeters.length !== 1 ? 'es' : ''} disponible{filteredMeters.length !== 1 ? 's' : ''} 
+            {meterSearchTerm && ` (filtrado por "${meterSearchTerm}")`}
+          </small>
+        )}
+
+        {/* 🆕 MENSAJE CUANDO NO HAY RESULTADOS EN LA BÚSQUEDA */}
+        {modalType === 'create' && !loadingMeters && meterSearchTerm && filteredMeters.length === 0 && meters.length > 0 && (
+          <small className="text-yellow-600 mt-1 flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" />
+            No se encontraron medidores con "{meterSearchTerm}"
+          </small>
+        )}
+
+        {/* INFO DEL MEDIDOR SELECCIONADO */}
+        {selectedMeterInfo && (
+          <div className="meter-info-card">
+            <h4 className="meter-info-title">
+              <Gauge className="w-4 h-4 mr-2" />
+              Información del Afiliado
+            </h4>
+            <div className="meter-info-content">
+              <p><strong>Afiliado:</strong> {selectedMeterInfo.nombre_completo || "Sin nombre"}</p>
+              <p><strong>Código:</strong> {selectedMeterInfo.cod_usuario_afi || 'Sin código'}</p>
+              <p><strong>Medidor:</strong> {selectedMeterInfo.num_medidor || 'Sin medidor'}</p>
+              <p><strong>Lectura Anterior:</strong> {selectedMeterInfo.lectura_anterior || 0} m³</p>
+            </div>
+          </div>
+        )}
+      </div>
 
                 <div className="form-group">
                   <label>Lectura Anterior * (m³)</label>

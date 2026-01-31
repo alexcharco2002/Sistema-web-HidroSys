@@ -102,6 +102,9 @@ def calcular_consumo_basico(tarifa_basica: Tarifa) -> Dict:
         'tarifa_nombre': tarifa_basica.nombre
     }
 
+# ===========================================
+# 3.1 CÁLCULO DE EXCESO
+# ============================================
 
 def calcular_consumo_exceso(
     consumo_total: Decimal,
@@ -285,6 +288,342 @@ def crear_detalles_consumo(
     
     return detalles_creados
 
+# ============================================
+# funciones adicionales
+# ============================================
+def agregar_servicios_permanentes_a_factura(
+    db: Session,
+    id_factura: int,
+    id_usuario_afi: int,
+    periodo: str,
+    servicios_cache: Optional[Dict] = None
+) -> int:
+    """
+    Agrega servicios permanentes activos del usuario a la factura
+    
+    Args:
+        db: Sesión de base de datos
+        id_factura: ID de la factura
+        id_usuario_afi: ID del usuario afiliado
+        periodo: Periodo de facturación (YYYY-MM)
+        servicios_cache: Cache de servicios permanentes (para optimización masiva)
+    
+    Returns:
+        Cantidad de servicios agregados
+    """
+    try:
+        from models.servicio_permanente import (
+            ConfiguracionServicioPermanente,
+            AsignacionServicioPermanente
+        )
+        from datetime import datetime
+        
+        # Convertir periodo a fecha para validar vigencia
+        anio, mes = periodo.split('-')
+        fecha_periodo = datetime(int(anio), int(mes), 1).date()
+        
+        # ============================================
+        # OPCIÓN 1: Usar cache (para generación masiva)
+        # ============================================
+        if servicios_cache:
+            servicios_asignados = servicios_cache.get(id_usuario_afi, [])
+        # ============================================
+        # OPCIÓN 2: Consulta individual (para factura única)
+        # ============================================
+        else:
+            servicios_asignados = db.query(
+                AsignacionServicioPermanente,
+                ConfiguracionServicioPermanente,
+                Servicio
+            ).join(
+                ConfiguracionServicioPermanente,
+                ConfiguracionServicioPermanente.id_configuracion_sp == AsignacionServicioPermanente.id_configuracion_sp
+            ).join(
+                Servicio,
+                Servicio.id_servicio == ConfiguracionServicioPermanente.id_servicio
+            ).filter(
+                AsignacionServicioPermanente.id_usuario_afi == id_usuario_afi,
+                AsignacionServicioPermanente.activo == True,
+                AsignacionServicioPermanente.fecha_inicio <= fecha_periodo,
+                or_(
+                    AsignacionServicioPermanente.fecha_fin.is_(None),
+                    AsignacionServicioPermanente.fecha_fin >= fecha_periodo
+                ),
+                ConfiguracionServicioPermanente.activo == True,
+                ConfiguracionServicioPermanente.aplicar_servicio == True,
+                ConfiguracionServicioPermanente.es_vigente == True,
+                ConfiguracionServicioPermanente.vigencia_desde <= fecha_periodo,
+                or_(
+                    ConfiguracionServicioPermanente.vigencia_hasta.is_(None),
+                    ConfiguracionServicioPermanente.vigencia_hasta >= fecha_periodo
+                ),
+                Servicio.activo == True,
+                Servicio.es_vigente == True
+            ).all()
+        
+        if not servicios_asignados:
+            return 0
+        
+        print(f" 📋 {len(servicios_asignados)} servicio(s) permanente(s) encontrado(s)")
+        
+        servicios_agregados = 0
+        
+        for item in servicios_asignados:
+            if servicios_cache:
+                # item es un dict del cache
+                asignacion = item['asignacion']
+                config = item['config']
+                servicio = item['servicio']
+            else:
+                # item es una tupla de la consulta
+                asignacion, config, servicio = item
+            
+            # Determinar precio a aplicar
+            if config.precio_override:
+                precio_aplicar = config.precio_override
+            else:
+                precio_aplicar = servicio.precio_base
+            
+            # Verificar que no exista ya en la factura
+            existe = db.query(DetalleFactura).filter(
+                DetalleFactura.id_factura == id_factura,
+                DetalleFactura.tipo_detalle == 'servicio',
+                DetalleFactura.id_servicio == servicio.id_servicio
+            ).first()
+            
+            if existe:
+                print(f" ⚠️ Servicio '{servicio.nombre}' ya existe en la factura")
+                continue
+            
+            # Crear detalle
+            detalle = DetalleFactura(
+                id_factura=id_factura,
+                tipo_detalle='servicio',
+                id_servicio=servicio.id_servicio,
+                subtotal_detalle=precio_aplicar,
+                descripcion=f"{servicio.nombre} (Servicio Permanente) - ${float(precio_aplicar):.2f}"
+            )
+            
+            db.add(detalle)
+            servicios_agregados += 1
+            print(f" ✅ {servicio.nombre}: ${precio_aplicar}")
+        
+        db.flush()
+        return servicios_agregados
+        
+    except Exception as e:
+        print(f"❌ Error agregando servicios permanentes: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0
+
+# ============================================
+# PRECARGA MASIVA DE SERVICIOS PERMANENTES
+# ============================================
+def precargar_servicios_permanentes_masivo(
+    db: Session,
+    ids_usuarios_afi: List[int],
+    periodo: str
+) -> Dict[int, List]:
+    """
+    🚀 PRECARGA MASIVA: Obtiene todos los servicios permanentes activos 
+    para múltiples usuarios en UNA SOLA consulta a la BD
+    
+    Args:
+        db: Sesión de base de datos
+        ids_usuarios_afi: Lista de IDs de usuarios afiliados
+        periodo: Periodo de facturación (YYYY-MM)
+    
+    Returns:
+        Dict {id_usuario_afi: [lista_de_servicios_con_config]}
+    """
+    from models.servicio_permanente import (
+        ConfiguracionServicioPermanente,
+        AsignacionServicioPermanente
+    )
+    from datetime import datetime
+    from sqlalchemy.orm import joinedload
+    
+    if not ids_usuarios_afi:
+        return {}
+    
+    # Convertir periodo a fecha
+    anio, mes = periodo.split('-')
+    fecha_periodo = datetime(int(anio), int(mes), 1).date()
+    
+    print(f"\n{'='*60}")
+    print(f"🚀 PRECARGANDO SERVICIOS PERMANENTES MASIVAMENTE")
+    print(f"{'='*60}")
+    print(f" 📊 Usuarios a procesar: {len(ids_usuarios_afi)}")
+    print(f" 📅 Periodo: {periodo}")
+    
+    # ============================================
+    # UNA SOLA CONSULTA PARA TODOS LOS USUARIOS
+    # ============================================
+    resultados = db.query(
+        AsignacionServicioPermanente.id_usuario_afi,
+        AsignacionServicioPermanente,
+        ConfiguracionServicioPermanente,
+        Servicio
+    ).join(
+        ConfiguracionServicioPermanente,
+        ConfiguracionServicioPermanente.id_configuracion_sp == AsignacionServicioPermanente.id_configuracion_sp
+    ).join(
+        Servicio,
+        Servicio.id_servicio == ConfiguracionServicioPermanente.id_servicio
+    ).filter(
+        AsignacionServicioPermanente.id_usuario_afi.in_(ids_usuarios_afi),
+        AsignacionServicioPermanente.activo == True,
+        AsignacionServicioPermanente.fecha_inicio <= fecha_periodo,
+        or_(
+            AsignacionServicioPermanente.fecha_fin.is_(None),
+            AsignacionServicioPermanente.fecha_fin >= fecha_periodo
+        ),
+        ConfiguracionServicioPermanente.activo == True,
+        ConfiguracionServicioPermanente.aplicar_servicio == True,
+        ConfiguracionServicioPermanente.es_vigente == True,
+        ConfiguracionServicioPermanente.vigencia_desde <= fecha_periodo,
+        or_(
+            ConfiguracionServicioPermanente.vigencia_hasta.is_(None),
+            ConfiguracionServicioPermanente.vigencia_hasta >= fecha_periodo
+        ),
+        Servicio.activo == True,
+        Servicio.es_vigente == True
+    ).all()
+    
+    # Organizar en diccionario
+    cache = {}
+    for id_usuario, asignacion, config, servicio in resultados:
+        if id_usuario not in cache:
+            cache[id_usuario] = []
+        
+        cache[id_usuario].append({
+            'asignacion': asignacion,
+            'config': config,
+            'servicio': servicio
+        })
+    
+    print(f" ✅ Precargados {len(resultados)} servicios para {len(cache)} usuarios")
+    print(f"{'='*60}\n")
+    
+    return cache
+
+def generar_facturas_masivo_optimizado(
+    db: Session,
+    lecturas: List[Lectura],
+    tipo_descuento: str = 'ninguno',
+    valor_descuento: float = 0.0,
+    aplicar_servicios_permanentes: bool = True,
+    aplicar_multas: bool = True,
+    aplicar_cambios_medidor: bool = True
+) -> Tuple[int, int, List[str]]:
+    """
+    🚀 GENERACIÓN MASIVA OPTIMIZADA de facturas con precarga
+    
+    Args:
+        db: Sesión de base de datos
+        lecturas: Lista de objetos Lectura
+        aplicar_servicios_permanentes: Incluir servicios permanentes
+        aplicar_multas: Incluir multas pendientes
+        aplicar_cambios_medidor: Incluir cambios de medidor
+    
+    Returns:
+        (exitosas, fallidas, lista_errores)
+    """
+    print(f"\n{'='*80}")
+    print(f"🚀 GENERACIÓN MASIVA OPTIMIZADA DE FACTURAS")
+    print(f"{'='*80}")
+    print(f" 📊 Total lecturas: {len(lecturas)}")
+    
+    # ============================================
+    # PASO 1: OBTENER IDs DE USUARIOS DE LAS LECTURAS
+    # ============================================
+    ids_medidores = [lectura.id_medidor for lectura in lecturas]
+    
+    medidores_map = {
+        m.id_medidor: m.id_usuario_afi 
+        for m in db.query(Medidor.id_medidor, Medidor.id_usuario_afi)
+                  .filter(Medidor.id_medidor.in_(ids_medidores))
+                  .all()
+    }
+    
+    ids_usuarios_afi = list(set(medidores_map.values()))
+    
+    # ============================================
+    # PASO 2: PRECARGA MASIVA DE SERVICIOS PERMANENTES
+    # ============================================
+    servicios_cache = {}
+    if aplicar_servicios_permanentes and lecturas:
+        periodo = f"{lecturas[0].fecha_lectura.year}-{str(lecturas[0].fecha_lectura.month).zfill(2)}"
+        servicios_cache = precargar_servicios_permanentes_masivo(
+            db=db,
+            ids_usuarios_afi=ids_usuarios_afi,
+            periodo=periodo
+        )
+    
+    # ============================================
+    # PASO 3: GENERAR FACTURAS CON CACHE
+    # ============================================
+    exitosas = 0
+    fallidas = 0
+    errores = []
+    
+    for i, lectura in enumerate(lecturas, 1):
+        try:
+            # Generar factura normal
+            exito, mensaje, factura = generar_factura_desde_lectura(
+                db=db,
+                lectura=lectura,
+                tipo_descuento=tipo_descuento,
+                valor_descuento=valor_descuento,
+                aplicar_servicios=False,  # Desactivar para hacerlo con cache
+                aplicar_multas=aplicar_multas,
+                aplicar_cambios_medidor=aplicar_cambios_medidor
+            )
+            
+            if not exito:
+                fallidas += 1
+                errores.append(f"Lectura {lectura.id_lectura}: {mensaje}")
+                continue
+            
+            # Aplicar servicios permanentes con CACHE
+            if aplicar_servicios_permanentes and factura:
+                id_usuario_afi = medidores_map.get(lectura.id_medidor)
+                periodo = f"{lectura.fecha_lectura.year}-{str(lectura.fecha_lectura.month).zfill(2)}"
+                
+                servicios_agregados = agregar_servicios_permanentes_a_factura(
+                    db=db,
+                    id_factura=factura.id_factura,
+                    id_usuario_afi=id_usuario_afi,
+                    periodo=periodo,
+                    servicios_cache=servicios_cache  # 🚀 USO DEL CACHE
+                )
+                
+                if servicios_agregados > 0:
+                    recalcular_totales_factura(db, factura)
+            
+            exitosas += 1
+            
+            # Commit cada 50 facturas para evitar transacciones muy grandes
+            if i % 50 == 0:
+                db.commit()
+                print(f" 💾 Guardadas {i}/{len(lecturas)} facturas...")
+        
+        except Exception as e:
+            fallidas += 1
+            errores.append(f"Lectura {lectura.id_lectura}: {str(e)}")
+            print(f"❌ Error en lectura {lectura.id_lectura}: {e}")
+    
+    # Commit final
+    db.commit()
+    
+    print(f"\n{'='*80}")
+    print(f"✅ GENERACIÓN MASIVA COMPLETADA")
+    print(f" ✅ Exitosas: {exitosas}")
+    print(f" ❌ Fallidas: {fallidas}")
+    print(f"{'='*80}\n")
+    
+    return exitosas, fallidas, errores
 
 # ============================================
 # 8. LOGGING/IMPRESIÓN
@@ -496,6 +835,26 @@ def generar_factura_desde_lectura(
             
             if cambios_agregados > 0:
                 print(f"   ✅ {cambios_agregados} cambio(s) agregado(s)")
+                recalcular_totales_factura(db, nueva_factura)
+
+        # ============================================
+        # PASO 11: AGREGAR SERVICIOS PERMANENTES (SI APLICA)
+        # ============================================
+        if aplicar_servicios:
+            print(f"\n{'='*60}")
+            print(f"🔄 APLICANDO SERVICIOS PERMANENTES")
+            print(f"{'='*60}")
+            
+            servicios_agregados = agregar_servicios_permanentes_a_factura(
+                db=db,
+                id_factura=nueva_factura.id_factura,
+                id_usuario_afi=id_usuario_afi,
+                periodo=periodo,
+                servicios_cache=None  # Individual, sin cache
+            )
+            
+            if servicios_agregados > 0:
+                print(f" ✅ {servicios_agregados} servicio(s) permanente(s) agregado(s)")
                 recalcular_totales_factura(db, nueva_factura)
 
         # ============================================

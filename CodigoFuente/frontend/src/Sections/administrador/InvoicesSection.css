@@ -1803,3 +1803,18 @@ input:checked + .slider:before {
   color: #7f1d1d;
   cursor: not-allowed;
 }
+
+.factura-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0; /* separación arriba y abajo */
+}
+
+.factura-title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.4; /* separación entre líneas */
+}

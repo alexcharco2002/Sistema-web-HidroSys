@@ -31,7 +31,7 @@ class UsuarioSistemaInfo(BaseModel):
 class UsuarioAfiliadoInfo(BaseModel):
     """Info del usuario afiliado con datos del usuario del sistema"""
     id_usuario_afi: int
-    cod_usuario_afi: int
+    cod_usuario_afi: str
     fecha_afiliacion: Optional[date] = None
     id_sector: Optional[int] = None
     nombre_afiliado: Optional[str] = None
@@ -168,7 +168,7 @@ class MedidorStats(BaseModel):
 class AfiliadoDisponible(BaseModel):
     """Afiliados sin medidor asignado"""
     id_usuario_afi: int
-    cod_usuario_afi: int
+    cod_usuario_afi: str
     nombre_afiliado: Optional[str] = None
     fecha_afiliacion: Optional[date] = None
     id_sector: Optional[int] = None
@@ -189,7 +189,7 @@ class MedidorListItem(BaseModel):
     nombre_sector: str | None
 
     id_usuario_afi: int | None
-    cod_usuario_afi: int | None    # ✅ Agregado
+    cod_usuario_afi: str | None    # ✅ Agregado
     nombre_afiliado: str | None
 
     class Config:

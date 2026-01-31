@@ -285,41 +285,66 @@ class ReadingsServices {
     return `${this.getNombreMes(mes)} ${anio}`;
   }
 
-/**
- * Obtener lista completa de afiliados con sus medidores
+  /**
+ * Obtener lista de afiliados con medidores (con filtro de periodo)
  */
-async getMedidoresParaLecturas() {
+/**
+ * Obtener lista de afiliados con medidores (con filtro de periodo)
+ */
+async getMedidoresParaLecturas(mes = null, anio = null, incluirConLectura = false) {
   try {
-    const data = await this.makeRequest(API_CONFIG.endpoints.medidoresCompletos);
+    // 🔥 CAMBIO: No incluir baseURL, solo el endpoint
+    let endpoint = API_CONFIG.endpoints.medidoresCompletos;
     
-    console.log('📋 Datos recibidos del backend:', data);
+    const params = new URLSearchParams();
+    if (mes) params.append('mes', mes);
+    if (anio) params.append('anio', anio);
+    if (incluirConLectura) params.append('incluir_con_lectura', 'true');
     
-    // 🔥 Validar estructura de respuesta
+    if (params.toString()) {
+      endpoint += `?${params.toString()}`;
+    }
+    
+    console.log('📋 Solicitando afiliados:', endpoint);
+    
+    // 🔥 Pasar solo el endpoint, makeRequest agregará el baseURL
+    const data = await this.makeRequest(endpoint);
+    
+    console.log('📊 Respuesta del servidor:', data);
+    
+    // Validar estructura
     if (data && data.afiliados && Array.isArray(data.afiliados)) {
       return {
         success: true,
-        data: data.afiliados  // Retornar el array de afiliados
+        data: data.afiliados,
+        total: data.total || data.afiliados.length,
+        periodo: data.periodo || null,
+        mensaje: data.mensaje || null
       };
     }
     
-    // Si no viene en el formato esperado, intentar con data directamente
-    const medidoresArray = Array.isArray(data) ? data : [data];
+    // Fallback: si viene en otro formato
+    const medidoresArray = Array.isArray(data) ? data : [];
     
     return {
       success: true,
-      data: medidoresArray
+      data: medidoresArray,
+      total: medidoresArray.length
     };
+    
   } catch (error) {
     console.error('❌ Error obteniendo afiliados:', error);
     return {
       success: false,
-      message: error.message || 'Error al obtener afiliados'
+      message: error.message || 'Error al obtener afiliados',
+      data: []
     };
   }
 }
 
 
-  /**
+
+  /*
    * Obtener estadísticas de lecturas desde el backend
    */
   async getStatsFromBackend() {
@@ -565,12 +590,29 @@ async getLecturas(filters = {}) {
     }
   }
 
+
   /**
-   * Exportar plantilla Excel para lecturas
+   * Exportar plantilla Excel para lecturas (con filtro de periodo)
    */
-  async exportarPlantilla() {
+  async exportarPlantilla(mes = null, anio = null) {
     try {
-      const url = `${API_CONFIG.baseURL}${API_CONFIG.endpoints.exportTemplate}`;
+      // 🔥 CAMBIO: Solo el endpoint
+      let endpoint = API_CONFIG.endpoints.exportTemplate;
+      
+      // Agregar parámetros de periodo si existen
+      const params = new URLSearchParams();
+      if (mes) params.append('mes', mes);
+      if (anio) params.append('anio', anio);
+      
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+      
+      console.log('📥 Descargando plantilla:', endpoint);
+      
+      // 🔥 Construir URL completa solo para fetch directo (no usa makeRequest)
+      const url = `${API_CONFIG.baseURL}${endpoint}`;
+      
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -579,32 +621,38 @@ async getLecturas(filters = {}) {
       });
 
       if (!response.ok) {
-        throw new Error('Error al exportar plantilla');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Error al exportar plantilla');
       }
 
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `plantilla_lecturas_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    
+    // Nombre de archivo con periodo
+    const periodoSuffix = mes && anio ? `_${anio}${String(mes).padStart(2, '0')}` : '';
+    link.download = `plantilla_lecturas${periodoSuffix}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(downloadUrl);
 
-      return {
-        success: true,
-        message: 'Plantilla exportada correctamente'
-      };
+    return {
+      success: true,
+      message: `Plantilla exportada correctamente${mes && anio ? ` para ${mes}/${anio}` : ''}`
+    };
 
-    } catch (error) {
-      console.error('❌ Error exportando plantilla:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al exportar plantilla'
-      };
-    }
+  } catch (error) {
+    console.error('❌ Error exportando plantilla:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al exportar plantilla'
+    };
   }
+}
+
 
   /**
    * Importar lecturas desde Excel (método legacy - usa el nuevo cuando sea posible)

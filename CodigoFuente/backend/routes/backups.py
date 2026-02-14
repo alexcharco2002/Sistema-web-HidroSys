@@ -1,5 +1,5 @@
 """
-app/routers/backups.py
+routers/backups.py
 Router para gestión de backups de base de datos
 Sigue el patrón del router de sectores con permisos granulares
 """
@@ -55,7 +55,7 @@ PG_DUMP_PATH = r"C:\Program Files\PostgreSQL\17\bin\pg_dump.exe"
 PG_RESTORE_PATH = r"C:\Program Files\PostgreSQL\17\bin\pg_restore.exe"
 
 # Directorio de backups
-BASE_DIR = Path(__file__).resolve().parent.parent  # /backend
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 BACKUP_DIR = BASE_DIR / os.getenv("BACKUP_DIR", "backups")
 
 # Crear carpeta si no existe

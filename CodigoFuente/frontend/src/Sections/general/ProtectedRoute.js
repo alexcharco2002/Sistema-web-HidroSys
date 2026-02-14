@@ -1,4 +1,8 @@
-// src/sections/ProtectedRoute.js
+// src/sections/general/ProtectedRoute.js
+// Componente de ruta protegida que verifica autenticación y permisos de rol
+import React from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
+import authService from '../../services/authServices';
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import authService from '../../services/authServices';

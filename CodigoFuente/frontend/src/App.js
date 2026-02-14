@@ -11,7 +11,7 @@ import Forgotpassword from './pages/forgotPassword.js';
 import UniversalDashboard from './pages/UniversalDashboard.js';
 
 // Componente de ruta protegida
-import ProtectedRoute from './sections/general/ProtectedRoute';
+import ProtectedRoute from './sections/general/ProtectedRoute.js';
 
 // Handler de sesión expirada con modal (si ya no se usa, avísame para eliminarlo también)
 import SessionExpiredHandler from './components/SessionExpiredHandler.js';

@@ -2102,7 +2102,7 @@ export const printMultipleThermalTicket = (pagoMultiple, facturas, afiliado) => 
   };
 
   // ✅ CALCULAR TOTALES GENERALES Y POR CONCEPTO
-  let totalGeneral = 0;
+
   let totalConsumo = 0;
   let totalServicios = 0;
   let totalMultas = 0;
@@ -2122,7 +2122,7 @@ export const printMultipleThermalTicket = (pagoMultiple, facturas, afiliado) => 
     const multasTotal = desglose.multas?.total || 0;
     
     // Acumular totales generales
-    totalGeneral += totalFactura;
+
     totalConsumo += consumoTotal;
     totalServicios += serviciosTotal;
     totalMultas += multasTotal;

@@ -5,7 +5,7 @@
 import authService from './authServices';
 
 const API_CONFIG = {
-  baseURL: 'https://localhost:8000',
+baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
   endpoints: {
     tiposMulta: '/multas/tipos/', // ✅ CON /
     stats: '/multas/tipos/stats/count',

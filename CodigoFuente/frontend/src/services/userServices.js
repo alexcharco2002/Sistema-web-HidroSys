@@ -8,7 +8,7 @@ import authService from './authServices';
 import * as XLSX from "xlsx";
 
 const API_CONFIG = {
-  baseURL: 'https://localhost:8000',
+baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
   endpoints: {
     users: '/users',
     roles: '/roles',

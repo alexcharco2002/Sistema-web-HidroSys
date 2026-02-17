@@ -86,14 +86,18 @@ app = FastAPI(
 # ========================================
 
 # CORS para desarrollo
+import os
+
+# Obtener orígenes permitidos desde variable de entorno o usar valores por defecto
+allowed_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "https://localhost:3000,http://localhost:3000,https://tecnicobrosanjapamba.netlify.app"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://localhost:3000",
-        "https://127.0.0.1:3000",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=allowed_origins,
+
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -101,10 +105,10 @@ app.add_middleware(
 )
 
 # Seguridad adicional
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1", "*.localhost"]
-)
+#app.add_middleware(
+  #  TrustedHostMiddleware,
+  #  allowed_hosts=["localhost", "127.0.0.1", "*.localhost"]
+#)
 
 # ========================================
 # INCLUIR ROUTERS
@@ -196,36 +200,13 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
     
-    # Verificar certificados SSL
-    cert_file = "certs/cert.pem"
-    key_file = "certs/key.pem"
+    # Usar puerto de Render o 8000 por defecto
+    port = int(os.getenv("PORT", 8000))
     
-    if not os.path.exists(cert_file) or not os.path.exists(key_file):
-        logger.warning("⚠️ Certificados SSL no encontrados")
-        logger.info("📝 Genera certificados con:")
-        logger.info("   mkdir certs && cd certs")
-        logger.info("   openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365")
-        logger.info("\n🔄 Iniciando en modo HTTP...")
-        
-        uvicorn.run(
-            "main:app",
-            host="0.0.0.0",
-            port=8000,
-            reload=True,
-            log_level="info"
-        )
-    else:
-        logger.info("🔒 Iniciando servidor HTTPS...")
-        logger.info("📍 URL: https://localhost:8000")
-        logger.info("📚 Docs: https://localhost:8000/docs")
-        
-        uvicorn.run(
-            "main:app",
-            host="0.0.0.0",
-            port=8000,
-            reload=True,
-            log_level="info",
-            ssl_keyfile=key_file,
-            ssl_certfile=cert_file,
-            ssl_keyfile_password=None
-        )
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=port,
+        reload=False,  # NO reload en producción
+        log_level="info"
+    )

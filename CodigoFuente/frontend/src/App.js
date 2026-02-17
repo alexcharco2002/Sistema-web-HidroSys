@@ -10,7 +10,7 @@ import Forgotpassword from './pages/forgotPassword';
 import UniversalDashboard from './pages/UniversalDashboard';
 
 // Componente de ruta protegida
-import ProtectedRoute from './Sections/ProtectedRoute';
+import ProtectedRoute from './sections/ProtectedRoute';
 
 
 // Handler de sesión expirada

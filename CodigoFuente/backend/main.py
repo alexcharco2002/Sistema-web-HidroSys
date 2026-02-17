@@ -123,6 +123,13 @@ from routes import (
 )
 from routes.test_sqli import router as sqli_router
 
+import os
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
+
+
 # Routers principales
 app.include_router(auth.router)
 app.include_router(user.router)

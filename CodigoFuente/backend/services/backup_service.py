@@ -50,7 +50,9 @@ class BackupService:
     def _validate_config(self) -> None:
         """Valida que la configuración sea correcta"""
         if not self.db_name or not self.db_user:
-            raise ValueError("Configuración de base de datos incompleta en .env")
+            logger.warning("Configuración de backups no disponible - desactivado en producción")
+            return  # Salir sin error
+
         
         if not os.path.exists(self.pg_dump_path):
             raise FileNotFoundError(

@@ -198,7 +198,7 @@ def listar_facturas_optimizado(
                 # ===== DATOS DEL AFILIADO =====
                 UsuarioAfiliado.id_usuario_afi,
                 UsuarioAfiliado.cod_usuario_afi,
-                UsuarioAfiliado.num_medidor,  
+ 
                 
                 # ===== DATOS DEL USUARIO SISTEMA =====
                 func.concat(
@@ -235,7 +235,7 @@ def listar_facturas_optimizado(
                     ).ilike(search_pattern),
                     UsuarioSistema.cedula.ilike(f"%{search}%"),
                     cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(f"%{search}%"),
-                    UsuarioAfiliado.num_medidor.ilike(f"%{search}%")
+                 
                 )
             )
 
@@ -322,7 +322,6 @@ def listar_facturas_optimizado(
                 "usuario_afiliado": {
                     "id_usuario_afi": f.id_usuario_afi,
                     "cod_usuario_afi": f.cod_usuario_afi,
-                    "num_medidor": f.num_medidor or "N/A",
                     
                     # Usuario Sistema (con todos los campos)
                     "usuario_sistema": {
@@ -352,8 +351,6 @@ def listar_facturas_optimizado(
             status_code=500,
             detail=f"Error al listar facturas: {str(e)}"
         )
-
-
 
 # ========================================
 # ESTADÍSTICAS DE FACTURACIÓN
@@ -389,82 +386,120 @@ MESES_ES = {
 }
 
 # ========================================
-# 🆕 ENDPOINT: OBTENER PERIODOS DISPONIBLES DE FACTURAS
+# HELPER: estadísticas de facturas en UNA sola consulta
+# Reemplaza el loop con obtener_estadisticas_facturacion()
+# ========================================
+
+def obtener_estadisticas_facturas_por_periodo(db: Session, periodos_str: list[str]) -> dict:
+    """
+    Una sola query SQL agrupada por periodo.
+    Devuelve dict: { "2025-03": { total_facturas, pagadas, pendientes, ... }, ... }
+    """
+    from sqlalchemy import case, func
+    from models.factura import Factura
+
+    if not periodos_str:
+        return {}
+
+    rows = (
+        db.query(
+            Factura.periodo,
+            func.count(Factura.id_factura).label("total_facturas"),
+            func.sum(case((Factura.estado_factura == "pagada",    1), else_=0)).label("total_pagadas"),
+            func.sum(case((Factura.estado_factura == "pendiente", 1), else_=0)).label("total_pendientes"),
+            func.sum(case((Factura.estado_factura == "vencida",   1), else_=0)).label("total_vencidas"),
+            func.sum(case((Factura.estado_factura == "anulada",   1), else_=0)).label("total_anuladas"),
+            func.sum(Factura.total).label("monto_total"),
+            func.sum(case((Factura.estado_factura == "pagada",    Factura.total), else_=0)).label("monto_cobrado"),
+            func.sum(case((Factura.estado_factura.in_(["pendiente", "vencida"]), Factura.total), else_=0)).label("monto_pendiente"),
+        )
+        .filter(Factura.periodo.in_(periodos_str))
+        .group_by(Factura.periodo)
+        .all()
+    )
+
+    resultado = {}
+    for row in rows:
+        monto_total    = float(row.monto_total    or 0)
+        monto_cobrado  = float(row.monto_cobrado  or 0)
+        monto_pendiente = float(row.monto_pendiente or 0)
+
+        resultado[row.periodo] = {
+            "total_facturas":   int(row.total_facturas   or 0),
+            "total_pagadas":    int(row.total_pagadas    or 0),
+            "total_pendientes": int(row.total_pendientes or 0),
+            "total_vencidas":   int(row.total_vencidas   or 0),
+            "total_anuladas":   int(row.total_anuladas   or 0),
+            "monto_total":      monto_total,
+            "monto_cobrado":    monto_cobrado,
+            "monto_pendiente":  monto_pendiente,
+        }
+
+    return resultado
+
+
+# ========================================
+# ENDPOINT: PERÍODOS DISPONIBLES DE FACTURAS (optimizado)
 # ========================================
 @router.get("/periodos/disponibles", response_model=dict)
 def obtener_periodos_facturas_disponibles(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Obtiene los periodos (mes/año) disponibles para facturación.
-    Muestra:
-    - Periodo actual sugerido
-    - Últimos 6 meses con estadísticas
-    - Próximos 2 meses
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "facturas", "lectura")
 
     try:
-        # Fecha actual
         hoy = date.today()
         mes_actual = hoy.month
         anio_actual = hoy.year
 
         periodos = []
+        periodos_str = []
 
-        # Generar últimos 6 meses + mes actual + próximos 2 meses
         for offset in range(-6, 3):
-            # Calcular mes y año base
-            mes_temp = mes_actual + offset
-            anio_temp = anio_actual
+            mes = mes_actual + offset
+            anio = anio_actual
 
-            # Normalizar mes/año
-            while mes_temp > 12:
-                mes_temp -= 12
-                anio_temp += 1
-            while mes_temp < 1:
-                mes_temp += 12
-                anio_temp -= 1
+            while mes > 12:
+                mes -= 12
+                anio += 1
+            while mes < 1:
+                mes += 12
+                anio -= 1
 
-            periodo_str = f"{anio_temp}-{mes_temp:02d}"
-
-            # 📌 Estadísticas de facturación del periodo
-            stats = obtener_estadisticas_facturacion(db, periodo_str, None)
-
-            # stats es dict / FacturaStats → acceder por clave
-            total_facturas_periodo = stats.get("total_facturas", 0) if stats else 0
-            monto_total = stats.get("monto_total", 0) if stats else 0
-            monto_cobrado = stats.get("monto_total_cobrado", 0) if stats else 0
-            monto_pendiente = stats.get("monto_total_pendiente", 0) if stats else 0
-
-            porcentaje_cobrado = 0.0
-            if monto_total and monto_total > 0:
-                porcentaje_cobrado = float(monto_cobrado / monto_total * 100)
-
-            # Sugerido: mes actual siempre
-            sugerido = (mes_temp == mes_actual and anio_temp == anio_actual)
+            periodo_str = f"{anio}-{mes:02d}"
+            periodos_str.append(periodo_str)
 
             periodos.append({
-                "mes": mes_temp,
-                "anio": anio_temp,
-                "nombre_mes": MESES_ES.get(mes_temp, f"Mes {mes_temp}"),
-                "tiene_facturas": total_facturas_periodo > 0,
-                "total_facturas": total_facturas_periodo,
-                "monto_total": float(monto_total),
-                "monto_cobrado": float(monto_cobrado),
-                "monto_pendiente": float(monto_pendiente),
-                "porcentaje_cobrado": round(porcentaje_cobrado, 1),
-                "sugerido": sugerido,
-                "valor": periodo_str,
-                "texto": f"{MESES_ES.get(mes_temp, f'Mes {mes_temp}')} {anio_temp}",
+                "mes": mes,
+                "anio": anio,
+                "periodo": periodo_str,
+                "sugerido": mes == mes_actual and anio == anio_actual,
             })
 
-        # Ordenar por año y mes descendente (más reciente primero)
-        periodos.sort(key=lambda x: (x["anio"], x["mes"]), reverse=True)
+        # UNA sola consulta para todos los periodos
+        stats_map = obtener_estadisticas_facturas_por_periodo(db, periodos_str)
 
-        # Identificar periodo actual sugerido
+        for p in periodos:
+            stats = stats_map.get(p["periodo"], {})
+
+            p.update({
+                "nombre_mes":   MESES_ES.get(p["mes"], f"Mes {p['mes']}"),
+                "valor":        p["periodo"],
+                "texto":        f"{MESES_ES.get(p['mes'])} {p['anio']}",
+                "tiene_facturas":   stats.get("total_facturas", 0) > 0,
+                "total_facturas":   stats.get("total_facturas",   0),
+                "total_pagadas":    stats.get("total_pagadas",    0),
+                "total_pendientes": stats.get("total_pendientes", 0),
+                "total_vencidas":   stats.get("total_vencidas",   0),
+                "total_anuladas":   stats.get("total_anuladas",   0),
+                "monto_total":      stats.get("monto_total",      0.0),
+                "monto_cobrado":    stats.get("monto_cobrado",    0.0),
+                "monto_pendiente":  stats.get("monto_pendiente",  0.0),
+            })
+
+        periodos.sort(key=lambda x: (x["anio"], x["mes"]), reverse=True)
         periodo_actual = next((p for p in periodos if p["sugerido"]), periodos[0])
 
         return {
@@ -480,7 +515,6 @@ def obtener_periodos_facturas_disponibles(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener periodos de facturas: {str(e)}"
         )
-
 
 # ========================================
 # OBTENER FACTURA POR ID (CON DETALLES)

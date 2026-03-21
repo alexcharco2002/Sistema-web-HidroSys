@@ -8,7 +8,7 @@ import './MetersSection.css';
 import { 
   Gauge, Search, CheckCircle, XCircle, MapPin, X, Save, RefreshCw, 
   AlertCircle, Map, Navigation, Mountain, UserCheck, IdCard, UserX, 
-  User, Eye, Edit, Trash2, ArrowRightLeft 
+  User, Eye, Edit, Trash2, ArrowRightLeft, Info, Users
 } from 'lucide-react';
 
 const MetersSection = () => {
@@ -30,6 +30,10 @@ const MetersSection = () => {
   const [modalType, setModalType] = useState('create');
   const [selectedMeter, setSelectedMeter] = useState(null);
   const [error, setError] = useState(null);
+
+  // Estado para búsqueda de afiliados en cambio de medidor
+  const [affiliateSearchTerm, setAffiliateSearchTerm] = useState('');
+  const [selectedAffiliateInfo, setSelectedAffiliateInfo] = useState(null);
 
   // 🆕 Estados para modal de CAMBIO DE MEDIDOR
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -62,6 +66,22 @@ const MetersSection = () => {
     canDelete: false,
     canToggleStatus: false
   });
+
+  
+
+
+  // Filtro calculado — no necesita useEffect
+  const filteredAffiliates = availableAffiliates.filter((a) => {
+    if (!affiliateSearchTerm) return true;
+    const term = affiliateSearchTerm.toLowerCase();
+    return (
+      a.cod_usuario_afi?.toLowerCase().includes(term) ||
+      a.nombre_afiliado?.toLowerCase().includes(term) ||
+      a.cedula?.toLowerCase().includes(term)
+    );
+  });
+
+
 
   // ============================================================================
   // EFECTOS Y CARGA INICIAL
@@ -232,6 +252,9 @@ const MetersSection = () => {
     setSelectedMeter(null);
     setError(null);
     setAvailableAffiliates([]);
+    setModalType(null);
+    setAffiliateSearchTerm(''); 
+    setSelectedAffiliateInfo(null);
   };
 
   const handleSubmit = async (e) => {
@@ -901,11 +924,12 @@ const MetersSection = () => {
                   )}
                 </div>
               )}
-
-              {/* MODAL DE CREACIÓN/EDICIÓN */}
+              
+              {/* ==================== MODAL DE EDICIÓN/CREACIÓN ==================== */}
               {(modalType === 'create' || modalType === 'edit') && (
                 <form onSubmit={handleSubmit} className="user-form">
                   <div className="form-grid">
+
                     <div className="form-group form-group-full">
                       <label>Número de Medidor</label>
                       <input
@@ -917,41 +941,113 @@ const MetersSection = () => {
                       />
                     </div>
 
-                    {/* 🚫 Quitar select de afiliado en modo edición */}
+                    {/* ✅ SELECTOR DE AFILIADO CON BÚSQUEDA — solo en crear */}
                     {modalType === 'create' && (
                       <div className="form-group form-group-full">
-                        <label>Asignar a Afiliado <small>(opcional)</small></label>
+                        <label>
+                          Asignar a Afiliado <small>(opcional)</small>
+                        </label>
+
+                        {/* Input de búsqueda */}
+                        <div className="meter-search-container">
+                          <div className="meter-search-input-wrapper">
+                            <Search className="w-4 h-4 text-gray-400" />
+                            <input
+                              type="text"
+                              placeholder="Buscar por nombre, código o cédula..."
+                              value={affiliateSearchTerm}
+                              onChange={(e) => setAffiliateSearchTerm(e.target.value)}
+                            />
+                            {affiliateSearchTerm && (
+                              <button
+                                type="button"
+                                onClick={() => setAffiliateSearchTerm('')}
+                                className="meter-search-clear-btn"
+                              >
+                                <X className="w-4 h-4 text-gray-400" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Select filtrado */}
                         <select
                           value={formData.id_usuario_afi || ''}
-                          onChange={(e) => setFormData({ 
-                            ...formData, 
-                            id_usuario_afi: e.target.value ? parseInt(e.target.value) : null 
-                          })}
+                          onChange={(e) => {
+                            const id = e.target.value ? parseInt(e.target.value) : null;
+                            const aff = availableAffiliates.find(a => a.id_usuario_afi === id) || null;
+                            setFormData({ ...formData, id_usuario_afi: id });
+                            setSelectedAffiliateInfo(aff);
+                          }}
+                          className="mt-2"
                         >
-                          <option value="">Sin asignar</option>
-                          {availableAffiliates.map(affiliate => (
-                            <option key={affiliate.id_usuario_afi} value={affiliate.id_usuario_afi}>
-                              {affiliate.cod_usuario_afi} - {affiliate.nombre_afiliado} - Sector: {affiliate.nombre_sector || 'N/A'}
-                            </option>
-                          ))}
+                         <option value="">🚫 Sin asignar</option>
+
+                        {filteredAffiliates.map((affiliate) => (
+                          <option key={affiliate.id_usuario_afi} value={affiliate.id_usuario_afi}>
+                            👤 {affiliate.cod_usuario_afi} — {affiliate.nombre_afiliado}
+                            {affiliate.cedula ? ` | 🪪 ${affiliate.cedula}` : ''}
+                          </option>
+                        ))}
                         </select>
-                        <small className="text-gray-500 mt-1">
-                          Solo se muestran afiliados sin medidor asignado
-                        </small>
+
+                        {/* Contador */}
+                        {filteredAffiliates.length > 0 ? (
+                          <small className="text-gray-500 mt-1 flex items-center gap-1">
+                            <Info className="w-3 h-3" />
+                            {filteredAffiliates.length} afiliado{filteredAffiliates.length !== 1 ? 's' : ''}
+                            {affiliateSearchTerm && ` para "${affiliateSearchTerm}"`}
+                          </small>
+                        ) : affiliateSearchTerm ? (
+                          <small className="text-yellow-600 mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            Sin resultados para "{affiliateSearchTerm}"
+                          </small>
+                        ) : null}
                       </div>
                     )}
 
+                    {/* ✅ TARJETA DE INFORMACIÓN AL SELECCIONAR */}
+                    {selectedAffiliateInfo && (
+                      <div className="meter-info-card mt-3">
+                        <h4 className="meter-info-title">
+                          <Users className="w-4 h-4 mr-2" />
+                          Información del Afiliado
+                        </h4>
+                        <div className="meter-info-content">
+                          <div className="grid grid-cols-2 gap-2">
+                            <p><strong>Código:</strong> {selectedAffiliateInfo.cod_usuario_afi || '—'}</p>
+                            <p><strong>Nombre:</strong> {selectedAffiliateInfo.nombre_afiliado || '—'}</p>
+                            <p><strong>Cédula:</strong> {selectedAffiliateInfo.cedula || '—'}</p>
+                            <p><strong>Sector:</strong> {selectedAffiliateInfo.nombre_sector || '—'}</p>
+                            <p><strong>Fecha afiliación:</strong> {selectedAffiliateInfo.fecha_afiliacion || '—'}</p>
+                            <p><strong>Estado:</strong>{' '}
+                              <span className={selectedAffiliateInfo.activo ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'}>
+                                {selectedAffiliateInfo.activo ? 'Activo' : 'Inactivo'}
+                              </span>
+                            </p>
+                            <p>
+                              <strong>Medidores:</strong>{' '}
+                              {selectedAffiliateInfo.total_medidores}{' '}
+                              <span className="text-gray-500 text-xs">
+                                ({selectedAffiliateInfo.medidores_activos} activo{selectedAffiliateInfo.medidores_activos !== 1 ? 's' : ''})
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Sector, coordenadas y estado — sin cambios */}
                     <div className="form-group form-group-full">
                       <label>Sector</label>
                       <select
                         value={formData.id_sector || ''}
-                        onChange={(e) => setFormData({ 
-                          ...formData, 
-                          id_sector: e.target.value ? parseInt(e.target.value) : null 
-                        })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, id_sector: e.target.value ? parseInt(e.target.value) : null })
+                        }
                       >
                         <option value="">Seleccione un sector</option>
-                        {sectors.map(sector => (
+                        {sectors.map((sector) => (
                           <option key={sector.id_sector} value={sector.id_sector}>
                             {sector.nombre_sector}
                           </option>
@@ -1018,6 +1114,7 @@ const MetersSection = () => {
                   </div>
                 </form>
               )}
+
             </div>
           </div>
         </div>
@@ -1105,7 +1202,9 @@ const MetersSection = () => {
                     ))}
                   </select>
                   {loadingServices && (
-                    <small className="text-gray-500">Cargando servicios disponibles...</small>
+                    <small className="text-gray-500">Cargando 
+                    
+                     disponibles...</small>
                   )}
                 </div>
 

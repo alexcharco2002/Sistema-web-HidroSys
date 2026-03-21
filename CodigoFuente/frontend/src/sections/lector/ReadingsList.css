@@ -1771,3 +1771,190 @@ select.disabled {
 .stat-progress-fill.complete {
   background: linear-gradient(90deg, #10B981 0%, #059669 100%);
 }
+
+/* Validación visual input lectura actual */
+.input-error {
+  border: 1.5px solid #ef4444 !important;
+  background-color: #fff5f5 !important;
+  color: #b91c1c;
+}
+
+.input-error:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+
+/* ============================================================
+   HISTORIAL DE PERÍODOS — AGRUPADO POR AÑO
+   Agrega estos estilos al final de ReadingsList.css
+   ============================================================ */
+
+/* ── Contenedor general de la lista de años ── */
+.historial-anios-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Bloque de un año (acordeón) ── */
+.historial-anio-bloque {
+  border: 0.5px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+/* ── Cabecera clickeable del año ── */
+.historial-anio-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-align: left;
+}
+
+.historial-anio-header:hover {
+  background: #eff6ff;
+}
+
+/* Label del año con ícono y badge */
+.historial-anio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.historial-anio-label svg {
+  color: #3b82f6;
+}
+
+/* Badge "X periodos · Y completos" */
+.historial-anio-badge {
+  font-size: 12px;
+  font-weight: 400;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 0.5px solid #e2e8f0;
+  border-radius: 99px;
+  padding: 2px 10px;
+}
+
+/* Chevron que rota al expandir */
+.historial-chevron {
+  color: #94a3b8;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.historial-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* ── Grid de chips de meses ── */
+.historial-meses-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 0.5px solid #e2e8f0;
+  background: #ffffff;
+}
+
+/* ── Chip individual de mes ── */
+.historial-mes-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 0.5px solid #e2e8f0;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  color: #1e293b;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.historial-mes-chip:hover {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  transform: translateY(-1px);
+}
+
+/* Variante: periodo completo */
+.historial-mes-chip.completo {
+  border-color: #a7f3d0;
+  background: #f0fdf4;
+}
+
+.historial-mes-chip.completo:hover {
+  background: #dcfce7;
+  border-color: #4ade80;
+}
+
+/* Variante: periodo incompleto */
+.historial-mes-chip.incompleto {
+  border-color: #e2e8f0;
+}
+
+/* Punto de estado */
+.historial-mes-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.historial-mes-dot.completo {
+  background: #22c55e;
+}
+
+.historial-mes-dot.incompleto {
+  background: #94a3b8;
+}
+
+/* Nombre del mes */
+.historial-mes-nombre {
+  font-weight: 500;
+}
+
+.historial-mes-chip.completo .historial-mes-nombre {
+  color: #15803d;
+}
+
+/* Porcentaje / checkmark */
+.historial-mes-pct {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.historial-mes-chip.completo .historial-mes-pct {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .historial-meses-grid {
+    gap: 6px;
+    padding: 10px 12px;
+  }
+
+  .historial-mes-chip {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+
+  .historial-anio-label {
+    font-size: 14px;
+  }
+}

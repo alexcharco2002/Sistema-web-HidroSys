@@ -24,7 +24,7 @@ import {
   ArrowUpDown,
   TrendingUp,
   Ban,
-  CalendarDays,
+  CalendarDays, ChevronDown, 
   Gauge, User, IdCard  ,Tag, Percent, Package, Briefcase
 } from 'lucide-react';
 
@@ -43,7 +43,7 @@ const InvoicesSection = () => {
   const [, setPeriodoActual] = useState(null);
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState(null);
   const [loadingPeriodos, setLoadingPeriodos] = useState(false);
-  const [periodosInicializados, ] = useState(false); // 🔥 NUEVO FLAG
+  const [periodosInicializados, ] = useState(false);  
 
   // ============================================================
   // ESTADOS DE BÚSQUEDA Y FILTROS
@@ -111,6 +111,12 @@ const InvoicesSection = () => {
     motivo: '',
     motivoPersonalizado: ''
   });
+
+  // Estado para controlar qué años están expandidos en la sección de periodos
+   const [aniosExpandidos, setAniosExpandidos] = useState({});
+      const toggleAnio = (anio) => {
+        setAniosExpandidos(prev => ({ ...prev, [anio]: !prev[anio] }));
+      };
 
   // Motivos predefinidos para anulación de facturas
   const motivosAnulacionFactura = [
@@ -941,144 +947,146 @@ const agruparDetallesPorTipo = (detalles) => {
         </div>
 
           {/* SECCIÓN 1: PERÍODOS RECIENTES */}
-          <div className="periodo-selector-container">
-            <div className="periodo-selector-header">
-              <div>
-                <h3>
-                  <CalendarDays className="w-5 h-5 text-blue-600 mr-2" />
-                  Períodos de Facturación
-                </h3>
-                <p className="periodo-selector-subtitle">
-                  Selecciona el período para gestionar facturas
-                </p>
+{/* SECCIÓN 1: PERÍODOS RECIENTES — FACTURAS
+    Sin barras de progreso. Muestra: total, pagadas, pendientes+vencidas, anuladas.
+    CSS: solo usa clases ya existentes. No necesitas CSS nuevo.
+*/}
+
+<div className="periodo-selector-container">
+  <div className="periodo-selector-header">
+    <div>
+      <h3>
+        <CalendarDays className="w-5 h-5 text-blue-600 mr-2" />
+        Períodos de Facturación
+      </h3>
+      <p className="periodo-selector-subtitle">
+        Selecciona el período para gestionar facturas
+      </p>
+    </div>
+  </div>
+
+  <div className="periodos-grid">
+    {(() => {
+      const hoy = new Date();
+      const mesActual = hoy.getMonth() + 1;
+      const anioActual = hoy.getFullYear();
+
+      const calcularDiferenciaMeses = (mes, anio) =>
+        (anio - anioActual) * 12 + (mes - mesActual);
+
+      const periodosRecientes = periodos
+        .filter(periodo => {
+          const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio);
+          return diff >= -2 && diff <= 2;
+        })
+        .sort((a, b) => {
+          if (a.anio !== b.anio) return b.anio - a.anio;
+          return b.mes - a.mes;
+        });
+
+      return periodosRecientes.map(periodo => {
+        const tieneFacturas  = periodo.tiene_facturas;
+        const esMesActual    = periodo.mes === mesActual && periodo.anio === anioActual;
+        const pendientesTotal = (periodo.total_pendientes ?? 0) + (periodo.total_vencidas ?? 0);
+
+        return (
+          <button
+            key={`${periodo.mes}-${periodo.anio}`}
+            onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
+            className={`periodo-card hoverable ${esMesActual ? 'mes-actual' : ''}`}
+          >
+            {/* CABECERA */}
+            <div className="periodo-card-header">
+              <span className="periodo-card-title">
+                {periodo.nombre_mes} {periodo.anio}
+              </span>
+              {esMesActual && (
+                <span className="periodo-badge-actual">Actual</span>
+              )}
+            </div>
+
+            {/* INFO PRINCIPAL: total facturas */}
+            <div className="periodo-card-info">
+              {tieneFacturas
+                ? `${periodo.total_facturas} facturas`
+                : 'Sin facturas aún'}
+            </div>
+
+            {/* ESTADÍSTICAS DE ESTADOS — solo si tiene facturas */}
+            {tieneFacturas && (
+              <div className="periodo-factura-stats">
+
+                {/* Pagadas */}
+                <div className="periodo-factura-stat pagadas">
+                  <CheckCircle className="w-3 h-3" />
+                  <span>{periodo.total_pagadas} pagadas</span>
+                </div>
+
+                {/* Pendientes + vencidas */}
+                {pendientesTotal > 0 && (
+                  <div className="periodo-factura-stat pendientes">
+                    <Clock className="w-3 h-3" />
+                    <span>{pendientesTotal} pendientes</span>
+                  </div>
+                )}
+
+                {/* Anuladas — solo si hay */}
+                {(periodo.total_anuladas ?? 0) > 0 && (
+                  <div className="periodo-factura-stat anuladas">
+                    <XCircle className="w-3 h-3" />
+                    <span>{periodo.total_anuladas} anuladas</span>
+                  </div>
+                )}
+
               </div>
+            )}
+
+            {/* ACCIÓN */}
+            <div className="periodo-card-action">
+              <span>
+                {!tieneFacturas
+                  ? 'Periodo vacío'
+                  : pendientesTotal === 0
+                    ? 'Ver facturas ✓'
+                    : 'Gestionar facturas'}
+              </span>
             </div>
-
-            <div className="periodos-grid">
-              {(() => {
-                const hoy = new Date();
-                const mesActual = hoy.getMonth() + 1;
-                const anioActual = hoy.getFullYear();
-                
-                const calcularDiferenciaMeses = (mes, anio) => {
-                  return (anio - anioActual) * 12 + (mes - mesActual);
-                };
-                
-                const periodosRecientes = periodos
-                  .filter(periodo => {
-                    const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio);
-                    return diff >= -2 && diff <= 2;
-                  })
-                  .sort((a, b) => {
-                    if (a.anio !== b.anio) return b.anio - a.anio;
-                    return b.mes - a.mes;
-                  });
-
-                return periodosRecientes.map(periodo => {
-                  const tieneFacturas = periodo.tiene_facturas;
-                  const esMesActual = periodo.mes === mesActual && periodo.anio === anioActual;
-
-                  return (
-                    <button
-                      key={`${periodo.mes}-${periodo.anio}`}
-                      onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
-                      className={`periodo-card hoverable ${esMesActual ? 'mes-actual' : ''}`}
-                    >
-                      <div className="periodo-card-header">
-                        <span className="periodo-card-title">
-                          {periodo.nombre_mes} {periodo.anio}
-                        </span>
-                        {esMesActual && (
-                          <span className="periodo-badge-actual">Actual</span>
-                        )}
-                      </div>
-
-                      <div className="periodo-card-info">
-                        {periodo.total_facturas} facturas
-                      </div>
-
-                      {/* Indicador de Cobrado */}
-                      {tieneFacturas && (
-                        <div className="periodo-progress-section">
-                          <div className="periodo-progress-label">
-                            <CheckCircle className="w-3 h-3 text-green-600" />
-                            <span>Cobrado</span>
-                            <span className="periodo-progress-value">
-                              {getPorcentajeCobrado(periodo)}%
-                            </span>
-                          </div>
-                          <div className="periodo-progress-bar">
-                            <div
-                              className="periodo-progress-fill cobrado"
-                              style={{ width: `${getPorcentajeCobrado(periodo)}%` }}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Indicador de Pendiente */}
-                      {tieneFacturas && (
-                        <div className="periodo-progress-section">
-                          <div className="periodo-progress-label">
-                            <Clock className="w-3 h-3 text-yellow-600" />
-                            <span>Pendiente</span>
-                            <span className="periodo-progress-value">
-                              {getPorcentajePendiente(periodo)}%
-                            </span>
-                          </div>
-                          <div className="periodo-progress-bar">
-                            <div
-                              className="periodo-progress-fill pendiente"
-                              style={{ width: `${getPorcentajePendiente(periodo)}%` }}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="periodo-card-action">
-                        <span>{tieneFacturas ? 'Ver facturas' : 'Periodo vacío'}</span>
-                      </div>
-                    </button>
-
-                  );
-                });
-              })()}
-            </div>
-          </div>
+          </button>
+        );
+      });
+    })()}
+  </div>
+</div>
 
           {/* SECCIÓN 2: HISTORIAL DE PERÍODOS */}
           <div className="periodo-historial-container">
             <div className="flex items-center">
               <div>
-                <h3 className="font-semibold text-[16px] leading-[1.2]">
-                  <Clock className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 self-center" />
+                <h3 className="font-semibold text-[16px] leading-[1.2] flex items-center">
+                  <Clock className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" />
                   Historial de Períodos
                 </h3>
                 <p className="periodo-historial-subtitle text-[14px]">
                   Períodos anteriores con facturas registradas
                 </p>
+                <br />
               </div>
             </div>
-
+          
             {(() => {
               const hoy = new Date();
               const mesActual = hoy.getMonth() + 1;
               const anioActual = hoy.getFullYear();
-              
-              const calcularDiferenciaMeses = (mes, anio) => {
-                return (anio - anioActual) * 12 + (mes - mesActual);
-              };
-              
-              const periodosHistorial = periodos
-                .filter(periodo => {
-                  const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio);
-                  return diff < -2 && periodo.tiene_facturas;
-                })
-                .sort((a, b) => {
-                  if (a.anio !== b.anio) return b.anio - a.anio;
-                  return b.mes - a.mes;
-                });
-
+          
+              const calcularDiferenciaMeses = (mes, anio) =>
+                (anio - anioActual) * 12 + (mes - mesActual);
+          
+              const periodosHistorial = periodos.filter(periodo => {
+                const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio);
+                const tieneFacturas = periodo.tiene_facturas ?? (periodo.total_facturas > 0);
+                return diff < -2 && tieneFacturas;
+              });
+          
               if (periodosHistorial.length === 0) {
                 return (
                   <div className="periodo-historial-empty">
@@ -1087,42 +1095,74 @@ const agruparDetallesPorTipo = (detalles) => {
                   </div>
                 );
               }
-
+          
+              // Agrupar por año
+              const agrupado = periodosHistorial.reduce((acc, periodo) => {
+                if (!acc[periodo.anio]) acc[periodo.anio] = [];
+                acc[periodo.anio].push(periodo);
+                return acc;
+              }, {});
+          
+              const aniosOrdenados = Object.keys(agrupado)
+                .map(Number)
+                .sort((a, b) => b - a);
+          
+              const nombresMeses = [
+                '', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+                'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+              ];
+          
               return (
-                <div className="periodo-historial-list">
-                  {periodosHistorial.map(periodo => (
-                    <button
-                      key={`hist-${periodo.mes}-${periodo.anio}`}
-                      onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
-                      className="periodo-historial-list-item"
-                    >
-                      <div className="periodo-historial-col-fecha">
-                        <Calendar className="w-4 h-4 text-gray-500" />
-                        <span className="periodo-historial-mes-nombre">
-                          {periodo.nombre_mes} {periodo.anio}
-                        </span>
+                <div className="historial-anios-lista">
+                  {aniosOrdenados.map(anio => {
+                    const mesesDelAnio = agrupado[anio].sort((a, b) => b.mes - a.mes);
+                    const estaExpandido = aniosExpandidos[anio] !== false;
+          
+                    return (
+                      <div key={anio} className="historial-anio-bloque">
+          
+                        {/* CABECERA DEL AÑO */}
+                        <button
+                          className="historial-anio-header"
+                          onClick={() => toggleAnio(anio)}
+                        >
+                          <span className="historial-anio-label">
+                            <Calendar className="w-4 h-4" />
+                            {anio}
+                            <span className="historial-anio-badge">
+                              {mesesDelAnio.length} periodos
+                            </span>
+                          </span>
+                          <ChevronDown
+                            className={`w-4 h-4 historial-chevron ${estaExpandido ? 'open' : ''}`}
+                          />
+                        </button>
+          
+                        {/* CHIPS DE MESES */}
+                        {estaExpandido && (
+                          <div className="historial-meses-grid">
+                            {mesesDelAnio.map(periodo => (
+                              <button
+                                key={`${periodo.mes}-${periodo.anio}`}
+                                className="historial-mes-chip completo"
+                                onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
+                                title={`${periodo.total_facturas} facturas`}
+                              >
+                                <span className="historial-mes-dot completo" />
+                                <span className="historial-mes-nombre">
+                                  {nombresMeses[periodo.mes]}
+                                </span>
+                                <span className="historial-mes-pct">
+                                  {periodo.total_facturas}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+          
                       </div>
-
-                      <div className="periodo-historial-col-stats">
-                        <div className="periodo-historial-stat-item">
-                          <FileText className="w-4 h-4 text-blue-500" />
-                          <span>{periodo.total_facturas} facturas</span>
-                        </div>
-                      </div>
-
-                      <div className="periodo-historial-col-estado">
-                        <div className="periodo-historial-badge completo">
-                          <CheckCircle className="w-4 h-4" />
-                          <span>Disponible</span>
-                        </div>
-                      </div>
-
-                      <div className="periodo-historial-col-action">
-                        <Eye className="w-4 h-4" />
-                        <span>Ver</span>
-                      </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })()}

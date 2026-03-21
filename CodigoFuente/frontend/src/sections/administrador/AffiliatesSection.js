@@ -12,7 +12,7 @@ import * as XLSX from "xlsx";
 
 import {
   UserPlus, Search, Edit, Trash2, Eye, UserCheck, UserX, Phone, MapPin, Calendar, X, Save, RefreshCw, AlertCircle, 
-  CheckCircle, XCircle, Map, ArrowUpDown, Gauge, IdCard, Plus, FileSpreadsheet, Download
+  CheckCircle, XCircle, Map, ArrowUpDown, Gauge, IdCard, Plus, FileSpreadsheet, Download, Users
 } from 'lucide-react';
 
 const AffiliatesSection = () => {
@@ -354,54 +354,6 @@ const afiliadosValidos = excelPreview.filter((a) => {
     }
   };
 
-  // ==================== FUNCIONES AUXILIARES ====================
-
-  const hasMeter = (affiliate) => {
-    return affiliate?.medidores && 
-           Array.isArray(affiliate.medidores) && 
-           affiliate.medidores.length > 0 &&
-           affiliate.medidores.some(m => m.activo);
-  };
-
-  const getMeterInfo = (affiliate) => {
-    if (!affiliate?.medidores || !Array.isArray(affiliate.medidores)) {
-      return null;
-    }
-
-    const activeMeters = affiliate.medidores.filter(m => m.activo);
-    
-    if (activeMeters.length === 0) {
-      return null;
-    }
-
-    if (activeMeters.length === 1) {
-      return {
-        count: 1,
-        primary: activeMeters[0],
-        all: activeMeters
-      };
-    }
-
-    return {
-      count: activeMeters.length,
-      primary: activeMeters[0],
-      all: activeMeters
-    };
-  };
-
-  const getMeterNumber = (affiliate) => {
-    const meterInfo = getMeterInfo(affiliate);
-    
-    if (!meterInfo) {
-      return null;
-    }
-
-    if (meterInfo.count === 1) {
-      return meterInfo.primary.num_medidor;
-    }
-
-    return `${meterInfo.count} medidores`;
-  };
 
   // ==================== FUNCIONES DE FILTRADO Y ORDENAMIENTO ====================
   
@@ -471,12 +423,6 @@ const afiliadosValidos = excelPreview.filter((a) => {
     }
     if (type === 'excel' && !permissions.canCreate) {
       alert('❌ No tienes permiso para crear afiliados');
-      return;
-    }
-
-    if (type === 'assignMeter' && affiliate && hasMeter(affiliate)) {
-      const meterNum = getMeterNumber(affiliate);
-      alert(`⚠️ Este afiliado ya tiene un medidor asignado: ${meterNum}\n\nPara hacer cambios, diríjase al módulo de Medidores.`);
       return;
     }
 
@@ -647,19 +593,15 @@ const afiliadosValidos = excelPreview.filter((a) => {
       setError(error.message || 'Error al guardar afiliado');
     }
   };
-  // 🔥 Memoriza la tabla para evitar re-renders innecesarios
 
+
+  // ==================== FUNCIONES DE ASIGNACIÓN DE MEDIDOR Y ELIMINACIÓN ====================
   const handleMeterAssignment = async (e) => {
     e.preventDefault();
     setError(null);
 
     if (!permissions.canUpdate) {
       setError('No tienes permiso para asignar medidores');
-      return;
-    }
-
-    if (hasMeter(selectedAffiliate)) {
-      setError(`Este afiliado ya tiene el medidor ${getMeterNumber(selectedAffiliate)} asignado. Diríjase al módulo de Medidores para hacer cambios.`);
       return;
     }
 
@@ -965,22 +907,22 @@ const afiliadosValidos = excelPreview.filter((a) => {
           <div key={affiliate.id_usuario_afi} className={`user-card ${!affiliate.activo ? 'inactive' : ''}`}>
             <div className="user-card-header">
               <div className="user-info">
-                {affiliate.usuario.foto ? (
+                {affiliate.usuario?.foto ? (
                   <div className="user-avatar">
                     <img
                       src={affiliate.usuario.foto}
-                      alt={affiliate.usuario.nombres}
+                      alt={affiliate.usuario?.nombres}
                       className="user-avatar-img"
                     />
                   </div>
                 ) : (
                   <div className="user-avatar user-avatar-empty">
                     <span>
-                      {`${affiliate.usuario.nombres?.[0]?.toUpperCase() || ''}${affiliate.usuario.apellidos?.[0]?.toUpperCase() || ''}`}
+                      {affiliate.usuario?.nombres?.charAt(0)?.toUpperCase() ?? '?'}
+                      {affiliate.usuario?.apellidos?.charAt(0)?.toUpperCase() ?? ''}
                     </span>
                   </div>
                 )}
-                
                 <div>
                   <h3 className="user-name">
                     {affiliate.usuario ? `${affiliate.usuario.nombres} ${affiliate.usuario.apellidos}` : 'Usuario no disponible'}
@@ -1063,7 +1005,17 @@ const afiliadosValidos = excelPreview.filter((a) => {
                 <div className="contact-item flex items-center gap-2">
                   <Gauge className="w-4 h-4 text-gray-400" />
                   <span className="font-semibold text-blue-700 meter-value">
-                    <strong>Nº Medidor:</strong> {affiliate.num_medidor || 'Sin medidor'}
+                    <strong>Medidores:</strong>{' '}
+                    {affiliate.total_medidores > 0 ? (
+                      <span>
+                        {affiliate.total_medidores}{' '}
+                        <span className="text-xs text-gray-500">
+                          ({affiliate.medidores_activos} activo{affiliate.medidores_activos !== 1 ? 's' : ''})
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 italic">Sin medidores</span>
+                    )}
                   </span>
                 </div>
 
@@ -1490,11 +1442,8 @@ const afiliadosValidos = excelPreview.filter((a) => {
                   </div>
                 </div>
               )}
-
-
-
-
-              {/* ==================== MODAL DE VISTA ==================== */}
+              
+              {/* ==================== MODAL DE VISTA DE AFILIADO ==================== */}
               {modalType === 'view' && selectedAffiliate && (
                 <div className="user-details">
                   <div className="detail-group">
@@ -1503,15 +1452,15 @@ const afiliadosValidos = excelPreview.filter((a) => {
                   </div>
                   <div className="detail-group">
                     <label>Nombre Completo:</label>
-                    <p>{selectedAffiliate.usuario ? `${selectedAffiliate.usuario.nombres} ${selectedAffiliate.usuario.apellidos}` : 'N/A'}</p>
+                    <p>
+                      {selectedAffiliate.usuario
+                        ? `${selectedAffiliate.usuario.nombres} ${selectedAffiliate.usuario.apellidos}`
+                        : 'N/A'}
+                    </p>
                   </div>
                   <div className="detail-group">
                     <label>Cédula:</label>
                     <p>{selectedAffiliate.usuario?.cedula || 'N/A'}</p>
-                  </div>
-                  <div className="detail-group">
-                    <label>Email:</label>
-                    <p>{selectedAffiliate.usuario?.email || 'N/A'}</p>
                   </div>
                   <div className="detail-group">
                     <label>Teléfono:</label>
@@ -1523,41 +1472,116 @@ const afiliadosValidos = excelPreview.filter((a) => {
                   </div>
                   <div className="detail-group">
                     <label>Fecha de Afiliación:</label>
-                    <p>{selectedAffiliate.fecha_afiliacion ? new Date(selectedAffiliate.fecha_afiliacion).toLocaleDateString('es-EC') : 'N/A'}</p>
+                    <p>
+                      {selectedAffiliate.fecha_afiliacion
+                        ? new Date(selectedAffiliate.fecha_afiliacion).toLocaleDateString('es-EC')
+                        : 'N/A'}
+                    </p>
                   </div>
-                  
-                  {hasMeter(selectedAffiliate) && (() => {
-                    const meterInfo = getMeterInfo(selectedAffiliate);
-                    return (
-                      <div className="contact-item">
-                        <Gauge className="w-4 h-4 text-green-600" />
-                        {meterInfo.count === 1 ? (
-                          <span className="font-semibold text-green-700">
-                            Medidor: {meterInfo.primary.num_medidor}
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-green-700">
-                            {meterInfo.count} medidores asignados
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })()}
                   <div className="detail-group">
                     <label>Estado:</label>
                     <span className={`status-badge ${selectedAffiliate.activo ? 'active' : 'inactive'}`}>
                       {selectedAffiliate.activo ? (
-                        <>
-                          <CheckCircle className="w-3 h-3" />
-                          Activo
-                        </>
+                        <><CheckCircle className="w-3 h-3" /> Activo</>
                       ) : (
-                        <>
-                          <XCircle className="w-3 h-3" />
-                          Inactivo
-                        </>
+                        <><XCircle className="w-3 h-3" /> Inactivo</>
                       )}
                     </span>
+                  </div>
+
+                  {/* ==================== SECCIÓN DE MEDIDORES ==================== */}
+                  <div className="detail-group" style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Gauge className="w-4 h-4 text-green-600" />
+                      Medidores Asignados
+                      {selectedAffiliate.medidores?.length > 0 && (
+                        <span style={{
+                          background: '#d1fae5',
+                          color: '#065f46',
+                          borderRadius: '9999px',
+                          padding: '1px 8px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                        }}>
+                          {selectedAffiliate.medidores.length}
+                        </span>
+                      )}
+                    </label>
+
+                    {selectedAffiliate.medidores?.length > 0 ? (
+                      <table style={{
+                        width: '100%',
+                        borderCollapse: 'collapse',
+                        fontSize: '0.875rem',
+                        marginTop: '6px',
+                      }}>
+                        <thead>
+                          <tr style={{ background: '#f0fdf4', borderBottom: '2px solid #bbf7d0' }}>
+                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#065f46' }}>
+                              # Medidor
+                            </th>
+                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: '#065f46' }}>
+                              Sector
+                            </th>
+                            <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 600, color: '#065f46' }}>
+                              Estado
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedAffiliate.medidores.map((medidor, index) => (
+                            <tr
+                              key={index}
+                              style={{
+                                borderBottom: '1px solid #d1fae5',
+                                background: index % 2 === 0 ? '#fff' : '#f9fffe',
+                              }}
+                            >
+                              <td style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Gauge className="w-3 h-3 text-gray-400" />
+                                <span style={{ fontWeight: 500 }}>{medidor.num_medidor}</span>
+                              </td>
+                              <td style={{ padding: '6px 10px', color: '#374151' }}>
+                                {medidor.sector || 'Sin sector'}
+                              </td>
+                              <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                                {medidor.activo ? (
+                                  <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    background: '#d1fae5', color: '#065f46',
+                                    borderRadius: '9999px', padding: '2px 10px',
+                                    fontSize: '0.75rem', fontWeight: 600,
+                                  }}>
+                                    <CheckCircle className="w-3 h-3" /> Activo
+                                  </span>
+                                ) : (
+                                  <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    background: '#fee2e2', color: '#991b1b',
+                                    borderRadius: '9999px', padding: '2px 10px',
+                                    fontSize: '0.75rem', fontWeight: 600,
+                                  }}>
+                                    <XCircle className="w-3 h-3" /> Inactivo
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p style={{
+                        color: '#9ca3af',
+                        fontStyle: 'italic',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginTop: '6px',
+                      }}>
+                        <Gauge className="w-4 h-4" />
+                        Sin medidores asignados
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -1813,137 +1837,122 @@ const afiliadosValidos = excelPreview.filter((a) => {
 
               {/* ==================== MODAL DE ASIGNACIÓN DE MEDIDOR ==================== */}
               {modalType === 'assignMeter' && selectedAffiliate && (
-                <>
-                  {hasMeter(selectedAffiliate) ? (
-                    <div className="p-6">
-                      <div className="text-center mb-4">
-                        <AlertCircle className="w-16 h-16 mx-auto text-yellow-500 mb-4" />
-                        <h4 className="text-lg font-semibold text-gray-800 mb-2">
-                          Medidor Ya Asignado
-                        </h4>
-                        <p className="text-gray-600 mb-4">
-                          Este afiliado ya tiene el medidor <strong className="text-green-700">{getMeterNumber(selectedAffiliate)}</strong> asignado.
+                <form onSubmit={handleMeterAssignment} className="user-form">
+                {/*  INFO DEL AFILIADO */}
+                {selectedAffiliate && (
+                  <div className="meter-info-card mt-3">
+                    <h4 className="meter-info-title">
+                      <Users className="w-4 h-4 mr-2" />
+                      Información del Afiliado
+                    </h4>
+
+                    <div className="meter-info-content">
+                      <div className="grid grid-cols-2 gap-2">
+                        <p>
+                          <strong>Código:</strong>{' '}
+                          {selectedAffiliate.cod_usuario_afi || '—'}
                         </p>
-                      </div>
-                      
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                        <p className="text-sm text-blue-800">
-                          <strong>Afiliado:</strong> {selectedAffiliate.usuario?.nombres} {selectedAffiliate.usuario?.apellidos}
-                          <br />
-                          <strong>Código:</strong> {selectedAffiliate.cod_usuario_afi}
-                          <br />
-                          <strong>Medidor:</strong> {getMeterNumber(selectedAffiliate)}
+
+                        <p>
+                          <strong>Nombre:</strong>{' '}
+                          {selectedAffiliate.usuario
+                            ? `${selectedAffiliate.usuario.nombres || ''} ${selectedAffiliate.usuario.apellidos || ''}`
+                            : '—'}
                         </p>
-                      </div>
-                      
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                        <p className="text-sm text-yellow-800 flex items-center">
-                          <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-                          Para realizar cambios en el medidor, debe dirigirse al módulo de <strong className="ml-1">Medidores</strong>.
+
+                        <p className="col-span-2">
+                          <strong>Sector:</strong>{' '}
+                          {selectedAffiliate.sector
+                            ? selectedAffiliate.sector.nombre_sector
+                            : '—'}
                         </p>
-                      </div>
-                      
-                      <div className="form-actions">
-                        <button type="button" className="btn-secondary" onClick={closeModal}>
-                          Cerrar
-                        </button>
                       </div>
                     </div>
-                  ) : (
-                    <form onSubmit={handleMeterAssignment} className="user-form">
-                      <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                        <h4 className="font-semibold text-blue-900 mb-2 flex items-center">
-                          <UserCheck className="w-5 h-5 mr-2" />
-                          Afiliado Seleccionado
-                        </h4>
-                        <div className="space-y-1 text-sm text-blue-800">
-                          <p><strong>Código:</strong> {selectedAffiliate.cod_usuario_afi}</p>
-                          <p><strong>Nombre:</strong> {selectedAffiliate.usuario ? `${selectedAffiliate.usuario.nombres} ${selectedAffiliate.usuario.apellidos}` : 'N/A'}</p>
-                          <p><strong>Sector:</strong> {selectedAffiliate.sector?.nombre_sector || 'N/A'}</p>
-                        </div>
-                      </div>
+                  </div>
+                )}
 
-                      <div className="form-grid">
-                        <div className="form-group form-group-full">
-                          <label>Número de Medidor *</label>
-                          <input
-                            type="text"
-                            required
-                            value={meterFormData.num_medidor}
-                            onChange={(e) => setMeterFormData({ ...meterFormData, num_medidor: e.target.value })}
-                            placeholder="Ej: MED-001"
-                          />
-                        </div>
+                  {/* Formulario de asignación */}
+                  <div className="form-grid">
+                    <div className="form-group form-group-full">
+                      <label>Número de Medidor *</label>
+                      <input
+                        type="text"
+                        required
+                        value={meterFormData.num_medidor}
+                        onChange={(e) => setMeterFormData({ ...meterFormData, num_medidor: e.target.value })}
+                        placeholder="Ej: MED-001"
+                      />
+                    </div>
 
-                        <div className="form-group form-group-full">
-                          <label>Sector del Medidor</label>
-                          <select
-                            value={meterFormData.id_sector || selectedAffiliate.id_sector || ''}
-                            onChange={(e) => setMeterFormData({ 
-                              ...meterFormData, 
-                              id_sector: e.target.value ? parseInt(e.target.value) : null 
-                            })}
-                          >
-                            <option value="">Seleccione un sector</option>
-                            {sectors.map(sector => (
-                              <option key={sector.id_sector} value={sector.id_sector}>
-                                {sector.nombre_sector}
-                              </option>
-                            ))}
-                          </select>
-                          <small className="text-gray-500 mt-1">
-                            Por defecto se usa el sector del afiliado
-                          </small>
-                        </div>
+                    <div className="form-group form-group-full">
+                      <label>Sector del Medidor</label>
+                      <select
+                        value={meterFormData.id_sector || selectedAffiliate.id_sector || ''}
+                        onChange={(e) => setMeterFormData({ 
+                          ...meterFormData, 
+                          id_sector: e.target.value ? parseInt(e.target.value) : null 
+                        })}
+                      >
+                        <option value="">Seleccione un sector</option>
+                        {sectors.map(sector => (
+                          <option key={sector.id_sector} value={sector.id_sector}>
+                            {sector.nombre_sector}
+                          </option>
+                        ))}
+                      </select>
+                      <small className="text-gray-500 mt-1">
+                        Por defecto se usa el sector del afiliado
+                      </small>
+                    </div>
 
-                        <div className="form-group">
-                          <label>Latitud</label>
-                          <input
-                            type="number"
-                            step="0.000001"
-                            value={meterFormData.latitud}
-                            onChange={(e) => setMeterFormData({ ...meterFormData, latitud: e.target.value })}
-                            placeholder="Ej: -1.234567"
-                          />
-                        </div>
+                    <div className="form-group">
+                      <label>Latitud</label>
+                      <input
+                        type="number"
+                        step="0.000001"
+                        value={meterFormData.latitud}
+                        onChange={(e) => setMeterFormData({ ...meterFormData, latitud: e.target.value })}
+                        placeholder="Ej: -1.234567"
+                      />
+                    </div>
 
-                        <div className="form-group">
-                          <label>Longitud</label>
-                          <input
-                            type="number"
-                            step="0.000001"
-                            value={meterFormData.longitud}
-                            onChange={(e) => setMeterFormData({ ...meterFormData, longitud: e.target.value })}
-                            placeholder="Ej: -78.123456"
-                          />
-                        </div>
+                    <div className="form-group">
+                      <label>Longitud</label>
+                      <input
+                        type="number"
+                        step="0.000001"
+                        value={meterFormData.longitud}
+                        onChange={(e) => setMeterFormData({ ...meterFormData, longitud: e.target.value })}
+                        placeholder="Ej: -78.123456"
+                      />
+                    </div>
 
-                        <div className="form-group form-group-full">
-                          <label>Altitud (metros)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={meterFormData.altitud}
-                            onChange={(e) => setMeterFormData({ ...meterFormData, altitud: e.target.value })}
-                            placeholder="Ej: 2850"
-                          />
-                        </div>
-                      </div>
+                    <div className="form-group form-group-full">
+                      <label>Altitud (metros)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={meterFormData.altitud}
+                        onChange={(e) => setMeterFormData({ ...meterFormData, altitud: e.target.value })}
+                        placeholder="Ej: 2850"
+                      />
+                    </div>
+                  </div>
 
-                      <div className="form-actions">
-                        <button type="button" className="btn-secondary" onClick={closeModal}>
-                          <X className="w-4 h-4 mr-2" />
+                  <div className="form-actions">
+                    <button type="button" className="btn-secondary" onClick={closeModal}>
+                      <X className="w-4 h-4 mr-2" />
                       Cancelar
-                        </button>
-                        <button type="submit" className="btn-primary">
-                          <Gauge className="w-4 h-4 mr-2" />
-                          Asignar Medidor
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </>
+                    </button>
+                    <button type="submit" className="btn-primary">
+                      <Gauge className="w-4 h-4 mr-2" />
+                      Asignar Medidor
+                    </button>
+                  </div>
+                </form>
               )}
+
+
             </div>
           </div>
         </div>

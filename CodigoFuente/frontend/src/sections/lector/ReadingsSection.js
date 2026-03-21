@@ -8,30 +8,9 @@ import authService from '../../services/authServices';
 import * as XLSX from "xlsx";
 
 import {
-  BookOpen,
-  Search,
-  Edit,
-  Trash2,
-  Eye,
-  CheckCircle,
-  XCircle,
-  Calendar,
-  X,
-  Save,
-  RefreshCw,
-  AlertCircle,
-  ArrowUpDown,
-  Gauge,
-  Plus,
-  FileSpreadsheet,
-  TrendingUp,
-  User,
-  Download,
-  Upload,
-  MapPin,
-  CalendarDays,
-  Clock,
-  Check, Info , Activity
+  BookOpen, Search, Edit, Trash2, Eye, CheckCircle, XCircle, Calendar, X, Save,
+  RefreshCw, AlertCircle, ArrowUpDown, Gauge, Plus, FileSpreadsheet, TrendingUp,
+  User, Download, Upload, MapPin, CalendarDays, Clock, Check, Info, Activity, ChevronDown
 } from 'lucide-react';
 
 const ReadingsSection = () => {
@@ -44,9 +23,13 @@ const ReadingsSection = () => {
   const [ loadingMeters, setLoadingMeters] = useState(false); 
   const [error, setError] = useState(null);
 
-  //const [meterInfo, setMeterInfo] = useState(null); // Objeto único en lugar de array
+  // estado para controlar qué años están expandidos en la sección de periodos
+  const [aniosExpandidos, setAniosExpandidos] = useState({});
 
-
+  // función para alternar la expansión de un año específico
+  const toggleAnio = (anio) => {
+        setAniosExpandidos(prev => ({ ...prev, [anio]: !prev[anio] }));
+      }; 
   // ============================================================
   // ESTADOS DE PERIODOS
   // ============================================================
@@ -87,6 +70,7 @@ const ReadingsSection = () => {
   const [estimadasResult, setEstimadasResult] = useState(null);
   const [, setShowConfirmacionModal] = useState(false);
   const [, setConfirmacionResult] = useState(null);
+  
 
   // FUNCIÓN PARA GENERAR LECTURAS ESTIMADAS
   const handleGenerarEstimadas = async () => {
@@ -260,24 +244,21 @@ const handleConfirmarEstimada = async (reading) => {
   }
 };
 
-
-const filteredMeters = useMemo(() => {
-  if (!meterSearchTerm.trim()) return meters;
-  
-  const searchLower = meterSearchTerm.toLowerCase().trim();
-  
-  return meters.filter(afiliado => {
-    const numMedidor = afiliado.num_medidor?.toLowerCase() || '';
-    const nombreCompleto = afiliado.nombre_completo?.toLowerCase() || '';
-    const codigoAfiliado = String(afiliado.cod_usuario_afi || '').toLowerCase();
+  const filteredMeters = useMemo(() => {
+    if (!meterSearchTerm.trim()) return meters;
     
-    return numMedidor.includes(searchLower) || 
-           nombreCompleto.includes(searchLower) || 
-           codigoAfiliado.includes(searchLower);
-  });
-}, [meters, meterSearchTerm]);
-
-  
+    const searchLower = meterSearchTerm.toLowerCase().trim();
+    
+    return meters.filter(afiliado => {
+      const numMedidor = afiliado.num_medidor?.toLowerCase() || '';
+      const nombreCompleto = afiliado.nombre_completo?.toLowerCase() || '';
+      const codigoAfiliado = String(afiliado.cod_usuario_afi || '').toLowerCase();
+      
+      return numMedidor.includes(searchLower) || 
+            nombreCompleto.includes(searchLower) || 
+            codigoAfiliado.includes(searchLower);
+    });
+  }, [meters, meterSearchTerm]);
 
   // FUNCIÓN PARA CONFIRMAR TODAS LAS LECTURAS ESTIMADAS
   const handleConfirmarTodas = async () => {
@@ -327,7 +308,6 @@ const filteredMeters = useMemo(() => {
           setLoading(false);
       }
   };
-
   
   // ============================================================
   // ESTADOS DE FORMULARIO
@@ -341,6 +321,22 @@ const filteredMeters = useMemo(() => {
     observacion: '',
     activo: true
   });
+
+  // VALIDACIÓN EN TIEMPO REAL 
+  const lecturaActualNum = parseFloat(formData.lectura_actual);
+  const lecturaAnteriorNum = parseFloat(formData.lectura_anterior) || 0;
+
+  const lecturaActualInvalida =
+    formData.lectura_actual !== '' &&
+    (isNaN(lecturaActualNum) || lecturaActualNum < lecturaAnteriorNum);
+
+  const lecturaActualNegativa =
+    formData.lectura_actual !== '' && lecturaActualNum < 0;
+
+  // Bloquear el botón submit si la lectura actual es inválida
+  const formInvalido = lecturaActualInvalida || lecturaActualNegativa;
+
+
 
   // ============================================================
   // ESTADOS DE PERMISOS
@@ -655,6 +651,7 @@ const sortedReadings = [...filteredReadings].sort((a, b) => {
   // ============================================================
   // MANEJO DE MEDIDOR
   // ============================================================
+ 
   const handleMedidorChange = async (id_medidor) => {
     if (!id_medidor) {
       setFormData(prev => ({ ...prev, id_medidor: null, lectura_anterior: '' }));
@@ -666,37 +663,23 @@ const sortedReadings = [...filteredReadings].sort((a, b) => {
 
     if (medidor) {
       setSelectedMeterInfo(medidor);
-
-      try {
-        const result = await readingsServices.getLecturas({ id_medidor: parseInt(id_medidor) });
-
-        if (result.success && result.data?.length > 0) {
-          const ultimaLectura = result.data.sort(
-            (a, b) => new Date(b.fecha_lectura) - new Date(a.fecha_lectura)
-          )[0];
-
-          setFormData(prev => ({
-            ...prev,
-            id_medidor: parseInt(id_medidor),
-            lectura_anterior: ultimaLectura.lectura_actual
-          }));
-        } else {
-          setFormData(prev => ({
-            ...prev,
-            id_medidor: parseInt(id_medidor),
-            lectura_anterior: 0
-          }));
-        }
-      } catch (error) {
-        console.error('Error al obtener última lectura:', error);
-        setFormData(prev => ({
-          ...prev,
-          id_medidor: parseInt(id_medidor),
-          lectura_anterior: 0
-        }));
-      }
+  
+      setFormData(prev => ({
+        ...prev,
+        id_medidor: parseInt(id_medidor),
+        lectura_anterior: medidor.lectura_anterior ?? 0,   
+        lectura_actual: '',
+        consumo_m3: 0,
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        id_medidor: parseInt(id_medidor),
+        lectura_anterior: 0,
+      }));
     }
   };
+
 
   // ============================================================
   // FUNCIONES DE CRUD
@@ -1057,7 +1040,7 @@ const handleDownloadTemplate = async () => {
     );
   }
 
- // ============================================================
+// ============================================================
 // RENDERIZADO PRINCIPAL
 // ============================================================
 return (
@@ -1165,10 +1148,12 @@ return (
         
         {/* SECCIÓN 2: HISTORIAL DE PERÍODOS CON LECTURAS */}
         <div className="periodo-historial-container">
-          <div className="flex items-center">
+        
+          {/* ENCABEZADO */}
+          <div className="periodo-historial-header">
             <div>
-              <h3 className="font-semibold text-[16px] leading-[1.2]">
-                <Clock className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 self-center" />
+              <h3 className="font-semibold text-[16px] leading-[1.2] flex items-center">
+                <Clock className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" />
                 Historial de Períodos
               </h3>
               <p className="periodo-historial-subtitle text-[14px]">
@@ -1176,28 +1161,21 @@ return (
               </p>
             </div>
           </div>
+        
           {(() => {
-            // Filtrar períodos con lecturas (excluyendo los recientes ya mostrados)
             const hoy = new Date();
             const mesActual = hoy.getMonth() + 1;
             const anioActual = hoy.getFullYear();
-            
-            const calcularDiferenciaMeses = (mes, anio) => {
-              return (anio - anioActual) * 12 + (mes - mesActual);
-            };
-            
-            const periodosHistorial = periodos
-              .filter(periodo => {
-                const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio);
-                // Solo períodos antiguos (más de 2 meses atrás) Y con lecturas
-                return diff < -2 && periodo.tiene_lecturas;
-              })
-              .sort((a, b) => {
-                // Ordenar cronológicamente (más reciente primero)
-                if (a.anio !== b.anio) return b.anio - a.anio;
-                return b.mes - a.mes;
-              });
-
+        
+            const calcularDiferenciaMeses = (mes, anio) =>
+              (anio - anioActual) * 12 + (mes - mesActual);
+        
+            // 1. Filtrar solo periodos históricos con lecturas
+            const periodosHistorial = periodos.filter(periodo => {
+              const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio);
+              return diff < -2 && periodo.tiene_lecturas;
+            });
+        
             if (periodosHistorial.length === 0) {
               return (
                 <div className="periodo-historial-empty">
@@ -1206,61 +1184,81 @@ return (
                 </div>
               );
             }
-
+        
+            // 2. Agrupar por año
+            const agrupado = periodosHistorial.reduce((acc, periodo) => {
+              const anio = periodo.anio;
+              if (!acc[anio]) acc[anio] = [];
+              acc[anio].push(periodo);
+              return acc;
+            }, {});
+        
+            // 3. Ordenar años de mayor a menor
+            const aniosOrdenados = Object.keys(agrupado)
+              .map(Number)
+              .sort((a, b) => b - a);
+        
+            const nombresMeses = [
+              '', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+              'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+            ];
+        
             return (
-              <div className="periodo-historial-list">
-                {periodosHistorial.map(periodo => {
-                  const porcentaje = getPorcentajeCompletado(periodo);
-                  const esCompleto = porcentaje >= 100;
-
+              <div className="historial-anios-lista">
+                {aniosOrdenados.map(anio => {
+                  const mesesDelAnio = agrupado[anio].sort((a, b) => b.mes - a.mes);
+                  const estaExpandido = aniosExpandidos[anio] !== false; // expandido por defecto
+                  const totalCompletos = mesesDelAnio.filter(
+                    p => getPorcentajeCompletado(p) >= 100
+                  ).length;
+        
                   return (
-                    <button
-                      key={`hist-${periodo.mes}-${periodo.anio}`}
-                      onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
-                      className="periodo-historial-list-item"
-                    >
-                      {/* Columna 1: Fecha */}
-                      <div className="periodo-historial-col-fecha">
-                        <Calendar className="w-4 h-4 text-gray-500" />
-                        <span className="periodo-historial-mes-nombre">
-                          {periodo.nombre_mes} {periodo.anio}
+                    <div key={anio} className="historial-anio-bloque">
+        
+                      {/* CABECERA DEL AÑO — clic para colapsar */}
+                      <button
+                        className="historial-anio-header"
+                        onClick={() => toggleAnio(anio)}
+                      >
+                        <span className="historial-anio-label">
+                          <Calendar className="w-4 h-4" />
+                          {anio}
+                          <span className="historial-anio-badge">
+                            {mesesDelAnio.length} periodos · {totalCompletos} completos
+                          </span>
                         </span>
-                      </div>
-
-                      {/* Columna 2: Estadísticas */}
-                      <div className="periodo-historial-col-stats">
-                        <div className="periodo-historial-stat-item">
-                          <BookOpen className="w-4 h-4 text-blue-500" />
-                          <span>{periodo.total_lecturas} lecturas</span>
+                        <ChevronDown
+                          className={`w-4 h-4 historial-chevron ${estaExpandido ? 'open' : ''}`}
+                        />
+                      </button>
+        
+                      {/* CHIPS DE MESES */}
+                      {estaExpandido && (
+                        <div className="historial-meses-grid">
+                          {mesesDelAnio.map(periodo => {
+                            const porcentaje = getPorcentajeCompletado(periodo);
+                            const esCompleto = porcentaje >= 100;
+        
+                            return (
+                              <button
+                                key={`${periodo.mes}-${periodo.anio}`}
+                                className={`historial-mes-chip ${esCompleto ? 'completo' : 'incompleto'}`}
+                                onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
+                                title={`${periodo.total_lecturas} / ${periodo.total_medidores} lecturas`}
+                              >
+                                <span className={`historial-mes-dot ${esCompleto ? 'completo' : 'incompleto'}`} />
+                                <span className="historial-mes-nombre">
+                                  {nombresMeses[periodo.mes]}
+                                </span>
+                                <span className="historial-mes-pct">
+                                  {esCompleto ? '✓' : `${porcentaje.toFixed(0)}%`}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
-                        <div className="periodo-historial-stat-separator">•</div>
-                        <div className="periodo-historial-stat-item">
-                          <Gauge className="w-4 h-4 text-gray-500" />
-                          <span>{periodo.total_medidores} medidores</span>
-                        </div>
-                      </div>
-
-                      {/* Columna 3: Estado */}
-                      <div className="periodo-historial-col-estado">
-                        {esCompleto ? (
-                          <div className="periodo-historial-badge completo">
-                            <CheckCircle className="w-4 h-4" />
-                            <span>Completo</span>
-                          </div>
-                        ) : (
-                          <div className="periodo-historial-badge incompleto">
-                            <XCircle className="w-4 h-4" />
-                            <span>{porcentaje.toFixed(0)}% completado</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Columna 4: Acción */}
-                      <div className="periodo-historial-col-action">
-                        <Eye className="w-4 h-4" />
-                        <span>Ver</span>
-                      </div>
-                    </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -1327,107 +1325,107 @@ return (
             )}
           </div>
         </div>
-{/* ESTADÍSTICAS DEL PERIODO */}
-<div className="periodo-stats-container">
-  <div className="periodo-stats-header">
-    <Clock className="w-5 h-5 text-blue-600 mr-2" />
-    <h3>Resumen del Periodo</h3>
-  </div>
-
-  <div className="users-stats">
-    <div className="stat-item">
-      <BookOpen className="stat-icon text-blue-600" />
-      <div>
-        <p className="stat-label">Total Lecturas</p>
-        <p className="stat-value">{readings.length}</p>
-      </div>
-    </div>
-
-    <div className="stat-item">
-      <CheckCircle className="stat-icon text-green-600" />
-      <div>
-        <p className="stat-label">Activas</p>
-        <p className="stat-value">{readings.filter(r => r.activo).length}</p>
-      </div>
-    </div>
-
-    <div className="stat-item">
-      <XCircle className="stat-icon text-red-600" />
-      <div>
-        <p className="stat-label">Inactivas</p>
-        <p className="stat-value">{readings.filter(r => !r.activo).length}</p>
-      </div>
-    </div>
-
-    <div className="stat-item">
-      <TrendingUp className="stat-icon text-purple-600" />
-      <div>
-        <p className="stat-label">Consumo Total (m³)</p>
-        <p className="stat-value">
-          {readings.reduce((sum, r) => sum + (r.consumo_m3 || 0), 0)}
-        </p>
-      </div>
-    </div>
-
-    {/* 🆕 CARD 1: LECTURAS PENDIENTES */}
-    {(() => {
-      const periodoActualData = periodos.find(
-        p => p.mes === periodoSeleccionado.mes && p.anio === periodoSeleccionado.anio
-      );
-      
-      if (!periodoActualData) return null;
-      
-      const totalLecturas = periodoActualData.total_lecturas || 0;
-      const totalMedidores = periodoActualData.total_medidores || 0;
-      const pendientes = totalMedidores - totalLecturas;
-      
-      return (
-        <div className={`stat-item ${pendientes === 0 ? 'stat-complete' : 'stat-pending'}`}>
-          {pendientes === 0 ? (
-            <CheckCircle className="stat-icon text-green-600" />
-          ) : (
-            <AlertCircle className="stat-icon text-orange-600" />
-          )}
-          <div>
-            <p className="stat-label">Lecturas Pendientes</p>
-            <p className="stat-value">{pendientes}</p>
-            {pendientes === 0 && (
-              <span className="stat-badge success">✓ Completo</span>
-            )}
+        {/* ESTADÍSTICAS DEL PERIODO */}
+        <div className="periodo-stats-container">
+          <div className="periodo-stats-header">
+            <Clock className="w-5 h-5 text-blue-600 mr-2" />
+            <h3>Resumen del Periodo</h3>
           </div>
-        </div>
-      );
-    })()}
 
-    {/* 🆕 CARD 2: PORCENTAJE DE AVANCE */}
-    {(() => {
-      const periodoActualData = periodos.find(
-        p => p.mes === periodoSeleccionado.mes && p.anio === periodoSeleccionado.anio
-      );
-      
-      if (!periodoActualData) return null;
-      
-      const porcentaje = getPorcentajeCompletado(periodoActualData);
-      const esCompleto = porcentaje >= 100;
-      
-      return (
-        <div className={`stat-item ${esCompleto ? 'stat-complete' : ''}`}>
-          <Activity className={`stat-icon ${esCompleto ? 'text-green-600' : 'text-blue-600'}`} />
-          <div>
-            <p className="stat-label">Progreso del Periodo</p>
-            <p className="stat-value">{porcentaje.toFixed(0)}%</p>
-            <div className="stat-progress-bar">
-              <div 
-                className={`stat-progress-fill ${esCompleto ? 'complete' : ''}`}
-                style={{ width: `${porcentaje}%` }}
-              />
+          <div className="users-stats">
+            <div className="stat-item">
+              <BookOpen className="stat-icon text-blue-600" />
+              <div>
+                <p className="stat-label">Total Lecturas</p>
+                <p className="stat-value">{readings.length}</p>
+              </div>
             </div>
+
+            <div className="stat-item">
+              <CheckCircle className="stat-icon text-green-600" />
+              <div>
+                <p className="stat-label">Activas</p>
+                <p className="stat-value">{readings.filter(r => r.activo).length}</p>
+              </div>
+            </div>
+
+            <div className="stat-item">
+              <XCircle className="stat-icon text-red-600" />
+              <div>
+                <p className="stat-label">Inactivas</p>
+                <p className="stat-value">{readings.filter(r => !r.activo).length}</p>
+              </div>
+            </div>
+
+            <div className="stat-item">
+              <TrendingUp className="stat-icon text-purple-600" />
+              <div>
+                <p className="stat-label">Consumo Total (m³)</p>
+                <p className="stat-value">
+                  {readings.reduce((sum, r) => sum + (r.consumo_m3 || 0), 0)}
+                </p>
+              </div>
+            </div>
+
+            {/* 🆕 CARD 1: LECTURAS PENDIENTES */}
+            {(() => {
+              const periodoActualData = periodos.find(
+                p => p.mes === periodoSeleccionado.mes && p.anio === periodoSeleccionado.anio
+              );
+              
+              if (!periodoActualData) return null;
+              
+              const totalLecturas = periodoActualData.total_lecturas || 0;
+              const totalMedidores = periodoActualData.total_medidores || 0;
+              const pendientes = totalMedidores - totalLecturas;
+              
+              return (
+                <div className={`stat-item ${pendientes === 0 ? 'stat-complete' : 'stat-pending'}`}>
+                  {pendientes === 0 ? (
+                    <CheckCircle className="stat-icon text-green-600" />
+                  ) : (
+                    <AlertCircle className="stat-icon text-orange-600" />
+                  )}
+                  <div>
+                    <p className="stat-label">Lecturas Pendientes</p>
+                    <p className="stat-value">{pendientes}</p>
+                    {pendientes === 0 && (
+                      <span className="stat-badge success">✓ Completo</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 🆕 CARD 2: PORCENTAJE DE AVANCE */}
+            {(() => {
+              const periodoActualData = periodos.find(
+                p => p.mes === periodoSeleccionado.mes && p.anio === periodoSeleccionado.anio
+              );
+              
+              if (!periodoActualData) return null;
+              
+              const porcentaje = getPorcentajeCompletado(periodoActualData);
+              const esCompleto = porcentaje >= 100;
+              
+              return (
+                <div className={`stat-item ${esCompleto ? 'stat-complete' : ''}`}>
+                  <Activity className={`stat-icon ${esCompleto ? 'text-green-600' : 'text-blue-600'}`} />
+                  <div>
+                    <p className="stat-label">Progreso del Periodo</p>
+                    <p className="stat-value">{porcentaje.toFixed(0)}%</p>
+                    <div className="stat-progress-bar">
+                      <div 
+                        className={`stat-progress-fill ${esCompleto ? 'complete' : ''}`}
+                        style={{ width: `${porcentaje}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
-      );
-    })()}
-  </div>
-</div>
 
         {/* BARRA DE BÚSQUEDA Y FILTROS */}
         <div className="filters-section">
@@ -1497,6 +1495,7 @@ return (
             <h3>Cargando lecturas...</h3>
           </div>
         )}
+
         {/* ✅ MODAL DE RESULTADOS DE ESTIMADAS */}
         {showEstimadasModal && estimadasResult && (
           <div className="modal-overlay">
@@ -1796,271 +1795,253 @@ return (
           </div>
 
 
-        <div className="modal-body">
-          {error && (
-            <div className="alert alert-error mb-4">
-              <AlertCircle className="w-5 h-5 mr-2" />
-              {error}
-            </div>
-          )}
+          <div className="modal-body">
+            {error && (
+              <div className="alert alert-error mb-4">
+                <AlertCircle className="w-5 h-5 mr-2" />
+                {error}
+              </div>
+            )}
 
-          {/* ==================== MODAL DE EXCEL  ==================== */}
-          {modalType === 'excel' && (
-            <div className="user-form">
-              <div className="form-grid">
-                
-                {/* Selección de Periodo */}
-                <div className="form-group form-group-full">
-                  <div className="excel-periodo-selector">
-                    <label className="excel-periodo-label">
-                      📅 Seleccionar Periodo para las Lecturas *
-                    </label>
-                    
-                    <div className="excel-periodo-grid">
-                      <div className="excel-periodo-field">
-                        <label>Mes:</label>
-                        <select
-                          required
-                          value={excelMesSeleccionado}
-                          onChange={(e) => setExcelMesSeleccionado(e.target.value)}
-                        >
-                          <option value="">Seleccione mes</option>
-                          {Array.from({ length: 12 }, (_, i) => i + 1).map(mes => (
-                            <option key={mes} value={mes}>
-                              {readingsServices.getNombreMes(mes)}
-                            </option>
-                          ))}
-                        </select>
+            {/* ==================== MODAL DE EXCEL  ==================== */}
+            {modalType === 'excel' && (
+              <div className="user-form">
+                <div className="form-grid">
+                  
+                  {/* Selección de Periodo */}
+                  <div className="form-group form-group-full">
+                    <div className="excel-periodo-selector">
+                      <label className="excel-periodo-label">
+                        📅 Seleccionar Periodo para las Lecturas *
+                      </label>
+                      
+                      <div className="excel-periodo-grid">
+                        <div className="excel-periodo-field">
+                          <label>Mes:</label>
+                          <select
+                            required
+                            value={excelMesSeleccionado}
+                            onChange={(e) => setExcelMesSeleccionado(e.target.value)}
+                          >
+                            <option value="">Seleccione mes</option>
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map(mes => (
+                              <option key={mes} value={mes}>
+                                {readingsServices.getNombreMes(mes)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="excel-periodo-field">
+                          <label>Año:</label>
+                          <select
+                            required
+                            value={excelAnioSeleccionado}
+                            onChange={(e) => setExcelAnioSeleccionado(e.target.value)}
+                          >
+                            <option value="">Seleccione año</option>
+                            {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 1 + i).map(anio => (
+                              <option key={anio} value={anio}>{anio}</option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
 
-                      <div className="excel-periodo-field">
-                        <label>Año:</label>
-                        <select
-                          required
-                          value={excelAnioSeleccionado}
-                          onChange={(e) => setExcelAnioSeleccionado(e.target.value)}
-                        >
-                          <option value="">Seleccione año</option>
-                          {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 1 + i).map(anio => (
-                            <option key={anio} value={anio}>{anio}</option>
-                          ))}
-                        </select>
-                      </div>
+                      {excelMesSeleccionado && excelAnioSeleccionado && (
+                        <div className="excel-periodo-selected">
+                          ✓ Periodo seleccionado: {readingsServices.formatearPeriodo(
+                            parseInt(excelMesSeleccionado), 
+                            parseInt(excelAnioSeleccionado)
+                          )}
+                        </div>
+                      )}
+
+                      <small className="excel-periodo-warning">
+                        ⚠️ Las lecturas se registrarán para el periodo seleccionado. 
+                        No se pueden duplicar lecturas en el mismo periodo.
+                      </small>
                     </div>
+                  </div>
 
-                    {excelMesSeleccionado && excelAnioSeleccionado && (
-                      <div className="excel-periodo-selected">
-                        ✓ Periodo seleccionado: {readingsServices.formatearPeriodo(
-                          parseInt(excelMesSeleccionado), 
-                          parseInt(excelAnioSeleccionado)
-                        )}
-                      </div>
-                    )}
-
-                    <small className="excel-periodo-warning">
-                      ⚠️ Las lecturas se registrarán para el periodo seleccionado. 
-                      No se pueden duplicar lecturas en el mismo periodo.
+                  {/* Descargar Plantilla */}
+                  <div className="form-group form-group-full">
+                    <button
+                      type="button"
+                      className="btn-plantilla"
+                      onClick={handleDownloadTemplate}
+                      disabled={!periodoSeleccionado || loading}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      {loading ? 'Generando...' : 'Descargar plantilla Excel'}
+                    </button>
+                    <small className="text-gray-500 mt-1">
+                      {periodoSeleccionado 
+                        ? `📅 Periodo: ${periodoSeleccionado.mes}/${periodoSeleccionado.anio} - Solo medidores sin lectura en este periodo`
+                        : '⚠️ Selecciona un periodo primero'
+                      }
                     </small>
                   </div>
-                </div>
-
-                {/* Descargar Plantilla */}
-                <div className="form-group form-group-full">
-                  <button
-                    type="button"
-                    className="btn-plantilla"
-                    onClick={handleDownloadTemplate}
-                    disabled={!periodoSeleccionado || loading}
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    {loading ? 'Generando...' : 'Descargar plantilla Excel'}
-                  </button>
-                  <small className="text-gray-500 mt-1">
-                    {periodoSeleccionado 
-                      ? `📅 Periodo: ${periodoSeleccionado.mes}/${periodoSeleccionado.anio} - Solo medidores sin lectura en este periodo`
-                      : '⚠️ Selecciona un periodo primero'
-                    }
-                  </small>
-                </div>
 
 
-                {/* Seleccionar Archivo */}
-                <div className="form-group form-group-full">
-                  <label>Seleccionar archivo Excel *</label>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={handleExcelPreview}
-                    className="file-input"
-                  />
-                  <small className="text-gray-500 mt-1">
-                    📋 Formato: Excel (.xlsx, .xls) con las columnas de la plantilla
-                  </small>
-                </div>
-
-                {/* Archivo Seleccionado */}
-                {selectedExcel && (
+                  {/* Seleccionar Archivo */}
                   <div className="form-group form-group-full">
-                    <div className="alert alert-info">
-                      <AlertCircle className="w-5 h-5 mr-2" />
-                      <div>
-                        <strong>Archivo:</strong> {selectedExcel.name}
-                        <br />
-                        <small>Tamaño: {(selectedExcel.size / 1024).toFixed(2)} KB</small>
+                    <label>Seleccionar archivo Excel *</label>
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={handleExcelPreview}
+                      className="file-input"
+                    />
+                    <small className="text-gray-500 mt-1">
+                      📋 Formato: Excel (.xlsx, .xls) con las columnas de la plantilla
+                    </small>
+                  </div>
+
+                  {/* Archivo Seleccionado */}
+                  {selectedExcel && (
+                    <div className="form-group form-group-full">
+                      <div className="alert alert-info">
+                        <AlertCircle className="w-5 h-5 mr-2" />
+                        <div>
+                          <strong>Archivo:</strong> {selectedExcel.name}
+                          <br />
+                          <small>Tamaño: {(selectedExcel.size / 1024).toFixed(2)} KB</small>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Vista Previa */}
-                {excelPreview.length > 0 && (
-                  <div className="form-group form-group-full">
-                    <label>
-                      📊 Vista previa ({excelPreview.length} lecturas)
-                      {(() => {
-                        const validas = excelPreview.filter(lectura => {
-                          const esNumerico = /^\d{1,13}$/.test(lectura.lectura_actual);
-                          return (
-                            lectura.num_medidor &&
-                            lectura.lectura_actual &&
-                            esNumerico &&
-                            parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0)
-                          );
-                        }).length;
-
-                        const invalidas = excelPreview.length - validas;
-
-                       return (
-                          <ul className="ml-4 space-y-1">
-                            <li className="text-green-600">{validas} válidas</li>
-
-                            {invalidas > 0 && (
-                              <li className="text-red-600">{invalidas} inválidas (serán omitidas)</li>
-                            )}
-                          </ul>
-                        );
-                      })()}
-                    </label>
-                    <div className="excel-preview-container">
-                      <table className="excel-preview-table">
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Medidor</th>
-                            <th>Código Afiliado</th> 
-                            <th>Nombre</th>
-                            <th className="align-right">Lect. Ant.</th>
-                            <th className="align-right">Lect. Act.</th>
-                            <th className="align-right">Consumo</th>
-                            <th className="align-center">Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {excelPreview.map((lectura, idx) => {
-                            // ✅ Validación mejorada con regex para números
+                  {/* Vista Previa */}
+                  {excelPreview.length > 0 && (
+                    <div className="form-group form-group-full">
+                      <label>
+                        📊 Vista previa ({excelPreview.length} lecturas)
+                        {(() => {
+                          const validas = excelPreview.filter(lectura => {
                             const esNumerico = /^\d{1,13}$/.test(lectura.lectura_actual);
-                            const esValido =
+                            return (
                               lectura.num_medidor &&
                               lectura.lectura_actual &&
                               esNumerico &&
-                              parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0);
-                            
-                            const consumo = esValido 
-                              ? parseInt(lectura.lectura_actual) - parseInt(lectura.lectura_anterior || 0)
-                              : 0;
-
-                            // Determinar error específico
-                            let errorMsg = '';
-                            if (!lectura.num_medidor) errorMsg = 'Sin medidor';
-                            else if (!lectura.lectura_actual) errorMsg = 'Sin lectura';
-                            else if (!esNumerico) errorMsg = 'Solo números (máx 13 dígitos)';
-                            else if (parseInt(lectura.lectura_actual) < parseInt(lectura.lectura_anterior || 0)) 
-                              errorMsg = 'Lectura menor que anterior';
-
-                            return (
-                              <tr key={idx} className={!esValido ? 'invalid' : ''}>
-                                <td className="text-muted">{idx + 1}</td>
-                                <td>
-                                  {lectura.num_medidor || <span className="excel-preview-error">❌ Falta</span>}
-                                </td>
-                                {/* ✅ Nueva columna código afiliado */}
-                                <td className="text-small">
-                                  {lectura.codigo_afiliado || '-'}
-                                </td>
-                                <td className="text-small">
-                                  {lectura.nombre_afiliado || '-'}
-                                </td>
-                                <td className="align-right">
-                                  {lectura.lectura_anterior || 0}
-                                </td>
-                                <td className="align-right">
-                                  {lectura.lectura_actual ? (
-                                    esNumerico ? (
-                                      lectura.lectura_actual
-                                    ) : (
-                                      <span className="excel-preview-error" title={errorMsg}>
-                                        ❌ {lectura.lectura_actual}
-                                      </span>
-                                    )
-                                  ) : (
-                                    <span className="excel-preview-error">❌</span>
-                                  )}
-                                </td>
-                                <td className="align-right text-bold text-success">
-                                  {consumo} m³
-                                </td>
-                                <td className="align-center">
-                                  {esValido ? (
-                                    <span className="excel-preview-success" title="Válido">✓</span>
-                                  ) : (
-                                    <span className="excel-preview-error" title={errorMsg}>✗</span>
-                                  )}
-                                </td>
-                              </tr>
+                              parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0)
                             );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
+                          }).length;
 
-                
-              </div>
+                          const invalidas = excelPreview.length - validas;
 
-              <div className="form-actions">
-                <button type="button" className="btn-secondary" onClick={closeModal}>
-                  <X className="w-4 h-4 mr-2" />
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={handleExcelUpload}
-                  disabled={
-                    !excelMesSeleccionado || 
-                    !excelAnioSeleccionado ||
-                    excelPreview.length === 0 || 
-                    (() => {
-                      // ✅ Contar solo filas válidas
-                      const validas = excelPreview.filter(lectura => {
-                        const esNumerico = /^\d{1,13}$/.test(lectura.lectura_actual);
                         return (
-                          lectura.num_medidor &&
-                          lectura.lectura_actual &&
-                          esNumerico &&
-                          parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0)
-                        );
-                      }).length;
-                      return validas === 0 || validas > 500;
-                    })() ||
-                    loadingExcel
-                  }
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  {loadingExcel 
-                    ? 'Procesando...' 
-                    : (() => {
+                            <ul className="ml-4 space-y-1">
+                              <li className="text-green-600">{validas} válidas</li>
+
+                              {invalidas > 0 && (
+                                <li className="text-red-600">{invalidas} inválidas (serán omitidas)</li>
+                              )}
+                            </ul>
+                          );
+                        })()}
+                      </label>
+                      <div className="excel-preview-container">
+                        <table className="excel-preview-table">
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>Medidor</th>
+                              <th>Código Afiliado</th> 
+                              <th>Nombre</th>
+                              <th className="align-right">Lect. Ant.</th>
+                              <th className="align-right">Lect. Act.</th>
+                              <th className="align-right">Consumo</th>
+                              <th className="align-center">Estado</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {excelPreview.map((lectura, idx) => {
+                              // ✅ Validación mejorada con regex para números
+                              const esNumerico = /^\d{1,13}$/.test(lectura.lectura_actual);
+                              const esValido =
+                                lectura.num_medidor &&
+                                lectura.lectura_actual &&
+                                esNumerico &&
+                                parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0);
+                              
+                              const consumo = esValido 
+                                ? parseInt(lectura.lectura_actual) - parseInt(lectura.lectura_anterior || 0)
+                                : 0;
+
+                              // Determinar error específico
+                              let errorMsg = '';
+                              if (!lectura.num_medidor) errorMsg = 'Sin medidor';
+                              else if (!lectura.lectura_actual) errorMsg = 'Sin lectura';
+                              else if (!esNumerico) errorMsg = 'Solo números (máx 13 dígitos)';
+                              else if (parseInt(lectura.lectura_actual) < parseInt(lectura.lectura_anterior || 0)) 
+                                errorMsg = 'Lectura menor que anterior';
+
+                              return (
+                                <tr key={idx} className={!esValido ? 'invalid' : ''}>
+                                  <td className="text-muted">{idx + 1}</td>
+                                  <td>
+                                    {lectura.num_medidor || <span className="excel-preview-error">❌ Falta</span>}
+                                  </td>
+                                  {/* ✅ Nueva columna código afiliado */}
+                                  <td className="text-small">
+                                    {lectura.codigo_afiliado || '-'}
+                                  </td>
+                                  <td className="text-small">
+                                    {lectura.nombre_afiliado || '-'}
+                                  </td>
+                                  <td className="align-right">
+                                    {lectura.lectura_anterior || 0}
+                                  </td>
+                                  <td className="align-right">
+                                    {lectura.lectura_actual ? (
+                                      esNumerico ? (
+                                        lectura.lectura_actual
+                                      ) : (
+                                        <span className="excel-preview-error" title={errorMsg}>
+                                          ❌ {lectura.lectura_actual}
+                                        </span>
+                                      )
+                                    ) : (
+                                      <span className="excel-preview-error">❌</span>
+                                    )}
+                                  </td>
+                                  <td className="align-right text-bold text-success">
+                                    {consumo} m³
+                                  </td>
+                                  <td className="align-center">
+                                    {esValido ? (
+                                      <span className="excel-preview-success" title="Válido">✓</span>
+                                    ) : (
+                                      <span className="excel-preview-error" title={errorMsg}>✗</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  
+                </div>
+
+                <div className="form-actions">
+                  <button type="button" className="btn-secondary" onClick={closeModal}>
+                    <X className="w-4 h-4 mr-2" />
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleExcelUpload}
+                    disabled={
+                      !excelMesSeleccionado || 
+                      !excelAnioSeleccionado ||
+                      excelPreview.length === 0 || 
+                      (() => {
+                        // ✅ Contar solo filas válidas
                         const validas = excelPreview.filter(lectura => {
                           const esNumerico = /^\d{1,13}$/.test(lectura.lectura_actual);
                           return (
@@ -2070,336 +2051,379 @@ return (
                             parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0)
                           );
                         }).length;
-                        return `Crear ${validas} lectura${validas !== 1 ? 's' : ''} válida${validas !== 1 ? 's' : ''}`;
-                      })()
-                  }
-                </button>
+                        return validas === 0 || validas > 500;
+                      })() ||
+                      loadingExcel
+                    }
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    {loadingExcel 
+                      ? 'Procesando...' 
+                      : (() => {
+                          const validas = excelPreview.filter(lectura => {
+                            const esNumerico = /^\d{1,13}$/.test(lectura.lectura_actual);
+                            return (
+                              lectura.num_medidor &&
+                              lectura.lectura_actual &&
+                              esNumerico &&
+                              parseInt(lectura.lectura_actual) >= parseInt(lectura.lectura_anterior || 0)
+                            );
+                          }).length;
+                          return `Crear ${validas} lectura${validas !== 1 ? 's' : ''} válida${validas !== 1 ? 's' : ''}`;
+                        })()
+                    }
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* ==================== MODAL DE VISTA ==================== */}
-          {modalType === 'view' && selectedReading && (
-            <div className="user-details">
+            {/* ==================== MODAL DE VISTA ==================== */}
+            {modalType === 'view' && selectedReading && (
+              <div className="user-details">
 
-              {/* Medidor */}
-              <div className="detail-group">
-                <label>Medidor:</label>
-                <p>{selectedReading.num_medidor || 'N/A'}</p>
-              </div>
-
-              {/* 🔥 SECTOR */}
-              <div className="detail-group">
-                <label>Sector:</label>
-                <p>{selectedReading.sector || 'Sin sector'}</p>
-              </div>
-
-              {/* Código de Afiliado */}
-              <div className="detail-group">
-                <label>Código de Afiliado:</label>
-                <p>{selectedReading.codigo_afiliado || 'N/A'}</p>
-              </div>
-
-              {/* Nombre Afiliado */}
-              <div className="detail-group">
-                <label>Nombre Afiliado:</label>
-                <p>{selectedReading.nombre_afiliado || 'Sin afiliado'}</p>
-              </div>
-
-              {/* Lecturas */}
-              <div className="detail-group">
-                <label>Lectura Anterior:</label>
-                <p>{selectedReading.lectura_anterior} m³</p>
-              </div>
-
-              <div className="detail-group">
-                <label>Lectura Actual:</label>
-                <p>{selectedReading.lectura_actual} m³</p>
-              </div>
-
-              {/* Consumo */}
-              <div className="detail-group">
-                <label>Consumo:</label>
-                <p className="text-green-700 font-semibold">{selectedReading.consumo_m3} m³</p>
-              </div>
-
-              {/* Fecha */}
-              <div className="detail-group">
-                <label>Fecha:</label>
-                <p>{new Date(selectedReading.fecha_lectura + 'T00:00:00').toLocaleDateString('es-EC')}</p>
-              </div>
-
-              {/* 🔥 LECTOR */}
-              <div className="detail-group">
-                <label>Lector:</label>
-                <p>{selectedReading.lector_nombre || 'No registrado'}</p>
-              </div>
-
-              {/* Observación */}
-              <div className="detail-group">
-                <label>Observación:</label>
-                <p>{selectedReading.observacion || 'Sin observaciones'}</p>
-              </div>
-
-              {/* Estado */}
-              <div className="detail-group">
-                <label>Estado:</label>
-                <span className={`status-badge ${selectedReading.activo ? 'active' : 'inactive'}`}>
-                  {selectedReading.activo ? (
-                    <>
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      Activo
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="w-3 h-3 mr-1" />
-                      Inactivo
-                    </>
-                  )}
-                </span>
-              </div>
-
-              {/* Tipo de Lectura */}
-              {selectedReading.es_estimada && (
+                {/* Medidor */}
                 <div className="detail-group">
-                  <label>Tipo:</label>
-                  <span className="status-badge" style={{ backgroundColor: '#fbbf24', color: '#92400e' }}>
-                    <TrendingUp className="w-3 h-3 mr-1" />
-                    Lectura Estimada
+                  <label>Medidor:</label>
+                  <p>{selectedReading.num_medidor || 'N/A'}</p>
+                </div>
+
+                {/* 🔥 SECTOR */}
+                <div className="detail-group">
+                  <label>Sector:</label>
+                  <p>{selectedReading.sector || 'Sin sector'}</p>
+                </div>
+
+                {/* Código de Afiliado */}
+                <div className="detail-group">
+                  <label>Código de Afiliado:</label>
+                  <p>{selectedReading.codigo_afiliado || 'N/A'}</p>
+                </div>
+
+                {/* Nombre Afiliado */}
+                <div className="detail-group">
+                  <label>Nombre Afiliado:</label>
+                  <p>{selectedReading.nombre_afiliado || 'Sin afiliado'}</p>
+                </div>
+
+                {/* Lecturas */}
+                <div className="detail-group">
+                  <label>Lectura Anterior:</label>
+                  <p>{selectedReading.lectura_anterior} m³</p>
+                </div>
+
+                <div className="detail-group">
+                  <label>Lectura Actual:</label>
+                  <p>{selectedReading.lectura_actual} m³</p>
+                </div>
+
+                {/* Consumo */}
+                <div className="detail-group">
+                  <label>Consumo:</label>
+                  <p className="text-green-700 font-semibold">{selectedReading.consumo_m3} m³</p>
+                </div>
+
+                {/* Fecha */}
+                <div className="detail-group">
+                  <label>Fecha:</label>
+                  <p>{new Date(selectedReading.fecha_lectura + 'T00:00:00').toLocaleDateString('es-EC')}</p>
+                </div>
+
+                {/* 🔥 LECTOR */}
+                <div className="detail-group">
+                  <label>Lector:</label>
+                  <p>{selectedReading.lector_nombre || 'No registrado'}</p>
+                </div>
+
+                {/* Observación */}
+                <div className="detail-group">
+                  <label>Observación:</label>
+                  <p>{selectedReading.observacion || 'Sin observaciones'}</p>
+                </div>
+
+                {/* Estado */}
+                <div className="detail-group">
+                  <label>Estado:</label>
+                  <span className={`status-badge ${selectedReading.activo ? 'active' : 'inactive'}`}>
+                    {selectedReading.activo ? (
+                      <>
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Activo
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="w-3 h-3 mr-1" />
+                        Inactivo
+                      </>
+                    )}
                   </span>
                 </div>
-              )}
 
-            </div>
-          )}
-
-
-         {/* ==================== MODAL DE CREACIÓN/EDICIÓN ==================== */}
-{(modalType === 'create' || modalType === 'edit') && (
-  <form onSubmit={handleSubmit} className="user-form">
-    <div className="form-grid">
-      
-      <div className="form-group form-group-full">
-        <label>Afiliado / Medidor *</label>
-        
-        {/* Búsqueda - Solo en modo crear */}
-        {modalType === 'create' && (
-          <div className="meter-search-container">
-            <div className="meter-search-input-wrapper">
-              <Search className="w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar por código, nombre o medidor..."
-                value={meterSearchTerm}
-                onChange={(e) => setMeterSearchTerm(e.target.value)}
-                disabled={meters.length === 0} // 🆕 Deshabilitar si no hay medidores
-              />
-              {meterSearchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setMeterSearchTerm('')}
-                  className="meter-search-clear-btn"
-                >
-                  <X className="w-4 h-4 text-gray-400" />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 🆕 MENSAJE DE PERIODO COMPLETO */}
-        {modalType === 'create' && meters.length === 0 && periodoSeleccionado && (
-          <div className="alert alert-success mb-3">
-            <div className="alert-icon">
-            </div>
-            <div className="alert-content">
-
-              <h4 className="alert-title"><CheckCircle className="w-5 h-5" /> Periodo Completo</h4>
-              <p className="alert-message">
-                Todos los medidores ya tienen lectura registrada para 
-                <strong>
-                  {new Date(periodoSeleccionado.anio, periodoSeleccionado.mes - 1)
-                    .toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
-                </strong>
-              </p>
-              <p className="alert-submessage">
-                💡 Selecciona otro periodo
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* 🆕 MENSAJE DE CARGA */}
-        {modalType === 'create' && loadingMeters && (
-          <div className="alert alert-info mb-3">
-            <div className="alert-icon">
-              <Activity className="w-5 h-5 animate-spin" />
-            </div>
-            <div className="alert-content">
-              <p className="alert-message">Cargando medidores disponibles...</p>
-            </div>
-          </div>
-        )}
-
-        {/* SELECT DE MEDIDOR */}
-        <select
-          required
-          value={formData.id_medidor || ''}
-          onChange={(e) => handleMedidorChange(e.target.value)}
-          disabled={modalType === 'edit' || meters.length === 0 || loadingMeters} // 🆕 Deshabilitar si no hay medidores o está cargando
-          className={meters.length === 0 ? 'disabled' : ''}
-        >
-          <option value="">
-            {loadingMeters 
-              ? 'Cargando medidores...'
-              : meters.length === 0 
-                ? 'No hay medidores disponibles'
-                : 'Seleccione un afiliado'
-            }
-          </option>
-          {filteredMeters.map(afiliado => (
-            <option key={afiliado.id_medidor} value={afiliado.id_medidor}>
-              🏠 {afiliado.num_medidor} | 👤 {afiliado.cod_usuario_afi || 'S/C'} - {afiliado.nombre_completo || 'Sin nombre'}
-            </option>
-          ))}
-        </select>
-
-        {/* 🆕 CONTADOR DE MEDIDORES DISPONIBLES */}
-        {modalType === 'create' && !loadingMeters && filteredMeters.length > 0 && (
-          <small className="text-gray-500 mt-1 flex items-center gap-1">
-            <Info className="w-3 h-3" />
-            {filteredMeters.length} medidor{filteredMeters.length !== 1 ? 'es' : ''} disponible{filteredMeters.length !== 1 ? 's' : ''} 
-            {meterSearchTerm && ` (filtrado por "${meterSearchTerm}")`}
-          </small>
-        )}
-
-        {/* 🆕 MENSAJE CUANDO NO HAY RESULTADOS EN LA BÚSQUEDA */}
-        {modalType === 'create' && !loadingMeters && meterSearchTerm && filteredMeters.length === 0 && meters.length > 0 && (
-          <small className="text-yellow-600 mt-1 flex items-center gap-1">
-            <AlertCircle className="w-3 h-3" />
-            No se encontraron medidores con "{meterSearchTerm}"
-          </small>
-        )}
-
-        {/* INFO DEL MEDIDOR SELECCIONADO */}
-        {selectedMeterInfo && (
-          <div className="meter-info-card">
-            <h4 className="meter-info-title">
-              <Gauge className="w-4 h-4 mr-2" />
-              Información del Afiliado
-            </h4>
-            <div className="meter-info-content">
-              <p><strong>Afiliado:</strong> {selectedMeterInfo.nombre_completo || "Sin nombre"}</p>
-              <p><strong>Código:</strong> {selectedMeterInfo.cod_usuario_afi || 'Sin código'}</p>
-              <p><strong>Medidor:</strong> {selectedMeterInfo.num_medidor || 'Sin medidor'}</p>
-              <p><strong>Lectura Anterior:</strong> {selectedMeterInfo.lectura_anterior || 0} m³</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-                <div className="form-group">
-                  <label>Lectura Anterior * (m³)</label>
-                  <input
-                    type="number"
-                    required
-                    value={formData.lectura_anterior}
-                    onChange={(e) => setFormData({ ...formData, lectura_anterior: e.target.value })}
-                    readOnly={modalType === 'create'}
-                    className={modalType === 'create' ? 'bg-gray-100' : ''}
-                  />
-                  <small className="text-gray-500">Auto-cargada al seleccionar afiliado</small>
-                </div>
-
-                <div className="form-group">
-                  <label>Lectura Actual * (m³)</label>
-                  <input
-                    type="number"
-                    required
-                    value={formData.lectura_actual}
-                    onChange={(e) => setFormData({ ...formData, lectura_actual: e.target.value })}
-                    min={formData.lectura_anterior || 0}
-                  />
-                  <small className="text-gray-500">Debe ser mayor o igual a lectura anterior</small>
-                </div>
-
-                <div className="form-group">
-                  <label>Consumo (m³)</label>
-                  <input
-                    type="number"
-                    value={formData.consumo_m3}
-                    readOnly
-                    className="bg-gray-100 font-semibold text-green-700"
-                  />
-                  <small className="text-gray-500">Calculado automáticamente</small>
-                </div>
-
-                <div className="form-group">
-                  <label>Fecha de Lectura *</label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.fecha_lectura}
-                    onChange={(e) => setFormData({ ...formData, fecha_lectura: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group form-group-full">
-                  <label>Observación</label>
-                  <textarea
-                    rows="3"
-                    value={formData.observacion}
-                    onChange={(e) => setFormData({ ...formData, observacion: e.target.value })}
-                    placeholder="Observaciones opcionales (ej: medidor dañado, lectura irregular, etc.)..."
-                  />
-                </div>
-
-                {modalType === 'edit' && (
-                  <div className="form-group">
-                    <label>Estado</label>
-                    <select
-                      value={formData.activo}
-                      onChange={(e) => setFormData({ ...formData, activo: e.target.value === "true" })}
-                    >
-                      <option value="true">Activa</option>
-                      <option value="false">Inactiva</option>
-                    </select>
+                {/* Tipo de Lectura */}
+                {selectedReading.es_estimada && (
+                  <div className="detail-group">
+                    <label>Tipo:</label>
+                    <span className="status-badge" style={{ backgroundColor: '#fbbf24', color: '#92400e' }}>
+                      <TrendingUp className="w-3 h-3 mr-1" />
+                      Lectura Estimada
+                    </span>
                   </div>
                 )}
-              </div>
 
-              <div className="form-actions">
-                <button type="button" className="btn-secondary" onClick={closeModal}>
-                  <X className="w-4 h-4 mr-2" />
-                  Cancelar
-                </button>
-                
-                {/* ✅ Botón eliminar */}
-                {modalType === 'edit' && permissions.canDelete && (
-                  <button 
-                    type="button" 
-                    className="btn-delete"
-                    onClick={() => handleDelete(formData.id_lectura)}
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Eliminar
+              </div>
+            )}
+
+            {/* ==================== MODAL DE CREACIÓN/EDICIÓN ==================== */}
+            {(modalType === 'create' || modalType === 'edit') && (
+              <form onSubmit={handleSubmit} className="user-form">
+                <div className="form-grid">
+
+                  <div className="form-group form-group-full">
+                    <label>Afiliado / Medidor *</label>
+
+                    {/* Búsqueda - Solo en modo crear */}
+                    {modalType === 'create' && (
+                      <div className="meter-search-container">
+                        <div className="meter-search-input-wrapper">
+                          <Search className="w-4 h-4 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Buscar por código, nombre o medidor..."
+                            value={meterSearchTerm}
+                            onChange={(e) => setMeterSearchTerm(e.target.value)}
+                            disabled={meters.length === 0}
+                          />
+                          {meterSearchTerm && (
+                            <button
+                              type="button"
+                              onClick={() => setMeterSearchTerm('')}
+                              className="meter-search-clear-btn"
+                            >
+                              <X className="w-4 h-4 text-gray-400" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* MENSAJE DE PERIODO COMPLETO */}
+                    {modalType === 'create' && meters.length === 0 && periodoSeleccionado && (
+                      <div className="alert alert-success mb-3">
+                        <div className="alert-icon"></div>
+                        <div className="alert-content">
+                          <h4 className="alert-title"><CheckCircle className="w-5 h-5" /> Periodo Completo</h4>
+                          <p className="alert-message">
+                            Todos los medidores ya tienen lectura registrada para{' '}
+                            <strong>
+                              {new Date(periodoSeleccionado.anio, periodoSeleccionado.mes - 1)
+                                .toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                            </strong>
+                          </p>
+                          <p className="alert-submessage">💡 Selecciona otro periodo</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* MENSAJE DE CARGA */}
+                    {modalType === 'create' && loadingMeters && (
+                      <div className="alert alert-info mb-3">
+                        <div className="alert-icon">
+                          <Activity className="w-5 h-5 animate-spin" />
+                        </div>
+                        <div className="alert-content">
+                          <p className="alert-message">Cargando medidores disponibles...</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SELECT DE MEDIDOR */}
+                    <select
+                      required
+                      value={formData.id_medidor || ''}
+                      onChange={(e) => handleMedidorChange(e.target.value)}
+                      disabled={modalType === 'edit' || meters.length === 0 || loadingMeters}
+                      className={meters.length === 0 ? 'disabled' : ''}
+                    >
+                      <option value="">
+                        {loadingMeters
+                          ? 'Cargando medidores...'
+                          : meters.length === 0
+                            ? 'No hay medidores disponibles'
+                            : 'Seleccione un afiliado'}
+                      </option>
+                      {filteredMeters.map(afiliado => (
+                        <option key={afiliado.id_medidor} value={afiliado.id_medidor}>
+                          🏠 {afiliado.num_medidor} | 👤 {afiliado.cod_usuario_afi || 'S/C'} - {afiliado.nombre_completo || 'Sin nombre'}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* CONTADOR DE MEDIDORES DISPONIBLES */}
+                    {modalType === 'create' && !loadingMeters && filteredMeters.length > 0 && (
+                      <small className="text-gray-500 mt-1 flex items-center gap-1">
+                        <Info className="w-3 h-3" />
+                        {filteredMeters.length} medidor{filteredMeters.length !== 1 ? 'es' : ''} disponible{filteredMeters.length !== 1 ? 's' : ''}
+                        {meterSearchTerm && ` (filtrado por "${meterSearchTerm}")`}
+                      </small>
+                    )}
+
+                    {/* MENSAJE CUANDO NO HAY RESULTADOS EN LA BÚSQUEDA */}
+                    {modalType === 'create' && !loadingMeters && meterSearchTerm && filteredMeters.length === 0 && meters.length > 0 && (
+                      <small className="text-yellow-600 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        No se encontraron medidores con "{meterSearchTerm}"
+                      </small>
+                    )}
+
+                    {/* INFO DEL MEDIDOR SELECCIONADO */}
+                    {selectedMeterInfo && (
+                      <div className="meter-info-card">
+                        <h4 className="meter-info-title">
+                          <Gauge className="w-4 h-4 mr-2" />
+                          Información del Afiliado
+                        </h4>
+                        <div className="meter-info-content">
+                          <p><strong>Afiliado:</strong> {selectedMeterInfo.nombre_completo || 'Sin nombre'}</p>
+                          <p><strong>Código:</strong> {selectedMeterInfo.cod_usuario_afi || 'Sin código'}</p>
+                          <p><strong>Medidor:</strong> {selectedMeterInfo.num_medidor || 'Sin medidor'}</p>
+                          <p><strong>Lectura Anterior:</strong> {selectedMeterInfo.lectura_anterior || 0} m³</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* LECTURA ANTERIOR */}
+                  <div className="form-group">
+                    <label>Lectura Anterior * (m³)</label>
+                    <input
+                      type="number"
+                      required
+                      value={formData.lectura_anterior}
+                      onChange={(e) => setFormData({ ...formData, lectura_anterior: e.target.value })}
+                      readOnly={modalType === 'create'}
+                      className={modalType === 'create' ? 'bg-gray-100' : ''}
+                    />
+                    <small className="text-gray-500">Auto-cargada al seleccionar afiliado</small>
+                  </div>
+
+                  {/* ✅ LECTURA ACTUAL CON VALIDACIÓN EN TIEMPO REAL */}
+                  <div className="form-group">
+                    <label>Lectura Actual * (m³)</label>
+                    <input
+                      type="number"
+                      required
+                      value={formData.lectura_actual}
+                      onChange={(e) => setFormData({ ...formData, lectura_actual: e.target.value })}
+                      min={lecturaAnteriorNum}
+                      // ✅ Borde rojo cuando el valor es inválido
+                      className={lecturaActualInvalida ? 'input-error' : ''}
+                    />
+
+                    {/* ✅ MENSAJE INFORMATIVO EN TIEMPO REAL */}
+                    {lecturaActualNegativa ? (
+                      <small className="text-red-600 mt-1 flex items-center gap-1 font-medium">
+                        <AlertCircle className="w-3 h-3" />
+                        La lectura no puede ser un valor negativo
+                      </small>
+                    ) : lecturaActualInvalida ? (
+                      <small className="text-red-600 mt-1 flex items-center gap-1 font-medium">
+                        <AlertCircle className="w-3 h-3" />
+                        Debe ser mayor o igual a la lectura anterior ({lecturaAnteriorNum} m³)
+                      </small>
+                    ) : formData.lectura_actual !== '' && !isNaN(lecturaActualNum) ? (
+                      <small className="text-green-600 mt-1 flex items-center gap-1 font-medium">
+                        <CheckCircle className="w-3 h-3" />
+                        Valor válido ✓
+                      </small>
+                    ) : (
+                      <small className="text-gray-500">Debe ser mayor o igual a lectura anterior</small>
+                    )}
+                  </div>
+
+                  {/* CONSUMO */}
+                  <div className="form-group">
+                    <label>Consumo (m³)</label>
+                    <input
+                      type="number"
+                      value={formData.consumo_m3}
+                      readOnly
+                      className="bg-gray-100 font-semibold text-green-700"
+                    />
+                    <small className="text-gray-500">Calculado automáticamente</small>
+                  </div>
+
+                  {/* FECHA */}
+                  <div className="form-group">
+                    <label>Fecha de Lectura *</label>
+                    <input
+                      type="date"
+                      required
+                      value={formData.fecha_lectura}
+                      onChange={(e) => setFormData({ ...formData, fecha_lectura: e.target.value })}
+                    />
+                  </div>
+
+                  {/* OBSERVACIÓN */}
+                  <div className="form-group form-group-full">
+                    <label>Observación</label>
+                    <textarea
+                      rows="3"
+                      value={formData.observacion}
+                      onChange={(e) => setFormData({ ...formData, observacion: e.target.value })}
+                      placeholder="Observaciones opcionales (ej: medidor dañado, lectura irregular, etc.)..."
+                    />
+                  </div>
+
+                  {modalType === 'edit' && (
+                    <div className="form-group">
+                      <label>Estado</label>
+                      <select
+                        value={formData.activo}
+                        onChange={(e) => setFormData({ ...formData, activo: e.target.value === 'true' })}
+                      >
+                        <option value="true">Activa</option>
+                        <option value="false">Inactiva</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div className="form-actions">
+                  <button type="button" className="btn-secondary" onClick={closeModal}>
+                    <X className="w-4 h-4 mr-2" />
+                    Cancelar
                   </button>
-                )}
-                
-                <button type="submit" className="btn-primary">
-                  <Save className="w-4 h-4 mr-2" />
-                  {modalType === 'create' ? 'Crear Lectura' : 'Guardar Cambios'}
-                </button>
-              </div>
-            </form>
-          )}
 
+                  {modalType === 'edit' && permissions.canDelete && (
+                    <button
+                      type="button"
+                      className="btn-delete"
+                      onClick={() => handleDelete(formData.id_lectura)}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Eliminar
+                    </button>
+                  )}
 
+                  {/* ✅ BOTÓN BLOQUEADO EN TIEMPO REAL */}
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={formInvalido}
+                    title={formInvalido ? `La lectura actual debe ser ≥ ${lecturaAnteriorNum} m³` : ''}
+                    style={{ opacity: formInvalido ? 0.5 : 1, cursor: formInvalido ? 'not-allowed' : 'pointer' }}
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {modalType === 'create' ? 'Crear Lectura' : 'Guardar Cambios'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+          </div>
         </div>
       </div>
-    </div>
   )}
-</div>
+  </div>
   );
 };
 

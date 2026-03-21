@@ -36,10 +36,13 @@ const ReportsSection = () => {
   const [filterTipoLectura, setFilterTipoLectura] = useState('todos'); // Para Lecturas (real/estimada)
   const [filterPagoCompleto, setFilterPagoCompleto] = useState('todos'); // Para Pagos
   const [sectoresDisponibles, setSectoresDisponibles] = useState([]); // Lista de sectores
-  // Después de filterEstado
+  // estados para multas
   const [filterActivoMultas, ] = useState('todos');  
 
-  
+  // estados para ordenamiento
+  const [sortBy, setSortBy] = useState('');
+  const [sortOrder, setSortOrder] = useState('asc');
+
   // ============================================================
   // ESTADOS DE DATOS
   // ============================================================
@@ -660,7 +663,7 @@ const ReportsSection = () => {
   // Cargar sectores cuando se selecciona Medidores
   useEffect(() => {
     const cargarSectores = async () => {
-      if (selectedModulo !== 'Medidores') {
+      if (selectedModulo !== 'Medidores' && selectedModulo !== 'Afiliados') {
         setSectoresDisponibles([]);
         return;
       }
@@ -723,9 +726,12 @@ const ReportsSection = () => {
           });
           break;
 
-
         case 'Afiliados':
-          result = await reportsServices.getReporteAfiliados(filtros);
+          result = await reportsServices.getReporteAfiliados({
+            ...filtros,
+            activo: filterEstado === 'activos' ? true : (filterEstado === 'inactivos' ? false : undefined),
+            sector: filterSector !== 'todos' ? filterSector : undefined
+          });
           break;
 
         case 'Medidores':
@@ -795,31 +801,12 @@ const ReportsSection = () => {
           result = await reportsServices.getReporteNotificaciones(filtros);
           break;
 
-        case 'Geolocalizacion':
-          result = await reportsServices.getReporteGeolocalizacion(filtros);
-          break;
-
         case 'MultasAfiliados':
           result = await reportsServices.getReporteMultasAfiliados({
             ...filtros,  // ✅ Incluye mes, anio, search, skip, limit
             estado: filterEstado !== 'todos' ? filterEstado : undefined,
             activo: filterActivoMultas === 'activos' ? true : (filterActivoMultas === 'inactivos' ? false : undefined)
           });
-          break;
-
-
-
-
-        case 'Configuracion':
-          result = await reportsServices.getReporteConfiguracion(filtros);
-          break;
-
-        case 'Estadisticas':
-          result = await reportsServices.getReporteEstadisticas(filtros);
-          break;
-
-        case 'HistorialConsumo':
-          result = await reportsServices.getReporteHistorialConsumo(filtros);
           break;
 
         default:
@@ -877,10 +864,51 @@ const ReportsSection = () => {
   /**
  * Obtener columnas filtradas
  */
-const columnasActivas = useMemo(() => {
-  return Object.keys(columnasVisibles).filter(col => columnasVisibles[col]);
-}, [columnasVisibles]);
+  const columnasActivas = useMemo(() => {
+    return Object.keys(columnasVisibles).filter(col => columnasVisibles[col]);
+  }, [columnasVisibles]);
 
+  // Opciones de ordenamiento por módulo
+  const sortOptions = {
+    Afiliados: [
+      { value: 'apellidos',        label: 'Apellido' },
+      { value: 'nombres',          label: 'Nombre' },
+      { value: 'cedula',           label: 'Cédula' },
+      { value: 'sector',           label: 'Sector' },
+      { value: 'fecha_afiliacion', label: 'Fecha Afiliación' },
+      { value: 'cod_usuario_afi',  label: 'Código' },
+      { value: 'total_medidores',  label: 'N° Medidores' },
+    ],
+    Medidores: [
+      { value: 'num_medidor', label: 'N° Medidor' },
+      { value: 'sector',      label: 'Sector' },
+      { value: 'afiliado',    label: 'Afiliado' },
+      { value: 'activo',      label: 'Estado' },
+    ],
+  };
+
+  // Función de ordenamiento genérica
+  const sortedData = useMemo(() => {
+    if (!sortBy || !reporteData.length) return reporteData;
+    return [...reporteData].sort((a, b) => {
+      let aVal = a[sortBy] ?? '';
+      let bVal = b[sortBy] ?? '';
+      // Fechas
+      if (sortBy.includes('fecha')) {
+        aVal = aVal ? new Date(aVal) : new Date(0);
+        bVal = bVal ? new Date(bVal) : new Date(0);
+      } else if (typeof aVal === 'string') {
+        aVal = aVal.toLowerCase();
+        bVal = (bVal ?? '').toString().toLowerCase();
+      }
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [reporteData, sortBy, sortOrder]);
+
+
+  // Exportar a Excel con columnas seleccionadas
   const exportarExcel = useCallback(() => {
     if (reporteData.length === 0) {
       alert('No hay datos para exportar');
@@ -945,6 +973,8 @@ const columnasActivas = useMemo(() => {
     setFilterTipoLectura('todos');
     setFilterPagoCompleto('todos');
     setError(null);
+    setSortBy('');
+    setSortOrder('asc');
   }, []);
 
 
@@ -1355,6 +1385,22 @@ const formatTooltip = (key, value) => {
        
           <div className="filters-right">
             {/* FILTRO PARA MEDIDORES: Sector */}
+            {selectedModulo === 'Afiliados' && (
+              <select
+                className="filter-select"
+                value={filterSector}
+                onChange={(e) => setFilterSector(e.target.value)}
+              >
+                <option value="todos">Todos los sectores</option>
+                {sectoresDisponibles.map((sector) => (
+                  <option key={sector.id_sector} value={sector.nombre_sector}>
+                    {sector.nombre_sector}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* FILTRO PARA MEDIDORES: Sector */}
             {selectedModulo === 'Medidores' && (
               <select
                 className="filter-select"
@@ -1469,6 +1515,36 @@ const formatTooltip = (key, value) => {
                 ))}
               </select>
             )}
+
+            {/* ── ORDENAMIENTO ── Afiliados y Medidores */}
+{['Afiliados', 'Medidores'].includes(selectedModulo) && (
+  <>
+    <select
+      className="filter-select"
+      value={sortBy}
+      onChange={(e) => { setSortBy(e.target.value); setSortOrder('asc'); }}
+      title="Ordenar por"
+    >
+      <option value="">↕ Ordenar por...</option>
+      {(sortOptions[selectedModulo] || []).map(opt => (
+        <option key={opt.value} value={opt.value}>{opt.label}</option>
+      ))}
+    </select>
+
+    {sortBy && (
+      <button
+        type="button"
+        className="filter-select"
+        onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+        title={sortOrder === 'asc' ? 'Orden ascendente' : 'Orden descendente'}
+        style={{ cursor: 'pointer', fontWeight: 600, minWidth: 80 }}
+      >
+        {sortOrder === 'asc' ? '↑ A → Z' : '↓ Z → A'}
+      </button>
+    )}
+  </>
+)}
+
 
             {/* Botón limpiar filtros */}
             <button
@@ -1656,7 +1732,7 @@ const formatTooltip = (key, value) => {
 
               {/* BODY DE DATOS - Solo columnas visibles */}
               <div className="reports-list-body">
-                {reporteData.map((row, index) => (
+                {sortedData.map((row, index) => (
                   <div
                     key={index}
                     className={`reports-list-item ${
@@ -1701,7 +1777,7 @@ const formatTooltip = (key, value) => {
 
               <div className="reports-list-footer-stats">
                 <span>
-                  Mostrando <strong>{reporteData.length}</strong> registros
+                  Mostrando <strong>{sortedData.length}</strong> registros
                 </span>
                 <span className="text-gray-400">|</span>
                 <span>

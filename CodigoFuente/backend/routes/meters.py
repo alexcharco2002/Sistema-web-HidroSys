@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, or_, cast, String
+from sqlalchemy import Integer, func, or_, cast, String
 from psycopg2.errors import ForeignKeyViolation, UniqueViolation
 from typing import List, Optional
 
@@ -123,7 +123,7 @@ def require_any_permission(
 
 
 # ============================================================================
-# NUEVO ENDPOINT: Validar ubicación antes de guardar
+# ENDPOINT: Validar ubicación antes de guardar
 # ============================================================================
 @router.post("/validar-ubicacion", response_model=CoordenadaValidacionResponse)
 def validar_ubicacion_medidor(
@@ -182,7 +182,7 @@ def listar_sectores_para_medidores(
     """
     current_user = get_current_user(payload, db)
     
-    # 🔥 Permitir acceso con permiso de medidores O geolocalizacion
+    # Permitir acceso con permiso de medidores O geolocalizacion
     require_any_permission(
         current_user,
         db,
@@ -380,55 +380,107 @@ def obtener_estadisticas_medidores(
 
 @router.get("/available/affiliates", response_model=List[AfiliadoDisponible])
 def listar_afiliados_disponibles(
-    search: Optional[str] = Query(None, description="Búsqueda por código de afiliado"),
+    search: Optional[str] = Query(None, description="Búsqueda por nombre, cédula o código"),
+    id_sector: Optional[int] = Query(None, description="Filtrar por sector"),
+    activo: Optional[bool] = Query(True, description="Filtrar por estado"),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
-    Lista afiliados sin medidor asignado
+    Lista TODOS los afiliados con sus medidores (relación 1:N).
+    Ya no filtra por "sin medidor" — un afiliado puede tener varios.
     Requiere permiso: medidores.lectura o medidores.crud
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "medidores", "lectura")
-    
-    # Subconsulta para obtener IDs de afiliados que ya tienen medidor
-    subquery = db.query(Medidor.id_usuario_afi).filter(
-        Medidor.id_usuario_afi.isnot(None)
-    ).subquery()
-    
-    query = db.query(UsuarioAfiliado).options(
-        joinedload(UsuarioAfiliado.usuario_sistema),
-        joinedload(UsuarioAfiliado.sector)
-    ).filter(
-        UsuarioAfiliado.id_usuario_afi.notin_(subquery)
+
+    # ============================================
+    # QUERY PRINCIPAL — todos los afiliados activos
+    # ============================================
+    query = (
+        db.query(
+            UsuarioAfiliado.id_usuario_afi,
+            UsuarioAfiliado.cod_usuario_afi,
+            UsuarioAfiliado.fecha_afiliacion,
+            UsuarioAfiliado.id_sector,
+            UsuarioAfiliado.activo,
+            func.concat(
+                func.coalesce(UsuarioSistema.nombres, ''),
+                ' ',
+                func.coalesce(UsuarioSistema.apellidos, '')
+            ).label("nombre_afiliado"),
+            UsuarioSistema.cedula,
+            Sector.nombre_sector,
+        )
+        .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
+        .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
     )
-    
+
+    # ============================================
+    # FILTROS
+    # ============================================
+    if activo is not None:
+        query = query.filter(UsuarioAfiliado.activo == activo)
+
+    if id_sector:
+        query = query.filter(UsuarioAfiliado.id_sector == id_sector)
+
     if search:
-        query = query.filter(UsuarioAfiliado.cod_usuario_afi.ilike(f"%{search}%"))
-    
-    afiliados = query.limit(100).all()
-    
-    # Transformar a schema
-    resultado = []
-    for afiliado in afiliados:
-        usuario_sistema = afiliado.usuario_sistema
-        sector_nombre = None
-        if afiliado.sector:
-            sector_nombre = getattr(afiliado.sector, 'nombre_sector', None)
-        
-        resultado.append(AfiliadoDisponible(
-            id_usuario_afi=afiliado.id_usuario_afi,
-            cod_usuario_afi=afiliado.cod_usuario_afi,
-            nombre_afiliado=(
-                f"{usuario_sistema.nombres} {usuario_sistema.apellidos}"
-                if usuario_sistema else None
-            ),
-            fecha_afiliacion=afiliado.fecha_afiliacion,
-            id_sector=afiliado.id_sector,
-            nombre_sector=sector_nombre
-        ))
-    
-    return resultado
+        search_filter = f"%{search}%"
+        query = query.filter(
+            cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_filter) |
+            UsuarioSistema.nombres.ilike(search_filter) |
+            UsuarioSistema.apellidos.ilike(search_filter) |
+            UsuarioSistema.cedula.ilike(search_filter)
+        )
+
+    afiliados = (
+        query
+        .order_by(UsuarioAfiliado.cod_usuario_afi)
+        .limit(100)
+        .all()
+    )
+
+    # ============================================
+    # CONTEO DE MEDIDORES POR AFILIADO (1 QUERY — GROUP BY)
+    # ============================================
+    conteos_medidores = {}
+    if afiliados:
+        ids = [a.id_usuario_afi for a in afiliados]
+        conteos = (
+            db.query(
+                Medidor.id_usuario_afi,
+                func.count(Medidor.id_medidor).label("total"),
+                func.sum(cast(Medidor.activo, Integer)).label("activos")
+            )
+            .filter(Medidor.id_usuario_afi.in_(ids))
+            .group_by(Medidor.id_usuario_afi)
+            .all()
+        )
+        for row in conteos:
+            conteos_medidores[row.id_usuario_afi] = {
+                "total_medidores": row.total or 0,
+                "medidores_activos": row.activos or 0,
+            }
+
+    # ============================================
+    # CONSTRUIR RESPUESTA
+    # ============================================
+    return [
+        AfiliadoDisponible(
+            id_usuario_afi=a.id_usuario_afi,
+            cod_usuario_afi=a.cod_usuario_afi,
+            nombre_afiliado=a.nombre_afiliado.strip() if a.nombre_afiliado else None,
+            cedula=a.cedula,
+            fecha_afiliacion=a.fecha_afiliacion,
+            id_sector=a.id_sector,
+            nombre_sector=a.nombre_sector,
+            total_medidores=conteos_medidores.get(a.id_usuario_afi, {}).get("total_medidores", 0),
+            medidores_activos=conteos_medidores.get(a.id_usuario_afi, {}).get("medidores_activos", 0),
+            activo=a.activo
+        )
+        for a in afiliados
+    ]
 
 
 @router.get("/{id_medidor}", response_model=MedidorCompleto)
@@ -455,7 +507,7 @@ def obtener_medidor(
             detail="Medidor no encontrado"
         )
     
-    return MedidorCompleto.from_orm(medidor)
+    return MedidorCompleto.model_validate(medidor)
 
 
 @router.post("/", response_model=MedidorCompleto, status_code=status.HTTP_201_CREATED)
@@ -514,8 +566,8 @@ def crear_medidor(
             )
 
     # ========================================================================
-    
-     # Verificar que no exista el número de medidor
+    # Verificar que no exista el número de medidor
+    # ========================================================================
     existe = db.query(Medidor).filter(
         Medidor.num_medidor == medidor.num_medidor
     ).first()
@@ -525,18 +577,6 @@ def crear_medidor(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Ya existe un medidor con el número '{medidor.num_medidor}'"
         )
-    
-    # Verificar que el afiliado no tenga medidor asignado
-    if medidor.id_usuario_afi:
-        medidor_existente = db.query(Medidor).filter(
-            Medidor.id_usuario_afi == medidor.id_usuario_afi
-        ).first()
-        
-        if medidor_existente:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El afiliado ya tiene un medidor asignado"
-            )
     
     # Verificar que el sector existe si se proporciona
     if medidor.id_sector:
@@ -551,19 +591,8 @@ def crear_medidor(
     
     try:
         db.add(nuevo_medidor)
-        db.flush()  # 🔥 Ejecuta el INSERT pero NO hace commit
-        
-        # 🆕 SINCRONIZAR: Actualizar num_medidor en t_usuario_afiliado
-        if nuevo_medidor.id_usuario_afi:
-            afiliado = db.query(UsuarioAfiliado).filter(
-                UsuarioAfiliado.id_usuario_afi == nuevo_medidor.id_usuario_afi
-            ).first()
-            
-            if afiliado:
-                afiliado.num_medidor = nuevo_medidor.num_medidor
-                db.flush()  # Actualizar afiliado
-        
-        db.commit()  # ✅ Commit de ambas operaciones juntas
+        db.flush()   
+        db.commit()  
         db.refresh(nuevo_medidor)
         
         # Registrar auditoría
@@ -583,7 +612,7 @@ def crear_medidor(
             tipo="exito"
         )
         
-        return MedidorCompleto.from_orm(nuevo_medidor)
+        return MedidorCompleto.model_validate(nuevo_medidor)
     
     except IntegrityError as e:
         db.rollback()
@@ -605,6 +634,9 @@ def crear_medidor(
             detail=f"Error al crear el medidor: {str(e)}"
         )
 
+# ========================================================================
+# ACTUALIZAR MEDIDOR
+# ========================================================================
 @router.put("/{id_medidor}", response_model=MedidorCompleto)
 def actualizar_medidor(
     id_medidor: int,
@@ -612,170 +644,93 @@ def actualizar_medidor(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Actualiza un medidor con validación de coordenadas geográficas y altitud
-    Requiere permiso: medidores.actualizar o medidores.crud
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "medidores", "actualizar")
 
-    # PRIMERO: Buscar el medidor en la base de datos
     medidor = db.query(Medidor).options(
         joinedload(Medidor.sector),
         joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
     ).filter(Medidor.id_medidor == id_medidor).first()
 
     if not medidor:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Medidor no encontrado"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medidor no encontrado")
+
+    # ✅ Solo se calcula UNA vez
+    datos_actualizacion = medidor_update.model_dump(exclude_unset=True)
 
     # ========================================================================
-    # VALIDACIÓN GEOGRÁFICA DE COORDENADAS (INCLUYE ALTITUD)
+    # VALIDACIÓN GEOGRÁFICA
     # ========================================================================
-    datos_actualizacion = medidor_update.dict(exclude_unset=True)
+    latitud_final = datos_actualizacion.get('latitud', medidor.latitud)
+    longitud_final = datos_actualizacion.get('longitud', medidor.longitud)
+    altitud_final = datos_actualizacion.get('altitud', medidor.altitud)
 
-    # Determinar las coordenadas finales (nuevas o existentes)
-    latitud_final = (
-        datos_actualizacion.get('latitud')
-        if 'latitud' in datos_actualizacion
-        else medidor.latitud
-    )
-    longitud_final = (
-        datos_actualizacion.get('longitud')
-        if 'longitud' in datos_actualizacion
-        else medidor.longitud
-    )
-    altitud_final = (
-        datos_actualizacion.get('altitud')
-        if 'altitud' in datos_actualizacion
-        else medidor.altitud
-    )
-
-    # Validar formato de coordenadas si hay algún cambio
-    if any([
-        latitud_final is not None,
-        longitud_final is not None,
-        altitud_final is not None
-    ]):
+    if any([latitud_final is not None, longitud_final is not None, altitud_final is not None]):
         es_valida_formato, mensaje_formato = GeoUtils.validar_coordenadas_formato(
-            latitud_final,
-            longitud_final,
-            altitud_final
+            latitud_final, longitud_final, altitud_final
         )
         if not es_valida_formato:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "Formato de coordenadas inválido",
-                    "mensaje": mensaje_formato
-                }
-            )
+            raise HTTPException(status_code=400, detail={
+                "error": "Formato de coordenadas inválido",
+                "mensaje": mensaje_formato
+            })
 
         es_valida, nombre_limite, mensaje = GeoUtils.validar_coordenadas_contra_limite(
-            db,
-            latitud_final,
-            longitud_final,
-            altitud_final
+            db, latitud_final, longitud_final, altitud_final
         )
-
         if not es_valida:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "Coordenadas fuera del límite geográfico permitido",
-                    "limite": nombre_limite,
-                    "latitud": float(latitud_final) if latitud_final else None,
-                    "longitud": float(longitud_final) if longitud_final else None,
-                    "altitud": float(altitud_final) if altitud_final else None,
-                    "mensaje": mensaje
-                }
-            )
+            raise HTTPException(status_code=400, detail={
+                "error": "Coordenadas fuera del límite geográfico permitido",
+                "limite": nombre_limite,
+                "latitud": float(latitud_final) if latitud_final else None,
+                "longitud": float(longitud_final) if longitud_final else None,
+                "altitud": float(altitud_final) if altitud_final else None,
+                "mensaje": mensaje
+            })
 
     # ========================================================================
-    # Validaciones de unicidad
+    # VALIDACIÓN DE UNICIDAD
     # ========================================================================
-    # Validar número de medidor único
     if medidor_update.num_medidor and medidor_update.num_medidor != medidor.num_medidor:
-        existe = db.query(Medidor).filter(
+        if db.query(Medidor).filter(
             Medidor.num_medidor == medidor_update.num_medidor,
             Medidor.id_medidor != id_medidor
-        ).first()
-        if existe:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Ya existe otro medidor con el número '{medidor_update.num_medidor}'"
-            )
+        ).first():
+            raise HTTPException(status_code=400,
+                detail=f"Ya existe otro medidor con el número '{medidor_update.num_medidor}'")
 
-    # Validar afiliado único
-    if medidor_update.id_usuario_afi and medidor_update.id_usuario_afi != medidor.id_usuario_afi:
-        existe = db.query(Medidor).filter(
-            Medidor.id_usuario_afi == medidor_update.id_usuario_afi,
-            Medidor.id_medidor != id_medidor
-        ).first()
-        if existe:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El afiliado ya tiene un medidor asignado"
-            )
-
-    datos_actualizacion = medidor_update.dict(exclude_unset=True)
-
-    # 🆕 Variables para tracking de cambios
+    # ========================================================================
+    # TRACKING DE CAMBIOS
+    # ========================================================================
     id_usuario_afi_anterior = medidor.id_usuario_afi
     num_medidor_anterior = medidor.num_medidor
 
-    # Guardar referencias de afiliado anterior para notificación
     afiliado_anterior_obj = None
     if id_usuario_afi_anterior:
         afiliado_anterior_obj = db.query(UsuarioAfiliado).options(
             joinedload(UsuarioAfiliado.usuario_sistema)
         ).filter(UsuarioAfiliado.id_usuario_afi == id_usuario_afi_anterior).first()
 
-    # Actualizar solo los campos enviados
+    # Aplicar cambios al medidor
     for key, value in datos_actualizacion.items():
         setattr(medidor, key, value)
 
     try:
-        db.flush()  # Ejecuta el UPDATE pero NO hace commit
+        db.flush()
 
-        # 🆕 SINCRONIZAR: Actualizar num_medidor en t_usuario_afiliado
-
-        # CASO 1: Cambió el num_medidor
-        if 'num_medidor' in datos_actualizacion:
-            if medidor.id_usuario_afi:  # Si tiene afiliado actual
-                afiliado = db.query(UsuarioAfiliado).filter(
-                    UsuarioAfiliado.id_usuario_afi == medidor.id_usuario_afi
-                ).first()
-                if afiliado:
-                    afiliado.num_medidor = medidor.num_medidor
-
-        # CASO 2: Cambió el id_usuario_afi
-        historial_creado = False
         afiliado_nuevo_obj = None
 
         if 'id_usuario_afi' in datos_actualizacion:
-            # Limpiar afiliado anterior
-            if id_usuario_afi_anterior:
-                afiliado_anterior = db.query(UsuarioAfiliado).filter(
-                    UsuarioAfiliado.id_usuario_afi == id_usuario_afi_anterior
-                ).first()
-                if afiliado_anterior:
-                    afiliado_anterior.num_medidor = None
 
-            # Asignar a nuevo afiliado
+            # Cargar objeto del nuevo afiliado para la notificación
             if medidor.id_usuario_afi:
-                afiliado_nuevo = db.query(UsuarioAfiliado).options(
+                afiliado_nuevo_obj = db.query(UsuarioAfiliado).options(
                     joinedload(UsuarioAfiliado.usuario_sistema)
                 ).filter(
                     UsuarioAfiliado.id_usuario_afi == medidor.id_usuario_afi
                 ).first()
-                if afiliado_nuevo:
-                    afiliado_nuevo.num_medidor = medidor.num_medidor
-                    afiliado_nuevo_obj = afiliado_nuevo
 
-            # Registrar en historial si realmente cambió el afiliado
+            # ✅ CONSERVADO — historial sigue siendo válido en 1:N
             if id_usuario_afi_anterior != medidor.id_usuario_afi:
                 historial = HistorialMedidor(
                     id_medidor=medidor.id_medidor,
@@ -788,179 +743,145 @@ def actualizar_medidor(
                     activo=True,
                 )
                 db.add(historial)
-                historial_creado = True
 
-        db.commit()  # Commit de todas las operaciones juntas
+        db.commit()
         db.refresh(medidor)
 
-        # Registrar auditoría
-        registrar_auditoria(
-            db=db,
-            accion="UPDATE",
+        registrar_auditoria(db=db, accion="UPDATE",
             descripcion=f"Medidor '{medidor.num_medidor}' actualizado por '{payload['sub']}'",
-            id_usuario=current_user.id_usuario_sistema
-        )
+            id_usuario=current_user.id_usuario_sistema)
 
-        # Notificación para el usuario que hizo el cambio
-        registrar_notificacion(
-            db=db,
-            id_usuario=current_user.id_usuario_sistema,
+        registrar_notificacion(db=db, id_usuario=current_user.id_usuario_sistema,
             titulo="Medidor modificado",
             mensaje=f"El medidor '{medidor.num_medidor}' fue modificado correctamente.",
-            tipo="info"
-        )
+            tipo="info")
 
-        # 🆕 Notificaciones para afiliado anterior y nuevo (si aplica)
+        # Notificaciones al afiliado anterior y nuevo si hubo reasignación
         if 'id_usuario_afi' in datos_actualizacion and id_usuario_afi_anterior != medidor.id_usuario_afi:
-            # Notificar afiliado anterior (si tiene usuario_sistema)
             if afiliado_anterior_obj and afiliado_anterior_obj.usuario_sistema:
-                us_ant = afiliado_anterior_obj.usuario_sistema
-                registrar_notificacion(
-                    db=db,
-                    id_usuario=us_ant.id_usuario_sistema,
+                registrar_notificacion(db=db,
+                    id_usuario=afiliado_anterior_obj.usuario_sistema.id_usuario_sistema,
                     titulo="Medidor retirado",
                     mensaje=(
                         f"El medidor '{num_medidor_anterior}' fue retirado de su afiliación "
                         f"(código {afiliado_anterior_obj.cod_usuario_afi})."
                     ),
-                    tipo="info"
-                )
+                    tipo="info")
 
-            # Notificar afiliado nuevo (si tiene usuario_sistema)
             if afiliado_nuevo_obj and afiliado_nuevo_obj.usuario_sistema:
-                us_nuevo = afiliado_nuevo_obj.usuario_sistema
-                registrar_notificacion(
-                    db=db,
-                    id_usuario=us_nuevo.id_usuario_sistema,
+                registrar_notificacion(db=db,
+                    id_usuario=afiliado_nuevo_obj.usuario_sistema.id_usuario_sistema,
                     titulo="Medidor asignado",
                     mensaje=(
                         f"Se le ha asignado el medidor '{medidor.num_medidor}' "
                         f"a su afiliación (código {afiliado_nuevo_obj.cod_usuario_afi})."
                     ),
-                    tipo="info"
-                )
+                    tipo="info")
 
-        return MedidorCompleto.from_orm(medidor)
+        return MedidorCompleto.model_validate(medidor)
 
     except Exception as e:
         db.rollback()
         print(f"❌ Error al actualizar medidor: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al actualizar el medidor"
-        )
+        raise HTTPException(status_code=500, detail="Error al actualizar el medidor")
 
-
+# ========================================================================
+# ELIMINAR MEDIDOR
+# ========================================================================
 @router.delete("/{id_medidor}", status_code=status.HTTP_200_OK)
 def eliminar_medidor(
     id_medidor: int,
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Elimina el medidor si no tiene relaciones.
-    Si tiene relaciones, lo desactiva (borrado lógico).
-    Requiere permiso: medidores.eliminar o medidores.crud
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "medidores", "eliminar")
-    
-    medidor = db.query(Medidor).filter(Medidor.id_medidor == id_medidor).first()
-    
+
+    medidor = db.query(Medidor).options(
+        joinedload(Medidor.sector),
+        joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema)
+    ).filter(Medidor.id_medidor == id_medidor).first()
+
     if not medidor:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Medidor no encontrado"
         )
     
-     # 🆕 Guardar información del afiliado antes de eliminar
-    id_usuario_afi = medidor.id_usuario_afi
-    
+    medidor_snapshot = medidor.to_dict()
+    num_medidor = medidor.num_medidor  # para mensajes de auditoría
+
     try:
-        # 🆕 SINCRONIZAR: Limpiar num_medidor del afiliado ANTES de eliminar
-        if id_usuario_afi:
-            afiliado = db.query(UsuarioAfiliado).filter(
-                UsuarioAfiliado.id_usuario_afi == id_usuario_afi
-            ).first()
-            if afiliado:
-                afiliado.num_medidor = None
-                db.flush()
-        
-        # Intentar eliminar físicamente
         db.delete(medidor)
-        db.commit()  # ✅ Commit de ambas operaciones
-        # Auditoría
+        db.commit()
+
         registrar_auditoria(
             db=db,
             accion="DELETE",
-            descripcion=f"Medidor '{medidor.num_medidor}' eliminado por '{payload['sub']}'",
+            descripcion=f"Medidor '{num_medidor}' eliminado por '{payload['sub']}'",
             id_usuario=current_user.id_usuario_sistema
         )
-        
-        # Notificación
         registrar_notificacion(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
             titulo="Medidor eliminado",
-            mensaje=f"El medidor '{medidor.num_medidor}' fue eliminado correctamente.",
+            mensaje=f"El medidor '{num_medidor}' fue eliminado correctamente.",
             tipo="info"
         )
-        
+
         return {
             "success": True,
-            "message": f"✅ El medidor '{medidor.num_medidor}' fue eliminado correctamente.",
+            "message": f"✅ El medidor '{num_medidor}' fue eliminado correctamente.",
             "accion": "eliminado",
-            "medidor": medidor.to_dict()
+            "medidor": medidor_snapshot
         }
-    
+
     except IntegrityError as e:
         db.rollback()
-        
-        # Si es por relación, desactivar
+
         if isinstance(e.orig, ForeignKeyViolation):
             print(f"⚠️ No se puede eliminar por relaciones, se desactiva el medidor: {e}")
-            
+
             if not medidor.activo:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"El medidor '{medidor.num_medidor}' ya está inactivo."
+                    detail=f"El medidor '{num_medidor}' ya está inactivo."
                 )
-            
+
             medidor.activo = False
             db.commit()
             db.refresh(medidor)
-            
-            # Auditoría
+
+            # ✅ to_dict() aquí es seguro — objeto sigue en sesión activa tras refresh
+            medidor_snapshot_desactivado = medidor.to_dict()
+
             registrar_auditoria(
                 db=db,
                 accion="UPDATE",
-                descripcion=f"Medidor '{medidor.num_medidor}' fue desactivado (por relaciones) por '{payload['sub']}'",
+                descripcion=f"Medidor '{num_medidor}' desactivado (por relaciones) por '{payload['sub']}'",
                 id_usuario=current_user.id_usuario_sistema
             )
-            
-            # Notificación
             registrar_notificacion(
                 db=db,
                 id_usuario=current_user.id_usuario_sistema,
                 titulo="Medidor desactivado",
-                mensaje=f"El medidor '{medidor.num_medidor}' no se pudo eliminar porque está relacionado con otros módulos. Fue desactivado automáticamente.",
+                mensaje=f"El medidor '{num_medidor}' no se pudo eliminar porque está relacionado con otros módulos. Fue desactivado automáticamente.",
                 tipo="alerta"
             )
-            
+
             return {
                 "success": True,
-                "message": f"⚠️ El medidor '{medidor.num_medidor}' no se pudo eliminar porque está relacionado con otros módulos, solo fue desactivado.",
+                "message": f"⚠️ El medidor '{num_medidor}' no se pudo eliminar porque está relacionado con otros módulos, solo fue desactivado.",
                 "accion": "desactivado",
-                "medidor": medidor.to_dict()
+                "medidor": medidor_snapshot_desactivado
             }
-        
-        # Otros errores
+
         print(f"Error inesperado al eliminar medidor: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al intentar eliminar el medidor"
         )
-    
+
     except Exception as e:
         db.rollback()
         print(f"❌ Error al eliminar medidor: {e}")

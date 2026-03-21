@@ -1,8 +1,7 @@
 /* ============================================================================
-   MI MEDIDOR SECTION - ESTILOS ESTÁTICOS Y LIMPIOS
+   MI MEDIDOR SECTION - MULTI-MEDIDOR
    ============================================================================ */
 
-/* Variables ya definidas en tu sistema */
 :root {
   --primary-color: #1e40af;
   --primary-light: #3b82f6;
@@ -25,7 +24,7 @@
 }
 
 /* ============================================================================
-   LOADING Y ERROR STATES
+   LOADING Y ESTADOS
    ============================================================================ */
 .medidor-loading {
   display: flex;
@@ -57,9 +56,7 @@
   margin-top: 1.5rem;
 }
 
-.medidor-error-state {
-  color: var(--error-color);
-}
+.medidor-error-state { color: var(--error-color); }
 
 .medidor-error-state h3,
 .medidor-empty-state h3 {
@@ -81,7 +78,7 @@
 }
 
 /* ============================================================================
-   CONTAINER PRINCIPAL
+   CONTAINER
    ============================================================================ */
 .medidor-container {
   width: 100%;
@@ -90,21 +87,96 @@
 }
 
 /* ============================================================================
-   LAYOUT PRINCIPAL - ALTURA IGUAL PARA AMBOS PANELES
+   BADGE EN SUBTÍTULO
    ============================================================================ */
-.medidor-layout {
-  max-width: 1400px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 350px 1fr;
-  gap: 1.5rem;
-  margin-top: 1.5rem;
-  align-items: start; /* altura uniforme */
+.medidor-count-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.6rem;
+  background: var(--primary-light);
+  color: white;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
 }
 
 /* ============================================================================
-   SIDEBAR Y MAIN - MISMA ALTURA
+   TABS DE MEDIDORES
    ============================================================================ */
+.medidor-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  margin-bottom: 0;
+  padding: 0.75rem 1rem;
+  background: var(--bg-white);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.medidor-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 1.5px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-gray-50);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.medidor-tab:hover {
+  background: var(--bg-gray-100);
+  border-color: var(--primary-light);
+  color: var(--primary-color);
+}
+
+.medidor-tab--active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+  box-shadow: var(--shadow-md);
+}
+
+.medidor-tab--active:hover {
+  background: var(--primary-dark);
+  color: white;
+}
+
+.tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tab-dot--active { background: var(--success-color); }
+.tab-dot--inactive { background: var(--error-color); }
+
+.medidor-tab--active .tab-dot--active { background: #86efac; }
+.medidor-tab--active .tab-dot--inactive { background: #fca5a5; }
+
+/* ============================================================================
+   LAYOUT PRINCIPAL
+   ============================================================================ */
+.medidor-layout {
+  max-width: 1400px;
+  margin: 1.5rem auto 0;
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
 .medidor-sidebar,
 .medidor-main {
   display: flex;
@@ -113,7 +185,7 @@
 }
 
 /* ============================================================================
-   SIDEBAR - CARD ESTÁTICA (SIN STICKY, SIN ANIMACIONES)
+   SIDEBAR
    ============================================================================ */
 .medidor-sidebar-card {
   background: var(--bg-white);
@@ -124,10 +196,9 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  height: 100%; 
+  height: 100%;
 }
 
-/* Icono del Medidor - SIN ANIMACIÓN */
 .medidor-icon-container {
   display: flex;
   justify-content: center;
@@ -143,12 +214,8 @@
   border-radius: 50%;
   box-shadow: var(--shadow-md);
   color: white;
-
 }
 
-
-
-/* Header Info */
 .medidor-header-info {
   text-align: center;
   border-bottom: 1px solid var(--border-color);
@@ -171,7 +238,6 @@
   letter-spacing: 0.5px;
 }
 
-/* Status Container */
 .medidor-status-container {
   display: flex;
   justify-content: center;
@@ -179,7 +245,6 @@
   border-bottom: 1px solid var(--border-color);
 }
 
-/* Details List */
 .medidor-details-list {
   display: flex;
   flex-direction: column;
@@ -193,18 +258,13 @@
   padding: 0.75rem;
   background: var(--bg-gray-50);
   border-radius: 8px;
-  
 }
 
 .medidor-detail-item:hover {
   background: var(--bg-gray-100);
-
 }
 
-.detail-icon {
-  color: var(--primary-color);
-  flex-shrink: 0;
-}
+.detail-icon { color: var(--primary-color); flex-shrink: 0; }
 
 .detail-content {
   flex: 1;
@@ -226,7 +286,7 @@
   font-weight: 500;
 }
 
-/* GPS Section */
+/* GPS */
 .medidor-gps-section {
   padding-top: 1rem;
   border-top: 1px solid var(--border-color);
@@ -246,9 +306,7 @@
   margin: 0;
 }
 
-.gps-title svg {
-  color: var(--success-color);
-}
+.gps-title svg { color: var(--success-color); }
 
 .gps-coordinates {
   display: grid;
@@ -265,11 +323,9 @@
   background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
   border: 2px solid var(--success-color);
   border-radius: 8px;
-  
 }
 
 .gps-coord:hover {
-
   background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
 }
 
@@ -288,6 +344,18 @@
   font-family: 'Courier New', monospace;
 }
 
+.gps-no-coords {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-gray-50);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
 .btn-map {
   display: flex;
   align-items: center;
@@ -303,16 +371,12 @@
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
-  
 }
 
-.btn-map:hover {
-  background: #16a34a;
-  
-}
+.btn-map:hover { background: #16a34a; }
 
 /* ============================================================================
-   MAIN PANEL - INFO CARDS
+   MAIN PANEL
    ============================================================================ */
 .medidor-main {
   display: flex;
@@ -338,9 +402,7 @@
   color: var(--text-primary);
 }
 
-.info-card-header svg {
-  color: var(--primary-color);
-}
+.info-card-header svg { color: var(--primary-color); }
 
 .info-card-header h3 {
   font-size: 1.25rem;
@@ -348,9 +410,7 @@
   margin: 0;
 }
 
-.info-card-body {
-  padding: 2rem;
-}
+.info-card-body { padding: 2rem; }
 
 .info-grid {
   display: grid;
@@ -364,9 +424,7 @@
   gap: 0.5rem;
 }
 
-.info-field-full {
-  grid-column: 1 / -1;
-}
+.info-field-full { grid-column: 1 / -1; }
 
 .info-label {
   display: flex;
@@ -378,9 +436,7 @@
   letter-spacing: 0.5px;
 }
 
-.info-label svg {
-  color: var(--primary-color);
-}
+.info-label svg { color: var(--primary-color); }
 
 .info-values-medidor {
   padding: 0.75rem 1rem;
@@ -390,13 +446,78 @@
   font-size: 0.9375rem;
   font-weight: 500;
   color: var(--text-primary);
-  
 }
 
 .info-values-medidor:hover {
   background: var(--bg-gray-100);
   border-left-color: var(--primary-color);
 }
+
+/* ============================================================================
+   GRID DE MINI-CARDS (todos los medidores)
+   ============================================================================ */
+.medidores-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.medidor-mini-card {
+  padding: 1rem;
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-gray-50);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.medidor-mini-card:hover {
+  border-color: var(--primary-light);
+  background: #eff6ff;
+  box-shadow: var(--shadow-md);
+}
+
+.medidor-mini-card--active {
+  border-color: var(--primary-color);
+  background: #dbeafe;
+  box-shadow: var(--shadow-md);
+}
+
+.mini-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.mini-card-header svg { color: var(--primary-color); flex-shrink: 0; }
+
+.mini-card-num {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+  flex: 1;
+}
+
+.mini-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.mini-card-details span {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.mini-card-details svg { color: var(--primary-light); flex-shrink: 0; }
 
 /* ============================================================================
    BADGES
@@ -414,19 +535,13 @@
 }
 
 .badge-sm {
-  padding: 0.375rem 0.75rem;
+  padding: 0.25rem 0.6rem;
   font-size: 0.6875rem;
+  gap: 0.3rem;
 }
 
-.badge--success {
-  background-color: #d1fae5;
-  color: #065f46;
-}
-
-.badge--error {
-  background-color: #fee2e2;
-  color: #991b1b;
-}
+.badge--success { background-color: #d1fae5; color: #065f46; }
+.badge--error { background-color: #fee2e2; color: #991b1b; }
 
 /* ============================================================================
    INFO MESSAGE
@@ -465,31 +580,12 @@
 /* ============================================================================
    UTILIDADES
    ============================================================================ */
-.flex {
-  display: flex;
-}
-
-.items-center {
-  align-items: center;
-}
-
-.gap-3 {
-  gap: 0.75rem;
-}
-
-.w-4 {
-  width: 1rem;
-  height: 1rem;
-}
-
-.w-7 {
-  width: 1.75rem;
-  height: 1.75rem;
-}
-
-.text-blue-600 {
-  color: var(--primary-light);
-}
+.flex { display: flex; }
+.items-center { align-items: center; }
+.gap-3 { gap: 0.75rem; }
+.w-4 { width: 1rem; height: 1rem; }
+.w-7 { width: 1.75rem; height: 1.75rem; }
+.text-blue-600 { color: var(--primary-light); }
 
 /* ============================================================================
    RESPONSIVE
@@ -498,33 +594,19 @@
   .medidor-layout {
     grid-template-columns: 1fr;
   }
-
-  .medidor-sidebar-card {
-    height: auto;
-  }
-
-  .info-grid {
-    grid-template-columns: 1fr;
-  }
+  .medidor-sidebar-card { height: auto; }
+  .info-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 768px) {
-  .medidor-container {
-    padding: 1rem;
-  }
+  .medidor-container { padding: 1rem; }
 
   .medidor-sidebar-card,
-  .info-card-body {
-    padding: 1.5rem;
-  }
+  .info-card-body { padding: 1.5rem; }
 
-  .info-card-header {
-    padding: 1rem 1.5rem;
-  }
+  .info-card-header { padding: 1rem 1.5rem; }
 
-  .medidor-code {
-    font-size: 1.5rem;
-  }
+  .medidor-code { font-size: 1.5rem; }
 
   .medidor-icon-wrapper {
     width: 100px;
@@ -536,9 +618,8 @@
     height: 48px;
   }
 
-  .gps-coordinates {
-    grid-template-columns: 1fr;
-  }
+  .gps-coordinates { grid-template-columns: 1fr; }
+  .medidores-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
@@ -547,10 +628,10 @@
     align-items: flex-start;
     gap: 1rem;
   }
-
   .medidor-info-message {
     flex-direction: column;
     align-items: flex-start;
   }
+  .medidor-tabs { gap: 0.4rem; }
+  .medidor-tab { font-size: 0.8rem; padding: 0.4rem 0.75rem; }
 }
-

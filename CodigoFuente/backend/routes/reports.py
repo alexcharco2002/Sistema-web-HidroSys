@@ -315,6 +315,7 @@ def get_reporte_roles(
 # ============================================================================
 # 3. REPORTE DE AFILIADOS
 # ============================================================================
+
 @router.get("/afiliados")
 def get_reporte_afiliados(
     skip: int = 0,
@@ -330,27 +331,42 @@ def get_reporte_afiliados(
     """📊 Reporte completo de afiliados"""
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "reportes", "lectura")
-    
-    # Query optimizado seleccionando solo columnas necesarias
+
+    # Subconsulta: cantidad de medidores
+    total_medidores_sq = (
+        db.query(func.count(Medidor.id_medidor))
+        .filter(Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+        .correlate(UsuarioAfiliado)
+        .scalar_subquery()
+        .label("total_medidores")
+    )
+
+    # Subconsulta: todos los números de medidor concatenados con " - "
+    medidores_sq = (
+        db.query(func.string_agg(Medidor.num_medidor, ' - '))
+        .filter(Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+        .correlate(UsuarioAfiliado)
+        .scalar_subquery()
+        .label("medidores")
+    )
+
     query = (
         db.query(
             UsuarioAfiliado.cod_usuario_afi,
             UsuarioAfiliado.fecha_afiliacion,
             UsuarioAfiliado.activo,
-            
+
             UsuarioSistema.nombres,
             UsuarioSistema.apellidos,
             UsuarioSistema.cedula,
-            
+
             Sector.nombre_sector,
-            
-            # Subconsulta para obtener el primer medidor
-            db.query(Medidor.num_medidor)
-                .filter(Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
-                .limit(1)
-                .correlate(UsuarioAfiliado)
-                .scalar_subquery()
-                .label("num_medidor")
+
+            # ✅ Cantidad de medidores
+            total_medidores_sq,
+
+            # ✅ Todos los números separados por " - "
+            medidores_sq,
         )
         .outerjoin(
             UsuarioSistema,
@@ -361,7 +377,7 @@ def get_reporte_afiliados(
             Sector.id_sector == UsuarioAfiliado.id_sector
         )
     )
-    
+
     # Filtro de búsqueda
     if search:
         like = f"%{search}%"
@@ -373,48 +389,44 @@ def get_reporte_afiliados(
                 cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(like)
             )
         )
-    
-    # Filtro de sector
+
+    # ✅ FIX: filtrar por nombre del sector, no por id_sector
     if sector:
-        query = query.filter(UsuarioAfiliado.id_sector == sector)
-    
+        query = query.filter(Sector.nombre_sector == sector)
+
     # Filtro de estado
     if estado == "activos":
         query = query.filter(UsuarioAfiliado.activo == True)
     elif estado == "inactivos":
         query = query.filter(UsuarioAfiliado.activo == False)
-    
+
     # Filtro de rango de fechas
     if fecha_desde:
         query = query.filter(UsuarioAfiliado.fecha_afiliacion >= fecha_desde)
-    
     if fecha_hasta:
         query = query.filter(UsuarioAfiliado.fecha_afiliacion <= fecha_hasta)
-    
-    # Ordenamiento
+
     query = query.order_by(
         UsuarioAfiliado.cod_usuario_afi.asc(),
         UsuarioSistema.apellidos.asc()
     )
-    
-    # Ejecución de query con paginación
+
     results = query.offset(skip).limit(limit).all()
 
-    # Respuesta optimizada
     return [
         {
             "cod_usuario_afi": row.cod_usuario_afi,
-            "num_medidor": row.num_medidor,
             "nombres": row.nombres,
             "apellidos": row.apellidos,
             "cedula": row.cedula,
             "sector": row.nombre_sector,
             "fecha_afiliacion": row.fecha_afiliacion.isoformat() if row.fecha_afiliacion else None,
             "activo": row.activo,
+            "n*_medidores": row.total_medidores or 0,
+            "medidores": row.medidores or "Sin medidor",
         }
         for row in results
     ]
-
 
 # ============================================================================
 # 4. REPORTE DE MEDIDORES

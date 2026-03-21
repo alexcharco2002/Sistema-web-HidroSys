@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Protection
 
-from sqlalchemy import String, cast
+from sqlalchemy import Integer, String, cast, func, or_
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased, joinedload
 from sqlalchemy.exc import IntegrityError
 from psycopg2.errors import ForeignKeyViolation, UniqueViolation, NotNullViolation
 from typing import List, Optional
@@ -33,7 +33,7 @@ from db.session import SessionLocal
 from security.jwt import verify_token
 import base64
 import io 
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter(prefix="/affiliates", tags=["affiliates"])
 
@@ -146,8 +146,20 @@ def affiliate_to_response(affiliate: UsuarioAfiliado, db: Session) -> dict:
         "id_sector": affiliate.id_sector,
         "id_usuario_sistema": affiliate.id_usuario_sistema,
         "activo": affiliate.activo,
-        "num_medidor": affiliate.num_medidor, 
-        # Información del usuario del sistema
+        "total_medidores": len(affiliate.medidores),  # ✅ Contar medidores relacionados
+        "medidores_activos": sum(1 for m in affiliate.medidores if m.activo),  # ✅ Contar medidores activos
+        "medidores": [
+            {
+                "id_medidor": m.id_medidor,
+                "num_medidor": m.num_medidor,
+                "latitud": m.latitud,
+                "longitud": m.longitud,
+                "altitud": float(m.altitud) if m.altitud else None,
+                "activo": m.activo
+            }
+            for m in affiliate.medidores
+        ],
+
         "usuario": {
             "id": user.id_usuario_sistema,
             "usuario": user.usuario,
@@ -169,53 +181,127 @@ def affiliate_to_response(affiliate: UsuarioAfiliado, db: Session) -> dict:
         } if sector else None,
     }
 
-# ========================================
+# ============================================================================
+# lISTAR AFILIADOS
+# ===========================================================================
+
+# ============================================================================
 # LISTAR AFILIADOS
-# ========================================
-@router.get("/", response_model=List[dict])
+# ============================================================================
+@router.get("/")                          # ← SIN response_model
 def listar_afiliados(
-    search: Optional[str] = Query(None, description="Buscar por nombre, cédula, código"),
-    id_sector: Optional[int] = Query(None, description="Filtrar por sector"),
-    activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
-    skip: int = Query(0, ge=0, description="Número de registros a saltar"),
-    limit: int = Query(100, ge=1, le=500, description="Número máximo de registros"),
+    search: Optional[str] = Query(None),
+    id_sector: Optional[int] = Query(None),
+    activo: Optional[bool] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Lista todos los afiliados con filtros opcionales
-    Requiere permiso: afiliados.lectura o afiliados.crud
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "afiliados", "lectura")
-    
-    query = db.query(UsuarioAfiliado).join(UsuarioSistema).join(Sector)
-    
-    # Filtro de búsqueda
-    if search:
-        search_filter = f"%{search}%"
-        query = query.filter(
-            (UsuarioSistema.nombres.ilike(search_filter)) |
-            (UsuarioSistema.apellidos.ilike(search_filter)) |
-            (UsuarioSistema.cedula.ilike(search_filter)) |
-            cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_filter)
+
+    query = (
+        db.query(
+            UsuarioAfiliado.id_usuario_afi,
+            UsuarioAfiliado.cod_usuario_afi,
+            UsuarioAfiliado.fecha_afiliacion,
+            UsuarioAfiliado.activo,
+            UsuarioAfiliado.id_sector,
+            UsuarioSistema.nombres,
+            UsuarioSistema.apellidos,
+            UsuarioSistema.cedula,
+            UsuarioSistema.telefono,
+            UsuarioSistema.foto,           # ← bytes crudos de PostgreSQL
+            Sector.nombre_sector,
         )
-    
-    # Filtro por sector
-    if id_sector:
+        .join(UsuarioSistema, UsuarioSistema.id_usuario_sistema == UsuarioAfiliado.id_usuario_sistema)
+        .join(Sector, Sector.id_sector == UsuarioAfiliado.id_sector)
+    )
+
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                UsuarioSistema.nombres.ilike(like),
+                UsuarioSistema.apellidos.ilike(like),
+                UsuarioSistema.cedula.ilike(like),
+                cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(like),
+            )
+        )
+
+    if id_sector is not None:
         query = query.filter(UsuarioAfiliado.id_sector == id_sector)
-    
-    # Filtro por estado
+
     if activo is not None:
         query = query.filter(UsuarioAfiliado.activo == activo)
-    
-    # Ordenar por código de afiliado
-    query = query.order_by(UsuarioAfiliado.cod_usuario_afi.desc())
-    
-    # Paginación
-    affiliates = query.offset(skip).limit(limit).all()
-    
-    return [affiliate_to_response(aff, db) for aff in affiliates]
+
+    rows = (
+        query
+        .order_by(UsuarioAfiliado.cod_usuario_afi.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    if not rows:
+        return JSONResponse(content=[])
+
+    # Batch de medidores
+    ids_afiliados = [r.id_usuario_afi for r in rows]
+    SectorMedidor = aliased(Sector)
+
+    medidores_raw = (
+        db.query(
+            Medidor.id_usuario_afi,
+            Medidor.num_medidor,
+            Medidor.activo.label("medidor_activo"),
+            SectorMedidor.nombre_sector.label("nombre_sector"),
+        )
+        .outerjoin(SectorMedidor, SectorMedidor.id_sector == Medidor.id_sector)
+        .filter(Medidor.id_usuario_afi.in_(ids_afiliados))
+        .order_by(Medidor.id_usuario_afi, Medidor.num_medidor)
+        .all()
+    )
+
+    medidores_por_afiliado: dict[int, list] = {}
+    for m in medidores_raw:
+        medidores_por_afiliado.setdefault(m.id_usuario_afi, []).append({
+            "num_medidor": m.num_medidor,
+            "activo": m.medidor_activo,
+            "sector": m.nombre_sector or "Sin sector",
+        })
+
+    # ✅ Construir respuesta — foto convertida ANTES de serializar
+    resultado = [
+        {
+            "id_usuario_afi": row.id_usuario_afi,
+            "cod_usuario_afi": row.cod_usuario_afi,
+            "fecha_afiliacion": row.fecha_afiliacion.isoformat() if row.fecha_afiliacion else None,
+            "activo": row.activo,
+            "id_sector": row.id_sector,
+            "usuario": {
+                "nombres": row.nombres,
+                "apellidos": row.apellidos,
+                "cedula": row.cedula,
+                "telefono": row.telefono,
+                "foto": process_user_photo(row.foto),   # ← bytes → base64 string
+            },
+            "sector": {
+                "nombre_sector": row.nombre_sector,
+            },
+            "medidores": medidores_por_afiliado.get(row.id_usuario_afi, []),
+            "total_medidores": len(medidores_por_afiliado.get(row.id_usuario_afi, [])),
+            "medidores_activos": sum(
+                1 for m in medidores_por_afiliado.get(row.id_usuario_afi, []) if m["activo"]
+            ),
+        }
+        for row in rows
+    ]
+
+    # ✅ JSONResponse bypass Pydantic serialization completamente
+    return JSONResponse(content=resultado)
+
 
 # ========================================
 # OBTENER AFILIADO POR ID
@@ -247,7 +333,7 @@ def obtener_afiliado(
     return affiliate_to_response(affiliate, db)
 
 # ========================================
-# LISTAR USUARIOS NO AFILIADOS
+# LISTAR todos los usuarios disponibles para afiliación
 # ========================================
 @router.get("/available/users", response_model=List[dict])
 def listar_usuarios_disponibles(

@@ -238,6 +238,112 @@ def obtener_estadisticas_pagos(
 
 
 # ========================================
+# FUNCIONES HELPER PARA ESTADÍSTICAS DE PAGOS
+# ========================================
+
+def obtener_estadisticas_pagos_enriquecidas(db: Session, periodos_str: list[str]) -> dict:
+    """
+    Por cada periodo devuelve:
+      - total_facturas      : cuántas facturas existen en ese periodo
+      - total_pagadas       : facturas con estado 'pagada'
+      - total_pendientes    : facturas con estado 'pendiente' o 'vencida'
+      - total_anuladas      : facturas con estado 'anulada'
+      - monto_total         : suma de total de TODAS las facturas del periodo
+      - monto_cobrado       : suma de total de facturas pagadas
+      - monto_pendiente     : suma de total de facturas pendientes/vencidas
+      - porcentaje_cobrado  : monto_cobrado / monto_total * 100
+      - total_pagos         : número de registros en t_pagos (pagos activos)
+      - monto_pagos         : suma de monto_pago en t_pagos activos
+    """
+
+    if not periodos_str:
+        return {}
+
+    # ── Consulta 1: estadísticas desde t_factura ────────────────────────────
+    stats_facturas = (
+        db.query(
+            Factura.periodo,
+            func.count(Factura.id_factura).label("total_facturas"),
+            func.sum(
+                case((Factura.estado_factura == "pagada", 1), else_=0)
+            ).label("total_pagadas"),
+            func.sum(
+                case(
+                    (Factura.estado_factura.in_(["pendiente", "vencida"]), 1),
+                    else_=0
+                )
+            ).label("total_pendientes"),
+            func.sum(
+                case((Factura.estado_factura == "anulada", 1), else_=0)
+            ).label("total_anuladas"),
+            func.sum(Factura.total).label("monto_total"),
+            func.sum(
+                case((Factura.estado_factura == "pagada", Factura.total), else_=0)
+            ).label("monto_cobrado"),
+            func.sum(
+                case(
+                    (Factura.estado_factura.in_(["pendiente", "vencida"]), Factura.total),
+                    else_=0
+                )
+            ).label("monto_pendiente"),
+        )
+        .filter(Factura.periodo.in_(periodos_str))
+        .group_by(Factura.periodo)
+        .all()
+    )
+
+    # ── Consulta 2: pagos registrados desde t_pagos ──────────────────────────
+    # (un pago puede existir aunque la factura esté en otro estado)
+    stats_pagos = (
+        db.query(
+            Factura.periodo,
+            func.count(Pago.id_pago).label("total_pagos"),
+            func.sum(Pago.monto_pago).label("monto_pagos"),
+        )
+        .join(Factura, Pago.id_factura == Factura.id_factura)
+        .filter(
+            Factura.periodo.in_(periodos_str),
+            Pago.activo == True,
+            Pago.estado_pago == "REGISTRADO",
+        )
+        .group_by(Factura.periodo)
+        .all()
+    )
+
+    # ── Combinar resultados ──────────────────────────────────────────────────
+    pagos_map = {row.periodo: row for row in stats_pagos}
+    resultado = {}
+
+    for row in stats_facturas:
+        monto_total  = float(row.monto_total  or 0)
+        monto_cobrado = float(row.monto_cobrado or 0)
+        monto_pendiente = float(row.monto_pendiente or 0)
+
+        pct_cobrado = round(monto_cobrado / monto_total * 100, 1) if monto_total > 0 else 0.0
+        pct_pendiente = round(monto_pendiente / monto_total * 100, 1) if monto_total > 0 else 0.0
+
+        pagos_row = pagos_map.get(row.periodo)
+
+        resultado[row.periodo] = {
+            # Facturas
+            "total_facturas":   int(row.total_facturas  or 0),
+            "total_pagadas":    int(row.total_pagadas   or 0),
+            "total_pendientes": int(row.total_pendientes or 0),
+            "total_anuladas":   int(row.total_anuladas  or 0),
+            "monto_total":      monto_total,
+            "monto_cobrado":    monto_cobrado,
+            "monto_pendiente":  monto_pendiente,
+            "porcentaje_cobrado":  pct_cobrado,
+            "porcentaje_pendiente": pct_pendiente,
+            # Pagos
+            "total_pagos":  int(pagos_row.total_pagos or 0) if pagos_row else 0,
+            "monto_pagos":  float(pagos_row.monto_pagos or 0) if pagos_row else 0.0,
+        }
+
+    return resultado
+
+
+# ========================================
 # OBTENER PERÍODOS DISPONIBLES DE PAGOS
 # ========================================
 @router.get("/periodos/disponibles", response_model=dict)
@@ -245,6 +351,11 @@ def obtener_periodos_pagos_disponibles(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
+    """
+    Periodos disponibles para el módulo de PAGOS.
+    Incluye estadísticas de facturas (pagadas vs pendientes)
+    y total de pagos registrados por periodo.
+    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "pagos", "lectura")
 
@@ -255,7 +366,7 @@ def obtener_periodos_pagos_disponibles(
     periodos = []
     periodos_str = []
 
-    # Generar periodos
+    # Generar ventana: 6 meses atrás + actual + 2 adelante
     for offset in range(-6, 3):
         mes = mes_actual + offset
         anio = anio_actual
@@ -274,25 +385,42 @@ def obtener_periodos_pagos_disponibles(
             "mes": mes,
             "anio": anio,
             "periodo": periodo_str,
-            "sugerido": mes == mes_actual and anio == anio_actual
+            "sugerido": mes == mes_actual and anio == anio_actual,
         })
 
-    #  UNA SOLA CONSULTA
-    stats_map = obtener_estadisticas_pagos_por_periodo(db, periodos_str)
+    # Una sola llamada con las dos consultas combinadas
+    stats_map = obtener_estadisticas_pagos_enriquecidas(db, periodos_str)
 
     for p in periodos:
-        stats = stats_map.get(p["periodo"])
+        stats = stats_map.get(p["periodo"], {})
 
         p.update({
-            "nombre_mes": MESES_ES.get(p["mes"]),
-            "tiene_pagos": stats is not None,
-            "total_pagos": stats.total_pagos if stats else 0,
-            "monto_total": float(stats.monto_total) if stats else 0,
-            "monto_efectivo": float(stats.monto_efectivo) if stats else 0,
-            "monto_transferencia": float(stats.monto_transferencia) if stats else 0,
-            "monto_tarjeta": float(stats.monto_tarjeta) if stats else 0,
+            "nombre_mes": MESES_ES.get(p["mes"], f"Mes {p['mes']}"),
             "valor": p["periodo"],
-            "texto": f"{MESES_ES.get(p['mes'])} {p['anio']}"
+            "texto": f"{MESES_ES.get(p['mes'])} {p['anio']}",
+
+            # ¿Tiene actividad?
+            "tiene_pagos":    stats.get("total_pagos", 0) > 0,
+            "tiene_facturas": stats.get("total_facturas", 0) > 0,
+
+            # Conteos de facturas
+            "total_facturas":   stats.get("total_facturas", 0),
+            "total_pagadas":    stats.get("total_pagadas", 0),
+            "total_pendientes": stats.get("total_pendientes", 0),
+            "total_anuladas":   stats.get("total_anuladas", 0),
+
+            # Montos de facturas
+            "monto_total":      stats.get("monto_total", 0.0),
+            "monto_cobrado":    stats.get("monto_cobrado", 0.0),
+            "monto_pendiente":  stats.get("monto_pendiente", 0.0),
+
+            # Porcentajes
+            "porcentaje_cobrado":   stats.get("porcentaje_cobrado", 0.0),
+            "porcentaje_pendiente": stats.get("porcentaje_pendiente", 0.0),
+
+            # Pagos registrados (registros en t_pagos)
+            "total_pagos":  stats.get("total_pagos", 0),
+            "monto_pagos":  stats.get("monto_pagos", 0.0),
         })
 
     periodos.sort(key=lambda x: (x["anio"], x["mes"]), reverse=True)
@@ -300,9 +428,8 @@ def obtener_periodos_pagos_disponibles(
 
     return {
         "periodo_actual": periodo_actual,
-        "periodos_disponibles": periodos
+        "periodos_disponibles": periodos,
     }
-
 
 from sqlalchemy.orm import aliased  #  Importar aliased
 # ========================================

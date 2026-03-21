@@ -694,54 +694,55 @@ def exportar_lecturas_excel(
             detail="Error generando el archivo de exportación"
         )
 
-
-@router.get("/mi-medidor")
-def obtener_mi_medidor(
+@router.get("/mis-medidores")
+def obtener_mis_medidores(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
-    Obtiene la información del medidor asignado al usuario logueado.
-    No requiere permisos especiales, solo autenticación.
-    Endpoint de solo lectura para usuarios afiliados.
+    Obtiene todos los medidores asignados al usuario logueado.
+    Un afiliado puede tener múltiples medidores.
     """
-    # Obtener usuario actual
     current_user = get_current_user(payload, db)
-    
-    # Buscar el usuario afiliado asociado
+
     usuario_afiliado = db.query(UsuarioAfiliado).filter(
         UsuarioAfiliado.id_usuario_sistema == current_user.id_usuario_sistema,
         UsuarioAfiliado.activo == True
     ).first()
-    
+
     if not usuario_afiliado:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No tienes un perfil de afiliado registrado"
         )
-    
-    # Buscar el medidor asignado
-    medidor = db.query(Medidor).filter(
+
+    # Usar directamente la relación ORM (1:N) del modelo
+    medidores = db.query(Medidor).filter(
         Medidor.id_usuario_afi == usuario_afiliado.id_usuario_afi
-    ).first()
-    
-    if not medidor:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No tienes un medidor asignado"
-        )
-    
-    # Obtener información del sector del medidor
-    sector_info = None
-    if medidor.sector:
-        sector_info = {
-            "id_sector": medidor.sector.id_sector,
-            "nombre_sector": medidor.sector.nombre_sector,
-            "descripcion": getattr(medidor.sector, 'descripcion', None),
-            "activo": getattr(medidor.sector, 'activo', True)
-        }
-    
-    # Obtener información del usuario sistema (datos personales)
+    ).all()
+
+    medidores_list = []
+    for medidor in medidores:
+        sector_info = None
+        if medidor.sector:
+            sector_info = {
+                "id_sector": medidor.sector.id_sector,
+                "nombre_sector": medidor.sector.nombre_sector,
+                "descripcion": getattr(medidor.sector, 'descripcion', None),
+                "activo": getattr(medidor.sector, 'activo', True)
+            }
+
+        medidores_list.append({
+            "id_medidor": medidor.id_medidor,
+            "num_medidor": medidor.num_medidor,
+            "activo": medidor.activo,
+            "latitud": float(medidor.latitud) if medidor.latitud else None,
+            "longitud": float(medidor.longitud) if medidor.longitud else None,
+            "altitud": float(medidor.altitud) if medidor.altitud else None,
+            "sector": sector_info
+        })
+
+    # Info del usuario sistema
     usuario_sistema_info = None
     if usuario_afiliado.usuario_sistema:
         us = usuario_afiliado.usuario_sistema
@@ -750,49 +751,37 @@ def obtener_mi_medidor(
             "nombres": us.nombres,
             "apellidos": us.apellidos,
             "cedula": us.cedula,
-            "email": us.email if hasattr(us, 'email') else None,
-            "telefono": us.telefono if hasattr(us, 'telefono') else None,
-            "direccion": us.direccion if hasattr(us, 'direccion') else None
+            "email": us.email,
+            "telefono": us.telefono,
+            "direccion": us.direccion
         }
-    
-    # Obtener información del sector del afiliado (si es diferente al del medidor)
+
+    # Sector del afiliado
     sector_afiliado_info = None
     if usuario_afiliado.sector:
         sector_afiliado_info = {
             "id_sector": usuario_afiliado.sector.id_sector,
             "nombre_sector": usuario_afiliado.sector.nombre_sector
         }
-    
-    # Construir respuesta completa
-    response = {
-        # Información del medidor
-        "medidor": {
-            "id_medidor": medidor.id_medidor,
-            "num_medidor": medidor.num_medidor,
-            "activo": medidor.activo,
-            "latitud": float(medidor.latitud) if medidor.latitud else None,
-            "longitud": float(medidor.longitud) if medidor.longitud else None,
-            "altitud": float(medidor.altitud) if medidor.altitud else None,
-            "sector": sector_info
-        },
-        
-        # Información del afiliado
+
+    return {
+        "medidores": medidores_list,
+        "total_medidores": len(medidores_list),
         "afiliado": {
             "id_usuario_afi": usuario_afiliado.id_usuario_afi,
             "cod_usuario_afi": usuario_afiliado.cod_usuario_afi,
             "fecha_afiliacion": (
-                usuario_afiliado.fecha_afiliacion.strftime("%Y-%m-%d") 
-                if usuario_afiliado.fecha_afiliacion 
+                usuario_afiliado.fecha_afiliacion.strftime("%Y-%m-%d")
+                if usuario_afiliado.fecha_afiliacion
                 else None
             ),
             "activo": usuario_afiliado.activo,
-            "num_medidor": usuario_afiliado.num_medidor,
+            # ✅ ELIMINADO: "num_medidor" no existe en el modelo
             "sector": sector_afiliado_info,
             "usuario_sistema": usuario_sistema_info
         }
     }
-    
-    return response
+
 
 
 def obtener_nombre_mes(mes: int) -> str:

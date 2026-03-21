@@ -833,7 +833,8 @@ const toggleSidebar = () => {
       )}
 
     </div>
-    <MiniMapaBurbuja />
+    {/* MINI-MAPA */}
+    {!location.pathname.includes('geolocation') && <MiniMapaBurbuja />}
     </>
   );
 

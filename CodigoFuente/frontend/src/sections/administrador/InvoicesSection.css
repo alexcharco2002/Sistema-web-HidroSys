@@ -1818,3 +1818,49 @@ input:checked + .slider:before {
   margin: 0;
   line-height: 1.4; /* separación entre líneas */
 }
+
+/* ============================================================
+   TARJETA DE PERÍODO — FACTURAS
+   Agrega al final de tu CSS de facturas.
+   ============================================================ */
+
+/* Contenedor de los 3 badges (pagadas / pendientes / anuladas) */
+.periodo-factura-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+/* Badge base */
+.periodo-factura-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 99px;
+  border: 0.5px solid transparent;
+}
+
+/* Verde — pagadas */
+.periodo-factura-stat.pagadas {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #bbf7d0;
+}
+
+/* Amarillo — pendientes */
+.periodo-factura-stat.pendientes {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+/* Gris — anuladas */
+.periodo-factura-stat.anuladas {
+  background: #f3f4f6;
+  color: #4b5563;
+  border-color: #d1d5db;
+}

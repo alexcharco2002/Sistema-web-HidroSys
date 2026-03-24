@@ -12,6 +12,7 @@ import {
   Mail, Phone, MapPin, Calendar, X, Save, RefreshCw, Key,
   Image as ImageIcon, AlertCircle, ArrowUpDown, IdCard, CheckCircle, XCircle,
   UserCog, Wallet, BookOpen, User, FileSpreadsheet, Download, Unlock
+  
 } from 'lucide-react';
 
 const UsersSection = () => {
@@ -25,12 +26,9 @@ const UsersSection = () => {
   const [modalType, setModalType] = useState('create');
   const [selectedUser, setSelectedUser] = useState(null);
   const [error, setError] = useState(null);
-  
-  // usuario logeado
-  const currentUser = authService.getCurrentUser(); 
-  // mover primero al usuario logeado
-  const loggedUserId = currentUser?.id_usuario_sistema;
 
+  // Cargar mi perfil para marcarlo en la lista
+  const [miPerfil, setMiPerfil] = useState(null);
   
   // ===== Variables para carga desde Excel =====
   const [ selectedExcel,setSelectedExcel] = useState(null);   // archivo subido
@@ -236,6 +234,8 @@ const UsersSection = () => {
     const canChangePhoto = canUpdate; // Cambiar foto requiere actualizar
     const canToggleStatus = canUpdate; // Cambiar estado requiere actualizar
 
+  
+
     setPermissions({
       canCreate,
       canRead,
@@ -274,45 +274,52 @@ const UsersSection = () => {
   };
 
   /**
-   * 👥 Obtiene la lista de usuarios del servidor con filtros aplicados
+   * Obtiene la lista de usuarios del servidor con filtros aplicados
    */
+
   const fetchUsers = useCallback(async () => {
-    // 🔑 Verificar si tiene permiso de lectura
     if (!permissions.canRead) {
       setError('No tienes permiso para ver usuarios');
       setLoading(false);
       return;
     }
-
+  
     setLoading(true);
     setError(null);
-    
+  
     try {
-      const result = await usersService.getUsers({
-        
-        id_rol: filterRole === 'all' ? undefined : filterRole
-      });
-
+      const [result, miPerfilResult] = await Promise.all([
+        usersService.getUsers({
+          id_rol: filterRole === 'all' ? undefined : filterRole
+        }),
+        usersService.getMiPerfil(),   
+      ]);
+  
       if (result.success) {
         setUsers(result.data);
-        console.log('✅ Usuarios cargados:', result.data.length);
       } else {
         setError(result.message);
-        console.error('Error al cargar usuarios:', result.message);
       }
+  
+      if (miPerfilResult.success) {
+        setMiPerfil(miPerfilResult.data);
+      }
+  
     } catch (err) {
       setError('Error al cargar usuarios desde el servidor');
-      console.error('Error en fetchUsers:', err);
     } finally {
       setLoading(false);
     }
   }, [filterRole, permissions.canRead]);
+  
+
   // 🔄 Cargar usuarios cuando cambian los filtros
   useEffect(() => {
     if (permissions.canRead) {
       fetchUsers();
     }
   }, [ filterRole, permissions.canRead, fetchUsers]);
+
   // ==================== FUNCIONES DE FILTRADO Y ORDENAMIENTO ====================
   
   /**
@@ -363,12 +370,6 @@ const UsersSection = () => {
     
     // Aplicar orden ascendente o descendente
     return sortOrder === 'asc' ? comparison : -comparison;
-  });
-
-  const sortedUsersPrioritized = [...sortedUsers].sort((a, b) => {
-    if (a.id === loggedUserId) return -1; // a va primero
-    if (b.id === loggedUserId) return 1;  // b va después
-    return 0; // si ninguno es el user actual, mantener orden
   });
 
   /**
@@ -851,6 +852,16 @@ const getBlockStatusText = (user) => {
     );
   }
 
+  // Mover el perfil del usuario logeado al inicio de la lista
+  const usuariosConMiPerfil = miPerfil
+  ? [
+      // Mi perfil siempre primero con el flag
+      { ...miPerfil, esMiPerfil: true },
+      // El resto sin duplicar — compara por id_usuario_sistema
+      ...sortedUsers.filter(u => u.id !== miPerfil.id),
+    ]
+  : sortedUsers;
+
   // Renderizado principal
   return (
     <div className="users-section">
@@ -1011,12 +1022,16 @@ const getBlockStatusText = (user) => {
         </div>
      </div>
 
-     
-
       {/* ==================== GRID DE USUARIOS ==================== */}
       <div className="users-grid">
-        {sortedUsersPrioritized.map(user => (
-          <div key={user.id} className={`user-card ${!user.activo ? 'inactive' : ''}`}>
+        {usuariosConMiPerfil.map(user=> (
+           <div key={user.id} className={`user-card ${!user.activo ? 'inactive' : ''} ${user.esMiPerfil ? 'mi-perfil' : ''}`}>
+            {user.esMiPerfil && (
+              <div className="mi-perfil-badge">
+                👤 Mi Perfil
+              </div>
+            )}
+
             {/* Encabezado de la tarjeta */}
             <div className="user-card-header">
               <div className="user-info">

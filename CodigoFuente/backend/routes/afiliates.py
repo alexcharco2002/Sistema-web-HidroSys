@@ -182,13 +182,94 @@ def affiliate_to_response(affiliate: UsuarioAfiliado, db: Session) -> dict:
     }
 
 # ============================================================================
-# lISTAR AFILIADOS
-# ===========================================================================
+# MI PERFIL DE AFILIADO — endpoint para el usuario autenticado
+# ============================================================================
+@router.get("/mi-perfil")
+def obtener_mi_perfil_afiliado(
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Devuelve el perfil de afiliado del usuario autenticado.
+    Retorna 404 si el usuario no está registrado como afiliado.
+    """
+    current_user = get_current_user(payload, db)
+
+    # Buscar el usuario afiliado vinculado al usuario del sistema
+    row = (
+        db.query(
+            UsuarioAfiliado.id_usuario_afi,
+            UsuarioAfiliado.cod_usuario_afi,
+            UsuarioAfiliado.fecha_afiliacion,
+            UsuarioAfiliado.activo,
+            UsuarioAfiliado.id_sector,
+            UsuarioSistema.nombres,
+            UsuarioSistema.apellidos,
+            UsuarioSistema.cedula,
+            UsuarioSistema.telefono,
+            UsuarioSistema.foto,
+            Sector.nombre_sector,
+        )
+        .join(UsuarioSistema, UsuarioSistema.id_usuario_sistema == UsuarioAfiliado.id_usuario_sistema)
+        .join(Sector, Sector.id_sector == UsuarioAfiliado.id_sector)
+        .filter(UsuarioAfiliado.id_usuario_sistema == current_user.id_usuario_sistema)
+        .first()
+    )
+
+    if not row:
+        raise HTTPException(status_code=404, detail="No tienes un perfil de afiliado")
+
+    # Medidores del afiliado
+    SectorMedidor = aliased(Sector)
+    medidores_raw = (
+        db.query(
+            Medidor.num_medidor,
+            Medidor.activo.label("medidor_activo"),
+            SectorMedidor.nombre_sector.label("nombre_sector"),
+        )
+        .outerjoin(SectorMedidor, SectorMedidor.id_sector == Medidor.id_sector)
+        .filter(Medidor.id_usuario_afi == row.id_usuario_afi)
+        .order_by(Medidor.num_medidor)
+        .all()
+    )
+
+    medidores = [
+        {
+            "num_medidor": m.num_medidor,
+            "activo": m.medidor_activo,
+            "sector": m.nombre_sector or "Sin sector",
+        }
+        for m in medidores_raw
+    ]
+
+    resultado = {
+        "id_usuario_afi": row.id_usuario_afi,
+        "cod_usuario_afi": row.cod_usuario_afi,
+        "fecha_afiliacion": row.fecha_afiliacion.isoformat() if row.fecha_afiliacion else None,
+        "activo": row.activo,
+        "id_sector": row.id_sector,
+        "esMiPerfil": True,          # ← flag para el frontend
+        "usuario": {
+            "nombres": row.nombres,
+            "apellidos": row.apellidos,
+            "cedula": row.cedula,
+            "telefono": row.telefono,
+            "foto": process_user_photo(row.foto),
+        },
+        "sector": {
+            "nombre_sector": row.nombre_sector,
+        },
+        "medidores": medidores,
+        "total_medidores": len(medidores),
+        "medidores_activos": sum(1 for m in medidores if m["activo"]),
+    }
+
+    return JSONResponse(content=resultado)
 
 # ============================================================================
 # LISTAR AFILIADOS
 # ============================================================================
-@router.get("/")                          # ← SIN response_model
+@router.get("/")                        
 def listar_afiliados(
     search: Optional[str] = Query(None),
     id_sector: Optional[int] = Query(None),

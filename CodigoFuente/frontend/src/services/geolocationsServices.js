@@ -14,6 +14,7 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
     medidoresGeo: '/meters/geo/all', // Endpoint optimizado para geo
     medidorGeo: (id) => `/meters/${id}/geo`, // Geo de un medidor específico
     stats: '/meters/stats/geo', // Estadísticas geográficas
+    miMedidor:    '/meters/mi-medidor',   // ←  Endpoint para obtener el medidor del usuario autenticado
   }
 };
 
@@ -107,69 +108,86 @@ class GeolocalizacionService {
    * Obtener todos los medidores con información geográfica
    */
   async getMedidoresGeo(filters = {}) {
-  try {
-    const allMedidores = [];
-    let skip = 0;
-    const limit = 500; // máximo permitido
-    let hasMore = true;
+    try {
+      const allMedidores = [];
+      let skip = 0;
+      const limit = 500; // máximo permitido
+      let hasMore = true;
 
-    while (hasMore) {
-      const params = new URLSearchParams();
+      while (hasMore) {
+        const params = new URLSearchParams();
 
-      if (filters.search) params.append('search', filters.search);
-      if (filters.id_sector) params.append('id_sector', filters.id_sector);
-      if (filters.activo !== undefined) params.append('activo', filters.activo);
-      if (filters.asignado !== undefined) params.append('asignado', filters.asignado);
+        if (filters.search) params.append('search', filters.search);
+        if (filters.id_sector) params.append('id_sector', filters.id_sector);
+        if (filters.activo !== undefined) params.append('activo', filters.activo);
+        if (filters.asignado !== undefined) params.append('asignado', filters.asignado);
 
-      params.append('limit', limit);
-      params.append('skip', skip);
+        params.append('limit', limit);
+        params.append('skip', skip);
 
-      const queryString = params.toString();
-      const endpoint = queryString 
-        ? `${API_CONFIG.endpoints.medidores}?${queryString}` 
-        : API_CONFIG.endpoints.medidores;
+        const queryString = params.toString();
+        const endpoint = queryString 
+          ? `${API_CONFIG.endpoints.medidores}?${queryString}` 
+          : API_CONFIG.endpoints.medidores;
 
-      const data = await this.makeRequest(endpoint);
+        const data = await this.makeRequest(endpoint);
 
-      if (!data || data.length === 0) {
-        hasMore = false;
-        break;
+        if (!data || data.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        // Filtrar solo medidores con coordenadas válidas
+        const medidoresConGeo = data.filter(m => 
+          m.latitud !== null && m.longitud !== null &&
+          !isNaN(parseFloat(m.latitud)) && !isNaN(parseFloat(m.longitud))
+        );
+
+        allMedidores.push(...medidoresConGeo);
+
+        // Preparar siguiente batch
+        skip += limit;
+        hasMore = data.length === limit;
       }
 
-      // Filtrar solo medidores con coordenadas válidas
-      const medidoresConGeo = data.filter(m => 
-        m.latitud !== null && m.longitud !== null &&
-        !isNaN(parseFloat(m.latitud)) && !isNaN(parseFloat(m.longitud))
-      );
+      // Actualizar caché
+      this.cachedMedidores = allMedidores;
+      this.lastUpdate = new Date();
 
-      allMedidores.push(...medidoresConGeo);
+      return {
+        success: true,
+        data: allMedidores,
+        total: allMedidores.length,
+        lastUpdate: this.lastUpdate
+      };
 
-      // Preparar siguiente batch
-      skip += limit;
-      hasMore = data.length === limit;
+    } catch (error) {
+      console.error('❌ Error obteniendo medidores geo:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener medidores',
+        data: []
+      };
     }
-
-    // Actualizar caché
-    this.cachedMedidores = allMedidores;
-    this.lastUpdate = new Date();
-
-    return {
-      success: true,
-      data: allMedidores,
-      total: allMedidores.length,
-      lastUpdate: this.lastUpdate
-    };
-
-  } catch (error) {
-    console.error('❌ Error obteniendo medidores geo:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al obtener medidores',
-      data: []
-    };
   }
-}
 
+  /**
+   * Obtener el medidor del usuario autenticado
+   * Devuelve { success, data } donde data es el medidor o null
+   */
+  async getMiMedidor() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.miMedidor);
+      return { success: true, data };
+    } catch (error) {
+      // 404 = el usuario no tiene medidor asignado, no es un error crítico
+      if (error.status === 404 || error.message?.includes('404')) {
+        return { success: false, data: null, sinMedidor: true };
+      }
+      console.error('❌ Error obteniendo mi medidor:', error);
+      return { success: false, data: null, message: error.message };
+    }
+  }
 
   /**
    * Obtener medidor específico con info geográfica

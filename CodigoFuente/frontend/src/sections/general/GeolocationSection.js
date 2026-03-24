@@ -12,13 +12,12 @@ import AdvancedMarker from '../../components/AdvancedMarker';
 import { 
   MapPin, Search, CheckCircle,
   RefreshCw, AlertCircle, Layers, Navigation, 
-  X, User, Navigation2
+  X, User, Navigation2, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 // ─── Constantes del mapa ────────────────────────────────────────────────────
 const MAP_CENTER = { lat: -1.5524640784867034, lng: -78.76020826859998 }; 
 const DEFAULT_ZOOM = 13;
-//const GOOGLE_MAPS_LIBRARIES = ['marker']; // Necesario para AdvancedMarkerElement
 
 // ─── Paleta de colores por estado ───────────────────────────────────────────
 const MARKER_COLORS = {
@@ -41,21 +40,29 @@ const buildPinSvg = (color, size = 30, isCurrentUser = false) => {
   `;
 };
 
+// Pin especial para la ubicación del dispositivo
+const buildLocationPinSvg = () => `
+  <svg xmlns="http://www.w3.org/2000/svg" width="42" height="50" viewBox="0 0 42 50">
+    <circle cx="21" cy="19" r="17" fill="#2563eb" stroke="#fff" stroke-width="3"/>
+    <circle cx="21" cy="19" r="8" fill="#fff" opacity="0.9"/>
+    <circle cx="21" cy="19" r="4" fill="#2563eb"/>
+    <polygon points="15,32 27,32 21,46" fill="#2563eb"/>
+  </svg>
+`;
+
 const svgToDataUrl = (svg) =>
   `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 
 // ─── Obtener color y tamaño según el estado del medidor ─────────────────────
 const getMedidorStyle = (medidor, isCurrentUser) => {
-  if (isCurrentUser)          return { color: MARKER_COLORS.currentUser, size: 38 };
-  if (!medidor.activo)        return { color: MARKER_COLORS.inactive,    size: 30 };
-  if (!medidor.id_usuario_afi) return { color: MARKER_COLORS.unassigned, size: 30 };
-  return                             { color: MARKER_COLORS.active,      size: 30 };
+  if (isCurrentUser)           return { color: MARKER_COLORS.currentUser, size: 38 };
+  if (!medidor.activo)         return { color: MARKER_COLORS.inactive,    size: 30 };
+  if (!medidor.id_usuario_afi) return { color: MARKER_COLORS.unassigned,  size: 30 };
+  return                              { color: MARKER_COLORS.active,       size: 30 };
 };
 
-// ─── Estilos del contenedor del mapa (debe tener alto explícito) ─────────────
 const mapContainerStyle = { width: '100%', height: '100%' };
 
-// ─── Opciones del mapa ─────────────────────────────────────────────────────────
 const mapOptions = {
   mapId: 'ee4b5fdd2e16cee3b6900950', 
   mapTypeId: 'hybrid',
@@ -76,7 +83,7 @@ const mapOptions = {
 
 // ════════════════════════════════════════════════════════════════════════════
 const GeolocationSection = () => {
-  const mapRef          = useRef(null);
+  const mapRef             = useRef(null);
   const shouldFitBoundsRef = useRef(true);
 
   const [medidores,        setMedidores]        = useState([]);
@@ -90,15 +97,18 @@ const GeolocationSection = () => {
   const [selectedMedidor,  setSelectedMedidor]  = useState(null);
   const [error,            setError]            = useState(null);
   const [estadisticas,     setEstadisticas]     = useState(null);
-  const [currentUser,      setCurrentUser]      = useState(null);
+  const [,      setCurrentUser]      = useState(null);
+  const [permissions,      setPermissions]      = useState({ canRead: false, canUpdate: false });
+  const [mapInstance,      setMapInstance]      = useState(null);
+  const [userLocation,     setUserLocation]     = useState(null);
+  const [, setLocationError]                    = useState(null);
 
-  const [permissions, setPermissions] = useState({ canRead: false, canUpdate: false });
+  // ── Estado del medidor del usuario autenticado ────────────────────────────
+  const [miMedidor, setMiMedidor] = useState(null);
 
-  // para debugging: mostrar el mapa aunque no carguen los medidores
-  const [mapInstance, setMapInstance] = useState(null);
+  // ── Estado de la leyenda desplegable ──────────────────────────────────────
+  const [legendaAbierta, setLegendaAbierta] = useState(false);
 
-
-  // ── Cargar la API de Google Maps ──────────────────────────────────────────
   const { isLoaded, loadError } = useGoogleMaps();
 
   // ── Permisos y usuario ────────────────────────────────────────────────────
@@ -121,18 +131,20 @@ const GeolocationSection = () => {
     setLoading(true);
     setError(null);
     try {
-      const [medidoresResult, sectoresResult, statsResult] = await Promise.all([
+      const [medidoresResult, sectoresResult, statsResult, miMedidorResult] = await Promise.all([
         geolocalizacionService.getMedidoresGeo(),
         geolocalizacionService.getSectores(),
         geolocalizacionService.getEstadisticasGeo(),
+        geolocalizacionService.getMiMedidor(),   // ← nuevo
       ]);
 
       if (medidoresResult.success) {
         const sorted = [...medidoresResult.data].sort((a, b) => {
-          const isUserA = a.id_usuario_afi === currentUser?.id_usuario_afi;
-          const isUserB = b.id_usuario_afi === currentUser?.id_usuario_afi;
-          if (isUserA && !isUserB) return -1;
-          if (!isUserA && isUserB) return  1;
+          const miId = miMedidorResult.data?.id_medidor;
+          const isA  = a.id_medidor === miId;
+          const isB  = b.id_medidor === miId;
+          if (isA && !isB) return -1;
+          if (!isA && isB) return  1;
           const isAssA = a.id_usuario_afi != null;
           const isAssB = b.id_usuario_afi != null;
           if (isAssA && !isAssB) return -1;
@@ -144,18 +156,41 @@ const GeolocationSection = () => {
       } else {
         setError(medidoresResult.message);
       }
-      if (sectoresResult.success) setSectores(sectoresResult.data);
-      if (statsResult.success)    setEstadisticas(statsResult.data);
+
+      if (sectoresResult.success)   setSectores(sectoresResult.data);
+      if (statsResult.success)      setEstadisticas(statsResult.data);
+      if (miMedidorResult.success)  setMiMedidor(miMedidorResult.data);
+
     } catch {
       setError('Error al cargar datos de geolocalización');
     } finally {
       setLoading(false);
     }
-  }, [permissions.canRead, currentUser]);
+  }, [permissions.canRead]);
 
   useEffect(() => {
     if (permissions.canRead) fetchData();
   }, [fetchData, permissions.canRead]);
+
+  // ── Ubicación del dispositivo ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLocationError('Geolocalización no soportada');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setUserLocation({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+      }),
+      (err) => {
+        console.warn('No se pudo obtener ubicación:', err.message);
+        setLocationError(err.message);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, []);
 
   // ── Filtros ───────────────────────────────────────────────────────────────
   const filteredMedidores = medidores
@@ -168,19 +203,20 @@ const GeolocationSection = () => {
         filterSector === 'all' || m.id_sector === parseInt(filterSector);
       const matchesStatus =
         filterStatus === 'all' ||
-        (filterStatus === 'active' && m.activo) ||
+        (filterStatus === 'active'   && m.activo)  ||
         (filterStatus === 'inactive' && !m.activo);
       const matchesAsig =
         filterAsignacion === 'all' ||
-        (filterAsignacion === 'assigned' && m.id_usuario_afi) ||
+        (filterAsignacion === 'assigned'   && m.id_usuario_afi)  ||
         (filterAsignacion === 'unassigned' && !m.id_usuario_afi);
       return matchesSearch && matchesSector && matchesStatus && matchesAsig;
     })
     .sort((a, b) => {
-      const isUserA = a.id_usuario_afi === currentUser?.id_usuario_afi;
-      const isUserB = b.id_usuario_afi === currentUser?.id_usuario_afi;
-      if (isUserA && !isUserB) return -1;
-      if (!isUserA && isUserB) return  1;
+      const miId = miMedidor?.id_medidor;
+      const isA  = a.id_medidor === miId;
+      const isB  = b.id_medidor === miId;
+      if (isA && !isB) return -1;
+      if (!isA && isB) return  1;
       const isAssA = a.id_usuario_afi != null;
       const isAssB = b.id_usuario_afi != null;
       if (isAssA && !isAssB) return -1;
@@ -189,12 +225,11 @@ const GeolocationSection = () => {
       return (a.num_medidor || '').localeCompare(b.num_medidor || '');
     });
 
-  // ── Ajustar bounds cuando cambian los filtros ─────────────────────────────
+  // ── Ajustar bounds ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapInstance || !shouldFitBoundsRef.current) return;
     const visible = filteredMedidores.filter(m => m.latitud && m.longitud);
     if (visible.length === 0) {
-      // Si no hay medidores aún, ir a Sanjampamba
       mapInstance.panTo(MAP_CENTER);
       mapInstance.setZoom(DEFAULT_ZOOM);
       return;
@@ -204,10 +239,9 @@ const GeolocationSection = () => {
       bounds.extend({ lat: parseFloat(m.latitud), lng: parseFloat(m.longitud) })
     );
     mapInstance.fitBounds(bounds, 40);
-  }, [filteredMedidores, mapInstance]); 
+  }, [filteredMedidores, mapInstance]);
 
-
-  // ── Centrar en medidor seleccionado desde el sidebar ─────────────────────
+  // ── Centrar en medidor desde el sidebar ──────────────────────────────────
   const centrarEnMedidor = (medidor) => {
     if (!mapInstance || !medidor.latitud || !medidor.longitud) return;
     shouldFitBoundsRef.current = false;
@@ -256,7 +290,6 @@ const GeolocationSection = () => {
             <p className="section-subtitle">Ubicación en el mapa de los medidores</p>
           </div>
         </div>
-
         <div className="flex gap-2">
           <button className="btn-secondary" onClick={() => setShowSidebar(!showSidebar)} title="Mostrar/Ocultar lista">
             <Layers className="w-4 h-4" />
@@ -264,6 +297,20 @@ const GeolocationSection = () => {
           <button className="btn-secondary" onClick={handleReload} title="Recargar">
             <RefreshCw className="w-4 h-4" />
           </button>
+          {userLocation && (
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                if (!mapInstance) return;
+                shouldFitBoundsRef.current = false;
+                mapInstance.panTo(userLocation);
+                mapInstance.setZoom(18);
+              }}
+              title="Ir a mi ubicación"
+            >
+              <Navigation className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -326,7 +373,6 @@ const GeolocationSection = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-
         {permissions.canUpdate && (
           <div className="filters-right">
             <select className="filter-select" value={filterSector} onChange={(e) => setFilterSector(e.target.value)}>
@@ -335,19 +381,16 @@ const GeolocationSection = () => {
                 <option key={s.id_sector} value={s.id_sector}>{s.nombre_sector}</option>
               ))}
             </select>
-
             <select className="filter-select" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
               <option value="all">Todos los estados</option>
               <option value="active">Activos</option>
               <option value="inactive">Inactivos</option>
             </select>
-
             <select className="filter-select" value={filterAsignacion} onChange={(e) => setFilterAsignacion(e.target.value)}>
               <option value="all">Todas las asignaciones</option>
               <option value="assigned">Asignados</option>
               <option value="unassigned">Sin asignar</option>
             </select>
-
             <button
               className="btn-secondary"
               onClick={() => {
@@ -384,7 +427,8 @@ const GeolocationSection = () => {
             </h3>
             <div className="sidebar-list">
               {filteredMedidores.map(medidor => {
-                const isCurrentUser = medidor.id_usuario_afi === currentUser?.id_usuario_afi;
+                // ── Comparar por id_medidor usando miMedidor del endpoint ──
+                const isCurrentUser = miMedidor && medidor.id_medidor === miMedidor.id_medidor;
                 return (
                   <div
                     key={medidor.id_medidor}
@@ -428,10 +472,9 @@ const GeolocationSection = () => {
           </div>
         )}
 
-        {/* ── MAPA GOOGLE MAPS ───────────────────────────────────────────── */}
+        {/* MAPA */}
         <div className="geo-map-container" style={{ position: 'relative' }}>
 
-          {/* Error de carga de la API */}
           {loadError && (
             <div className="loading-map">
               <AlertCircle className="w-10 h-10 text-red-400 mb-2" />
@@ -439,7 +482,6 @@ const GeolocationSection = () => {
             </div>
           )}
 
-          {/* Spinner mientras carga la API */}
           {!isLoaded && !loadError && (
             <div className="loading-map">
               <div className="spinner" />
@@ -447,7 +489,6 @@ const GeolocationSection = () => {
             </div>
           )}
 
-          {/* Mapa */}
           {isLoaded && !loadError && (
             <GoogleMap
               mapContainerStyle={mapContainerStyle}
@@ -455,8 +496,8 @@ const GeolocationSection = () => {
               zoom={DEFAULT_ZOOM}
               options={mapOptions}
               onLoad={(map) => {
-                mapRef.current = map;      // mantener ref por compatibilidad
-                setMapInstance(map);       // ← esto dispara re-render y activa los markers
+                mapRef.current = map;
+                setMapInstance(map);
               }}
               onUnmount={() => {
                 mapRef.current = null;
@@ -464,28 +505,46 @@ const GeolocationSection = () => {
               }}
               onClick={() => setSelectedMedidor(null)}
             >
-            {filteredMedidores.map((medidor) => {
-              if (!medidor.latitud || !medidor.longitud) return null;
-              const isCurrentUser = medidor.id_usuario_afi === currentUser?.id_usuario_afi;
-              const { color, size } = getMedidorStyle(medidor, isCurrentUser);
-              return (
+              {filteredMedidores.map((medidor) => {
+                if (!medidor.latitud || !medidor.longitud) return null;
+                // ── Comparar por id_medidor ──────────────────────────────
+                const isCurrentUser = miMedidor && medidor.id_medidor === miMedidor.id_medidor;
+                const { color, size } = getMedidorStyle(medidor, isCurrentUser);
+                return (
+                  <AdvancedMarker
+                    key={medidor.id_medidor}
+                    map={mapInstance}
+                    position={{ lat: parseFloat(medidor.latitud), lng: parseFloat(medidor.longitud) }}
+                    icon={{
+                      url: svgToDataUrl(buildPinSvg(color, size, isCurrentUser)),
+                      scaledSize: { width: size, height: size },
+                    }}
+                    onClick={() => setSelectedMedidor(medidor)}
+                    zIndex={isCurrentUser ? 100 : 1}
+                    title={medidor.num_medidor}
+                  />
+                );
+              })}
+
+              {/* Marcador de ubicación actual del dispositivo */}
+              {userLocation && mapInstance && (
                 <AdvancedMarker
-                  key={medidor.id_medidor}
-                  map={mapInstance}        
-                  position={{ lat: parseFloat(medidor.latitud), lng: parseFloat(medidor.longitud) }}
+                  map={mapInstance}
+                  position={userLocation}
                   icon={{
-                    url: svgToDataUrl(buildPinSvg(color, size, isCurrentUser)),
-                    scaledSize: { width: size, height: size },
+                    url: svgToDataUrl(buildLocationPinSvg()),
+                    scaledSize: { width: 42, height: 50 },
                   }}
-                  onClick={() => setSelectedMedidor(medidor)}
-                  zIndex={isCurrentUser ? 100 : 1}
-                  title={medidor.num_medidor}
+                  zIndex={200}
+                  title="Tu ubicación actual"
+                  onClick={() => {
+                    mapInstance.panTo(userLocation);
+                    mapInstance.setZoom(18);
+                  }}
                 />
-              );
-            })}
+              )}
 
-
-              {/* InfoWindow del medidor seleccionado */}
+              {/* InfoWindow */}
               {selectedMedidor && selectedMedidor.latitud && selectedMedidor.longitud && (
                 <InfoWindow
                   position={{
@@ -496,14 +555,12 @@ const GeolocationSection = () => {
                 >
                   <div className="marker-popup" style={{ minWidth: 200 }}>
                     <h4 style={{ margin: '0 0 6px', fontWeight: 700 }}>
-                      {selectedMedidor.id_usuario_afi === currentUser?.id_usuario_afi ? '🏠' : '📍'}{' '}
+                      {miMedidor && selectedMedidor.id_medidor === miMedidor.id_medidor ? '🏠' : '📍'}{' '}
                       {selectedMedidor.num_medidor}
                     </h4>
-
-                    {selectedMedidor.id_usuario_afi === currentUser?.id_usuario_afi && (
+                    {miMedidor && selectedMedidor.id_medidor === miMedidor.id_medidor && (
                       <p style={{ color: '#7c3aed', fontWeight: 600, margin: '0 0 4px' }}>👤 Tu medidor</p>
                     )}
-
                     {selectedMedidor.nombre_afiliado ? (
                       <>
                         <p style={{ margin: '2px 0' }}><strong>Usuario:</strong> {selectedMedidor.nombre_afiliado}</p>
@@ -514,18 +571,15 @@ const GeolocationSection = () => {
                     ) : (
                       <p style={{ margin: '2px 0', fontStyle: 'italic', color: '#6b7280' }}>Sin usuario asignado</p>
                     )}
-
                     {selectedMedidor.nombre_sector && (
                       <p style={{ margin: '2px 0' }}><strong>Sector:</strong> {selectedMedidor.nombre_sector}</p>
                     )}
-
                     <p style={{ margin: '4px 0 2px' }}>
                       <strong>Estado:</strong>{' '}
                       <span style={{ color: selectedMedidor.activo ? '#10b981' : '#ef4444', fontWeight: 600 }}>
                         {selectedMedidor.activo ? '✅ Activo' : '❌ Inactivo'}
                       </span>
                     </p>
-
                     <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af' }}>
                       📍 {parseFloat(selectedMedidor.latitud).toFixed(5)},{' '}
                       {parseFloat(selectedMedidor.longitud).toFixed(5)}
@@ -539,41 +593,41 @@ const GeolocationSection = () => {
             </GoogleMap>
           )}
 
-          {/* Leyenda */}
-          {permissions.canUpdate && isLoaded && (
+          {/* ── LEYENDA DESPLEGABLE ────────────────────────────────────── */}
+          {isLoaded && (
             <div className="map-legend">
-              <div className="legend-title">Leyenda</div>
-              {[
-                { color: MARKER_COLORS.currentUser, label: 'Tu medidor' },
-                { color: MARKER_COLORS.active,      label: 'Activo y Asignado' },
-                { color: MARKER_COLORS.unassigned,  label: 'Sin Asignar' },
-                { color: MARKER_COLORS.inactive,    label: 'Inactivo' },
-              ].map(({ color, label }) => (
-                <div key={label} className="legend-item">
-                  <div className="legend-dot" style={{ backgroundColor: color }} />
-                  <span>{label}</span>
+              <button
+                className="legend-toggle"
+                onClick={() => setLegendaAbierta(prev => !prev)}
+                title={legendaAbierta ? 'Ocultar leyenda' : 'Mostrar leyenda'}
+              >
+                <span className="legend-title">Leyenda</span>
+                {legendaAbierta
+                  ? <ChevronUp  className="w-3 h-3" />
+                  : <ChevronDown className="w-3 h-3" />
+                }
+              </button>
+
+              {legendaAbierta && (
+                <div className="legend-items">
+                  {[
+                    { color: MARKER_COLORS.currentUser, label: 'Tu medidor' },
+                    { color: MARKER_COLORS.active,      label: 'Activo y Asignado' },
+                    { color: MARKER_COLORS.unassigned,  label: 'Sin Asignar' },
+                    { color: MARKER_COLORS.inactive,    label: 'Inactivo' },
+                  ].map(({ color, label }) => (
+                    <div key={label} className="legend-item">
+                      <div className="legend-dot" style={{ backgroundColor: color }} />
+                      <span>{label}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
-        </div>
-        {/* ────────────────────────────────────────────────────────────────── */}
 
+        </div>
       </div>
-
-      {/* PANEL DE DETALLES – modal al hacer click en marker (alternativa al InfoWindow) */}
-      {/* Nota: el InfoWindow ya muestra los detalles inline en el mapa.
-          Si prefieres el modal antiguo en su lugar, descomenta este bloque
-          y elimina el componente <InfoWindow> de arriba. */}
-      {/*
-      {selectedMedidor && (
-        <div className="modal-overlay" onClick={() => setSelectedMedidor(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            ...
-          </div>
-        </div>
-      )}
-      */}
 
       {filteredMedidores.length === 0 && !loading && (
         <div className="empty-state">

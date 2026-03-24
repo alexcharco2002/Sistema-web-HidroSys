@@ -15,7 +15,8 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
     toggleStatus: (id) => `/users/${id}/toggle-status`,
     changePassword: (id) => `/users/${id}/change-password`,
     uploadPhoto: (id) => `/users/${id}/upload-photo`,
-    changePasswordFirstLogin: (userId) => `/users/${userId}/change-password-first-login`
+    changePasswordFirstLogin: (userId) => `/users/${userId}/change-password-first-login`,
+    miPerfil: '/users/mi-perfil',
   }
 };
 
@@ -103,6 +104,19 @@ class UsersService {
       }
 
       throw error;
+    }
+  }
+
+  /**
+   * Obtener perfil del usuario autenticado
+   */
+  async getMiPerfil() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.miPerfil);
+      return { success: true, data };
+    } catch (error) {
+      console.error('Error obteniendo mi perfil:', error);
+      return { success: false, data: null };
     }
   }
 

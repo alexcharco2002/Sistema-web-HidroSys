@@ -40,7 +40,10 @@ const AffiliatesSection = () => {
   // ===== Variables para carga desde Excel =====
   const [selectedExcel, setSelectedExcel] = useState(null);
   const [excelPreview, setExcelPreview] = useState([]);
-  const [loadingExcel, setLoadingExcel] = useState(false); // ✅ CORREGIDO: remover la coma inicial
+  const [loadingExcel, setLoadingExcel] = useState(false);  
+
+  // constante para almacenar el perfil del afiliado logueado (si es que tiene uno)
+  const [miPerfilAfiliado, setMiPerfilAfiliado] = useState(null); 
 
   // ==== Función para leer Excel ====
   const handleExcelPreview = async (e) => {
@@ -293,34 +296,45 @@ const afiliadosValidos = excelPreview.filter((a) => {
     }
   };
 
+  // Función para cargar afiliados con filtros y búsqueda
   const fetchAffiliates = useCallback(async () => {
     if (!permissions.canRead) {
       setError('No tienes permiso para ver afiliados');
       setLoading(false);
       return;
     }
-
+  
     setLoading(true);
     setError(null);
-    
+  
     try {
-      const result = await affiliatesService.getAffiliates({
-        search: debouncedSearchTerm,
-        id_sector: filterSector === 'all' ? undefined : filterSector,
-        activo: filterStatus === 'all' ? undefined : filterStatus === 'active'
-      });
-
+      const [result, miPerfilResult] = await Promise.all([
+        affiliatesService.getAffiliates({
+          search: debouncedSearchTerm,
+          id_sector: filterSector === 'all' ? undefined : filterSector,
+          activo: filterStatus === 'all' ? undefined : filterStatus === 'active'
+        }),
+        affiliatesService.getMiPerfilAfiliado(),  // ← nuevo
+      ]);
+  
       if (result.success) {
         setAffiliates(result.data);
       } else {
         setError(result.message);
       }
+  
+      // Si el usuario es afiliado, guardamos su perfil
+      if (miPerfilResult.success) {
+        setMiPerfilAfiliado(miPerfilResult.data);
+      }
+  
     } catch (err) {
       setError('Error al cargar afiliados desde el servidor');
     } finally {
       setLoading(false);
     }
   }, [filterSector, filterStatus, debouncedSearchTerm, permissions.canRead]);
+
 
   useEffect(() => {
     if (permissions.canRead) {
@@ -720,7 +734,17 @@ const afiliadosValidos = excelPreview.filter((a) => {
       </div>
     );
   }
- 
+
+  // Para asegurar que el perfil del afiliado logueado siempre aparezca primero (si es que tiene uno), hacemos esta combinación antes de renderizar
+ const afiliadosConMiPerfil = miPerfilAfiliado
+  ? [
+      // Mi perfil siempre primero, con flag para el card
+      { ...miPerfilAfiliado, esMiPerfil: true },
+      // El resto sin duplicar
+      ...sortedAffiliates.filter(a => a.id_usuario_afi !== miPerfilAfiliado.id_usuario_afi),
+    ]
+  : sortedAffiliates;
+
   // ==================== RENDER PRINCIPAL ====================
   return (
     <div className="affiliates-section">
@@ -898,13 +922,15 @@ const afiliadosValidos = excelPreview.filter((a) => {
         </div>
       </div>
 
-
-     
-
       {/* ==================== GRID DE AFILIADOS ==================== */}
       <div className="users-grid">
-        {sortedAffiliates.map(affiliate => (
-          <div key={affiliate.id_usuario_afi} className={`user-card ${!affiliate.activo ? 'inactive' : ''}`}>
+        {afiliadosConMiPerfil.map(affiliate=> (
+          <div key={affiliate.id_usuario_afi} className={`user-card ${!affiliate.activo ? 'inactive' : ''} ${affiliate.esMiPerfil ? 'mi-perfil' : ''}`}>
+{affiliate.esMiPerfil && (
+  <div className="mi-perfil-badge">
+     👤 Tu perfil
+  </div>
+ )}
             <div className="user-card-header">
               <div className="user-info">
                 {affiliate.usuario?.foto ? (

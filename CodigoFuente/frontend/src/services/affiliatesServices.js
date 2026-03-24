@@ -12,7 +12,8 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
     createAffiliate: '/affiliates/create',        // POST - ruta específica
     availableUsers: '/affiliates/available/users',
     toggleStatus: (id) => `/affiliates/${id}/toggle-status`,
-    stats: '/affiliates/stats/count'
+    stats: '/affiliates/stats/count',
+    miPerfilAfiliado: '/affiliates/mi-perfil',
   }
 };
 
@@ -124,6 +125,23 @@ class AffiliatesService {
     }
 
     return affiliate;
+  }
+
+  // mi perfil de afiliado
+  async getMiPerfilAfiliado() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.miPerfilAfiliado);
+      return {
+        success: true,
+        data: this.processAffiliateData(data)
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo mi perfil de afiliado:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener mi perfil de afiliado'
+      };
+    }
   }
 
   /**

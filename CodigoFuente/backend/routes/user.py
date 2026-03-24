@@ -179,6 +179,27 @@ def user_to_response(user: UsuarioSistema, db: Session = None) -> dict:
         "intentos_fallidos": user.intentos_fallidos
     }
 
+# ============================================================================
+# MI PERFIL DE USUARIO — endpoint para el usuario autenticado
+# ============================================================================
+
+@router.get("/mi-perfil", response_model=UserListResponse)
+def get_mi_perfil(
+    payload: dict = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Devuelve el perfil del usuario autenticado.
+    No requiere permisos especiales — cualquier usuario puede ver su propio perfil.
+    """
+    current_user = get_current_user(payload, db)
+ 
+    if not current_user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+ 
+    return user_to_response(current_user, db)
+ 
+ 
 # ========================================
 # LISTAR USUARIOS
 # ========================================

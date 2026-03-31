@@ -57,9 +57,10 @@
     55px       /* # */
     150px      /* Factura */
     110px      /* Emisión */
-    90px       /* Código */
-    minmax(200px, 200px)  /* Afiliado */
-    140px      /* Meses Adeudo */
+    100px       /* Medidor*/
+    100px       /* Código */
+    minmax(130px, 130px)  /* Afiliado */
+    150px      /* Meses Adeudo */
     100px      /* Total */
     110px      /* Saldo */
     100px      /* Estado */
@@ -122,28 +123,64 @@
 }
 
 /* ==================== ITEMS DE LISTA ==================== */
+
+/* ==================== HEADER + ITEM — 12 columnas ==================== */
+.payments-invoices-header,
 .payments-invoices-item {
   display: grid;
-  grid-template-columns: 
-    55px       /* # */
-    150px      /* Factura */
-    110px      /* Emisión */
-    90px       /* Código */
-    minmax(200px, 210px)  /* Afiliado */
-    100px      /* Meses Adeudo */
-    100px      /* Total */
-    110px      /* Saldo */
-    120px      /* Estado */
-    130px      /* Comprobante */
-    130px;     /* Acciones */
-  
+  grid-template-columns:
+    55px                  /* # */
+    120px                 /* Factura */
+    100px                 /* Emisión */
+    100px                 /* Medidor ✅ nuevo */
+    80px                  /* Código */
+    minmax(130px, 150px)  /* Afiliado */
+    100px                 /* Meses Adeudo */
+    80px                 /* Total */
+    80px                 /* Saldo */
+    120px                 /* Estado */
+    120px                 /* Comprobante */
+    130px;                /* Acciones */
   gap: 8px;
   padding: 14px 20px;
-  border-bottom: 1px solid #f1f5f9;
   align-items: center;
-  transition: all 0.2s ease;
-  position: relative;
-  background: white;
+}
+
+/* ==================== COLUMNA MEDIDOR ==================== */
+.pmt-inv-col-medidor {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pmt-inv-medidor-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+  color: #0369a1;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  padding: 5px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.pmt-inv-medidor-badge svg {
+  color: #0284c7;
+  flex-shrink: 0;
+}
+
+/* Sector debajo del nombre */
+.pmt-inv-usuario-sector {
+  font-size: 10px;
+  color: #64748b;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .payments-invoices-item:nth-child(even) {

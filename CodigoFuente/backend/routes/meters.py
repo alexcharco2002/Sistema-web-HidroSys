@@ -209,40 +209,30 @@ def listar_sectores_para_medidores(
     ]
 
 # endpoint para obtener "mi medidor" asignado al usuario autenticado, usado en el mapa de geolocalización para identificar "tu medidor":
-@router.get("/mi-medidor", response_model=MedidorListItem)
-def obtener_mi_medidor(
+@router.get("/mis-medidores", response_model=list[MedidorListItem])
+def mis_medidores(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
     """
-    Devuelve el medidor asignado al usuario autenticado.
-    Usado en el mapa de geolocalización para identificar 'tu medidor'.
+    Retorna todos los medidores asignados al usuario autenticado.
+    Un afiliado puede tener N medidores; se devuelven todos.
     """
     current_user = get_current_user(payload, db)
-
-    require_any_permission(
-        current_user,
-        db,
-        [
-            ("medidores", "lectura"),
-            ("medidores", "crud"),
-            ("geolocalizacion", "lectura"),
-            ("geolocalizacion", "crud"),
-        ]
-    )
-
-    # Buscar el usuario afiliado vinculado al usuario del sistema
-    usuario_afi = (
+ 
+    # Buscar el registro de afiliado vinculado al usuario del sistema
+    afiliado = (
         db.query(UsuarioAfiliado)
         .filter(UsuarioAfiliado.id_usuario_sistema == current_user.id_usuario_sistema)
         .first()
     )
-
-    if not usuario_afi:
-        raise HTTPException(status_code=404, detail="No tienes un usuario afiliado asociado")
-
-    # Buscar el medidor asignado a ese usuario afiliado
-    result = (
+ 
+    # Si el usuario no es afiliado, simplemente devuelve lista vacía (no es error)
+    if not afiliado:
+        return []
+ 
+    # Retornar TODOS los medidores de ese afiliado
+    medidores = (
         db.query(
             Medidor.id_medidor,
             Medidor.num_medidor,
@@ -261,16 +251,20 @@ def obtener_mi_medidor(
             ).label("nombre_afiliado")
         )
         .outerjoin(Sector, Sector.id_sector == Medidor.id_sector)
-        .outerjoin(UsuarioAfiliado, UsuarioAfiliado.id_usuario_afi == Medidor.id_usuario_afi)
-        .outerjoin(UsuarioSistema, UsuarioSistema.id_usuario_sistema == UsuarioAfiliado.id_usuario_sistema)
-        .filter(Medidor.id_usuario_afi == usuario_afi.id_usuario_afi)
-        .first()
+        .outerjoin(
+            UsuarioAfiliado,
+            UsuarioAfiliado.id_usuario_afi == Medidor.id_usuario_afi
+        )
+        .outerjoin(
+            UsuarioSistema,
+            UsuarioSistema.id_usuario_sistema == UsuarioAfiliado.id_usuario_sistema
+        )
+        .filter(Medidor.id_usuario_afi == afiliado.id_usuario_afi)
+        .all()
     )
-
-    if not result:
-        raise HTTPException(status_code=404, detail="No tienes un medidor asignado")
-
-    return result
+ 
+    return medidores
+ 
 
 # lista los medidores con filtros de búsqueda, sector, estado y asignación:
 @router.get("/", response_model=list[MedidorListItem])

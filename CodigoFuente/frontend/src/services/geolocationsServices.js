@@ -7,22 +7,23 @@
 import authService from './authServices';
 
 const API_CONFIG = {
-baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
   endpoints: {
-    medidores: '/meters',
-    sectores: '/sectors',
-    medidoresGeo: '/meters/geo/all', // Endpoint optimizado para geo
-    medidorGeo: (id) => `/meters/${id}/geo`, // Geo de un medidor específico
-    stats: '/meters/stats/geo', // Estadísticas geográficas
-    miMedidor:    '/meters/mi-medidor',   // ←  Endpoint para obtener el medidor del usuario autenticado
+    medidores:    '/meters',
+    sectores:     '/sectors',
+    medidoresGeo: '/meters/geo/all',
+    medidorGeo:   (id) => `/meters/${id}/geo`,
+    stats:        '/meters/stats/geo',
+    // ✅ CORREGIDO: ahora apunta al endpoint que retorna ARRAY de medidores
+    misMedidores: '/meters/mis-medidores',
   }
 };
 
 class GeolocalizacionService {
   constructor() {
     this.cachedMedidores = null;
-    this.cachedSectores = null;
-    this.lastUpdate = null;
+    this.cachedSectores  = null;
+    this.lastUpdate      = null;
   }
 
   /**
@@ -34,10 +35,10 @@ class GeolocalizacionService {
     const defaultOptions = {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
+        'Accept':        'application/json',
         'Authorization': `Bearer ${authService.getToken()}`
       },
-      timeout: 15000, // Más tiempo para cargas geográficas
+      timeout: 15000,
     };
 
     const finalOptions = {
@@ -59,7 +60,7 @@ class GeolocalizacionService {
     try {
       console.log(`🌐 GEO API Request: ${finalOptions.method} ${url}`);
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
+      const timeoutId  = setTimeout(() => controller.abort(), finalOptions.timeout);
 
       const response = await fetch(url, {
         ...finalOptions,
@@ -69,8 +70,8 @@ class GeolocalizacionService {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        let errorMessage = '';
+        const errorData    = await response.json().catch(() => ({}));
+        let   errorMessage = '';
 
         if (typeof errorData.detail === 'string') {
           errorMessage = errorData.detail;
@@ -86,7 +87,7 @@ class GeolocalizacionService {
       }
 
       const data = await response.json();
-      console.log(`✅ GEO API Response:`, data.length || 'OK');
+      console.log(`✅ GEO API Response:`, data.length ?? 'OK');
       return data;
 
     } catch (error) {
@@ -95,7 +96,6 @@ class GeolocalizacionService {
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
       }
-
       if (error.message.includes('Failed to fetch')) {
         throw new Error('No se pudo conectar con el servidor');
       }
@@ -110,24 +110,24 @@ class GeolocalizacionService {
   async getMedidoresGeo(filters = {}) {
     try {
       const allMedidores = [];
-      let skip = 0;
-      const limit = 500; // máximo permitido
+      let skip    = 0;
+      const limit = 500;
       let hasMore = true;
 
       while (hasMore) {
         const params = new URLSearchParams();
 
-        if (filters.search) params.append('search', filters.search);
-        if (filters.id_sector) params.append('id_sector', filters.id_sector);
-        if (filters.activo !== undefined) params.append('activo', filters.activo);
+        if (filters.search)              params.append('search',    filters.search);
+        if (filters.id_sector)           params.append('id_sector', filters.id_sector);
+        if (filters.activo !== undefined) params.append('activo',   filters.activo);
         if (filters.asignado !== undefined) params.append('asignado', filters.asignado);
 
         params.append('limit', limit);
-        params.append('skip', skip);
+        params.append('skip',  skip);
 
         const queryString = params.toString();
-        const endpoint = queryString 
-          ? `${API_CONFIG.endpoints.medidores}?${queryString}` 
+        const endpoint    = queryString
+          ? `${API_CONFIG.endpoints.medidores}?${queryString}`
           : API_CONFIG.endpoints.medidores;
 
         const data = await this.makeRequest(endpoint);
@@ -137,27 +137,24 @@ class GeolocalizacionService {
           break;
         }
 
-        // Filtrar solo medidores con coordenadas válidas
-        const medidoresConGeo = data.filter(m => 
-          m.latitud !== null && m.longitud !== null &&
+        const medidoresConGeo = data.filter(m =>
+          m.latitud  !== null && m.longitud !== null &&
           !isNaN(parseFloat(m.latitud)) && !isNaN(parseFloat(m.longitud))
         );
 
         allMedidores.push(...medidoresConGeo);
 
-        // Preparar siguiente batch
-        skip += limit;
+        skip   += limit;
         hasMore = data.length === limit;
       }
 
-      // Actualizar caché
       this.cachedMedidores = allMedidores;
-      this.lastUpdate = new Date();
+      this.lastUpdate      = new Date();
 
       return {
-        success: true,
-        data: allMedidores,
-        total: allMedidores.length,
+        success:    true,
+        data:       allMedidores,
+        total:      allMedidores.length,
         lastUpdate: this.lastUpdate
       };
 
@@ -166,28 +163,36 @@ class GeolocalizacionService {
       return {
         success: false,
         message: error.message || 'Error al obtener medidores',
-        data: []
+        data:    []
       };
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
   /**
-   * Obtener el medidor del usuario autenticado
-   * Devuelve { success, data } donde data es el medidor o null
+   * ✅ CORREGIDO: Obtener TODOS los medidores del usuario autenticado.
+   * El backend retorna un array (puede ser vacío, uno o varios medidores).
+   * Devuelve { success, data: MedidorListItem[] }
    */
-  async getMiMedidor() {
+  async getMisMedidores() {
     try {
-      const data = await this.makeRequest(API_CONFIG.endpoints.miMedidor);
-      return { success: true, data };
+      const data = await this.makeRequest(API_CONFIG.endpoints.misMedidores);
+
+      // El backend siempre retorna array; normalizamos por seguridad
+      const lista = Array.isArray(data) ? data : (data ? [data] : []);
+
+      return { success: true, data: lista };
+
     } catch (error) {
-      // 404 = el usuario no tiene medidor asignado, no es un error crítico
-      if (error.status === 404 || error.message?.includes('404')) {
-        return { success: false, data: null, sinMedidor: true };
+      // 404 = usuario no es afiliado, no es error crítico
+      if (error.message?.includes('404') || error.status === 404) {
+        return { success: true, data: [], sinMedidor: true };
       }
-      console.error('❌ Error obteniendo mi medidor:', error);
-      return { success: false, data: null, message: error.message };
+      console.error('❌ Error obteniendo mis medidores:', error);
+      return { success: false, data: [], message: error.message };
     }
   }
+  // ─────────────────────────────────────────────────────────────────────────
 
   /**
    * Obtener medidor específico con info geográfica
@@ -195,18 +200,10 @@ class GeolocalizacionService {
   async getMedidorGeoById(medidorId) {
     try {
       const data = await this.makeRequest(`${API_CONFIG.endpoints.medidores}/${medidorId}`);
-
-      return {
-        success: true,
-        data: data
-      };
-
+      return { success: true, data };
     } catch (error) {
       console.error('❌ Error obteniendo medidor geo:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener medidor'
-      };
+      return { success: false, message: error.message || 'Error al obtener medidor' };
     }
   }
 
@@ -216,21 +213,11 @@ class GeolocalizacionService {
   async getSectores() {
     try {
       const data = await this.makeRequest(API_CONFIG.endpoints.sectores);
-
       this.cachedSectores = data;
-
-      return {
-        success: true,
-        data: data
-      };
-
+      return { success: true, data };
     } catch (error) {
       console.error('❌ Error obteniendo sectores:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener sectores',
-        data: []
-      };
+      return { success: false, message: error.message || 'Error al obtener sectores', data: [] };
     }
   }
 
@@ -240,52 +227,41 @@ class GeolocalizacionService {
   async getMedidoresPorSector() {
     try {
       const medidoresResult = await this.getMedidoresGeo();
-      
-      if (!medidoresResult.success) {
-        return medidoresResult;
-      }
+      if (!medidoresResult.success) return medidoresResult;
 
-      const medidores = medidoresResult.data;
       const agrupados = {};
 
-      medidores.forEach(medidor => {
-        const sectorId = medidor.id_sector || 'sin_sector';
-        const sectorNombre = medidor.sector?.nombre_sector || 'Sin Sector';
+      medidoresResult.data.forEach(medidor => {
+        const sectorId     = medidor.id_sector     || 'sin_sector';
+        const sectorNombre = medidor.nombre_sector || 'Sin Sector';
 
         if (!agrupados[sectorId]) {
           agrupados[sectorId] = {
-            id_sector: sectorId === 'sin_sector' ? null : sectorId,
+            id_sector:    sectorId === 'sin_sector' ? null : sectorId,
             nombre_sector: sectorNombre,
-            medidores: [],
-            total: 0,
-            activos: 0,
-            inactivos: 0,
-            asignados: 0,
-            sin_asignar: 0
+            medidores:    [],
+            total:        0,
+            activos:      0,
+            inactivos:    0,
+            asignados:    0,
+            sin_asignar:  0
           };
         }
 
         agrupados[sectorId].medidores.push(medidor);
         agrupados[sectorId].total++;
-        
-        if (medidor.activo) agrupados[sectorId].activos++;
-        else agrupados[sectorId].inactivos++;
-        
-        if (medidor.id_usuario_afi) agrupados[sectorId].asignados++;
-        else agrupados[sectorId].sin_asignar++;
+
+        if (medidor.activo)          agrupados[sectorId].activos++;
+        else                          agrupados[sectorId].inactivos++;
+        if (medidor.id_usuario_afi)  agrupados[sectorId].asignados++;
+        else                          agrupados[sectorId].sin_asignar++;
       });
 
-      return {
-        success: true,
-        data: Object.values(agrupados)
-      };
+      return { success: true, data: Object.values(agrupados) };
 
     } catch (error) {
       console.error('❌ Error agrupando medidores por sector:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al agrupar medidores'
-      };
+      return { success: false, message: error.message || 'Error al agrupar medidores' };
     }
   }
 
@@ -295,115 +271,84 @@ class GeolocalizacionService {
   async getEstadisticasGeo() {
     try {
       const result = await this.getMedidoresGeo();
-      
-      if (!result.success) {
-        return result;
-      }
+      if (!result.success) return result;
 
       const medidores = result.data;
 
       const stats = {
-        total_medidores: medidores.length,
-        medidores_con_geo: medidores.filter(m => m.latitud && m.longitud).length,
-        medidores_sin_geo: medidores.filter(m => !m.latitud || !m.longitud).length,
-        medidores_activos: medidores.filter(m => m.activo).length,
-        medidores_inactivos: medidores.filter(m => !m.activo).length,
-        medidores_asignados: medidores.filter(m => m.id_usuario_afi).length,
+        total_medidores:       medidores.length,
+        medidores_con_geo:     medidores.filter(m =>  m.latitud && m.longitud).length,
+        medidores_sin_geo:     medidores.filter(m => !m.latitud || !m.longitud).length,
+        medidores_activos:     medidores.filter(m =>  m.activo).length,
+        medidores_inactivos:   medidores.filter(m => !m.activo).length,
+        medidores_asignados:   medidores.filter(m =>  m.id_usuario_afi).length,
         medidores_sin_asignar: medidores.filter(m => !m.id_usuario_afi).length,
-        sectores_unicos: [...new Set(medidores.map(m => m.id_sector).filter(Boolean))].length,
-        cobertura_geo: 0
+        sectores_unicos:       [...new Set(medidores.map(m => m.id_sector).filter(Boolean))].length,
+        cobertura_geo:         0
       };
 
-      stats.cobertura_geo = stats.total_medidores > 0 
+      stats.cobertura_geo = stats.total_medidores > 0
         ? ((stats.medidores_con_geo / stats.total_medidores) * 100).toFixed(1)
         : 0;
 
-      // Calcular centro geográfico (centroide)
       if (medidores.length > 0) {
-        const latitudes = medidores.map(m => parseFloat(m.latitud)).filter(Boolean);
+        const latitudes  = medidores.map(m => parseFloat(m.latitud)).filter(Boolean);
         const longitudes = medidores.map(m => parseFloat(m.longitud)).filter(Boolean);
 
         if (latitudes.length > 0 && longitudes.length > 0) {
           stats.centro = {
-            lat: latitudes.reduce((a, b) => a + b, 0) / latitudes.length,
+            lat: latitudes.reduce((a, b)  => a + b, 0) / latitudes.length,
             lng: longitudes.reduce((a, b) => a + b, 0) / longitudes.length
           };
-
-          // Calcular bounds (límites del mapa)
           stats.bounds = {
             norte: Math.max(...latitudes),
-            sur: Math.min(...latitudes),
-            este: Math.max(...longitudes),
+            sur:   Math.min(...latitudes),
+            este:  Math.max(...longitudes),
             oeste: Math.min(...longitudes)
           };
         }
       }
 
-      return {
-        success: true,
-        data: stats
-      };
+      return { success: true, data: stats };
 
     } catch (error) {
       console.error('❌ Error obteniendo estadísticas geo:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al obtener estadísticas'
-      };
+      return { success: false, message: error.message || 'Error al obtener estadísticas' };
     }
   }
 
   /**
-   * Buscar medidores cercanos a una coordenada
+   * Buscar medidores cercanos a una coordenada (fórmula de Haversine)
    */
   async getMedidoresCercanos(lat, lng, radioKm = 1) {
     try {
       const result = await this.getMedidoresGeo();
-      
-      if (!result.success) {
-        return result;
-      }
+      if (!result.success) return result;
 
-      const medidores = result.data;
-
-      // Calcular distancia usando fórmula de Haversine
       const calcularDistancia = (lat1, lon1, lat2, lon2) => {
-        const R = 6371; // Radio de la Tierra en km
+        const R    = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = 
-          Math.sin(dLat/2) * Math.sin(dLat/2) +
+        const a    =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
           Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-          Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       };
 
-      const medidoresCercanos = medidores
+      const medidoresCercanos = result.data
         .map(medidor => ({
           ...medidor,
-          distancia: calcularDistancia(
-            lat, 
-            lng, 
-            parseFloat(medidor.latitud), 
-            parseFloat(medidor.longitud)
-          )
+          distancia: calcularDistancia(lat, lng, parseFloat(medidor.latitud), parseFloat(medidor.longitud))
         }))
         .filter(medidor => medidor.distancia <= radioKm)
         .sort((a, b) => a.distancia - b.distancia);
 
-      return {
-        success: true,
-        data: medidoresCercanos,
-        total: medidoresCercanos.length
-      };
+      return { success: true, data: medidoresCercanos, total: medidoresCercanos.length };
 
     } catch (error) {
       console.error('❌ Error buscando medidores cercanos:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al buscar medidores cercanos'
-      };
+      return { success: false, message: error.message || 'Error al buscar medidores cercanos' };
     }
   }
 
@@ -415,112 +360,54 @@ class GeolocalizacionService {
       const data = await this.makeRequest(`${API_CONFIG.endpoints.medidores}/${medidorId}`, {
         method: 'PUT',
         body: {
-          latitud: coordenadas.latitud,
+          latitud:  coordenadas.latitud,
           longitud: coordenadas.longitud,
-          altitud: coordenadas.altitud || null
+          altitud:  coordenadas.altitud || null
         }
       });
 
-      // Limpiar caché
       this.clearCache();
-
-      return {
-        success: true,
-        data: data,
-        message: 'Coordenadas actualizadas exitosamente'
-      };
+      return { success: true, data, message: 'Coordenadas actualizadas exitosamente' };
 
     } catch (error) {
       console.error('❌ Error actualizando coordenadas:', error);
-      return {
-        success: false,
-        message: error.message || 'Error al actualizar coordenadas'
-      };
+      return { success: false, message: error.message || 'Error al actualizar coordenadas' };
     }
   }
 
   /**
-   * Validar coordenadas
+   * Validar coordenadas (con validación específica para Ecuador)
    */
   validarCoordenadas(lat, lng) {
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
 
-    if (isNaN(latNum) || isNaN(lngNum)) {
-      return {
-        valido: false,
-        mensaje: 'Las coordenadas deben ser números válidos'
-      };
-    }
+    if (isNaN(latNum) || isNaN(lngNum))
+      return { valido: false, mensaje: 'Las coordenadas deben ser números válidos' };
+    if (latNum < -90 || latNum > 90)
+      return { valido: false, mensaje: 'La latitud debe estar entre -90 y 90' };
+    if (lngNum < -180 || lngNum > 180)
+      return { valido: false, mensaje: 'La longitud debe estar entre -180 y 180' };
+    if (latNum < -5 || latNum > 2)
+      return { valido: false, mensaje: 'La latitud parece estar fuera de Ecuador', advertencia: true };
+    if (lngNum < -92 || lngNum > -75)
+      return { valido: false, mensaje: 'La longitud parece estar fuera de Ecuador', advertencia: true };
 
-    if (latNum < -90 || latNum > 90) {
-      return {
-        valido: false,
-        mensaje: 'La latitud debe estar entre -90 y 90'
-      };
-    }
-
-    if (lngNum < -180 || lngNum > 180) {
-      return {
-        valido: false,
-        mensaje: 'La longitud debe estar entre -180 y 180'
-      };
-    }
-
-    // Validación específica para Ecuador (aproximada)
-    if (latNum < -5 || latNum > 2) {
-      return {
-        valido: false,
-        mensaje: 'La latitud parece estar fuera de Ecuador',
-        advertencia: true
-      };
-    }
-
-    if (lngNum < -92 || lngNum > -75) {
-      return {
-        valido: false,
-        mensaje: 'La longitud parece estar fuera de Ecuador',
-        advertencia: true
-      };
-    }
-
-    return {
-      valido: true,
-      mensaje: 'Coordenadas válidas'
-    };
+    return { valido: true, mensaje: 'Coordenadas válidas' };
   }
 
-  /**
-   * Obtener medidores desde caché
-   */
-  getCachedMedidores() {
-    return this.cachedMedidores || [];
-  }
+  getCachedMedidores()  { return this.cachedMedidores || []; }
+  getCachedSectores()   { return this.cachedSectores  || []; }
 
-  /**
-   * Obtener sectores desde caché
-   */
-  getCachedSectores() {
-    return this.cachedSectores || [];
-  }
-
-  /**
-   * Limpiar caché
-   */
   clearCache() {
     this.cachedMedidores = null;
-    this.cachedSectores = null;
-    this.lastUpdate = null;
+    this.cachedSectores  = null;
+    this.lastUpdate      = null;
   }
 
-  /**
-   * Verificar si el caché es reciente (< 5 minutos)
-   */
   isCacheReciente() {
     if (!this.lastUpdate) return false;
-    const ahora = new Date();
-    const diferencia = (ahora - this.lastUpdate) / 1000 / 60; // en minutos
-    return diferencia < 5;
+    return ((new Date() - this.lastUpdate) / 60000) < 5;
   }
 }
 

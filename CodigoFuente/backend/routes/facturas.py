@@ -12,6 +12,8 @@ from decimal import Decimal
 from models.factura import Factura
 from models.detalle_factura import DetalleFactura
 from models.iva import IVA
+from models.lectura import Lectura
+from models.meter import Medidor
 from models.sector import Sector
 from models.servicio import Servicio
 from models.user import UsuarioSistema
@@ -124,7 +126,7 @@ def require_permission(user: UsuarioSistema, db: Session, module: str, action: s
         )
 
 # ========================================
-# LISTAR servicios para aplicar a afiliados opcional 
+# LISTAR servicios para aplicar a afiliados  
 # ========================================
 @router.get("/activos-facturacion", response_model=List[ServicioResponse])
 def listar_servicios_para_facturacion(
@@ -147,11 +149,6 @@ def listar_servicios_para_facturacion(
     return servicios
 
 
-
-# ========================================
-# LISTAR FACTURAS - COMPLETO CON TODOS LOS CAMPOS
-# ========================================
-
 @router.get("/", response_model=List[dict])
 def listar_facturas_optimizado(
     search: Optional[str] = Query(None),
@@ -163,95 +160,97 @@ def listar_facturas_optimizado(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Listar facturas con TODOS los campos necesarios para el frontend.
-    Incluye: factura, cliente, consumo, detalles.
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "facturas", "lectura")
 
     try:
         # ========================================
-        # QUERY PRINCIPAL - FACTURAS COMPLETAS
+        # QUERY PRINCIPAL — solo facturas reales ✅
         # ========================================
         query = (
             db.query(
-                # ===== DATOS DE FACTURA =====
+                # ===== MEDIDOR =====
+                Medidor.id_medidor,
+                Medidor.num_medidor,
+
+                # ===== FACTURA =====
                 Factura.id_factura,
                 Factura.num_factura,
                 Factura.periodo,
                 Factura.fecha_emision,
                 Factura.estado_factura,
-                
-                # DATOS DE CONSUMO Y VALORES
                 Factura.consumo_m3,
                 Factura.exceso_m3,
                 Factura.valor_consumo,
                 Factura.valor_exceso,
-                
-                # DATOS DE CÁLCULO
                 Factura.subtotal,
                 Factura.descuento,
                 Factura.impuesto,
                 Factura.total,
-                
-                # ===== DATOS DEL AFILIADO =====
+
+                # ===== AFILIADO =====
                 UsuarioAfiliado.id_usuario_afi,
                 UsuarioAfiliado.cod_usuario_afi,
- 
-                
-                # ===== DATOS DEL USUARIO SISTEMA =====
+
+                # ===== USUARIO SISTEMA =====
                 func.concat(
                     func.coalesce(UsuarioSistema.nombres, ''),
                     ' ',
                     func.coalesce(UsuarioSistema.apellidos, '')
                 ).label('nombre_completo'),
-                UsuarioSistema.cedula,        
-                UsuarioSistema.direccion,   
-                UsuarioSistema.telefono,      
-                UsuarioSistema.email,         
-                
-                # ===== DATOS DEL SECTOR =====
+                UsuarioSistema.cedula,
+                UsuarioSistema.direccion,
+                UsuarioSistema.telefono,
+                UsuarioSistema.email,
+
+                # ===== SECTOR =====
                 Sector.nombre_sector,
             )
-            # ✅ Joins necesarios
-            .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            # ✅ INNER JOINs — solo registros con factura real
+            .join(Lectura, Factura.id_lectura == Lectura.id_lectura)
+            .join(Medidor, Lectura.id_medidor == Medidor.id_medidor)
+            .join(UsuarioAfiliado, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
+            .filter(
+                Medidor.activo == True,
+                UsuarioAfiliado.activo == True,
+            )
         )
 
         # ========================================
-        # 🔍 FILTROS
+        # FILTROS
         # ========================================
         if search:
             search_pattern = f"%{search}%"
             query = query.filter(
                 or_(
-                    Factura.num_factura.ilike(f"%{search}%"),
+                    Factura.num_factura.ilike(search_pattern),
                     func.concat(
                         func.coalesce(UsuarioSistema.nombres, ''),
                         ' ',
                         func.coalesce(UsuarioSistema.apellidos, '')
                     ).ilike(search_pattern),
-                    UsuarioSistema.cedula.ilike(f"%{search}%"),
-                    cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(f"%{search}%"),
-                 
+                    UsuarioSistema.cedula.ilike(search_pattern),
+                    cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
+                    Medidor.num_medidor.ilike(search_pattern),
                 )
             )
 
         if id_usuario_afi:
-            query = query.filter(Factura.id_usuario_afi == id_usuario_afi)
+            query = query.filter(Medidor.id_usuario_afi == id_usuario_afi)
 
         if periodo:
+            # ✅ Filtro directo, sin NULL
             query = query.filter(Factura.periodo == periodo)
 
         if estado_factura:
             query = query.filter(Factura.estado_factura == estado_factura)
 
         # ========================================
-        # 📊 ORDENAR Y PAGINAR
+        # ORDENAR Y PAGINAR
         # ========================================
-        facturas = (
+        resultados = (
             query
             .order_by(Factura.fecha_emision.desc())
             .offset(skip)
@@ -260,11 +259,13 @@ def listar_facturas_optimizado(
         )
 
         # ========================================
-        # OBTENER DETALLES DE TODAS LAS FACTURAS (1 QUERY)
+        # DETALLES POR FACTURA
         # ========================================
-        if facturas:
-            ids_facturas = [f.id_factura for f in facturas]
-            
+        detalles_por_factura = {}
+
+        if resultados:
+            ids_facturas = [r.id_factura for r in resultados]
+
             detalles_query = (
                 db.query(
                     DetalleFactura.id_detalle,
@@ -274,12 +275,10 @@ def listar_facturas_optimizado(
                     DetalleFactura.subtotal_detalle,
                 )
                 .filter(DetalleFactura.id_factura.in_(ids_facturas))
-                .order_by(DetalleFactura.id_detalle)  # 👈 Ordenar para consistencia
+                .order_by(DetalleFactura.id_detalle)
                 .all()
             )
-            
-            # Agrupar detalles por id_factura
-            detalles_por_factura = {}
+
             for d in detalles_query:
                 if d.id_factura not in detalles_por_factura:
                     detalles_por_factura[d.id_factura] = []
@@ -287,61 +286,47 @@ def listar_facturas_optimizado(
                     "id_detalle": d.id_detalle,
                     "tipo_detalle": d.tipo_detalle,
                     "descripcion": d.descripcion,
-                    "subtotal_detalle": float(d.subtotal_detalle),  # 👈 NOMBRE CORRECTO
+                    "subtotal_detalle": float(d.subtotal_detalle),
                 })
-        else:
-            detalles_por_factura = {}
 
-        print(f"✅ Total facturas encontradas: {len(facturas)}")
+        print(f"✅ Total facturas encontradas: {len(resultados)}")
 
         # ========================================
-        # 🔄 FORMATEAR RESPUESTA COMPLETA
+        # RESPUESTA PLANA — solo datos reales ✅
         # ========================================
         return [
             {
-                # ===== DATOS PRINCIPALES DE FACTURA =====
-                "id_factura": f.id_factura,
-                "num_factura": f.num_factura,
-                "periodo": f.periodo,
-                "fecha_emision": f.fecha_emision.isoformat(),
-                "estado_factura": f.estado_factura,
-                
-                # ===== DATOS DE CONSUMO =====
-                "consumo_m3": f.consumo_m3 or 0,
-                "exceso_m3": f.exceso_m3 or 0,
-                "valor_consumo": float(f.valor_consumo) if f.valor_consumo else 0.0,
-                "valor_exceso": float(f.valor_exceso) if f.valor_exceso else 0.0,
-                
-                # ===== DATOS DE CÁLCULO =====
-                "subtotal": float(f.subtotal) if f.subtotal else 0.0,
-                "descuento": float(f.descuento) if f.descuento else 0.0,
-                "impuesto": float(f.impuesto) if f.impuesto else 0.0,
-                "total": float(f.total),
-                
-                # ===== USUARIO AFILIADO (estructura completa) =====
-                "usuario_afiliado": {
-                    "id_usuario_afi": f.id_usuario_afi,
-                    "cod_usuario_afi": f.cod_usuario_afi,
-                    
-                    # Usuario Sistema (con todos los campos)
-                    "usuario_sistema": {
-                        "nombre_completo": f.nombre_completo.strip() if f.nombre_completo else "Sin nombre",
-                        "cedula": f.cedula,         
-                        "direccion": f.direccion,     
-                        "telefono": f.telefono,    
-                        "email": f.email,         
-                    },
-                    
-                    # Sector
-                    "sector": {
-                        "nombre_sector": f.nombre_sector or "Sin sector"
-                    }
-                },
-                
-                # ===== DETALLES (con nombre correcto) =====
-                "detalles": detalles_por_factura.get(f.id_factura, []),
+                "id_medidor":       r.id_medidor,
+                "num_medidor":      r.num_medidor or "Sin medidor",
+
+                "id_factura":       r.id_factura,
+                "num_factura":      r.num_factura,
+                "periodo":          r.periodo,
+                "fecha_emision":    r.fecha_emision.isoformat(),
+                "estado_factura":   r.estado_factura,
+
+                "consumo_m3":       r.consumo_m3 or 0,
+                "exceso_m3":        r.exceso_m3 or 0,
+                "valor_consumo":    float(r.valor_consumo) if r.valor_consumo else 0.0,
+                "valor_exceso":     float(r.valor_exceso) if r.valor_exceso else 0.0,
+
+                "subtotal":         float(r.subtotal) if r.subtotal else 0.0,
+                "descuento":        float(r.descuento) if r.descuento else 0.0,
+                "impuesto":         float(r.impuesto) if r.impuesto else 0.0,
+                "total":            float(r.total),
+
+                "id_usuario_afi":   r.id_usuario_afi,
+                "cod_usuario_afi":  r.cod_usuario_afi,
+                "nombre_completo":  r.nombre_completo.strip() if r.nombre_completo else "Sin nombre",
+                "cedula":           r.cedula,
+                "direccion":        r.direccion,
+                "telefono":         r.telefono,
+                "email":            r.email,
+                "nombre_sector":    r.nombre_sector or "Sin sector",
+
+                "detalles": detalles_por_factura.get(r.id_factura, []),
             }
-            for f in facturas
+            for r in resultados
         ]
 
     except Exception as e:
@@ -351,6 +336,8 @@ def listar_facturas_optimizado(
             status_code=500,
             detail=f"Error al listar facturas: {str(e)}"
         )
+
+
 
 # ========================================
 # ESTADÍSTICAS DE FACTURACIÓN

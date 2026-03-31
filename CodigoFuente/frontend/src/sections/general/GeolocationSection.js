@@ -29,7 +29,7 @@ const MARKER_COLORS = {
 
 // ─── SVG para el pin de Google Maps ─────────────────────────────────────────
 const buildPinSvg = (color, size = 30, isCurrentUser = false) => {
-  const s = isCurrentUser ? size + 8 : size;
+  const s     = isCurrentUser ? size + 8 : size;
   const emoji = isCurrentUser ? '🏠' : '📍';
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s + 8}" viewBox="0 0 40 48">
@@ -97,14 +97,16 @@ const GeolocationSection = () => {
   const [selectedMedidor,  setSelectedMedidor]  = useState(null);
   const [error,            setError]            = useState(null);
   const [estadisticas,     setEstadisticas]     = useState(null);
-  const [,      setCurrentUser]      = useState(null);
+  const [,                 setCurrentUser]      = useState(null);
   const [permissions,      setPermissions]      = useState({ canRead: false, canUpdate: false });
   const [mapInstance,      setMapInstance]      = useState(null);
   const [userLocation,     setUserLocation]     = useState(null);
-  const [, setLocationError]                    = useState(null);
+  const [,                 setLocationError]    = useState(null);
 
-  // ── Estado del medidor del usuario autenticado ────────────────────────────
-  const [miMedidor, setMiMedidor] = useState(null);
+  // ── ✅ CORREGIDO: Set de IDs de los medidores del usuario autenticado ─────
+  // Antes: const [miMedidor, setMiMedidor] = useState(null);  → solo 1
+  // Ahora: Set con todos los id_medidor que le pertenecen     → N medidores
+  const [misMedidoresIds, setMisMedidoresIds] = useState(new Set());
 
   // ── Estado de la leyenda desplegable ──────────────────────────────────────
   const [legendaAbierta, setLegendaAbierta] = useState(false);
@@ -131,18 +133,27 @@ const GeolocationSection = () => {
     setLoading(true);
     setError(null);
     try {
-      const [medidoresResult, sectoresResult, statsResult, miMedidorResult] = await Promise.all([
+      const [medidoresResult, sectoresResult, statsResult, misMedidoresResult] = await Promise.all([
         geolocalizacionService.getMedidoresGeo(),
         geolocalizacionService.getSectores(),
         geolocalizacionService.getEstadisticasGeo(),
-        geolocalizacionService.getMiMedidor(),   // ← nuevo
+        // ✅ CORREGIDO: getMisMedidores() retorna array
+        geolocalizacionService.getMisMedidores(),
       ]);
+
+      // ✅ Construir Set de IDs a partir del array retornado
+      const idsSet = new Set(
+        misMedidoresResult.success && Array.isArray(misMedidoresResult.data)
+          ? misMedidoresResult.data.map(m => m.id_medidor)
+          : []
+      );
+      setMisMedidoresIds(idsSet);
 
       if (medidoresResult.success) {
         const sorted = [...medidoresResult.data].sort((a, b) => {
-          const miId = miMedidorResult.data?.id_medidor;
-          const isA  = a.id_medidor === miId;
-          const isB  = b.id_medidor === miId;
+          // ✅ CORREGIDO: usar Set para el sort
+          const isA = idsSet.has(a.id_medidor);
+          const isB = idsSet.has(b.id_medidor);
           if (isA && !isB) return -1;
           if (!isA && isB) return  1;
           const isAssA = a.id_usuario_afi != null;
@@ -157,9 +168,8 @@ const GeolocationSection = () => {
         setError(medidoresResult.message);
       }
 
-      if (sectoresResult.success)   setSectores(sectoresResult.data);
-      if (statsResult.success)      setEstadisticas(statsResult.data);
-      if (miMedidorResult.success)  setMiMedidor(miMedidorResult.data);
+      if (sectoresResult.success) setSectores(sectoresResult.data);
+      if (statsResult.success)    setEstadisticas(statsResult.data);
 
     } catch {
       setError('Error al cargar datos de geolocalización');
@@ -180,8 +190,8 @@ const GeolocationSection = () => {
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => setUserLocation({
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
+        lat:      pos.coords.latitude,
+        lng:      pos.coords.longitude,
         accuracy: pos.coords.accuracy,
       }),
       (err) => {
@@ -203,18 +213,18 @@ const GeolocationSection = () => {
         filterSector === 'all' || m.id_sector === parseInt(filterSector);
       const matchesStatus =
         filterStatus === 'all' ||
-        (filterStatus === 'active'   && m.activo)  ||
+        (filterStatus === 'active'   &&  m.activo) ||
         (filterStatus === 'inactive' && !m.activo);
       const matchesAsig =
         filterAsignacion === 'all' ||
-        (filterAsignacion === 'assigned'   && m.id_usuario_afi)  ||
+        (filterAsignacion === 'assigned'   &&  m.id_usuario_afi) ||
         (filterAsignacion === 'unassigned' && !m.id_usuario_afi);
       return matchesSearch && matchesSector && matchesStatus && matchesAsig;
     })
     .sort((a, b) => {
-      const miId = miMedidor?.id_medidor;
-      const isA  = a.id_medidor === miId;
-      const isB  = b.id_medidor === miId;
+      // ✅ CORREGIDO: usar Set para el sort del filtro
+      const isA = misMedidoresIds.has(a.id_medidor);
+      const isB = misMedidoresIds.has(b.id_medidor);
       if (isA && !isB) return -1;
       if (!isA && isB) return  1;
       const isAssA = a.id_usuario_afi != null;
@@ -427,8 +437,8 @@ const GeolocationSection = () => {
             </h3>
             <div className="sidebar-list">
               {filteredMedidores.map(medidor => {
-                // ── Comparar por id_medidor usando miMedidor del endpoint ──
-                const isCurrentUser = miMedidor && medidor.id_medidor === miMedidor.id_medidor;
+                // ✅ CORREGIDO: consulta en el Set en O(1)
+                const isCurrentUser = misMedidoresIds.has(medidor.id_medidor);
                 return (
                   <div
                     key={medidor.id_medidor}
@@ -507,8 +517,8 @@ const GeolocationSection = () => {
             >
               {filteredMedidores.map((medidor) => {
                 if (!medidor.latitud || !medidor.longitud) return null;
-                // ── Comparar por id_medidor ──────────────────────────────
-                const isCurrentUser = miMedidor && medidor.id_medidor === miMedidor.id_medidor;
+                // ✅ CORREGIDO: consulta en el Set
+                const isCurrentUser = misMedidoresIds.has(medidor.id_medidor);
                 const { color, size } = getMedidorStyle(medidor, isCurrentUser);
                 return (
                   <AdvancedMarker
@@ -555,10 +565,11 @@ const GeolocationSection = () => {
                 >
                   <div className="marker-popup" style={{ minWidth: 200 }}>
                     <h4 style={{ margin: '0 0 6px', fontWeight: 700 }}>
-                      {miMedidor && selectedMedidor.id_medidor === miMedidor.id_medidor ? '🏠' : '📍'}{' '}
+                      {/* ✅ CORREGIDO: consulta en el Set */}
+                      {misMedidoresIds.has(selectedMedidor.id_medidor) ? '🏠' : '📍'}{' '}
                       {selectedMedidor.num_medidor}
                     </h4>
-                    {miMedidor && selectedMedidor.id_medidor === miMedidor.id_medidor && (
+                    {misMedidoresIds.has(selectedMedidor.id_medidor) && (
                       <p style={{ color: '#7c3aed', fontWeight: 600, margin: '0 0 4px' }}>👤 Tu medidor</p>
                     )}
                     {selectedMedidor.nombre_afiliado ? (
@@ -603,7 +614,7 @@ const GeolocationSection = () => {
               >
                 <span className="legend-title">Leyenda</span>
                 {legendaAbierta
-                  ? <ChevronUp  className="w-3 h-3" />
+                  ? <ChevronUp   className="w-3 h-3" />
                   : <ChevronDown className="w-3 h-3" />
                 }
               </button>
@@ -611,10 +622,10 @@ const GeolocationSection = () => {
               {legendaAbierta && (
                 <div className="legend-items">
                   {[
-                    { color: MARKER_COLORS.currentUser, label: 'Tu medidor' },
+                    { color: MARKER_COLORS.currentUser, label: 'Tu medidor'        },
                     { color: MARKER_COLORS.active,      label: 'Activo y Asignado' },
-                    { color: MARKER_COLORS.unassigned,  label: 'Sin Asignar' },
-                    { color: MARKER_COLORS.inactive,    label: 'Inactivo' },
+                    { color: MARKER_COLORS.unassigned,  label: 'Sin Asignar'       },
+                    { color: MARKER_COLORS.inactive,    label: 'Inactivo'          },
                   ].map(({ color, label }) => (
                     <div key={label} className="legend-item">
                       <div className="legend-dot" style={{ backgroundColor: color }} />

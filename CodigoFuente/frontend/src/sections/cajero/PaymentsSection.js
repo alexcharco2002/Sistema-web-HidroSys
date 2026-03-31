@@ -37,7 +37,7 @@ import {
   FileText,
   CreditCard,
   Plus, ChevronDown,
-  Wallet, XCircle, FileCheck
+  Wallet, XCircle, FileCheck, Gauge
 } from 'lucide-react';
 
 const PaymentsSection = () => {
@@ -1530,140 +1530,130 @@ const closePagoMultipleModal = () => {
         <div className="periodo-selection-page">
           <div className="section-header">
             <div className="section-title">
-            <DollarSign className="w-7 h-7 text-blue-600" />
-            <div>
-              <h2>Gestión de Pagos</h2>
-              <p className="section-subtitle">
-                Gestiona la información de los pagos
-              </p>
+              <DollarSign className="w-7 h-7 text-blue-600" />
+              <div>
+                <h2>Gestión de Pagos</h2>
+                <p className="section-subtitle">
+                  Gestiona la información de los pagos
+                </p>
+              </div>
             </div>
-        </div>
-
           </div>
-          
 
           {/* SECCIÓN 1: PERÍODOS RECIENTES */}
-{/* SECCIÓN 1: PERÍODOS RECIENTES — PAGOS
-    Ahora muestra barras de cobrado/pendiente igual que facturas,
-    más el conteo de facturas pagadas vs total.
-
-    CSS: reutiliza periodos-recientes-facturas.css (cobrado + pendiente).
-    No necesitas CSS nuevo.
-*/}
-
-<div className="periodo-selector-container">
-  <div className="periodo-selector-header">
-    <div>
-      <h3>
-        <CalendarDays className="w-5 h-5 text-blue-600 mr-2" />
-        Períodos de Pagos
-      </h3>
-      <p className="periodo-selector-subtitle">
-        Selecciona el período para gestionar pagos
-      </p>
-    </div>
-  </div>
-
-  <div className="periodos-grid">
-    {(() => {
-      const hoy = new Date();
-      const mesActual = hoy.getMonth() + 1;
-      const anioActual = hoy.getFullYear();
-
-      const calcularDiferenciaMeses = (mes, anio) =>
-        (anio - anioActual) * 12 + (mes - mesActual);
-
-      const periodosRecientes = periodos
-        .filter(periodo => {
-          const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio);
-          return diff >= -2 && diff <= 2;
-        })
-        .sort((a, b) => {
-          if (a.anio !== b.anio) return b.anio - a.anio;
-          return b.mes - a.mes;
-        });
-
-      return periodosRecientes.map(periodo => {
-        const tieneFacturas  = periodo.tiene_facturas;
-        const esMesActual    = periodo.mes === mesActual && periodo.anio === anioActual;
-        const pctCobrado     = periodo.porcentaje_cobrado   ?? 0;
-        const pctPendiente   = periodo.porcentaje_pendiente ?? 0;
-        const todoCobrado    = pctCobrado >= 100;
-
-        return (
-          <button
-            key={`${periodo.mes}-${periodo.anio}`}
-            onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
-            className={`periodo-card hoverable ${esMesActual ? 'mes-actual' : ''}`}
-          >
-            {/* CABECERA */}
-            <div className="periodo-card-header">
-              <span className="periodo-card-title">
-                {periodo.nombre_mes} {periodo.anio}
-              </span>
-              {esMesActual && (
-                <span className="periodo-badge-actual">Actual</span>
-              )}
+          <div className="periodo-selector-container">
+            <div className="periodo-selector-header">
+              <div>
+                <h3>
+                  <CalendarDays className="w-5 h-5 text-blue-600 mr-2" />
+                  Períodos de Pagos
+                </h3>
+                <p className="periodo-selector-subtitle">
+                  Selecciona el período para gestionar pagos
+                </p>
+              </div>
             </div>
 
-            {/* INFO: facturas pagadas / total */}
-            <div className="periodo-card-info">
-              {tieneFacturas
-                ? `${periodo.total_pagadas} / ${periodo.total_facturas} facturas cobradas`
-                : 'Sin facturas aún'}
+            <div className="periodos-grid">
+              {(() => {
+                const hoy = new Date();
+                const mesActual = hoy.getMonth() + 1;
+                const anioActual = hoy.getFullYear();
+
+                const calcularDiferenciaMeses = (mes, anio) =>
+                  (anio - anioActual) * 12 + (mes - mesActual);
+
+                const periodosRecientes = periodos
+                  .filter(periodo => {
+                    const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio);
+                    return diff >= -2 && diff <= 2;
+                  })
+                  .sort((a, b) => {
+                    if (a.anio !== b.anio) return b.anio - a.anio;
+                    return b.mes - a.mes;
+                  });
+
+                return periodosRecientes.map(periodo => {
+                  const tieneFacturas  = periodo.tiene_facturas;
+                  const esMesActual    = periodo.mes === mesActual && periodo.anio === anioActual;
+                  const pctCobrado     = periodo.porcentaje_cobrado   ?? 0;
+                  const pctPendiente   = periodo.porcentaje_pendiente ?? 0;
+                  const todoCobrado    = pctCobrado >= 100;
+
+                  return (
+                    <button
+                      key={`${periodo.mes}-${periodo.anio}`}
+                      onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
+                      className={`periodo-card hoverable ${esMesActual ? 'mes-actual' : ''}`}
+                    >
+                      {/* CABECERA */}
+                      <div className="periodo-card-header">
+                        <span className="periodo-card-title">
+                          {periodo.nombre_mes} {periodo.anio}
+                        </span>
+                        {esMesActual && (
+                          <span className="periodo-badge-actual">Actual</span>
+                        )}
+                      </div>
+
+                      {/* INFO: facturas pagadas / total */}
+                      <div className="periodo-card-info">
+                        {tieneFacturas
+                          ? `${periodo.total_pagadas} / ${periodo.total_facturas} facturas cobradas`
+                          : 'Sin facturas aún'}
+                      </div>
+
+                      {/* BARRAS DE PROGRESO — solo si tiene facturas */}
+                      {tieneFacturas && (
+                        <>
+                          {/* Barra cobrado */}
+                          <div className="periodo-progress-section">
+                            <div className="periodo-progress-label">
+                              <CheckCircle className="w-3 h-3 text-green-600" />
+                              <span>Cobrado</span>
+                              <span className="periodo-progress-value">{pctCobrado}%</span>
+                            </div>
+                            <div className="periodo-progress-bar">
+                              <div
+                                className={`periodo-progress-fill cobrado ${todoCobrado ? 'complete' : ''}`}
+                                style={{ width: `${pctCobrado}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Barra pendiente */}
+                          <div className="periodo-progress-section">
+                            <div className="periodo-progress-label">
+                              <Clock className="w-3 h-3 text-yellow-600" />
+                              <span>Pendiente</span>
+                              <span className="periodo-progress-value">{pctPendiente}%</span>
+                            </div>
+                            <div className="periodo-progress-bar">
+                              <div
+                                className="periodo-progress-fill pendiente"
+                                style={{ width: `${pctPendiente}%` }}
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* ACCIÓN */}
+                      <div className="periodo-card-action">
+                        <span>
+                          {!tieneFacturas
+                            ? 'Sin actividad'
+                            : todoCobrado
+                              ? 'Ver pagos ✓'
+                              : 'Gestionar pagos'}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                });
+              })()}
             </div>
-
-            {/* BARRAS DE PROGRESO — solo si tiene facturas */}
-            {tieneFacturas && (
-              <>
-                {/* Barra cobrado */}
-                <div className="periodo-progress-section">
-                  <div className="periodo-progress-label">
-                    <CheckCircle className="w-3 h-3 text-green-600" />
-                    <span>Cobrado</span>
-                    <span className="periodo-progress-value">{pctCobrado}%</span>
-                  </div>
-                  <div className="periodo-progress-bar">
-                    <div
-                      className={`periodo-progress-fill cobrado ${todoCobrado ? 'complete' : ''}`}
-                      style={{ width: `${pctCobrado}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Barra pendiente */}
-                <div className="periodo-progress-section">
-                  <div className="periodo-progress-label">
-                    <Clock className="w-3 h-3 text-yellow-600" />
-                    <span>Pendiente</span>
-                    <span className="periodo-progress-value">{pctPendiente}%</span>
-                  </div>
-                  <div className="periodo-progress-bar">
-                    <div
-                      className="periodo-progress-fill pendiente"
-                      style={{ width: `${pctPendiente}%` }}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* ACCIÓN */}
-            <div className="periodo-card-action">
-              <span>
-                {!tieneFacturas
-                  ? 'Sin actividad'
-                  : todoCobrado
-                    ? 'Ver pagos ✓'
-                    : 'Gestionar pagos'}
-              </span>
-            </div>
-          </button>
-        );
-      });
-    })()}
-  </div>
-</div>
+          </div>
 
           {/* SECCIÓN 2: HISTORIAL DE PERÍODOS */}
           <div className="periodo-historial-container">
@@ -1999,6 +1989,7 @@ const closePagoMultipleModal = () => {
                     <span>#</span>
                     <span><FileText className="w-4 h-4" /> Factura</span>
                     <span><Calendar className="w-4 h-4" /> Emisión</span>
+                    <span><Gauge className="w-4 h-4" /> Medidor</span>
                     <span><IdCard className="w-4 h-4" /> Código</span>
                     <span><User className="w-4 h-4" /> Afiliado</span>
                     <span><Clock className="w-4 h-4" /> Meses Adeudo</span>
@@ -2013,44 +2004,35 @@ const closePagoMultipleModal = () => {
                   <div className="payments-invoices-body">
                     {sortedFacturas.length > 0 ? (
                       sortedFacturas.map((factura, index) => {
-                        
+
                         const saldoPendiente = calcularSaldoPendiente(factura);
                         const puedeRecibirPago = factura.estado_factura === 'pendiente' || factura.estado_factura === 'vencida';
-                        const idAfiliado = factura.usuario_afiliado?.id_usuario_afi;
+
+                        // ✅ acceso directo — estructura plana
+                        const idAfiliado = factura.id_usuario_afi;
                         const datosAdeudo = facturasPendientesPorAfiliado[idAfiliado];
 
-                        //  CALCULAR ADEUDO TOTAL (periodos anteriores + factura actual)
                         const calcularAdeudoTotal = () => {
-                          // Adeudo de periodos anteriores
                           const adeudoAnterior = datosAdeudo?.total_adeudado || 0;
-                          
-                          // Saldo pendiente de la factura actual
                           const saldoActual = saldoPendiente > 0 ? saldoPendiente : 0;
-                          
-                          // Total = adeudo anterior + saldo actual
                           return adeudoAnterior + saldoActual;
                         };
 
-                        const adeudoTotal = calcularAdeudoTotal();
-
-                        //  CALCULAR MESES DE ADEUDO (incluir mes actual si tiene saldo)
                         const calcularMesesAdeudo = () => {
                           const mesesAnteriores = datosAdeudo?.meses_adeudo || 0;
-                          
-                          // Si la factura actual tiene saldo pendiente, sumar 1 mes
                           const mesActual = saldoPendiente > 0 ? 1 : 0;
-                          
                           return mesesAnteriores + mesActual;
                         };
 
+                        const adeudoTotal = calcularAdeudoTotal();
                         const mesesAdeudoTotal = calcularMesesAdeudo();
 
                         return (
-                          <div 
-                            key={factura.id_factura} 
+                          <div
+                            key={factura.id_factura}
                             className={`payments-invoices-item ${
-                              factura.estado_factura === 'anulada' ? 'pmt-inv-anulada' : 
-                              factura.estado_factura === 'pagada' ? 'pmt-inv-pagada' :
+                              factura.estado_factura === 'anulada' ? 'pmt-inv-anulada' :
+                              factura.estado_factura === 'pagada'  ? 'pmt-inv-pagada'  :
                               factura.estado_factura === 'vencida' ? 'pmt-inv-vencida' : ''
                             }`}
                           >
@@ -2073,17 +2055,32 @@ const closePagoMultipleModal = () => {
                               <span>{formatDateShort(factura.fecha_emision)}</span>
                             </div>
 
-                            {/* Columna 4: Código Afiliado */}
-                            <div className="pmt-inv-col-codigo">
-                              {factura.usuario_afiliado?.cod_usuario_afi ?? '—'}
+                            {/* Columna 4: Medidor ✅ acceso directo */}
+                            <div className="pmt-inv-col-medidor">
+                              {factura.num_medidor ? (
+                                <span className="pmt-inv-medidor-badge">
+                                  <Gauge className="w-3 h-3" />
+                                  {factura.num_medidor}
+                                </span>
+                              ) : (
+                                <span className="pmt-inv-sin-dato">—</span>
+                              )}
                             </div>
 
-                            {/* Columna 5: Afiliado */}
+                            {/* Columna 5: Código Afiliado ✅ */}
+                            <div className="pmt-inv-col-codigo">
+                              {factura.cod_usuario_afi ?? '—'}
+                            </div>
+
+                            {/* Columna 6: Afiliado ✅ */}
                             <div className="pmt-inv-col-usuario">
-                              {factura.usuario_afiliado?.usuario_sistema ? (
+                              {factura.nombre_completo ? (
                                 <div className="pmt-inv-usuario-info">
                                   <span className="pmt-inv-usuario-nombre">
-                                    {factura.usuario_afiliado.usuario_sistema.nombre_completo} 
+                                    {factura.nombre_completo}
+                                  </span>
+                                  <span className="pmt-inv-usuario-sector">
+                                    {factura.nombre_sector}
                                   </span>
                                 </div>
                               ) : (
@@ -2091,62 +2088,35 @@ const closePagoMultipleModal = () => {
                               )}
                             </div>
 
-                            {/* Columna 6: Meses Adeudo */}
+                            {/* Columna 7: Meses Adeudo */}
                             <div className="pmt-inv-col-meses-adeudo">
                               {mesesAdeudoTotal > 0 &&
-                              (factura.estado_factura === 'pendiente' ||
-                              factura.estado_factura === 'vencida') ? (
-
+                              (factura.estado_factura === 'pendiente' || factura.estado_factura === 'vencida') ? (
                                 <span
                                   className={`pmt-meses-badge ${
-                                    mesesAdeudoTotal === 1
-                                      ? 'normal'      
-                                      : mesesAdeudoTotal > 2
-                                        ? 'urgente'  
-                                        : 'warning'   
+                                    mesesAdeudoTotal === 1 ? 'normal' :
+                                    mesesAdeudoTotal > 2   ? 'urgente' : 'warning'
                                   }`}
-                                  onClick={() => {
-                                    if (mesesAdeudoTotal > 1) {
-                                      openAdeudosModal(factura, datosAdeudo);
-                                    }
-                                  }}
-                                  style={{
-                                    cursor: mesesAdeudoTotal > 1 ? 'pointer' : 'default',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                  }}
-                                  title={
-                                    mesesAdeudoTotal === 1
-                                      ? 'Mes actual (sin adeudos)'
-                                      : 'Ver detalle de adeudos'
-                                  }
+                                  onClick={() => { if (mesesAdeudoTotal > 1) openAdeudosModal(factura, datosAdeudo); }}
+                                  style={{ cursor: mesesAdeudoTotal > 1 ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                  title={mesesAdeudoTotal === 1 ? 'Mes actual (sin adeudos)' : 'Ver detalle de adeudos'}
                                 >
                                   <Eye className="w-3 h-3" />
-
-                                  {mesesAdeudoTotal === 1
-                                    ? 'Mes actual'
-                                    : `${mesesAdeudoTotal} meses`
-                                  }
+                                  {mesesAdeudoTotal === 1 ? 'Mes actual' : `${mesesAdeudoTotal} meses`}
                                 </span>
-
                               ) : (
                                 <span className="text-gray-400">-</span>
                               )}
                             </div>
 
-
-                            {/* Columna 8: Total Factura */}
+                            {/* Columna 8: Total */}
                             <div className="pmt-inv-col-total">
                               <span className="pmt-inv-monto">{formatCurrency(factura.total)}</span>
                             </div>
 
-                            {/* Columna 9: Saldo Pendiente Factura Actual */}
+                            {/* Columna 9: Saldo */}
                             <div className="pmt-inv-col-total">
-                              <span 
-                                className="pmt-inv-monto font-bold" 
-                                style={{ color: saldoPendiente > 0 ? '#ef4444' : '#10b981' }}
-                              >
+                              <span className="pmt-inv-monto font-bold" style={{ color: saldoPendiente > 0 ? '#ef4444' : '#10b981' }}>
                                 {formatCurrency(saldoPendiente)}
                               </span>
                             </div>
@@ -2155,7 +2125,7 @@ const closePagoMultipleModal = () => {
                             <div className="pmt-inv-col-estado">
                               {getEstadoPagoBadge(factura)}
                             </div>
-                            
+
                             {/* Columna 11: Comprobante */}
                             <div className="pmt-inv-col-comprobante">
                               {factura.pagos && factura.pagos.length > 0 ? (
@@ -2187,11 +2157,7 @@ const closePagoMultipleModal = () => {
 
                             {/* Columna 12: Acciones */}
                             <div className="pmt-inv-col-acciones">
-                              <button 
-                                className="pmt-inv-btn pmt-inv-btn-view" 
-                                onClick={() => openModal('view-factura', factura)} 
-                                title="Ver factura y pagos"
-                              >
+                              <button className="pmt-inv-btn pmt-inv-btn-view" onClick={() => openModal('view-factura', factura)} title="Ver factura y pagos">
                                 <Eye className="w-4 h-4" />
                               </button>
 
@@ -2205,11 +2171,10 @@ const closePagoMultipleModal = () => {
                                   <DollarSign className="w-4 h-4" />
                                 </button>
                               )}
-                              
-                              {permissions.canDelete && 
-                                factura.estado_factura === 'pagada' && 
-                                factura.pagos && 
-                                factura.pagos.length > 0 && 
+
+                              {permissions.canDelete &&
+                                factura.estado_factura === 'pagada' &&
+                                factura.pagos?.length > 0 &&
                                 factura.pagos.some(p => p.estado_pago === 'REGISTRADO') && (
                                   <button
                                     className="pmt-inv-btn pmt-inv-btn-delete"
@@ -2220,7 +2185,6 @@ const closePagoMultipleModal = () => {
                                     <Ban className="w-4 h-4" />
                                   </button>
                                 )}
-
                             </div>
                           </div>
                         );
@@ -2232,12 +2196,12 @@ const closePagoMultipleModal = () => {
                         <p>
                           {searchTerm || filterStatus !== 'all'
                             ? 'No se encontraron facturas con los criterios de búsqueda.'
-                            : `No hay facturas para ${formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}`
-                          }
+                            : `No hay facturas para ${formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}`}
                         </p>
                       </div>
                     )}
                   </div>
+
                 </div>
               </div>
 

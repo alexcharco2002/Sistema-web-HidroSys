@@ -16,14 +16,14 @@
   display: grid;
   grid-template-columns: 
     55px       /* # */
-    130px      /* Número */
+    120px      /* Número */
     110px      /* Fecha */
     110px      /* Medidor - REDUCIDO */
     100px      /* Código Afi - REDUCIDO */
     1fr        /* Nombre Afi - FLEXIBLE (mínimo 200px) */
-    95px       /* Consumo */
-    150px      /* Detalles - AUMENTADO */
-    135px      /* Total */
+    110px       /* Consumo */
+    120px      /* Detalles - AUMENTADO */
+    115px      /* Total */
     110px      /* Estado */
     140px;     /* Acciones */
   gap: 8px;
@@ -85,14 +85,14 @@
   display: grid;
   grid-template-columns: 
     55px       /* # */
-    130px      /* Número */
+    120px      /* Número */
     110px      /* Fecha */
-    110px      /* Medidor - REDUCIDO */
+    90px      /* Medidor - REDUCIDO */
     100px      /* Código Afi - REDUCIDO */
     1fr        /* Nombre Afi - FLEXIBLE (mínimo 200px) */
     95px       /* Consumo */
     150px      /* Detalles - AUMENTADO */
-    105px      /* Total */
+    80px      /* Total */
     150px      /* Estado */
     140px;     /* Acciones */
   gap: 8px;

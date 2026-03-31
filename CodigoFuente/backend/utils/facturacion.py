@@ -43,15 +43,14 @@ def validar_datos_facturacion(
     
     periodo = f"{lectura.fecha_lectura.year}-{str(lectura.fecha_lectura.month).zfill(2)}"
     
-    # Verificar factura duplicada
+    # Verificar si ya existe factura activa para esta lectura
     factura_existente = db.query(Factura).filter(
-        Factura.id_usuario_afi == medidor.id_usuario_afi,
-        Factura.periodo == periodo,
-        Factura.estado_factura != 'anulada'  # ✅ Permitir si la anterior está anulada
+        Factura.id_lectura == lectura.id_lectura,
+        Factura.estado_factura != 'anulada'
     ).first()
     
     if factura_existente:
-        return False, f"Ya existe factura activa para el periodo {periodo}", None
+        return False, f"Ya existe factura activa para esta lectura en el periodo {periodo}", None
     
     datos = {
         'id_usuario_afi': medidor.id_usuario_afi,

@@ -1,15 +1,17 @@
-// src/sections/ReportsSection.js
+// src/sections/administrador/ReportsSection.js
 // MÓDULO DE GENERACIÓN DE REPORTES DEL SISTEMA
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import authService from '../../services/authServices';
 import reportsServices from '../../services/reportsServices';
 import './ReportsSection.css';
-import { 
-  FileText, Calendar, Search, BarChart3, Users, Droplet,
-  DollarSign, AlertCircle, CheckCircle,
-  RefreshCw, Loader, Settings, Database, MapPin, CreditCard
-  , Shield, Activity, Clock, ArrowLeft, Eraser, XCircle, User, TrendingUp,FileSpreadsheet, Printer
-} from 'lucide-react';
+
+// Iconos de Lucide React
+import { FileText, Calendar, Search, BarChart3, Users, Droplet, 
+  DollarSign, AlertCircle, CheckCircle, RefreshCw, Loader, Settings, 
+  Database, MapPin, CreditCard, Shield, Activity, Clock, ArrowLeft, 
+  Eraser, XCircle, User, TrendingUp, FileSpreadsheet, Printer, FileDown, ChevronDown 
+} from 'lucide-react'
+
 
 import { ReportExport } from '../../components/ReportExport';
 
@@ -67,7 +69,8 @@ const ReportsSection = () => {
   // ============================================================
   const [periodos, setPeriodos] = useState([]);
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState('');
-
+  const [aniosExpandidos, setAniosExpandidos] = useState({})  // para controlar expansión de años en selector de periodos
+  const [historialExpandido, setHistorialExpandido] = useState(true)
 
   // ============================================================
   // CONFIGURACIÓN DE MÓDULOS DEL SISTEMA 
@@ -818,7 +821,7 @@ const ReportsSection = () => {
             setStats({
               total_registros: result.total || result.data.length,
               periodo: periodoSeleccionado
-                ? `Periodo: ${periodoSeleccionado.replace('-', '/')}`
+                ? ` ${periodoSeleccionado.replace('-', '/')}`
                 : 'Todos los periodos',
               modulo: modulosSistema.find(m => m.value === selectedModulo)?.label || selectedModulo,
             });
@@ -849,27 +852,34 @@ const ReportsSection = () => {
   // ============================================================
   // GENERAR REPORTE CUANDO CAMBIA EL PERIODO SELECCIONADO
   // ============================================================
- useEffect(() => {
-  if (!selectedModulo || !permissions.canRead) return;
+  useEffect(() => {
+    if (!selectedModulo || !permissions.canRead) return;
 
-  const esModuloConPeriodo = ['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo);
-  if (esModuloConPeriodo && !periodoSeleccionado) return; // esperar al más reciente
+    const esModuloConPeriodo = ['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo);
+    if (esModuloConPeriodo && !periodoSeleccionado) return; // esperar al más reciente
 
-  generarReporte();
-}, [selectedModulo, periodoSeleccionado, permissions.canRead, generarReporte]);
+    generarReporte();
+  }, [selectedModulo, periodoSeleccionado, permissions.canRead, generarReporte]);
 
   // ============================================================
   // FUNCIONES DE EXPORTACIÓN - CONECTADAS AL BACKEND
   // ============================================================
-  /**
- * Obtener columnas filtradas
- */
+  // Columnas activas para exportación
   const columnasActivas = useMemo(() => {
     return Object.keys(columnasVisibles).filter(col => columnasVisibles[col]);
   }, [columnasVisibles]);
 
   // Opciones de ordenamiento por módulo
   const sortOptions = {
+    Usuarios: [                                                    // ← AGREGA ESTO
+      { value: 'nombres',         label: 'Nombres' },
+      { value: 'apellidos',       label: 'Apellidos' },
+      { value: 'usuario',         label: 'Usuario' },
+      { value: 'direccion',       label: 'Dirección' },
+      { value: 'sexo',            label: 'Sexo' },
+      { value: 'rol',             label: 'Rol' },
+      { value: 'fecharegistro',   label: 'Fecha de Registro' },
+    ],   
     Afiliados: [
       { value: 'apellidos',        label: 'Apellido' },
       { value: 'nombres',          label: 'Nombre' },
@@ -910,61 +920,54 @@ const ReportsSection = () => {
 
   // Exportar a Excel con columnas seleccionadas
   const exportarExcel = useCallback(() => {
-    if (reporteData.length === 0) {
+    if (sortedData.length === 0) {           
       alert('No hay datos para exportar');
       return;
     }
-
-    // Filtrar datos para incluir solo columnas visibles
-    const datosFiltrados = reporteData.map(row => {
+    const datosFiltrados = sortedData.map(row => {  
       const rowFiltrada = {};
-      columnasActivas.forEach(col => {
-        rowFiltrada[col] = row[col];
-      });
+      columnasActivas.forEach(col => { rowFiltrada[col] = row[col]; });
       return rowFiltrada;
     });
-
     const moduloInfo = modulosSistema.find(m => m.value === selectedModulo);
-    ReportExport.exportarExcel(
-      datosFiltrados, 
-      moduloInfo?.label || selectedModulo, 
-      moduloInfo?.description
-    );
-  }, [reporteData, selectedModulo, modulosSistema, columnasActivas]);
+    ReportExport.exportarExcel(datosFiltrados, moduloInfo?.label || selectedModulo, moduloInfo?.description || '');
+  }, [sortedData, selectedModulo, modulosSistema, columnasActivas]); 
 
-  /**
-   * Imprimir reporte con columnas seleccionadas
-   */
+  // Exportar a PDF con columnas seleccionadas
+  const exportarPDF = useCallback(() => {
+    if (sortedData.length === 0) {            
+      alert('No hay datos para exportar');
+      return;
+    }
+    const datosFiltrados = sortedData.map(row => {   
+      const rowFiltrada = {};
+      columnasActivas.forEach(col => { rowFiltrada[col] = row[col]; });
+      return rowFiltrada;
+    });
+    const moduloInfo = modulosSistema.find(m => m.value === selectedModulo);
+    ReportExport.exportarPDF(datosFiltrados, moduloInfo?.label || selectedModulo, moduloInfo?.description || '');
+  }, [sortedData, selectedModulo, modulosSistema, columnasActivas]);  
+
+  // Imprimir reporte con columnas seleccionadas
   const imprimirReporte = useCallback(() => {
-    if (reporteData.length === 0) {
+    if (sortedData.length === 0) {           
       alert('No hay datos para imprimir');
       return;
     }
-
-    // Filtrar datos para incluir solo columnas visibles
-    const datosFiltrados = reporteData.map(row => {
+    const datosFiltrados = sortedData.map(row => {  
       const rowFiltrada = {};
-      columnasActivas.forEach(col => {
-        rowFiltrada[col] = row[col];
-      });
+      columnasActivas.forEach(col => { rowFiltrada[col] = row[col]; });
       return rowFiltrada;
     });
-
     const moduloInfo = modulosSistema.find(m => m.value === selectedModulo);
-    ReportExport.imprimirReporte(
-      datosFiltrados, 
-      moduloInfo?.label || selectedModulo, 
-      moduloInfo?.description
-    );
-  }, [reporteData, selectedModulo, modulosSistema, columnasActivas]);
+    ReportExport.imprimirReporte(datosFiltrados, moduloInfo?.label || selectedModulo, moduloInfo?.description || '');
+  }, [sortedData, selectedModulo, modulosSistema, columnasActivas]);  
 
   // ============================================================
   // FUNCIONES DE LIMPIEZA DE FILTROS
   // ============================================================
   
-  /**
-   * Limpiar filtros SIN cambiar el módulo
-   */
+  // Limpiar filtros sin cambiar módulo (para módulos sin periodo o sector)
   const limpiarFiltrosSinModulo = useCallback(() => {
     setFilterEstado('todos');
     setSearchTerm('');
@@ -975,12 +978,18 @@ const ReportsSection = () => {
     setError(null);
     setSortBy('');
     setSortOrder('asc');
+    setAniosExpandidos({});
   }, []);
 
+  // Helper: colapsar/expandir año en el historial
+  const toggleAnio = (anio) => {
+    setAniosExpandidos(prev => ({
+      ...prev,
+      [anio]: prev[anio] === false ? true : false
+    }))
+  }
 
-  /**
-   * Volver a la selección (limpia TODO)
-   */
+  // Limpiar filtros y módulo seleccionado
   const limpiarFiltros = useCallback(() => {
     setSelectedModulo('');
     setReporteData([]);
@@ -1276,32 +1285,40 @@ const formatTooltip = (key, value) => {
             <div className="actions">
               {reporteData.length > 0 && (
                 <>
+                  {/* Botón Excel */}
+                  <button
+                    onClick={exportarExcel}
+                    className="btn-secondary btn-export"
+                    title={`Exportar ${sortedData.length} registros a Excel`}
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span className="btn-export-label">Excel</span>
+                  </button>
 
-                <button
-                  onClick={exportarExcel}
-                  className="btn-secondary"
-                  title="Exportar a excel"
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                </button>
+                  {/* Botón PDF */}
+                  <button
+                    onClick={exportarPDF}
+                    className="btn-secondary btn-export btn-export-pdf"
+                    title={`Exportar ${sortedData.length} registros a PDF`}
+                  >
+                    <FileDown className="w-4 h-4" />
+                    <span className="btn-export-label">PDF</span>
+                  </button>
 
-                <button
-                  onClick={imprimirReporte}
-                  className="btn-secondary"
-                  title="Imprimir"
-                >
-                  <Printer className="w-4 h-4" />
-                </button>
-
-
+                  {/* Botón Imprimir */}
+                  <button
+                    onClick={imprimirReporte}
+                    className="btn-secondary btn-export"
+                    title="Imprimir reporte"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span className="btn-export-label">Imprimir</span>
+                  </button>
                 </>
               )}
-              {/* Botón de refrescar/actualizar */}
-              <button 
-                onClick={generarReporte} 
-                className="btn-primary"
-                disabled={loading}
-              >
+
+              {/* Botón Actualizar */}
+              <button onClick={generarReporte} className="btn-primary" disabled={loading}>
                 {loading ? (
                   <>
                     <Loader className="w-4 h-4 animate-spin" />
@@ -1315,6 +1332,7 @@ const formatTooltip = (key, value) => {
                 )}
               </button>
             </div>
+
           </div>
 
           {/* MENSAJE DE ERROR */}
@@ -1324,6 +1342,142 @@ const formatTooltip = (key, value) => {
               {error}
             </div>
           )}
+
+          {/* ─── HISTORIAL DE PERÍODOS (DESPLEGABLE) ──────────────────────── */}
+          {['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo) && periodos.length > 0 && (
+            <div className="periodo-historial-container">
+
+              {/* ENCABEZADO — clic para colapsar toda la sección */}
+              <button
+                className="periodo-historial-header periodo-historial-toggle"
+                onClick={() => setHistorialExpandido(prev => !prev)}
+              >
+                <div>
+                  <h3 className="font-semibold text-[16px] leading-[1.2] flex items-center">
+                    <Clock className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" />
+                    Historial de Períodos
+                    <span className="historial-anio-badge ml-2">
+                      {periodos.filter(p => {
+                        const hoy = new Date()
+                        const diff = (p.anio - hoy.getFullYear()) * 12 + (p.mes - (hoy.getMonth() + 1))
+                        return diff <= 0
+                      }).length} periodos disponibles
+                    </span>
+                  </h3>
+                  <p className="periodo-historial-subtitle text-[14px]">
+                    Selecciona el período que deseas visualizar
+                  </p>
+                </div>
+                <ChevronDown
+                  className={`w-5 h-5 historial-chevron text-blue-500 ${historialExpandido ? 'open' : ''}`}
+                />
+              </button>
+
+              {/* CONTENIDO — se oculta al colapsar */}
+              {historialExpandido && (() => {
+                const hoy = new Date()
+                const mesActual = hoy.getMonth() + 1
+                const anioActual = hoy.getFullYear()
+
+                const calcularDiferenciaMeses = (mes, anio) =>
+                  (anio - anioActual) * 12 + (mes - mesActual)
+
+                // Solo períodos pasados y el actual (sin futuros)
+                const periodosHistorial = periodos.filter(periodo => {
+                  const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio)
+                  return diff <= 0
+                })
+
+                if (periodosHistorial.length === 0) {
+                  return (
+                    <div className="periodo-historial-empty">
+                      <AlertCircle className="w-12 h-12 text-gray-300 mb-2" />
+                      <p>No hay períodos disponibles</p>
+                    </div>
+                  )
+                }
+
+                // Agrupar por año
+                const agrupado = periodosHistorial.reduce((acc, periodo) => {
+                  const anio = periodo.anio
+                  if (!acc[anio]) acc[anio] = []
+                  acc[anio].push(periodo)
+                  return acc
+                }, {})
+
+                const aniosOrdenados = Object.keys(agrupado)
+                  .map(Number)
+                  .sort((a, b) => b - a)
+
+                const nombresMeses = [
+                  '', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+                  'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+                ]
+
+                return (
+                  <div className="historial-anios-lista">
+                    {aniosOrdenados.map(anio => {
+                      const mesesDelAnio = agrupado[anio].sort((a, b) => b.mes - a.mes)
+                      const estaExpandido = aniosExpandidos[anio] !== false
+
+                      return (
+                        <div key={anio} className="historial-anio-bloque">
+
+                          {/* CABECERA DEL AÑO */}
+                          <button
+                            className="historial-anio-header"
+                            onClick={() => toggleAnio(anio)}
+                          >
+                            <span className="historial-anio-label">
+                              <Calendar className="w-4 h-4" />
+                              {anio}
+                              <span className="historial-anio-badge">
+                                {mesesDelAnio.length} periodos
+                              </span>
+                            </span>
+                            <ChevronDown
+                              className={`w-4 h-4 historial-chevron ${estaExpandido ? 'open' : ''}`}
+                            />
+                          </button>
+
+                          {/* CHIPS DE MESES */}
+                          {estaExpandido && (
+                            <div className="historial-meses-grid">
+                              {mesesDelAnio.map(periodo => {
+                                const esSeleccionado =
+                                  periodoSeleccionado === `${periodo.mes}-${periodo.anio}`
+
+                                return (
+                                  <button
+                                    key={`${periodo.mes}-${periodo.anio}`}
+                                    className={`historial-mes-chip ${esSeleccionado ? 'seleccionado' : 'incompleto'}`}
+                                    onClick={() =>
+                                      setPeriodoSeleccionado(`${periodo.mes}-${periodo.anio}`)
+                                    }
+                                    title={periodo.periodo}
+                                  >
+                                    <span className={`historial-mes-dot ${esSeleccionado ? 'completo' : 'incompleto'}`} />
+                                    <span className="historial-mes-nombre">
+                                      {nombresMeses[periodo.mes]}
+                                    </span>
+                                    <span className="historial-mes-pct">
+                                      {periodo.anio}
+                                    </span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
+
 
           {/* ==================== RESUMEN DEL REPORTE ==================== */}
           {reporteData.length > 0 && (
@@ -1487,7 +1641,7 @@ const formatTooltip = (key, value) => {
             )}
 
             {/* FILTRO GENÉRICO PARA OTROS MÓDULOS: Activo/Inactivo */}
-            {['Usuarios', 'Roles', 'Sectores', 'Tarifas', 'Afiliados', 'Medidores' ].includes(selectedModulo) && (
+            {['Usuarios', 'Roles', 'Sectores', 'Tarifas', 'Afiliados', 'Medidores', 'Servicios', 'Multas'].includes(selectedModulo) && (
               <select
                 className="filter-select"
                 value={filterEstado}
@@ -1499,51 +1653,34 @@ const formatTooltip = (key, value) => {
               </select>
             )}
 
-            {/* Selector de período */}
-            {['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo) && (
-              <select
-                className="filter-select"
-                value={periodoSeleccionado}
-                onChange={(e) => setPeriodoSeleccionado(e.target.value)}
-                title="Seleccionar periodo"
-              >
-                <option value="">Todos los periodos</option>
-                {periodos.map((p, i) => (
-                  <option key={i} value={`${p.mes}-${p.anio}`}>
-                    {p.periodo}
-                  </option>
-                ))}
-              </select>
-            )}
-
             {/* ── ORDENAMIENTO ── Afiliados y Medidores */}
-{['Afiliados', 'Medidores'].includes(selectedModulo) && (
-  <>
-    <select
-      className="filter-select"
-      value={sortBy}
-      onChange={(e) => { setSortBy(e.target.value); setSortOrder('asc'); }}
-      title="Ordenar por"
-    >
-      <option value="">↕ Ordenar por...</option>
-      {(sortOptions[selectedModulo] || []).map(opt => (
-        <option key={opt.value} value={opt.value}>{opt.label}</option>
-      ))}
-    </select>
+            {['Usuarios', 'Afiliados', 'Medidores'].includes(selectedModulo) && (
+              <>
+                <select
+                  className="filter-select"
+                  value={sortBy}
+                  onChange={(e) => { setSortBy(e.target.value); setSortOrder('asc'); }}
+                  title="Ordenar por"
+                >
+                  <option value="">↕ Ordenar por...</option>
+                  {(sortOptions[selectedModulo] || []).map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
 
-    {sortBy && (
-      <button
-        type="button"
-        className="filter-select"
-        onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-        title={sortOrder === 'asc' ? 'Orden ascendente' : 'Orden descendente'}
-        style={{ cursor: 'pointer', fontWeight: 600, minWidth: 80 }}
-      >
-        {sortOrder === 'asc' ? '↑ A → Z' : '↓ Z → A'}
-      </button>
-    )}
-  </>
-)}
+                {sortBy && (
+                  <button
+                    type="button"
+                    className="filter-select"
+                    onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                    title={sortOrder === 'asc' ? 'Orden ascendente' : 'Orden descendente'}
+                    style={{ cursor: 'pointer', fontWeight: 600, minWidth: 80 }}
+                  >
+                    {sortOrder === 'asc' ? '↑ A → Z' : '↓ Z → A'}
+                  </button>
+                )}
+              </>
+            )}
 
 
             {/* Botón limpiar filtros */}

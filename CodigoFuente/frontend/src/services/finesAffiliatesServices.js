@@ -13,8 +13,12 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
     stats: '/multas/afiliados/stats',
     pagar: (id) => `/multas/afiliados/${id}/pagar`,
     anular: (id) => `/multas/afiliados/${id}/anular`,
-    anios: '/multas/afiliados/periodos/anios',  // ⭐ NUEVO
-    mesesPorAnio: (anio) => `/multas/afiliados/periodos/meses/${anio}`,  // ⭐ NUEVO
+    anios: '/multas/afiliados/periodos/anios',  // 
+    mesesPorAnio: (anio) => `/multas/afiliados/periodos/meses/${anio}`,  // 
+    // resumen de período: /multas/afiliados/resumen?anio=2024&mes=5
+    resumenPeriodo: '/multas/afiliados/periodos/resumen?anio={anio}&mes={mes}',
+    tipos: '/multas/afiliados/tipos',
+
   }
 };
 
@@ -100,6 +104,38 @@ class FinesAffiliatesServices {
       throw error;
     }
   }
+  // Obtener tipos de multa para el formulario (MODIFICADO)
+  async getTiposMulta() {
+  try {
+    const data = await this.makeRequest(API_CONFIG.endpoints.tipos);
+    return {
+      success: true,
+      data: Array.isArray(data) ? data : []
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo tipos de multa:', error);
+    return {
+      success: false,
+      message: error.message || 'Error al obtener tipos de multa',
+      data: []
+    };
+  }
+}
+
+  // Obtiene resumen rápido de multas de un período (total, pendientes, pagadas).
+  async getResumenPeriodo(anio, mes) {
+    try {
+      const data = await this.makeRequest(
+        API_CONFIG.endpoints.resumenPeriodo.replace('{anio}', anio).replace('{mes}', mes)
+      );
+      return { success: true, data };
+    } catch (error) {
+      console.error('Error obteniendo resumen del período:', error);
+      return { success: false, data: null, message: error.message };
+    }
+  }
+
+  // función Obtener lista de afiliados disponibles para multas
   async getAvailableAffiliates() {
     try {
       const data = await this.makeRequest(
@@ -120,90 +156,91 @@ class FinesAffiliatesServices {
   }
 
 
-/**
- * Obtener años disponibles con multas registradas
- */
-async getAnios() {
-    try {
-        const data = await this.makeRequest(API_CONFIG.endpoints.anios);
-        return {
-            success: true,
-            data: Array.isArray(data) ? data : []
-        };
-    } catch (error) {
-        console.error('❌ Error obteniendo años:', error);
-        return {
-            success: false,
-            message: error.message || 'Error al obtener años',
-            data: []
-        };
-    }
-}
+  /**
+   * Obtener años disponibles con multas registradas
+   */
+  async getAnios() {
+      try {
+          const data = await this.makeRequest(API_CONFIG.endpoints.anios);
+          return {
+              success: true,
+              data: Array.isArray(data) ? data : []
+          };
+      } catch (error) {
+          console.error('❌ Error obteniendo años:', error);
+          return {
+              success: false,
+              message: error.message || 'Error al obtener años',
+              data: []
+          };
+      }
+  }
 
-/**
- * Obtener meses disponibles para un año específico
- */
-async getMesesPorAnio(anio) {
-    try {
-        const data = await this.makeRequest(API_CONFIG.endpoints.mesesPorAnio(anio));
-        return {
-            success: true,
-            data: Array.isArray(data) ? data : []
-        };
-    } catch (error) {
-        console.error('❌ Error obteniendo meses:', error);
-        return {
-            success: false,
-            message: error.message || 'Error al obtener meses',
-            data: []
-        };
-    }
-}
+  /**
+   * Obtener meses disponibles para un año específico
+   */
+  async getMesesPorAnio(anio) {
+      try {
+          const data = await this.makeRequest(API_CONFIG.endpoints.mesesPorAnio(anio));
+          return {
+              success: true,
+              data: Array.isArray(data) ? data : []
+          };
+      } catch (error) {
+          console.error('❌ Error obteniendo meses:', error);
+          return {
+              success: false,
+              message: error.message || 'Error al obtener meses',
+              data: []
+          };
+      }
+  }
 
-/**
- * Obtener lista de multas con filtros opcionales (MODIFICADO)
- */
-async getMultas(filters = {}) {
-    try {
-        const params = new URLSearchParams();
-        if (filters.id_usuario_afi) params.append('id_usuario_afi', filters.id_usuario_afi);
-        if (filters.estado) params.append('estado', filters.estado);
-        if (filters.activo !== undefined) params.append('activo', filters.activo);
-        
-        // ⭐ NUEVO: Filtros de año y mes
-        if (filters.anio) {
-            params.append('anio', filters.anio);
-            if (filters.mes) {
-                params.append('mes', filters.mes);
-            }
-        } else {
-            // Solo usar fecha_desde y fecha_hasta si no hay año/mes
-            if (filters.fecha_desde) params.append('fecha_desde', filters.fecha_desde);
-            if (filters.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta);
-        }
-        
-        if (filters.skip) params.append('skip', filters.skip);
-        if (filters.limit) params.append('limit', filters.limit);
+  /**
+   * Obtener lista de multas con filtros opcionales (MODIFICADO)
+   */
+  async getMultas(filters = {}) {
+      try {
+          const params = new URLSearchParams();
+          if (filters.id_usuario_afi) params.append('id_usuario_afi', filters.id_usuario_afi);
+          if (filters.estado) params.append('estado', filters.estado);
+          if (filters.activo !== undefined) params.append('activo', filters.activo);
+          if (filters.id_tipo_multa) params.append('id_tipo_multa', filters.id_tipo_multa);
+          
+          // ⭐ NUEVO: Filtros de año y mes
+          if (filters.anio) {
+              params.append('anio', filters.anio);
+              if (filters.mes) {
+                  params.append('mes', filters.mes);
+              }
+          } else {
+              // Solo usar fecha_desde y fecha_hasta si no hay año/mes
+              if (filters.fecha_desde) params.append('fecha_desde', filters.fecha_desde);
+              if (filters.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta);
+          }
+          
+          if (filters.skip) params.append('skip', filters.skip);
+          if (filters.limit) params.append('limit', filters.limit);
 
-        const queryString = params.toString();
-        const endpoint = queryString
-            ? `${API_CONFIG.endpoints.multas}?${queryString}`
-            : API_CONFIG.endpoints.multas;
+          const queryString = params.toString();
+          const endpoint = queryString
+              ? `${API_CONFIG.endpoints.multas}?${queryString}`
+              : API_CONFIG.endpoints.multas;
 
-        const data = await this.makeRequest(endpoint);
-        return {
-            success: true,
-            data: Array.isArray(data) ? data : []
-        };
-    } catch (error) {
-        console.error('❌ Error obteniendo multas:', error);
-        return {
-            success: false,
-            message: error.message || 'Error al obtener multas',
-            data: []
-        };
-    }
-}
+          const data = await this.makeRequest(endpoint);
+          return {
+              success: true,
+              data: Array.isArray(data) ? data : []
+          };
+      } catch (error) {
+          console.error('❌ Error obteniendo multas:', error);
+          return {
+              success: false,
+              message: error.message || 'Error al obtener multas',
+              data: []
+          };
+      }
+  }
 
 
 

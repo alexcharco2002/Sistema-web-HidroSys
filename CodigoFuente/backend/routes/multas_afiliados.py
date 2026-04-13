@@ -2,13 +2,12 @@
 from sqlite3 import IntegrityError
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy import func, distinct
 from typing import List, Optional
 from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy.orm import joinedload
 
-# ⭐ IMPORTANTE: Importar TODOS los modelos que vas a usar en joinedload
 from models.meter import Medidor
 from models.multa_afiliado import MultaAfiliado
 from models.multa import TipoMulta
@@ -61,16 +60,12 @@ def check_permission(user: UsuarioSistema, db: Session, module: str, action: str
     for permiso in permisos:
         if not permiso.nombre_accion:
             continue
-        
         perm_module = permiso.nombre_accion.lower().strip()
         perm_action = (permiso.tipo_accion or "").lower().strip()
-        
         if perm_module != module:
             continue
-        
         if perm_action in ["crud", "operaciones crud"]:
             return True
-        
         acciones_usuario.add(perm_action)
     
     if action is None:
@@ -89,8 +84,39 @@ def require_permission(user: UsuarioSistema, db: Session, module: str, action: s
             detail=f"No tienes permisos para {action or 'acceder a'} {module}"
         )
 
+# ============================================
+# TIPOS DE MULTA DISPONIBLES PARA AFILIADOS
+# ============================================
+@router.get("/tipos", response_model=List[dict])
+def listar_tipos_multa_afiliados(
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """Retorna todos los tipos de multa vigentes y activos."""
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "multasafiliados", "lectura")
+
+    tipos = (
+        db.query(TipoMulta)
+        .filter(TipoMulta.es_vigente == True, TipoMulta.activo == True)
+        .order_by(TipoMulta.nombre_multa)
+        .all()
+    )
+
+    return [
+        {
+            "id_tipo_multa": t.id_tipo_multa,
+            "nombre_multa": t.nombre_multa,
+            "monto": float(t.monto),
+        }
+        for t in tipos
+    ]
+
+
 # ========================================
-# ENDPOINT OPTIMIZADO PARA LISTAR AFILIADOS DISPONIBLES PARA MULTAS
+# AFILIADOS DISPONIBLES — FIX DUPLICADOS
+# El join con Medidor es 1-a-muchos, se usa subquery para
+# traer solo UN medidor por afiliado (el primero activo)
 # ========================================
 @router.get("/available", response_model=List[dict])
 def listar_afiliados_para_multas(
@@ -98,14 +124,24 @@ def listar_afiliados_para_multas(
     payload: dict = Depends(verify_token)
 ):
     """
-    Lista todos los afiliados activos con sus medidores para asignar multas.
-    Optimizado con joins para evitar N+1 queries.
+    Lista todos los afiliados activos SIN DUPLICADOS.
+    Usa subquery para tomar solo un medidor por afiliado.
     """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "multasafiliados", "lectura")
 
     try:
-        # 🔹 Consulta optimizada con joins directos
+        # Subquery: un solo medidor por afiliado (el de menor id activo)
+        subq_medidor = (
+            db.query(
+                Medidor.id_usuario_afi,
+                func.min(Medidor.num_medidor).label("num_medidor")
+            )
+            .filter(Medidor.activo == True)
+            .group_by(Medidor.id_usuario_afi)
+            .subquery()
+        )
+
         resultados = (
             db.query(
                 UsuarioAfiliado.id_usuario_afi,
@@ -113,20 +149,17 @@ def listar_afiliados_para_multas(
                 UsuarioSistema.nombres,
                 UsuarioSistema.apellidos,
                 UsuarioSistema.cedula,
-                Medidor.num_medidor
+                subq_medidor.c.num_medidor
             )
             .join(
-                UsuarioSistema, 
+                UsuarioSistema,
                 UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema
             )
-            .join(
-                Medidor,
-                Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi
+            .outerjoin(
+                subq_medidor,
+                subq_medidor.c.id_usuario_afi == UsuarioAfiliado.id_usuario_afi
             )
-            .filter(
-                UsuarioAfiliado.activo == True,
-                Medidor.activo == True
-            )
+            .filter(UsuarioAfiliado.activo == True)
             .order_by(UsuarioAfiliado.cod_usuario_afi)
             .all()
         )
@@ -134,7 +167,6 @@ def listar_afiliados_para_multas(
         if not resultados:
             return []
 
-        # 🔹 Transformar a lista de diccionarios
         afiliados = [
             {
                 "id_usuario_afi": r.id_usuario_afi,
@@ -166,9 +198,6 @@ def obtener_anios_disponibles(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Obtiene la lista de años en los que se han registrado multas
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "multasafiliados", "lectura")
     
@@ -180,7 +209,6 @@ def obtener_anios_disponibles(
             .order_by(func.extract('year', MultaAfiliado.fecha_multa).desc())
             .all()
         )
-        
         return [int(anio.anio) for anio in anios]
         
     except Exception as e:
@@ -199,9 +227,6 @@ def obtener_meses_por_anio(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Obtiene los meses en los que hay multas registradas para un año específico
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "multasafiliados", "lectura")
     
@@ -213,7 +238,7 @@ def obtener_meses_por_anio(
                 func.extract('year', MultaAfiliado.fecha_multa) == anio
             )
             .distinct()
-            .order_by(func.extract('month', MultaAfiliado.fecha_multa).desc())  # ⭐ CAMBIO: .asc() → .desc()
+            .order_by(func.extract('month', MultaAfiliado.fecha_multa).desc())
             .all()
         )
         
@@ -224,10 +249,7 @@ def obtener_meses_por_anio(
         }
         
         return [
-            {
-                'mes': int(mes.mes),
-                'mes_nombre': meses_nombres[int(mes.mes)]
-            }
+            {'mes': int(mes.mes), 'mes_nombre': meses_nombres[int(mes.mes)]}
             for mes in meses
         ]
         
@@ -239,30 +261,72 @@ def obtener_meses_por_anio(
 
 
 # ============================================
-#  ENDPOINT LISTAR MULTAS
+#  RESUMEN POR PERÍODO (para tarjetas de selección)
+#  Devuelve total, pendientes y pagadas de un mes/año
+# ============================================
+@router.get("/periodos/resumen", response_model=dict)
+def obtener_resumen_periodo(
+    anio: int = Query(..., description="Año del período"),
+    mes: int = Query(..., ge=1, le=12, description="Mes del período"),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Devuelve contadores rápidos (total, pendientes, pagadas) de un período.
+    Se usa en las tarjetas de selección de período.
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "multasafiliados", "lectura")
+
+    def base():
+        return (
+            db.query(MultaAfiliado)
+            .filter(
+                MultaAfiliado.activo == True,
+                func.extract('year', MultaAfiliado.fecha_multa) == anio,
+                func.extract('month', MultaAfiliado.fecha_multa) == mes
+            )
+        )
+
+    total     = base().count()
+    pendientes = base().filter(MultaAfiliado.estado == "pendiente").count()
+    pagadas    = base().filter(MultaAfiliado.estado == "pagada").count()
+    anuladas   = base().filter(MultaAfiliado.estado == "anulada").count()
+
+    monto_pendiente = base().filter(
+        MultaAfiliado.estado == "pendiente"
+    ).with_entities(func.sum(MultaAfiliado.monto)).scalar() or Decimal("0.00")
+
+    return {
+        "total": total,
+        "pendientes": pendientes,
+        "pagadas": pagadas,
+        "anuladas": anuladas,
+        "monto_pendiente": float(monto_pendiente),
+    }
+
+
+# ============================================
+#  ENDPOINT LISTAR MULTAS 
 # ============================================
 @router.get("/", response_model=List[MultaAfiliadoCompleto])
 def listar_multas_afiliados(
-    id_usuario_afi: Optional[int] = Query(None, description="Filtrar por usuario"),
-    estado: Optional[EstadoMulta] = Query(None, description="Filtrar por estado"),
-    activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
-    fecha_desde: Optional[date] = Query(None, description="Fecha multa desde"),
-    fecha_hasta: Optional[date] = Query(None, description="Fecha multa hasta"),
-    anio: Optional[int] = Query(None, description="Filtrar por año"), 
-    mes: Optional[int] = Query(None, ge=1, le=12, description="Filtrar por mes"),  
+    id_usuario_afi: Optional[int] = Query(None),
+    estado: Optional[EstadoMulta] = Query(None),
+    activo: Optional[bool] = Query(None),
+    fecha_desde: Optional[date] = Query(None),
+    fecha_hasta: Optional[date] = Query(None),
+    anio: Optional[int] = Query(None),
+    mes: Optional[int] = Query(None, ge=1, le=12),
+    id_tipo_multa: Optional[int] = Query(None, description="Filtrar por tipo de multa"),   # ← NUEVO
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Lista todas las multas con filtros opcionales
-    Requiere permiso: multas.lectura o multas.crud
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "multasafiliados", "lectura")
     
-    # ⭐ Cargar relaciones con joinedload
     query = db.query(MultaAfiliado).options(
         joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.usuario_sistema),
         joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.sector),
@@ -277,16 +341,15 @@ def listar_multas_afiliados(
     
     if activo is not None:
         query = query.filter(MultaAfiliado.activo == activo)
+
+    # NUEVO: filtro por tipo de multa
+    if id_tipo_multa is not None:
+        query = query.filter(MultaAfiliado.id_tipo_multa == id_tipo_multa)
     
-    # ⭐ NUEVO: Filtro por año y mes
     if anio:
         query = query.filter(func.extract('year', MultaAfiliado.fecha_multa) == anio)
-        
-        # Si además se especifica mes, filtrar por mes
         if mes:
             query = query.filter(func.extract('month', MultaAfiliado.fecha_multa) == mes)
-    
-    # Aplicar fecha_desde y fecha_hasta solo si NO se usa año/mes
     elif fecha_desde or fecha_hasta:
         if fecha_desde:
             query = query.filter(MultaAfiliado.fecha_multa >= fecha_desde)
@@ -296,7 +359,6 @@ def listar_multas_afiliados(
     query = query.order_by(MultaAfiliado.fecha_multa.desc())
     multas = query.offset(skip).limit(limit).all()
     
-    # ⭐ Transformar a estructura optimizada
     resultado = []
     for multa in multas:
         afiliado_info = None
@@ -312,12 +374,11 @@ def listar_multas_afiliados(
         
         tipo_multa_info = None
         if multa.tipo_multa:
-            tipo_multa_info = {
-                "nombre_multa": multa.tipo_multa.nombre_multa
-            }
+            tipo_multa_info = {"nombre_multa": multa.tipo_multa.nombre_multa}
         
         resultado.append({
             "id_multa_afi": multa.id_multa_afi,
+            "id_tipo_multa": multa.id_tipo_multa,
             "monto": multa.monto,
             "fecha_multa": multa.fecha_multa,
             "fecha_pago": multa.fecha_pago,
@@ -330,72 +391,40 @@ def listar_multas_afiliados(
     return resultado
 
 
+# ============================================
+#  STATS
+# ============================================
 @router.get("/stats", response_model=MultaAfiliadoStats)
 def obtener_estadisticas_multas(
-    anio: Optional[int] = Query(None, description="Filtrar estadísticas por año"),
-    mes: Optional[int] = Query(None, ge=1, le=12, description="Filtrar estadísticas por mes"),
+    anio: Optional[int] = Query(None),
+    mes: Optional[int] = Query(None, ge=1, le=12),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Obtiene estadísticas de multas con filtros opcionales de período
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "multasafiliados", "lectura")
     
-    # ⭐ FUNCIÓN HELPER PARA CREAR QUERY BASE LIMPIA
     def get_base_query():
-        """Retorna un query base fresco con filtros de período"""
         query = db.query(MultaAfiliado).filter(MultaAfiliado.activo == True)
-        
         if anio:
             query = query.filter(func.extract('year', MultaAfiliado.fecha_multa) == anio)
             if mes:
                 query = query.filter(func.extract('month', MultaAfiliado.fecha_multa) == mes)
-        
         return query
     
-    # ========================================
-    # ESTADÍSTICAS POR ESTADO
-    # ========================================
-    total = get_base_query().count()
+    total      = get_base_query().count()
+    pendientes = get_base_query().filter(MultaAfiliado.estado == "pendiente").count()
+    pagadas    = get_base_query().filter(MultaAfiliado.estado == "pagada").count()
+    anuladas   = get_base_query().filter(MultaAfiliado.estado == "anulada").count()
+    exoneradas = get_base_query().filter(MultaAfiliado.estado == "exonerada").count()
+    facturado  = get_base_query().filter(MultaAfiliado.estado == "facturado").count()
     
-    pendientes = get_base_query().filter(
-        MultaAfiliado.estado == "pendiente"
-    ).count()
-    
-    pagadas = get_base_query().filter(
-        MultaAfiliado.estado == "pagada"
-    ).count()
-    
-    anuladas = get_base_query().filter(
-        MultaAfiliado.estado == "anulada"
-    ).count()
-    
-    exoneradas = get_base_query().filter(
-        MultaAfiliado.estado == "exonerada"
-    ).count()
-    
-    # ⭐ IMPORTANTE: Estado "facturado"
-    facturado = get_base_query().filter(
-        MultaAfiliado.estado == "facturado"
-    ).count()
-    
-    # ========================================
-    # ESTADÍSTICAS DE FACTURACIÓN (campo booleano)
-    # ========================================
-    facturadas = get_base_query().filter(
-        MultaAfiliado.facturado == True
-    ).count()
-    
+    facturadas             = get_base_query().filter(MultaAfiliado.facturado == True).count()
     pendientes_facturacion = get_base_query().filter(
         MultaAfiliado.facturado == False,
         MultaAfiliado.estado.in_(["pendiente", "pagada", "exonerada", "anulada"]),
     ).count()
     
-    # ========================================
-    # MONTOS
-    # ========================================
     monto_pendiente = get_base_query().filter(
         MultaAfiliado.estado == "pendiente"
     ).with_entities(func.sum(MultaAfiliado.monto)).scalar() or Decimal("0.00")
@@ -417,25 +446,15 @@ def obtener_estadisticas_multas(
         MultaAfiliado.estado.in_(["pendiente", "pagada"])
     ).with_entities(func.sum(MultaAfiliado.monto)).scalar() or Decimal("0.00")
     
-    # ⭐ VERIFICACIÓN DE CONSISTENCIA (opcional, para debug)
-    suma_estados = pendientes + pagadas + anuladas + exoneradas + facturado
-    if suma_estados != total:
-        print(f"⚠️ WARNING: Suma de estados ({suma_estados}) no coincide con total ({total})")
-    
     return {
-        # Contadores por estado
         "total_multas": total,
         "pendientes": pendientes,
         "pagadas": pagadas,
         "anuladas": anuladas,
         "exoneradas": exoneradas,
-        "facturado": facturado,  # ⭐ DEBE ESTAR AQUÍ
-        
-        # Contadores de facturación (campo booleano)
+        "facturado": facturado,
         "facturadas": facturadas,
         "pendientes_facturacion": pendientes_facturacion,
-        
-        # Montos
         "monto_total": monto_total,
         "monto_pendiente": monto_pendiente,
         "monto_pagado": monto_pagado,
@@ -461,12 +480,10 @@ def obtener_multa_afiliado(
     ).first()
     
     if not multa:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Multa no encontrada"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Multa no encontrada")
     
     return multa
+
 
 # ==========================
 # CREAR MULTA
@@ -504,7 +521,7 @@ def crear_multa_afiliado(
 
     try:
         db.add(nueva_multa)
-        db.flush()  # 🔥 NECESARIO para obtener el ID antes del commit
+        db.flush()
         db.commit()
         db.refresh(nueva_multa)
 
@@ -543,12 +560,8 @@ def actualizar_multa_afiliado(
     ).first()
     
     if not multa:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Multa no encontrada"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Multa no encontrada")
     
-    # Validar fecha de pago
     if multa_update.fecha_pago and multa_update.fecha_pago < multa.fecha_multa:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -566,14 +579,11 @@ def actualizar_multa_afiliado(
     try:
         db.commit()
         db.refresh(multa)
-        
         registrar_auditoria(
-            db=db,
-            accion="UPDATE",
+            db=db, accion="UPDATE",
             descripcion=f"Multa {id_multa_afi} actualizada",
             id_usuario=current_user.id_usuario_sistema
         )
-        
         return multa
     except Exception as e:
         db.rollback()
@@ -581,6 +591,7 @@ def actualizar_multa_afiliado(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al actualizar la multa: {str(e)}"
         )
+
 
 # ==========================
 # REGISTRAR PAGO
@@ -600,16 +611,10 @@ def registrar_pago_multa(
     ).first()
     
     if not multa:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Multa no encontrada"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Multa no encontrada")
     
     if multa.estado == "pagada":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Esta multa ya fue pagada"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta multa ya fue pagada")
     
     if multa.estado in ["anulada", "exonerada"]:
         raise HTTPException(
@@ -626,22 +631,17 @@ def registrar_pago_multa(
     try:
         db.commit()
         db.refresh(multa)
-        
         registrar_auditoria(
-            db=db,
-            accion="UPDATE",
+            db=db, accion="UPDATE",
             descripcion=f"Pago registrado para multa {id_multa_afi}",
             id_usuario=current_user.id_usuario_sistema
         )
-        
         registrar_notificacion(
-            db=db,
-            id_usuario=current_user.id_usuario_sistema,
+            db=db, id_usuario=current_user.id_usuario_sistema,
             titulo="Pago de multa registrado",
             mensaje=f"Se registró el pago de la multa #{id_multa_afi}",
             tipo="exito"
         )
-        
         return multa
     except Exception as e:
         db.rollback()
@@ -649,6 +649,7 @@ def registrar_pago_multa(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al registrar el pago: {str(e)}"
         )
+
 
 # ==========================
 # ANULAR MULTA
@@ -668,16 +669,10 @@ def anular_multa(
     ).first()
     
     if not multa:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Multa no encontrada"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Multa no encontrada")
     
     if multa.estado == "anulada":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Esta multa ya está anulada"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta multa ya está anulada")
     
     multa.estado = "anulada"
     multa.activo = False
@@ -686,14 +681,11 @@ def anular_multa(
     try:
         db.commit()
         db.refresh(multa)
-        
         registrar_auditoria(
-            db=db,
-            accion="DELETE",
+            db=db, accion="DELETE",
             descripcion=f"Multa {id_multa_afi} anulada. Motivo: {motivo}",
             id_usuario=current_user.id_usuario_sistema
         )
-        
         return multa
     except Exception as e:
         db.rollback()
@@ -704,7 +696,7 @@ def anular_multa(
 
 
 # ========================================
-# ELIMINAR MULTA DE AFILIADO (Solo si está anulada)
+# ELIMINAR MULTA (Solo si está anulada)
 # ========================================
 @router.delete("/{id_multa_afi}", status_code=status.HTTP_200_OK)
 def eliminar_multa_afiliado(
@@ -712,34 +704,22 @@ def eliminar_multa_afiliado(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Elimina físicamente la multa SOLO si:
-    - Está en estado 'anulada'
-    - No está relacionada con detalles de factura
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "multasafiliados", "eliminar")
 
-    # Buscar la multa
     multa = db.query(MultaAfiliado).filter(
         MultaAfiliado.id_multa_afi == id_multa_afi
     ).first()
 
     if not multa:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Multa no encontrada"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Multa no encontrada")
 
-    # ✅ VALIDAR QUE ESTÉ ANULADA
     if multa.estado != "anulada":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"No se puede eliminar la multa porque está en estado '{multa.estado}'. "
-                   f"Solo se pueden eliminar multas anuladas."
+            detail=f"No se puede eliminar la multa porque está en estado '{multa.estado}'. Solo se pueden eliminar multas anuladas."
         )
 
-    # ✅ VALIDAR QUE NO ESTÉ EN DETALLES DE FACTURA
     from models.detalle_factura import DetalleFactura
     
     tiene_detalles = db.query(DetalleFactura).filter(
@@ -750,18 +730,13 @@ def eliminar_multa_afiliado(
         return {
             "success": False,
             "accion": "no_eliminado",
-            "message": (
-                f"⚠️ No se puede eliminar la multa ID {id_multa_afi} porque está "
-                "relacionada con detalles de factura. Las multas facturadas no pueden ser eliminadas."
-            )
+            "message": f"⚠️ No se puede eliminar la multa ID {id_multa_afi} porque está relacionada con detalles de factura."
         }
 
-    # ✅ OBTENER INFORMACIÓN PARA AUDITORÍA
     nombre_afiliado = "N/A"
     codigo_afiliado = "N/A"
     
     if multa.usuario and multa.usuario.usuario_sistema:
-        # Acceso correcto a través de usuario_sistema
         usuario_sistema = multa.usuario.usuario_sistema
         nombre_afiliado = f"{usuario_sistema.nombres or ''} {usuario_sistema.apellidos or ''}".strip()
         codigo_afiliado = multa.usuario.cod_usuario_afi or "N/A"
@@ -769,14 +744,12 @@ def eliminar_multa_afiliado(
     tipo_multa = multa.tipo_multa.nombre_multa if multa.tipo_multa else "N/A"
     monto = float(multa.monto)
 
-    # ✅ PROCEDER CON ELIMINACIÓN
     try:
         db.delete(multa)
         db.commit()
 
         registrar_auditoria(
-            db=db,
-            accion="DELETE",
+            db=db, accion="DELETE",
             descripcion=(
                 f"Multa anulada ID {id_multa_afi} eliminada. "
                 f"Afiliado: {nombre_afiliado} (Código: {codigo_afiliado}), "
@@ -787,28 +760,20 @@ def eliminar_multa_afiliado(
         )
 
         registrar_notificacion(
-            db=db,
-            id_usuario=current_user.id_usuario_sistema,
+            db=db, id_usuario=current_user.id_usuario_sistema,
             titulo="Multa eliminada",
             mensaje=f"La multa anulada ID {id_multa_afi} de {nombre_afiliado} fue eliminada correctamente.",
             tipo="info"
         )
 
-        return {
-            "success": True,
-            "accion": "eliminado",
-            "message": f"Multa ID {id_multa_afi} eliminada correctamente."
-        }
+        return {"success": True, "accion": "eliminado", "message": f"Multa ID {id_multa_afi} eliminada correctamente."}
 
-    except IntegrityError as e:
+    except IntegrityError:
         db.rollback()
         return {
             "success": False,
             "accion": "no_eliminado",
-            "message": (
-                f"⚠️ No se puede eliminar la multa ID {id_multa_afi} porque está "
-                "relacionada con otros registros del sistema."
-            )
+            "message": f"⚠️ No se puede eliminar la multa ID {id_multa_afi} porque está relacionada con otros registros del sistema."
         }
     except Exception as e:
         db.rollback()

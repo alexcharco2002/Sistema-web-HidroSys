@@ -1,733 +1,401 @@
-// src/sections/FinesAffiliatesSection.js  
-// MÓDULO DE MULTAS DE AFILIADOS - VERSIÓN MEJORADA CON ESTILOS MODERNOS
+// src/sections/FinesAffiliatesSection.js
+// MÓDULO DE MULTAS — VERSIÓN CORREGIDA
 
 import React, { useState, useEffect, useCallback } from 'react';
-import './FinesSection.css';
+import './FinesAffiliatesSection.css';
 import finesAffiliatesServices from '../../services/finesAffiliatesServices';
-
 import fineService from '../../services/fineServices';
 import authService from '../../services/authServices';
 import {
   DollarSign, Search, Edit, Eye, Calendar, X, Save,
   RefreshCw, AlertCircle, CheckCircle, XCircle, Ban,
-  FileText, UserCheck, Clock, ArrowUpDown, Receipt, 
-  User, IdCard, MapPin, MessageSquare, Trash2
+  FileText, UserCheck, Clock, ArrowUpDown, Receipt,
+  User, IdCard, MapPin, Trash2, CalendarDays,
+  ChevronDown
 } from 'lucide-react';
 
 const FinesAffiliatesSection = () => {
-  // ============================================================
-  // ESTADOS PRINCIPALES
-  // ============================================================
-  const [multas, setMultas] = useState([]);
-  const [affiliates, setAffiliates] = useState([]);
-  const [tiposMulta, setTiposMulta] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  // ============================================================
-  // ESTADOS DE MODAL Y FORMULARIOS
-  // ============================================================
-  const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState('create');
-  const [selectedMulta, setSelectedMulta] = useState(null);
+  // ── ESTADOS PRINCIPALES ─────────────────────────────────────
+  const [multas, setMultas]               = useState([]);
+  const [affiliates, setAffiliates]       = useState([]);
+  const [tiposMulta, setTiposMulta]       = useState([]);
+  const [stats, setStats]                 = useState(null);
+  const [loading, setLoading]             = useState(false);
+  const [error, setError]                 = useState(null);
+
+  // ── SELECCIÓN DE PERÍODO (flujo de dos pasos) ────────────────
+  const [periodoSeleccionado, setPeriodoSeleccionado] = useState(null);
+  const [periodosData, setPeriodosData]               = useState([]);
+  const [resumenPeriodos, setResumenPeriodos]          = useState({}); // { "2025-3": {total,pendientes,pagadas} }
+  const [aniosExpandidos, setAniosExpandidos]          = useState({});
+  const [loadingPeriodos, setLoadingPeriodos]          = useState(true);
+
+  // ── MODAL ────────────────────────────────────────────────────
+  const [showModal, setShowModal]             = useState(false);
+  const [modalType, setModalType]             = useState('create');
+  const [selectedMulta, setSelectedMulta]     = useState(null);
   const [affiliateSearchTerm, setAffiliateSearchTerm] = useState('');
-  const [selectedAffiliateInfo, setSelectedAffiliateInfo] = useState(null);
+  const [, setSelectedAffiliateInfo] = useState(null);
 
   const [formData, setFormData] = useState({
-    id_usuario_afi: null,
-    id_tipo_multa: null,
-    monto: '',
-    fecha_multa: '',
-    observaciones: ''
+    id_usuario_afi: null, id_tipo_multa: null,
+    monto: '', fecha_multa: '', observaciones: ''
   });
-
-  const [pagoData, setPagoData] = useState({
-    fecha_pago: '',
-    observaciones: ''
-  });
-
-  const [anulacionData, setAnulacionData] = useState({
-    motivo: '',
-    motivoPersonalizado: ''
-  });
+  const [pagoData, setPagoData]         = useState({ fecha_pago: '', observaciones: '' });
+  const [anulacionData, setAnulacionData] = useState({ motivo: '', motivoPersonalizado: '' });
 
   const motivosAnulacion = [
-    'Error en el registro de la multa',
-    'Multa duplicada',
-    'Afiliado incorrecto',
-    'Monto incorrecto',
-    'Decisión administrativa',
-    'Apelación aceptada',
-    'Otro (especificar)'
+    'Error en el registro de la multa', 'Multa duplicada', 'Afiliado incorrecto',
+    'Monto incorrecto', 'Decisión administrativa', 'Apelación aceptada', 'Otro (especificar)'
   ];
 
-  // ============================================================
-  // ESTADOS DE FILTROS Y BÚSQUEDA (agregar al componente)
-  // ============================================================
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterEstado, setFilterEstado] = useState('all');
-  const [filterAfiliado, setFilterAfiliado] = useState('all');
+  // ── FILTROS ──────────────────────────────────────────────────
+  const [searchTerm, setSearchTerm]         = useState('');
+  const [filterEstado, setFilterEstado]     = useState('all');
   const [filterTipoMulta, setFilterTipoMulta] = useState('all');
-  const [sortOrder, setSortOrder] = useState('desc');
-  const [sortBy, setSortBy] = useState('fecha');
-  const [filterAnio, setFilterAnio] = useState(''); 
-  const [filterMes, setFilterMes] = useState(''); 
-  const [aniosDisponibles, setAniosDisponibles] = useState([]); 
-  const [mesesDisponibles, setMesesDisponibles] = useState([]); 
+  const [sortBy, setSortBy]                 = useState('fecha');
+  const [sortOrder, setSortOrder]           = useState('desc');
 
-  // ============================================================
-  // CARGAR AÑOS DISPONIBLES
-  // ============================================================
-  const loadAnios = async () => {
-    try {
-      const result = await finesAffiliatesServices.getAnios();
-      if (result.success) {
-        setAniosDisponibles(result.data);
-        // Retornar el año más reciente (el primero si está ordenado DESC)
-        return result.data.length > 0 ? result.data[0] : null;
-      }
-      return null;
-    } catch (error) {
-      console.error('Error cargando años:', error);
-      return null;
-    }
-  };
-
-
-  // ============================================================
-  // CARGAR MESES SEGÚN EL AÑO SELECCIONADO
-  // ============================================================
-  const loadMesesPorAnio = async (anio) => {
-    if (!anio) {
-      setMesesDisponibles([]);
-      return null;
-    }
-    
-    try {
-      const result = await finesAffiliatesServices.getMesesPorAnio(anio);
-      if (result.success) {
-        setMesesDisponibles(result.data);
-        // Retornar el mes más reciente (el primero si está ordenado DESC)
-        return result.data.length > 0 ? result.data[0].mes : null;
-      }
-      return null;
-    } catch (error) {
-      console.error('Error cargando meses:', error);
-      setMesesDisponibles([]);
-      return null;
-    }
-  };
-
-
-  // ============================================================
-  // MANEJAR CAMBIO DE AÑO
-  // ============================================================
-  const handleAnioChange = (anio) => {
-      setFilterAnio(anio);
-      setFilterMes(''); // Resetear mes cuando cambia el año
-      if (anio) {
-          loadMesesPorAnio(anio);
-      } else {
-          setMesesDisponibles([]);
-      }
-  };
-
-  // ============================================================
-  // ESTADOS DE PERMISOS
-  // ============================================================
+  // ── PERMISOS ─────────────────────────────────────────────────
   const [permissions, setPermissions] = useState({
-    canCreate: false,
-    canRead: false,
-    canUpdate: false,
-    canDelete: false
+    canCreate: false, canRead: false, canUpdate: false, canDelete: false
   });
 
+  // ════════════════════════════════════════════════════════════
+  //  HELPERS
+  // ════════════════════════════════════════════════════════════
+  const getAfiliadoNombre  = (m) => m.afiliado?.nombre_completo || 'N/A';
+  const getAfiliadoCodigo  = (m) => m.afiliado?.cod_usuario_afi || 'N/A';
+  const getAfiliadoCedula  = (m) => m.afiliado?.cedula || 'N/A';
+  const getSectorNombre    = (m) => m.afiliado?.nombre_sector || 'N/A';
+  const getTipoMultaNombre = (m) => m.tipo_multa?.nombre_multa || 'N/A';
 
-  // ============================================================
-  // MODIFICAR fetchMultas para incluir filtro de período
-  // ============================================================
-  const fetchMultas = useCallback(async () => {
-      if (!permissions.canRead) {
-          setError('No tienes permiso para ver multas');
-          setLoading(false);
-          return;
-      }
+  const formatCurrency = (v) =>
+    new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(v || 0);
 
-      setLoading(true);
-      setError(null);
-      try {
-          const filters = {};
-          
-          if (filterEstado !== 'all') {
-              filters.estado = filterEstado;
-          }
-          
-          if (filterAfiliado !== 'all') {
-              filters.id_usuario_afi = parseInt(filterAfiliado);
-          }
-          
-          // Filtros de año y mes
-          if (filterAnio) {
-              filters.anio = parseInt(filterAnio);
-              if (filterMes) {
-                  filters.mes = parseInt(filterMes);
-              }
-          }
-
-          const result = await finesAffiliatesServices.getMultas(filters);
-          if (result.success) {
-              setMultas(result.data);
-          } else {
-              setError(result.message);
-          }
-      } catch (err) {
-          setError('Error al cargar multas desde el servidor');
-      } finally {
-          setLoading(false);
-      }
-  }, [filterEstado, filterAfiliado, filterAnio, filterMes, permissions.canRead]);
-    
-
-  // Función separada para tipos de multa
-  const loadTiposMulta = async () => {
-    try {
-      const tiposResult = await fineService.getTiposMulta({ 
-        activo: true, 
-        esvigente: true 
-      });
-      if (tiposResult.success) {
-        setTiposMulta(tiposResult.data);
-      }
-    } catch (error) {
-      console.error('Error cargando tipos de multa', error);
-    }
+  const formatDate = (s) => {
+    if (!s) return 'N/A';
+    const [y, mo, d] = s.split('-');
+    return new Date(y, mo - 1, d).toLocaleDateString('es-EC', {
+      year: 'numeric', month: 'short', day: 'numeric'
+    });
   };
 
-  
-
-  // ============================================================
-  // FUNCIONES DE PERMISOS
-  // ============================================================
-  const loadUserPermissions = () => {
-    const canCreate = authService.hasPermission('multasafiliados', 'crear') || authService.hasPermission('multasafiliados', 'crud');
-    const canUpdate = authService.hasPermission('multasafiliados', 'actualizar') || authService.hasPermission('multasafiliados', 'crud');
-    const canDelete = authService.hasPermission('multasafiliados', 'eliminar') || authService.hasPermission('multasafiliados', 'crud');
-    const canRead = authService.hasPermission('multasafiliados', 'lectura') || canCreate || canUpdate || canDelete || authService.hasPermission('multas', 'crud');
-
-    setPermissions({ canCreate, canRead, canUpdate, canDelete });
+  const getMesNombre = (mes) => {
+    const n = { 1:'Enero',2:'Febrero',3:'Marzo',4:'Abril',5:'Mayo',6:'Junio',
+                7:'Julio',8:'Agosto',9:'Septiembre',10:'Octubre',11:'Noviembre',12:'Diciembre' };
+    return n[parseInt(mes)] || '';
   };
 
-  // ============================================================
-  // FUNCIONES DE CARGA DE DATOS
-  // ============================================================
-  const loadAffiliates = async () => {
-    try {
-      const result = await finesAffiliatesServices.getAvailableAffiliates();
-      if (result.success) {
-        setAffiliates(result.data);
-      }
-    } catch (error) {
-      console.error('❌ Error cargando afiliados:', error);
-    }
+  const getMesCorto = (mes) => {
+    const n = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    return n[mes] || '';
   };
 
-  const fetchStats = useCallback(async () => {
-      try {
-          const filters = {};
-          
-          // ⭐ Aplicar los mismos filtros de período que en las multas
-          if (filterAnio) {
-              filters.anio = parseInt(filterAnio);
-              if (filterMes) {
-                  filters.mes = parseInt(filterMes);
-              }
-          }
-          
-          const result = await finesAffiliatesServices.getMultasStats(filters);
-          if (result.success) {
-              setStats(result.data);
-          }
-      } catch (error) {
-          console.error('Error cargando estadísticas:', error);
-      }
-  }, [filterAnio, filterMes]); 
-
-  // ============================================================
-  // ELIMINAR MULTA (Solo anuladas)
-  // ============================================================
-  const handleEliminar = async (multa) => {
-    if (multa.estado !== 'anulada') {
-      alert('⚠️ Solo se pueden eliminar multas anuladas');
-      return;
-    }
-
-    if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para eliminar multas');
-      return;
-    }
-
-    const confirmacion = window.confirm(
-      `⚠️ ¿Estás seguro de eliminar permanentemente la multa #${multa.id_multa_afi}?\n\n` +
-      `Afiliado: ${getAfiliadoNombre(multa)}\n` +
-      `Tipo: ${getTipoMultaNombre(multa)}\n` +
-      `Monto: ${formatCurrency(multa.monto)}\n\n` +
-      `Esta acción NO se puede deshacer.`
-    );
-
-    if (!confirmacion) return;
-
-    try {
-      const result = await finesAffiliatesServices.deleteMulta(multa.id_multa_afi);
-
-      if (result.success) {
-        // ✅ Eliminación exitosa
-        alert(`✅ Multa eliminada correctamente.\n\nMulta ID: ${multa.id_multa_afi}\nAfiliado: ${getAfiliadoNombre(multa)}\nMonto: ${formatCurrency(multa.monto)}`);
-        await fetchMultas();
-        await fetchStats();
-      } else {
-        // ⚠️ No se pudo eliminar (tiene relaciones)
-        alert(result.message || '⚠️ No se puede eliminar la multa');
-      }
-    } catch (error) {
-      console.error('❌ Error eliminando multa:', error);
-      alert('❌ Error al eliminar la multa: ' + error.message);
-    }
+  // Texto + color por estado
+  const estadoConfig = {
+    pendiente:  { label: 'Pendiente',  color: '#d97706', bg: '#fef3c7', icon: Clock },
+    pagada:     { label: 'Pagada',     color: '#059669', bg: '#d1fae5', icon: CheckCircle },
+    anulada:    { label: 'Anulada',    color: '#dc2626', bg: '#fee2e2', icon: XCircle },
+    exonerada:  { label: 'Exonerada',  color: '#4f46e5', bg: '#e0e7ff', icon: Ban },
+    facturado:  { label: 'Facturado',  color: '#0369a1', bg: '#e0f2fe', icon: Receipt },
   };
 
-
-// ============================================================
-// EFECTOS DE INICIALIZACIÓN
-// ============================================================
-useEffect(() => {
-  const initializeComponent = async () => {
-    loadUserPermissions();
-    loadTiposMulta();
-    
-    // ⭐ Cargar el período más reciente con datos
-    const anioReciente = await loadAnios();
-    
-    if (anioReciente) {
-      // Cargar meses del año más reciente
-      const mesReciente = await loadMesesPorAnio(anioReciente);
-      
-      // Establecer filtros con el período más reciente
-      setFilterAnio(anioReciente.toString());
-      setFilterMes(mesReciente ? mesReciente.toString() : '');
-      
-      console.log('📅 Período inicial:', { anio: anioReciente, mes: mesReciente });
-    } else {
-      // Si no hay datos, dejar vacío
-      setFilterAnio('');
-      setFilterMes('');
-      console.log('⚠️ No hay datos de multas registradas');
-    }
-  };
-  
-  initializeComponent();
-}, []);
-
-// Segundo useEffect para cargar datos cuando los filtros estén listos
-useEffect(() => {
-  if (permissions.canRead) {
-    fetchMultas();
-    fetchStats();
-  }
-}, [filterEstado, filterAfiliado, filterAnio, filterMes, permissions.canRead, fetchMultas, fetchStats]);
-
-
-  // ============================================================
-  // FUNCIONES AUXILIARES DE DATOS
-  // ============================================================
-  
-  const getAfiliadoNombre = (multa) => {
-    return multa.afiliado?.nombre_completo || "N/A";
-  };
-
-  const getAfiliadoCodigo = (multa) => {
-    return multa.afiliado?.cod_usuario_afi || "N/A";
-  };
-
-  const getAfiliadoCedula = (multa) => {
-    return multa.afiliado?.cedula || "N/A";
-  };
-
-  const getSectorNombre = (multa) => {
-    return multa.afiliado?.nombre_sector || "N/A";
-  };
-
-  const getTipoMultaNombre = (multa) => {
-    return multa.tipo_multa?.nombre_multa || "N/A";
-  };
-
-  const getEstadoBadge = (estado) => {
-    const badges = {
-      pendiente: { 
-        class: 'fine-status-badge', 
-        style: { backgroundColor: '#fef3c7', color: '#d97706' }, 
-        icon: Clock, 
-        text: 'Pendiente' 
-      },
-      pagada: { 
-        class: 'fine-status-badge', 
-        style: { backgroundColor: '#d1fae5', color: '#059669' }, 
-        icon: CheckCircle, 
-        text: 'Pagada' 
-      },
-      anulada: { 
-        class: 'fine-status-badge', 
-        style: { backgroundColor: '#fee2e2', color: '#dc2626' }, 
-        icon: XCircle, 
-        text: 'Anulada' 
-      },
-      exonerada: { 
-        class: 'fine-status-badge', 
-        style: { backgroundColor: '#e0e7ff', color: '#4f46e5' }, 
-        icon: FileText, 
-        text: 'Exonerada' 
-      }
-    };
-
-    const badge = badges[estado] || badges.pendiente;
-    const IconComponent = badge.icon;
-
+  const EstadoBadge = ({ estado }) => {
+    const cfg = estadoConfig[estado] || estadoConfig.pendiente;
+    const Icon = cfg.icon;
     return (
-      <span className={badge.class} style={badge.style}>
-        <IconComponent className="w-3 h-3" />
-        {badge.text}
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: '4px',
+        padding: '3px 8px', borderRadius: '99px', fontSize: '0.75rem',
+        fontWeight: 500, backgroundColor: cfg.bg, color: cfg.color,
+        whiteSpace: 'nowrap'
+      }}>
+        <Icon style={{ width: 12, height: 12 }} />
+        {cfg.label}
       </span>
     );
   };
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-EC', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(value || 0);
+  // ════════════════════════════════════════════════════════════
+  //  PERMISOS
+  // ════════════════════════════════════════════════════════════
+  const loadUserPermissions = () => {
+    const canCreate = authService.hasPermission('multasafiliados','crear')  || authService.hasPermission('multasafiliados','crud');
+    const canUpdate = authService.hasPermission('multasafiliados','actualizar') || authService.hasPermission('multasafiliados','crud');
+    const canDelete = authService.hasPermission('multasafiliados','eliminar') || authService.hasPermission('multasafiliados','crud');
+    const canRead   = authService.hasPermission('multasafiliados','lectura') || canCreate || canUpdate || canDelete || authService.hasPermission('multas','crud');
+    setPermissions({ canCreate, canRead, canUpdate, canDelete });
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+  // ════════════════════════════════════════════════════════════
+  //  CARGA DE PERÍODOS CON RESUMEN INCLUIDO
+  // ════════════════════════════════════════════════════════════
+  const loadPeriodosData = async () => {
+    setLoadingPeriodos(true);
+    try {
+      const aniosResult = await finesAffiliatesServices.getAnios();
+      if (!aniosResult.success || !aniosResult.data.length) { setLoadingPeriodos(false); return; }
 
-    const [year, month, day] = dateString.split('-');
-    const date = new Date(year, month - 1, day); // fecha LOCAL
+      const todosLosPeriodos = [];
 
-    return date.toLocaleDateString('es-EC', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+      for (const anio of aniosResult.data) {
+        const mesesResult = await finesAffiliatesServices.getMesesPorAnio(anio);
+        if (!mesesResult.success) continue;
+
+        for (const mes of mesesResult.data) {
+          todosLosPeriodos.push({ anio, mes: mes.mes, mes_nombre: mes.mes_nombre });
+        }
+      }
+
+      setPeriodosData(todosLosPeriodos);
+
+      // Cargar resúmenes de cada período en paralelo
+      const resumenes = {};
+      await Promise.all(
+        todosLosPeriodos.map(async (p) => {
+          try {
+            const r = await finesAffiliatesServices.getResumenPeriodo(p.anio, p.mes);
+            if (r.success) {
+              resumenes[`${p.anio}-${p.mes}`] = r.data;
+            }
+          } catch (_) { /* silencioso */ }
+        })
+      );
+      setResumenPeriodos(resumenes);
+
+    } catch (e) {
+      console.error('Error cargando períodos:', e);
+    } finally {
+      setLoadingPeriodos(false);
+    }
+  };
+
+  const getResumen = (anio, mes) => resumenPeriodos[`${anio}-${mes}`] || null;
+
+  // ════════════════════════════════════════════════════════════
+  //  FETCH MULTAS (con filtro tipo_multa al backend)
+  // ════════════════════════════════════════════════════════════
+  const fetchMultas = useCallback(async () => {
+    if (!permissions.canRead || !periodoSeleccionado) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const filters = {
+        anio: periodoSeleccionado.anio,
+        mes:  periodoSeleccionado.mes,
+      };
+      if (filterEstado !== 'all')    filters.estado        = filterEstado;
+      if (filterTipoMulta !== 'all') filters.id_tipo_multa = parseInt(filterTipoMulta);
+
+      const result = await finesAffiliatesServices.getMultas(filters);
+      if (result.success) setMultas(result.data);
+      else setError(result.message);
+    } catch (e) {
+      setError('Error al cargar multas desde el servidor');
+    } finally {
+      setLoading(false);
+    }
+  }, [permissions.canRead, periodoSeleccionado, filterEstado, filterTipoMulta]);
+
+  const fetchStats = useCallback(async () => {
+    if (!periodoSeleccionado) return;
+    try {
+      const result = await finesAffiliatesServices.getMultasStats({
+        anio: periodoSeleccionado.anio,
+        mes:  periodoSeleccionado.mes,
+      });
+      if (result.success) setStats(result.data);
+    } catch (e) { console.error('Error stats:', e); }
+  }, [periodoSeleccionado]);
+
+  const loadTiposMulta = async () => {
+    try {
+      const r = await fineService.getTiposMulta({ activo: true, esvigente: true });
+      if (r.success) setTiposMulta(r.data);
+    } catch (e) { console.error('Error tipos multa:', e); }
+  };
+
+  const loadAffiliates = async () => {
+    try {
+      const r = await finesAffiliatesServices.getAvailableAffiliates();
+      if (r.success) setAffiliates(r.data);
+    } catch (e) { console.error('Error afiliados:', e); }
+  };
+
+  // ════════════════════════════════════════════════════════════
+  //  EFECTOS
+  // ════════════════════════════════════════════════════════════
+  useEffect(() => {
+    loadUserPermissions();
+    loadTiposMulta();
+    loadPeriodosData();
+  }, []);
+
+  useEffect(() => {
+    if (permissions.canRead && periodoSeleccionado) {
+      fetchMultas();
+      fetchStats();
+    }
+  }, [permissions.canRead, periodoSeleccionado, filterEstado, filterTipoMulta, fetchMultas, fetchStats]);
+
+  // ════════════════════════════════════════════════════════════
+  //  SELECCIÓN DE PERÍODO
+  // ════════════════════════════════════════════════════════════
+  const handlePeriodoChange = (mes, anio) => {
+    setPeriodoSeleccionado({ mes, anio });
+    setSearchTerm('');
+    setFilterEstado('all');
+    setFilterTipoMulta('all');
+  };
+
+  const toggleAnio = (anio) =>
+    setAniosExpandidos(prev => ({ ...prev, [anio]: prev[anio] === false ? true : false }));
+
+  // ════════════════════════════════════════════════════════════
+  //  FILTRADO LOCAL (búsqueda de texto + sort)
+  // ════════════════════════════════════════════════════════════
+  const filteredMultas = multas
+    .filter(m => {
+      if (!searchTerm) return true;
+      const q = searchTerm.toLowerCase();
+      return (
+        m.id_multa_afi.toString().includes(q) ||
+        m.afiliado?.nombre_completo?.toLowerCase().includes(q) ||
+        m.afiliado?.cedula?.includes(q) ||
+        m.afiliado?.cod_usuario_afi?.toString().includes(q) ||
+        m.afiliado?.nombre_sector?.toLowerCase().includes(q) ||
+        m.tipo_multa?.nombre_multa?.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      const prio = { pagada:1, pendiente:2, exonerada:3, anulada:4 };
+      const pa = prio[a.estado] || 5, pb = prio[b.estado] || 5;
+      if (pa !== pb) return pa - pb;
+
+      let cmp = 0;
+      if (sortBy === 'fecha')    cmp = new Date(a.fecha_multa) - new Date(b.fecha_multa);
+      else if (sortBy === 'monto') cmp = parseFloat(a.monto) - parseFloat(b.monto);
+      else if (sortBy === 'afiliado') cmp = getAfiliadoNombre(a).localeCompare(getAfiliadoNombre(b), 'es');
+      else cmp = a.id_multa_afi - b.id_multa_afi;
+      return sortOrder === 'asc' ? cmp : -cmp;
     });
-  };
 
-
-  // ============================================================
-  // FILTRAR AFILIADOS POR BÚSQUEDA
-  // ============================================================
   const filteredAffiliates = affiliates.filter(aff => {
     if (!affiliateSearchTerm.trim()) return true;
-    
-    const searchLower = affiliateSearchTerm.toLowerCase().trim();
-    const nombreCompleto = `${aff.nombres} ${aff.apellidos}`.toLowerCase();
-    const cedula = aff.cedula?.toLowerCase() || '';
-    const codigo = String(aff.cod_usuario_afi || '');
-    
+    const q = affiliateSearchTerm.toLowerCase();
     return (
-      nombreCompleto.includes(searchLower) ||
-      cedula.includes(searchLower) ||
-      codigo.includes(searchLower)
+      `${aff.nombres} ${aff.apellidos}`.toLowerCase().includes(q) ||
+      (aff.cedula || '').toLowerCase().includes(q) ||
+      String(aff.cod_usuario_afi || '').includes(q)
     );
   });
 
-  // ============================================================
-  // FILTRAR Y ORDENAR MULTAS
-  // ============================================================
+  // ════════════════════════════════════════════════════════════
+  //  ELIMINAR
+  // ════════════════════════════════════════════════════════════
+  const handleEliminar = async (multa) => {
+    if (multa.estado !== 'anulada') { alert('⚠️ Solo se pueden eliminar multas anuladas'); return; }
+    if (!permissions.canDelete)      { alert('❌ Sin permiso'); return; }
+    if (!window.confirm(
+      `¿Eliminar permanentemente la multa #${multa.id_multa_afi}?\n` +
+      `Afiliado: ${getAfiliadoNombre(multa)}\nMonto: ${formatCurrency(multa.monto)}\n\nEsta acción NO se puede deshacer.`
+    )) return;
 
-  const filteredMultas = multas
-    .filter(multa => {
-      const matchesSearch = searchTerm === '' ||
-        multa.id_multa_afi.toString().includes(searchTerm) ||
-        (multa.afiliado && (
-          multa.afiliado.nombre_completo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          multa.afiliado.cedula?.includes(searchTerm) ||
-          multa.afiliado.cod_usuario_afi?.toString().includes(searchTerm) ||
-          multa.afiliado.nombre_sector?.toLowerCase().includes(searchTerm.toLowerCase())
-        )) ||
-        (multa.tipo_multa && 
-          multa.tipo_multa.nombre_multa?.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      
-      const matchesEstado = filterEstado === 'all' || multa.estado === filterEstado;
-      const matchesAfiliado = filterAfiliado === 'all' || multa.id_usuario_afi === parseInt(filterAfiliado);
-      const matchesTipoMulta = filterTipoMulta === 'all' || multa.id_tipo_multa === parseInt(filterTipoMulta);
-      
-      return matchesSearch && matchesEstado && matchesAfiliado && matchesTipoMulta;
-    })
-    .sort((a, b) => {
-      // Primero ordenar por prioridad de estado
-      const estadoPrioridad = {
-        'pagada': 1,
-        'pendiente': 2,
-        'exonerada': 3,
-        'anulada': 4
-      };
-      
-      const prioridadA = estadoPrioridad[a.estado] || 5;
-      const prioridadB = estadoPrioridad[b.estado] || 5;
-      
-      if (prioridadA !== prioridadB) {
-        return prioridadA - prioridadB;
-      }
-      
-      // Luego aplicar el ordenamiento seleccionado
-      let compareValue = 0;
-      
-      switch (sortBy) {
-        case 'fecha':
-          compareValue = new Date(a.fecha_multa) - new Date(b.fecha_multa);
-          break;
-        case 'monto':
-          compareValue = parseFloat(a.monto) - parseFloat(b.monto);
-          break;
-        case 'afiliado':
-          const nombreA = getAfiliadoNombre(a).toLowerCase();
-          const nombreB = getAfiliadoNombre(b).toLowerCase();
-          compareValue = nombreA.localeCompare(nombreB, 'es');
-          break;
-        default:
-          compareValue = a.id_multa_afi - b.id_multa_afi;
-      }
-
-      return sortOrder === 'asc' ? compareValue : -compareValue;
-    });
-
-  const toggleSortOrder = () => {
-    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
+    try {
+      const r = await finesAffiliatesServices.deleteMulta(multa.id_multa_afi);
+      if (r.success) {
+        alert(`✅ Multa #${multa.id_multa_afi} eliminada.`);
+        await fetchMultas(); await fetchStats();
+      } else alert(r.message || '⚠️ No se pudo eliminar');
+    } catch (e) { alert('❌ Error: ' + e.message); }
   };
 
-  const limpiarFiltros = async () => {
-    setSearchTerm('');
-    setFilterEstado('all');
-    setFilterAfiliado('all');
-    setFilterTipoMulta('all');
-    setSortBy('fecha');
-    setSortOrder('desc');
-    
-    // ⭐ Volver al período más reciente en lugar de fecha actual
-    const anioReciente = await loadAnios();
-    if (anioReciente) {
-      const mesReciente = await loadMesesPorAnio(anioReciente);
-      setFilterAnio(anioReciente.toString());
-      setFilterMes(mesReciente ? mesReciente.toString() : '');
-    } else {
-      setFilterAnio('');
-      setFilterMes('');
-    }
-    
-    fetchMultas();
-  };
-
-  // 
-  const getMesNombre = (mes) => {
-    const meses = {
-      1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
-      5: 'Mayo', 6: 'Junio', 7: 'Julio', 8: 'Agosto',
-      9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
-    };
-    return meses[parseInt(mes)] || '';
-  };
-
-
-  // ============================================================
-  // FUNCIONES DE MODAL
-  // ============================================================
-  
-  const handleAffiliateChange = (affiliateId) => {
-    const affiliate = affiliates.find(a => a.id_usuario_afi === parseInt(affiliateId));
-    setFormData({ ...formData, id_usuario_afi: parseInt(affiliateId) });
-    setSelectedAffiliateInfo(affiliate);
-  };
-
+  // ════════════════════════════════════════════════════════════
+  //  MODAL HANDLERS (abrir, cerrar, cambios en formulario)
+  // ════════════════════════════════════════════════════════════
   const openModal = async (type, multa = null) => {
-    if (type === 'create' && !permissions.canCreate) {
-      alert('❌ No tienes permiso para crear multas');
-      return;
-    }
+    if (type === 'create' && !permissions.canCreate) { alert('❌ Sin permiso para crear'); return; }
+    if ((type === 'edit' || type === 'pagar') && !permissions.canUpdate) { alert('❌ Sin permiso'); return; }
+    if (type === 'anular' && !permissions.canDelete) { alert('❌ Sin permiso para anular'); return; }
 
-    if ((type === 'edit' || type === 'pagar') && !permissions.canUpdate) {
-      alert('❌ No tienes permiso para modificar multas');
-      return;
-    }
-
-    if (type === 'anular' && !permissions.canDelete) {
-      alert('❌ No tienes permiso para anular multas');
-      return;
-    }
-
-    setModalType(type);
-    setSelectedMulta(multa);
-    setError(null);
+    setModalType(type); setSelectedMulta(multa); setError(null);
 
     if (type === 'create') {
-      // Cargar afiliados AQUÍ
-     
       await loadAffiliates();
-
       setFormData({
-        id_usuario_afi: affiliates.length > 0 ? affiliates[0].id_usuario_afi : null,
-        id_tipo_multa: tiposMulta.length > 0 ? tiposMulta[0].id_tipo_multa : null,
-        monto: tiposMulta.length > 0 ? tiposMulta[0].monto || '' : '',
-        fecha_multa: new Date().toLocaleDateString('en-CA'),
+        id_usuario_afi: null, id_tipo_multa: tiposMulta[0]?.id_tipo_multa || null,
+        monto: tiposMulta[0]?.monto || '', fecha_multa: new Date().toLocaleDateString('en-CA'),
         observaciones: ''
       });
-      setAffiliateSearchTerm('');
-      setSelectedAffiliateInfo(null);
+      setAffiliateSearchTerm(''); setSelectedAffiliateInfo(null);
     } else if (type === 'edit' && multa) {
-      setFormData({
-        id_tipo_multa: multa.id_tipo_multa,
-        observaciones: multa.observaciones || '',
-        activo: multa.activo
-      });
-    } else if (type === 'pagar' && multa) {
-      setPagoData({
-        fecha_pago: new Date().toISOString().split('T')[0],
-        observaciones: ''
-      });
-    } else if (type === 'anular' && multa) {
-      setAnulacionData({
-        motivo: '',
-        motivoPersonalizado: ''
-      });
+      setFormData({ id_tipo_multa: multa.id_tipo_multa, observaciones: multa.observaciones || '', activo: multa.activo });
+    } else if (type === 'pagar') {
+      setPagoData({ fecha_pago: new Date().toISOString().split('T')[0], observaciones: '' });
+    } else if (type === 'anular') {
+      setAnulacionData({ motivo: '', motivoPersonalizado: '' });
     }
-
     setShowModal(true);
   };
 
   const closeModal = () => {
-    setShowModal(false);
-    setSelectedMulta(null);
-    setError(null);
-    setAffiliateSearchTerm('');
-    setSelectedAffiliateInfo(null);
+    setShowModal(false); setSelectedMulta(null); setError(null);
+    setAffiliateSearchTerm(''); setSelectedAffiliateInfo(null);
   };
 
-  // ============================================================
-  // FUNCIONES CRUD
-  // ============================================================
-  
+  const handleAffiliateChange = (id) => {
+    const aff = affiliates.find(a => a.id_usuario_afi === parseInt(id));
+    setFormData(f => ({ ...f, id_usuario_afi: parseInt(id) }));
+    setSelectedAffiliateInfo(aff || null);
+  };
+
+  // ════════════════════════════════════════════════════════════
+  //  CRUD HANDLERS
+  // ════════════════════════════════════════════════════════════
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-
+    e.preventDefault(); setError(null);
     try {
-      let result;
-
+      let r;
       if (modalType === 'create') {
-        if (!permissions.canCreate) {
-          setError('No tienes permiso para crear multas');
-          return;
-        }
-
-        result = await finesAffiliatesServices.createMulta(formData);
-
-        if (result.success) {
-          alert(`✅ Multa creada exitosamente.\n\nID: ${result.data.id_multa_afi}\nMonto: $${result.data.monto}`);
-          await fetchMultas();
-          await fetchStats();
-          closeModal();
-        } else {
-          setError(result.message || 'Error al crear multa');
-        }
-
+        r = await finesAffiliatesServices.createMulta(formData);
+        if (r.success) { alert(`✅ Multa creada. ID: ${r.data.id_multa_afi}`); await fetchMultas(); await fetchStats(); closeModal(); }
+        else setError(r.message || 'Error al crear');
       } else if (modalType === 'edit') {
-        if (!permissions.canUpdate) {
-          setError('No tienes permiso para editar multas');
-          return;
-        }
-
-        result = await finesAffiliatesServices.updateMulta(selectedMulta.id_multa_afi, formData);
-
-        if (result.success) {
-          alert('✅ Multa actualizada correctamente');
-          await fetchMultas();
-          await fetchStats();
-          closeModal();
-        } else {
-          setError(result.message || 'Error al actualizar multa');
-        }
+        r = await finesAffiliatesServices.updateMulta(selectedMulta.id_multa_afi, formData);
+        if (r.success) { alert('✅ Multa actualizada'); await fetchMultas(); await fetchStats(); closeModal(); }
+        else setError(r.message || 'Error al actualizar');
       }
-
-    } catch (error) {
-      console.error('Error al guardar multa:', error);
-      setError(error.message || 'Error al guardar multa');
-    }
+    } catch (e) { setError(e.message || 'Error al guardar'); }
   };
 
   const handlePago = async (e) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!permissions.canUpdate) {
-      setError('No tienes permiso para registrar pagos');
-      return;
-    }
-
+    e.preventDefault(); setError(null);
+    if (!permissions.canUpdate) { setError('Sin permiso'); return; }
     try {
-      const result = await finesAffiliatesServices.registrarPago(selectedMulta.id_multa_afi, pagoData);
-
-      if (result.success) {
-        alert(`✅ Pago registrado exitosamente.\n\nMulta ID: ${selectedMulta.id_multa_afi}\nMonto: $${selectedMulta.monto}\nFecha: ${pagoData.fecha_pago}`);
-        await fetchMultas();
-        await fetchStats();
-        closeModal();
-      } else {
-        setError(result.message || 'Error al registrar pago');
-      }
-
-    } catch (error) {
-      console.error('Error al registrar pago:', error);
-      setError(error.message || 'Error al registrar pago');
-    }
+      const r = await finesAffiliatesServices.registrarPago(selectedMulta.id_multa_afi, pagoData);
+      if (r.success) { alert(`✅ Pago registrado para multa #${selectedMulta.id_multa_afi}`); await fetchMultas(); await fetchStats(); closeModal(); }
+      else setError(r.message || 'Error al registrar pago');
+    } catch (e) { setError(e.message); }
   };
 
   const handleAnular = async (e) => {
     e.preventDefault();
-    
-    if (!permissions.canDelete) {
-      alert('❌ No tienes permiso para anular multas');
-      return;
-    }
-
-    const motivoFinal = anulacionData.motivo === 'Otro (especificar)' 
-      ? anulacionData.motivoPersonalizado 
-      : anulacionData.motivo;
-
-    if (!motivoFinal || motivoFinal.trim().length < 10) {
-      setError('El motivo debe tener al menos 10 caracteres');
-      return;
-    }
-
+    if (!permissions.canDelete) { alert('❌ Sin permiso'); return; }
+    const motivoFinal = anulacionData.motivo === 'Otro (especificar)'
+      ? anulacionData.motivoPersonalizado : anulacionData.motivo;
+    if (!motivoFinal || motivoFinal.trim().length < 10) { setError('El motivo debe tener al menos 10 caracteres'); return; }
     try {
-      const result = await finesAffiliatesServices.anularMulta(selectedMulta.id_multa_afi, motivoFinal);
-
-      if (result.success) {
-        alert('✅ Multa anulada correctamente');
-        await fetchMultas();
-        await fetchStats();
-        closeModal();
-      } else {
-        setError(result.message || 'Error al anular multa');
-      }
-
-    } catch (error) {
-      console.error('Error al anular multa:', error);
-      setError(error.message || 'Error al anular multa');
-    }
+      const r = await finesAffiliatesServices.anularMulta(selectedMulta.id_multa_afi, motivoFinal);
+      if (r.success) { alert('✅ Multa anulada'); await fetchMultas(); await fetchStats(); closeModal(); }
+      else setError(r.message || 'Error al anular');
+    } catch (e) { setError(e.message); }
   };
 
-  // ============================================================
-  // RENDERIZADO CONDICIONAL
-  // ============================================================
-  
+  // ════════════════════════════════════════════════════════════
+  //  GUARD
+  // ════════════════════════════════════════════════════════════
   if (!permissions.canRead) {
     return (
       <div className="section-placeholder">
@@ -738,718 +406,530 @@ useEffect(() => {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="section-placeholder">
-        <RefreshCw className="w-16 h-16 mx-auto mb-4 text-gray-400 animate-spin" />
-        <h2>Cargando Multas</h2>
-        <p>Por favor espera mientras cargamos la información...</p>
-      </div>
-    );
-  }
-
-  // ============================================================
-  // RENDERIZADO PRINCIPAL
-  // ============================================================
-
+  // ════════════════════════════════════════════════════════════
+  //  RENDER
+  // ════════════════════════════════════════════════════════════
   return (
-    <div className="users-section">
-      {/* HEADER */}
-      <div className="section-header">
-        
-        <div className="section-title">
-          <FileText className="w-7 h-7 text-blue-600" />
-          <div>
-            <h2>Gestión de multas a afiliados</h2>
-            <p className="section-subtitle">
-              Gestiona y añade multas a afiliados
-            </p>
-          </div>
-        </div>
+    <div className="affiliates-section">
 
-        {permissions.canCreate && (
-          <button
-            className="btn-primary"
-            onClick={() => openModal('create')}
-          >
-            <DollarSign className="w-4 h-4 mr-2" />
-            Nueva Multa
-          </button>
-        )}
-      </div>
+      {/* ══════════════ PASO 1: SELECCIÓN DE PERÍODO ══════════════ */}
+      {!periodoSeleccionado && (
+        <div className="periodo-selection-page">
 
-      {/* MENSAJES DE ERROR */}
-      {error && (
-        <div className="alert alert-error mb-4">
-          <AlertCircle className="w-5 h-5 mr-2" />
-          {error}
-        </div>
-      )}
-
-      {/* ==================== ESTADÍSTICAS ==================== */}
-      {stats && (
-        <div className="periodo-stats-container">
-
-          {/* Header con información del período */}
-          <div className="periodo-stats-header">
-            <FileText className="w-5 h-5 text-blue-600 mr-2" />
-            <h3>Resumen de Multas</h3>
-            {filterAnio && (
-              <span className="periodo-badge">
-                <Calendar size={14} />
-                {filterMes ? `${getMesNombre(filterMes)} ` : ''}{filterAnio}
-              </span>
-            )}
+          {/* Header */}
+          <div className="section-header">
+            <div className="section-title">
+              <Receipt className="w-7 h-7 text-blue-600" />
+              <div>
+                <h2>Gestión de Multas a Afiliados</h2>
+                <p className="section-subtitle">Selecciona un período para gestionar las multas</p>
+              </div>
+            </div>
           </div>
 
-          {/* Primera Fila: Estados Generales */}
-          <div className="users-stats">
-
-            {/* 📄 Total multas */}
-            <div className="stat-item">
-              <FileText className="stat-icon text-blue-600" />
+          {/* ── Períodos recientes ── */}
+          <div className="periodo-selector-container">
+            <div className="periodo-selector-header">
               <div>
-                <p className="stat-label">Total Multas</p>
-                <p className="stat-value">{stats.total_multas || 0}</p>
-                <span className="stat-detail">
-                  {formatCurrency(stats.monto_total)}
-                </span>
+                <h3><CalendarDays className="w-5 h-5 text-blue-600 mr-2" />Períodos Recientes</h3>
+                <p className="periodo-selector-subtitle">Mes actual ± 2 meses</p>
               </div>
             </div>
 
-            {/* ⏳ Pendientes */}
-            <div className="stat-item active orange">
-              <Clock className="stat-icon text-orange-600" />
-              <div>
-                <p className="stat-label">Pendientes</p>
-                <p className="stat-value">{stats.pendientes || 0}</p>
-                <span className="stat-detail">
-                  {formatCurrency(stats.monto_pendiente)}
-                </span>
+            {loadingPeriodos ? (
+              <div className="empty-state" style={{ padding: '2rem' }}>
+                <RefreshCw className="w-10 h-10 text-blue-400 mx-auto mb-2 animate-spin" />
+                <p>Cargando períodos...</p>
               </div>
-            </div>
+            ) : (
+              <div className="periodos-grid">
+                {(() => {
+                  const hoy = new Date();
+                  const mesActual  = hoy.getMonth() + 1;
+                  const anioActual = hoy.getFullYear();
+                  const diff = (mes, anio) => (anio - anioActual) * 12 + (mes - mesActual);
 
-            {/* ✅ Pagadas */}
-            <div className="stat-item active green">
-              <CheckCircle className="stat-icon text-green-600" />
-              <div>
-                <p className="stat-label">Pagadas</p>
-                <p className="stat-value">{stats.pagadas || 0}</p>
-                <span className="stat-detail">
-                  {formatCurrency(stats.monto_pagado)}
-                </span>
-              </div>
-            </div>
+                  const recientes = periodosData
+                    .filter(p => diff(p.mes, p.anio) >= -2 && diff(p.mes, p.anio) <= 2)
+                    .sort((a, b) => a.anio !== b.anio ? b.anio - a.anio : b.mes - a.mes);
 
-            {/* ❌ Anuladas */}
-            <div className="stat-item active red">
-              <XCircle className="stat-icon text-red-600" />
-              <div>
-                <p className="stat-label">Anuladas</p>
-                <p className="stat-value">{stats.anuladas || 0}</p>
-              </div>
-            </div>
-
-            {/* 📋 Exoneradas */}
-            <div className="stat-item active purple">
-              <Ban className="stat-icon text-purple-600" />
-              <div>
-                <p className="stat-label">Exoneradas</p>
-                <p className="stat-value">{stats.exoneradas || 0}</p>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Segunda Fila: Facturación */}
-          <div className="periodo-stats-header" style={{ marginTop: '1.5rem', borderTop: '1px solid #e5e7eb', paddingTop: '1rem' }}>
-            <Receipt className="w-5 h-5 text-indigo-600 mr-2" />
-            <h3>Estado de Facturación</h3>
-          </div>
-
-          <div className="users-stats">
-
-            {/* 📝 Facturadas */}
-            <div className="stat-item active blue">
-              <Receipt className="stat-icon text-blue-600" />
-              <div>
-                <p className="stat-label">Facturadas</p>
-                <p className="stat-value">{stats.facturadas || 0}</p>
-                <span className="stat-detail">
-                  {formatCurrency(stats.monto_facturado)}
-                </span>
-              </div>
-            </div>
-
-            {/* ⏰ Pendientes de Facturación */}
-            <div className="stat-item active amber">
-              <AlertCircle className="stat-icon text-amber-600" />
-              <div>
-                <p className="stat-label">Pendientes Facturación</p>
-                <p className="stat-value">{stats.pendientes_facturacion || 0}</p>
-                <span className="stat-detail">
-                  {formatCurrency(stats.monto_pendiente_facturacion)}
-                </span>
-              </div>
-            </div>
-            {/* Facturado (estado) */}
-            <div className="stat-item active indigo">
-              <Receipt className="stat-icon text-indigo-600" />
-              <div>
-                <p className="stat-label">Facturado (Estado)</p>
-                <p className="stat-value">{stats.facturado || 0}</p>
-              </div>
-            </div>
-
-
-            {/* 💰 Monto Total */}
-            <div className="stat-item active indigo">
-              <DollarSign className="stat-icon text-indigo-600" />
-              <div>
-                <p className="stat-label">Monto Total</p>
-                <p className="stat-value">{formatCurrency(stats.monto_total)}</p>
-                <span className="stat-detail" style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                  {stats.total_multas} multas
-                </span>
-              </div>
-            </div>
-
-          </div>
-
-        </div>
-      )}
-
-
-      {/* FILTROS DE PERÍODO */}
-      <div className="filters-section">
-
-        <div className="filters-right">
-
-          {/* HEADER – primera línea */}
-          <div className="periodo-stats-header">
-            <FileText className="w-5 h-5 text-blue-600 mr-2" />
-            <h3>Filtrar por período</h3>
-          </div>
-
-          {/* SALTO DE LÍNEA FORZADO */}
-          <div style={{ width: '40%' }} />
-          <select
-            className="filter-select"
-            value={filterAnio}  // ✅ Esto debe estar presente
-            onChange={(e) => handleAnioChange(e.target.value)}
-          >
-            <option value="">Todos los años</option>
-            {aniosDisponibles.map((anio) => (
-              <option key={anio} value={anio}>
-                {anio}
-              </option>
-            ))}
-          </select>
-
-          {filterAnio && (
-            <select
-              className="filter-select"
-              value={filterMes}  // ✅ Esto debe estar presente
-              onChange={(e) => setFilterMes(e.target.value)}
-            >
-              <option value="">Todo el año</option>
-              {mesesDisponibles.map((mes) => (
-                <option key={mes.mes} value={mes.mes}>
-                  {mes.mes_nombre}
-                </option>
-              ))}
-            </select>
-          )}
-
-
-        </div>
-
-      </div>
-
-
-      {/* FILTROS Y BÚSQUEDA */}
-      <div className="filters-section">
-        <div className="search-container">
-          <Search className="search-icon" />
-          <input
-            type="text"
-            placeholder="Buscar por nombre, codigo, cédula, sector..."
-            className="search-input"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        <div className="filters-right">
-          <select 
-            className="filter-select"
-            value={filterEstado}
-            onChange={(e) => setFilterEstado(e.target.value)}
-          >
-            <option value="all">Todos los estados</option>
-            <option value="pendiente">Pendiente</option>
-            <option value="pagada">Pagada</option>
-            <option value="anulada">Anulada</option>
-            <option value="exonerada">Exonerada</option>
-            <option value="facturado">Facturado</option>
-
-          </select>
-
-          <select 
-            className="filter-select"
-            value={filterTipoMulta}
-            onChange={(e) => setFilterTipoMulta(e.target.value)}
-          >
-            <option value="all">Todos los tipos</option>
-            {tiposMulta.map(tipo => (
-              <option key={tipo.id_tipo_multa} value={tipo.id_tipo_multa}>
-                {tipo.nombre_multa}
-              </option>
-            ))}
-          </select>
-
-          <select 
-            className="filter-select"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-          >
-            <option value="fecha">Ordenar por Fecha</option>
-            <option value="monto">Ordenar por Monto</option>
-            <option value="afiliado">Ordenar por Afiliado</option>
-          </select>
-
-          <button 
-            className="btn-secondary"
-            onClick={toggleSortOrder}
-            title={`Ordenar ${sortOrder === 'asc' ? 'descendente' : 'ascendente'}`}
-          >
-            <ArrowUpDown className="w-4 h-4" />
-            <span className="ml-1 text-xs">
-              {sortOrder === 'asc' ? '↑' : '↓'}
-            </span>
-          </button>
-
-          <button
-            className="btn-secondary"
-            onClick={limpiarFiltros}
-            title="Limpiar filtros"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
-        </div>
-
-
-
-
-      </div>
-
-      {/* GRID DE MULTAS */}
-      {filteredMultas.length === 0 ? (
-        <div className="empty-state">
-          <Receipt className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3>No se encontraron multas</h3>
-          <p>No hay multas que coincidan con los criterios de búsqueda.</p>
-        </div>
-      ) : (
-        <div className="users-grid">
-          {filteredMultas.map((multa) => {
-            const estadoClass = multa.estado === 'pagada' ? 'fine-card-paid' : 
-                               multa.estado === 'pendiente' ? 'fine-card-pending' : 
-                               'fine-card-cancelled';
-            
-            return (
-              <div key={multa.id_multa_afi} className={`user-card ${estadoClass}`}>
-                
-                {/* HEADER */}
-                <div className="user-card-header">
-                  <div className="user-info">
-                    <div className="user-avatar user-avatar-empty">
-                      <DollarSign className="w-6 h-6 text-blue-600" />
+                  if (!recientes.length) return (
+                    <div className="periodo-historial-empty">
+                      <AlertCircle className="w-12 h-12 text-gray-300 mb-2" />
+                      <p>No hay períodos recientes con multas</p>
                     </div>
+                  );
 
-                    <div>
-                      <h3 className="user-name" style={{ fontSize: '0.95rem', marginBottom: '0.35rem' }}>
-                        {getTipoMultaNombre(multa)}
-                      </h3>
-
-                      <div className="user-meta flex items-center gap-3 mt-1">
-                        <span
-                          className={`status-badge ${
-                            multa.estado === "pendiente"
-                              ? "role-orange"
-                              : multa.estado === "pagada"
-                              ? "role-green"
-                              : multa.estado === "anulada"
-                              ? "inactive"
-                              : multa.estado === "exonerada"
-                              ? "role-purple"
-                              : "role-default"
-                          }`}
-                        >
-                          {multa.estado === "pendiente" && <Clock className="w-3 h-3" />}
-                          {multa.estado === "pagada" && <CheckCircle className="w-3 h-3" />}
-                          {multa.estado === "anulada" && <Ban className="w-3 h-3" />}
-                          {multa.estado === "exonerada" && <FileText className="w-3 h-3" />}
-                          {multa.estado.charAt(0).toUpperCase() + multa.estado.slice(1)}
-                        </span>
-
-                        <span
-                          className={`status-badge flex items-center font-bold ${
-                            multa.estado === 'pagada' ? 'role-green' :
-                            multa.estado === 'pendiente' ? 'role-orange' :
-                            'inactive'
-                          }`}
-                          style={{ fontSize: '0.9rem', padding: '0.3rem 0.7rem' }}
-                        >
-                          <DollarSign className="w-4 h-4 mr-1" />
-                          {formatCurrency(multa.monto).replace("$", "")}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ACCIONES */}
-                  <div className="user-actions">
-                    <button 
-                      className="action-btn view"
-                      onClick={() => openModal('view', multa)}
-                      title="Ver detalles"
-                    >
-                      <Eye className="w-4 h-4 icon-view" />
-                    </button>
-
-                    {multa.estado === 'pendiente' && permissions.canUpdate && (
-                      <>
-                        <button
-                          className="action-btn edit"
-                          onClick={() => openModal('pagar', multa)}
-                          title="Registrar pago"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          className="action-btn warning"
-                          onClick={() => openModal('edit', multa)}
-                          title="Editar"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
-
-                    {multa.estado === 'pendiente' && permissions.canDelete && (
+                  return recientes.map(p => {
+                    const esActual = p.mes === mesActual && p.anio === anioActual;
+                    const res      = getResumen(p.anio, p.mes);
+                    return (
                       <button
-                        className="action-btn delete"
-                        onClick={() => openModal('anular', multa)}
-                        title="Anular multa"
+                        key={`${p.mes}-${p.anio}`}
+                        onClick={() => handlePeriodoChange(p.mes, p.anio)}
+                        className={`periodo-card hoverable ${esActual ? 'mes-actual' : ''}`}
                       >
-                        <Ban className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    {/* Botón Eliminar - Solo si está anulada */}
-                    {permissions.canDelete && multa.estado === 'anulada' && (
-                      <button
-                        onClick={() => handleEliminar(multa)}
-                        className="action-btn delete"
-                        title="Eliminar multa permanentemente"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* BODY */}
-                <div className="user-card-body" style={{ padding: '1rem 1.25rem' }}>
-                  <div className="user-contact">
-                    <div className="contact-item">
-                      <User className="w-4 h-4 text-blue-600" />
-
-                      <div className="contact-text-group flex flex-col leading-tight">
-                        {/* Nombre + cédula */}
-                        <span className="label font-semibold">
-                          {getAfiliadoNombre(multa)} • {getAfiliadoCodigo(multa)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* codigo del afiliado */}
-                    <div className="contact-item">
-                      <IdCard className="w-4 h-4 text-purple-500" />
-                      <div className="contact-text-group flex">
-                        <span className="label font-semibold mr-1">Cédula:</span>
-                        <span className="value">{getAfiliadoCedula(multa)}</span>
-                      </div>
-                    </div>
-
-
-                    {/* Sector */}
-                    <div className="contact-item">
-                      <MapPin className="w-4 h-4 text-purple-500" />
-                      <div className="contact-text-group flex">
-                        <span className="label font-semibold mr-1">Sector:</span>
-                        <span className="value">{getSectorNombre(multa)}</span>
-                      </div>
-                    </div>
-
-                    {/* Observaciones */}
-                    <div className="contact-item items-start">
-                      <MessageSquare className="w-4 h-4 text-yellow-600 mt-0.5" />
-
-                      <div className="contact-text-group flex flex-col leading-tight">
-                        <span className="label font-semibold mr-1">
-                          Observaciones:
-                        </span>
-
-                        <span className="value">
-                          {multa.observaciones && multa.observaciones.trim() !== ""
-                            ? multa.observaciones
-                            : "Sin observaciones"}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Fechas */}
-                    <div className="flex items-start gap-2 text-sm text-gray-700 border-t pt-2 mt-2">
-                      <Calendar className="w-4 h-4 text-blue-700 mt-0.5" />
-
-                      <div className="flex flex-col">
-
-                        {/* Línea: Multa */}
-                        <div className="mb-10">
-                          <span className="font-semibold mr-1">Multa:</span>
-                          {formatDate(multa.fecha_multa)} ·  
+                        <div className="periodo-card-header">
+                          <span className="periodo-card-title">{p.mes_nombre} {p.anio}</span>
+                          {esActual && <span className="periodo-badge-actual">Actual</span>}
                         </div>
 
-                        {/* Línea: Pago */}
-                        {multa.fecha_pago && (
-                          <div>
-                        
-                            <span className="font-semibold text-green-800 mr-1">Pago:</span>
-                            <span className="text-green-800">
-                              {formatDate(multa.fecha_pago)}
+                        {/* Resumen de multas dentro de la card */}
+                        {res ? (
+                          <div className="periodo-card-resumen">
+                            <span className="resumen-item total">
+                              <FileText style={{ width: 12, height: 12 }} />
+                              {res.total} multas
                             </span>
+                            {res.pendientes > 0 && (
+                              <span className="resumen-item pendiente">
+                                <Clock style={{ width: 12, height: 12 }} />
+                                {res.pendientes} pend.
+                              </span>
+                            )}
+                            {res.pagadas > 0 && (
+                              <span className="resumen-item pagada">
+                                <CheckCircle style={{ width: 12, height: 12 }} />
+                                {res.pagadas} pag.
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="periodo-card-resumen">
+                            <span className="resumen-item total">Sin multas</span>
                           </div>
                         )}
 
-                      </div>
-                    </div>
-
-
-
-                  </div>
-                </div>
+                        <div className="periodo-card-action"><span>Ver multas</span></div>
+                      </button>
+                    );
+                  });
+                })()}
               </div>
-            );
-          })}
+            )}
+          </div>
+
+          {/* ── Historial ── */}
+          <div className="periodo-historial-container">
+            <div className="periodo-historial-header">
+              <div>
+                <h3 className="font-semibold text-[16px] flex items-center">
+                  <Clock className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" />
+                  Historial de Períodos
+                </h3>
+                <p className="periodo-historial-subtitle text-[14px]">Períodos anteriores con multas registradas</p>
+              </div>
+            </div>
+
+            {(() => {
+              const hoy = new Date();
+              const mesActual  = hoy.getMonth() + 1;
+              const anioActual = hoy.getFullYear();
+              const diff = (mes, anio) => (anio - anioActual) * 12 + (mes - mesActual);
+
+              const historial = periodosData.filter(p => diff(p.mes, p.anio) < -2);
+
+              if (!historial.length) return (
+                <div className="periodo-historial-empty">
+                  <AlertCircle className="w-12 h-12 text-gray-300 mb-2" />
+                  <p>No hay períodos anteriores con multas</p>
+                </div>
+              );
+
+              const agrupado = historial.reduce((acc, p) => {
+                if (!acc[p.anio]) acc[p.anio] = [];
+                acc[p.anio].push(p);
+                return acc;
+              }, {});
+              const aniosOrdenados = Object.keys(agrupado).map(Number).sort((a, b) => b - a);
+
+              return (
+                <div className="historial-anios-lista">
+                  {aniosOrdenados.map(anio => {
+                    const meses       = agrupado[anio].sort((a, b) => b.mes - a.mes);
+                    const expandido   = aniosExpandidos[anio] !== false;
+                    return (
+                      <div key={anio} className="historial-anio-bloque">
+                        <button className="historial-anio-header" onClick={() => toggleAnio(anio)}>
+                          <span className="historial-anio-label">
+                            <Calendar className="w-4 h-4" />
+                            {anio}
+                            <span className="historial-anio-badge">
+                              {meses.length} período{meses.length !== 1 ? 's' : ''}
+                            </span>
+                          </span>
+                          <ChevronDown className={`w-4 h-4 historial-chevron ${expandido ? 'open' : ''}`} />
+                        </button>
+
+                        {expandido && (
+                          <div className="historial-meses-grid">
+                            {meses.map(p => {
+                              const res = getResumen(p.anio, p.mes);
+                              return (
+                                <button
+                                  key={`${p.mes}-${p.anio}`}
+                                  className="historial-mes-chip completo"
+                                  onClick={() => handlePeriodoChange(p.mes, p.anio)}
+                                  title={res ? `${res.total} multas · ${res.pendientes} pend.` : `${p.mes_nombre} ${p.anio}`}
+                                >
+                                  <span className="historial-mes-dot completo" />
+                                  <span className="historial-mes-nombre">{getMesCorto(p.mes)}</span>
+                                  {res && res.total > 0 && (
+                                    <span className="historial-mes-pct">{res.total}</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
         </div>
       )}
 
-      {/* MODALES */}
+      {/* ══════════════ PASO 2: GESTIÓN DE MULTAS ══════════════ */}
+      {periodoSeleccionado && (
+        <div className="periodo-management-page">
+
+          {/* Header con volver */}
+          <div className="section-header">
+            <div className="section-title-with-back">
+              <button className="btn-back" onClick={() => setPeriodoSeleccionado(null)}>
+                <ArrowUpDown className="w-5 h-5" style={{ transform: 'rotate(90deg)' }} />
+                <span>Volver</span>
+              </button>
+              <div className="section-title">
+                <Receipt className="w-7 h-7 text-blue-600" />
+                <div>
+                  <h2>Multas — {getMesNombre(periodoSeleccionado.mes)} {periodoSeleccionado.anio}</h2>
+                  <p className="section-subtitle">Gestiona las multas de este período</p>
+                </div>
+              </div>
+            </div>
+            {permissions.canCreate && (
+              <button className="btn-primary" onClick={() => openModal('create')}>
+                <DollarSign className="w-4 h-4 mr-2" />Nueva Multa
+              </button>
+            )}
+          </div>
+
+          {/* Stats */}
+          {stats && (
+            <div className="periodo-stats-container">
+              <div className="periodo-stats-header">
+                <FileText className="w-5 h-5 text-blue-600 mr-2" /><h3>Resumen del Período</h3>
+              </div>
+              <div className="users-stats">
+                <div className="stat-item">
+                  <FileText className="stat-icon text-blue-600" />
+                  <div><p className="stat-label">Total</p><p className="stat-value">{stats.total_multas||0}</p>
+                  <span className="stat-detail">{formatCurrency(stats.monto_total)}</span></div>
+                </div>
+                <div className="stat-item active orange">
+                  <Clock className="stat-icon text-orange-600" />
+                  <div><p className="stat-label">Pendientes</p><p className="stat-value">{stats.pendientes||0}</p>
+                  <span className="stat-detail">{formatCurrency(stats.monto_pendiente)}</span></div>
+                </div>
+                <div className="stat-item active green">
+                  <CheckCircle className="stat-icon text-green-600" />
+                  <div><p className="stat-label">Pagadas</p><p className="stat-value">{stats.pagadas||0}</p>
+                  <span className="stat-detail">{formatCurrency(stats.monto_pagado)}</span></div>
+                </div>
+                <div className="stat-item active red">
+                  <XCircle className="stat-icon text-red-600" />
+                  <div><p className="stat-label">Anuladas</p><p className="stat-value">{stats.anuladas||0}</p></div>
+                </div>
+                <div className="stat-item active purple">
+                  <Ban className="stat-icon text-purple-600" />
+                  <div><p className="stat-label">Exoneradas</p><p className="stat-value">{stats.exoneradas||0}</p></div>
+                </div>
+                <div className="stat-item active blue">
+                  <Receipt className="stat-icon text-blue-600" />
+                  <div><p className="stat-label">Facturadas</p><p className="stat-value">{stats.facturadas||0}</p>
+                  <span className="stat-detail">{formatCurrency(stats.monto_facturado)}</span></div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Filtros */}
+          <div className="filters-section">
+            <div className="search-container">
+              <Search className="search-icon" />
+              <input
+                type="text"
+                placeholder="Buscar por nombre, código, cédula, sector, tipo..."
+                className="search-input"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="filters-right">
+              <select className="filter-select" value={filterEstado} onChange={e => setFilterEstado(e.target.value)}>
+                <option value="all">Todos los estados</option>
+                <option value="pendiente">Pendiente</option>
+                <option value="pagada">Pagada</option>
+                <option value="anulada">Anulada</option>
+                <option value="exonerada">Exonerada</option>
+                <option value="facturado">Facturado</option>
+              </select>
+
+              {/* FILTRO TIPO MULTA — ahora sí funciona (va al backend) */}
+              <select className="filter-select" value={filterTipoMulta} onChange={e => setFilterTipoMulta(e.target.value)}>
+                <option value="all">Todos los tipos</option>
+                {tiposMulta.map(t => (
+                  <option key={t.id_tipo_multa} value={t.id_tipo_multa}>{t.nombre_multa}</option>
+                ))}
+              </select>
+
+              <select className="filter-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                <option value="fecha">Por Fecha</option>
+                <option value="monto">Por Monto</option>
+                <option value="afiliado">Por Afiliado</option>
+              </select>
+
+              <button className="btn-secondary" onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}>
+                <ArrowUpDown className="w-4 h-4" />
+                <span className="ml-1 text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+              </button>
+
+              <button className="btn-secondary" onClick={fetchMultas} title="Recargar">
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="alert alert-error mb-4">
+              <AlertCircle className="w-5 h-5 mr-2" />{error}
+            </div>
+          )}
+
+          {/* Loading */}
+          {loading && (
+            <div className="empty-state">
+              <RefreshCw className="w-12 h-12 text-blue-400 mx-auto mb-4 animate-spin" />
+              <h3>Cargando multas...</h3>
+            </div>
+          )}
+{/* Tabla */}
+{!loading && (
+  <div className="fines-table-container">
+    <div className="fines-table-inner">
+
+      <div className="fines-table-header">
+        <span>#</span>
+        <span><User className="w-4 h-4" /> Afiliado</span>
+        <span>Código</span>
+        <span><IdCard className="w-4 h-4" /> Cédula</span>
+        <span><MapPin className="w-4 h-4" /> Sector</span>
+        <span>Tipo Multa</span>
+        <span><DollarSign className="w-4 h-4" /> Monto</span>
+        <span><Calendar className="w-4 h-4" /> Fecha</span>
+        <span>Estado</span>
+        <span>Acciones</span>
+      </div>
+
+      <div className="fines-table-body">
+        {filteredMultas.length > 0 ? filteredMultas.map((m, i) => (
+          <div
+            key={m.id_multa_afi}
+            className={`fines-table-item ${m.estado === 'anulada' ? 'inactive' : ''}`}
+          >
+            <div className="fines-col-id">{i + 1}</div>
+
+            <div className="fines-col-nombre">
+              <User className="w-4 h-4" />{getAfiliadoNombre(m)}
+            </div>
+
+            <div className="fines-col-codigo">{getAfiliadoCodigo(m)}</div>
+
+            <div className="fines-col-codigo">{getAfiliadoCedula(m)}</div>
+
+            <div className="fines-col-sector">
+              <MapPin className="w-4 h-4" />{getSectorNombre(m)}
+            </div>
+
+            <div className="fines-col-tipo">{getTipoMultaNombre(m)}</div>
+
+            <div className={`fines-col-monto ${m.estado}`}>
+              {formatCurrency(m.monto)}
+            </div>
+
+            <div className="fines-col-fecha">
+              <Calendar className="w-3 h-3" />
+              {formatDate(m.fecha_multa)}
+            </div>
+
+            <div className="fines-status-wrapper">
+              <EstadoBadge estado={m.estado} />
+            </div>
+
+            <div className="fines-actions">
+              <button className="fines-action-btn view" onClick={() => openModal('view', m)} title="Ver detalles">
+                <Eye className="w-4 h-4" />
+              </button>
+              {m.estado === 'pendiente' && permissions.canUpdate && (
+                <>
+                  <button className="fines-action-btn edit" onClick={() => openModal('pagar', m)} title="Registrar pago">
+                    <CheckCircle className="w-4 h-4" />
+                  </button>
+                  <button className="fines-action-btn confirm" onClick={() => openModal('edit', m)} title="Editar">
+                    <Edit className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+              {m.estado === 'pendiente' && permissions.canDelete && (
+                <button className="fines-action-btn delete" onClick={() => openModal('anular', m)} title="Anular">
+                  <Ban className="w-4 h-4" />
+                </button>
+              )}
+              {permissions.canDelete && m.estado === 'anulada' && (
+                <button className="fines-action-btn delete" onClick={() => handleEliminar(m)} title="Eliminar permanentemente">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        )) : (
+          <div className="fines-table-empty">
+            <Receipt />
+            <h3>No hay multas en este período</h3>
+            <p>No se encontraron multas para {getMesNombre(periodoSeleccionado.mes)} {periodoSeleccionado.anio}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      {filteredMultas.length > 0 && (
+        <div className="fines-table-footer">
+          <button className="btn-secondary" onClick={() => setPeriodoSeleccionado(null)}>
+            <ArrowUpDown className="w-4 h-4 mr-2" style={{ transform: 'rotate(90deg)' }} />
+            Cambiar período
+          </button>
+          <div className="fines-table-footer-stats">
+            <span>Mostrando <strong>{filteredMultas.length}</strong> multas</span>
+            <span>Pendiente: <strong style={{ color: '#dc2626' }}>
+              {formatCurrency(filteredMultas.filter(m => m.estado === 'pendiente').reduce((s, m) => s + parseFloat(m.monto || 0), 0))}
+            </strong></span>
+            <span>Cobrado: <strong style={{ color: '#059669' }}>
+              {formatCurrency(filteredMultas.filter(m => m.estado === 'pagada').reduce((s, m) => s + parseFloat(m.monto || 0), 0))}
+            </strong></span>
+          </div>
+        </div>
+      )}
+
+    </div>
+  </div>
+)}
+             
+        </div>
+      
+      )}
+
+      {/* ══════════════ MODALES ══════════════ */}
       {showModal && (
         <div className="modal-overlay">
           <div className="modal">
             <div className="modal-header">
               <h3>
                 {modalType === 'create' && 'Nueva Multa'}
-                {modalType === 'edit' && 'Editar Multa'}
-                {modalType === 'pagar' && 'Registrar Pago'}
+                {modalType === 'edit'   && 'Editar Multa'}
+                {modalType === 'pagar'  && 'Registrar Pago'}
                 {modalType === 'anular' && 'Anular Multa'}
-                {modalType === 'view' && 'Detalles de Multa'}
+                {modalType === 'view'   && 'Detalles de Multa'}
               </h3>
-              <button className="modal-close" onClick={closeModal}>
-                <X className="w-5 h-5" />
-              </button>
+              <button className="modal-close" onClick={closeModal}><X className="w-5 h-5" /></button>
             </div>
 
             <div className="modal-body">
-              {error && (
-                <div className="alert alert-error mb-4">
-                  <AlertCircle className="w-5 h-5 mr-2" />
-                  {error}
-                </div>
-              )}
+              {error && <div className="alert alert-error mb-4"><AlertCircle className="w-5 h-5 mr-2" />{error}</div>}
 
-              {/* MODAL VIEW */}
+              {/* VIEW */}
               {modalType === 'view' && selectedMulta && (
                 <div className="user-details">
+                  <div className="detail-group"><label>ID Multa:</label><p className="font-semibold text-blue-600">#{selectedMulta.id_multa_afi}</p></div>
+                  <div className="detail-group"><label>Estado:</label><EstadoBadge estado={selectedMulta.estado} /></div>
+                  <div className="detail-group" style={{gridColumn:'1/-1',marginTop:'1rem'}}>
+                    <label className="text-blue-600 font-semibold flex items-center gap-2"><UserCheck className="w-4 h-4" />Información del Afiliado</label>
+                  </div>
+                  <div className="detail-group"><label>Nombre:</label><p className="font-semibold">{getAfiliadoNombre(selectedMulta)}</p></div>
+                  <div className="detail-group"><label>Código:</label><p className="font-semibold">{getAfiliadoCodigo(selectedMulta)}</p></div>
+                  <div className="detail-group"><label>Cédula:</label><p className="font-semibold">{getAfiliadoCedula(selectedMulta)}</p></div>
+                  <div className="detail-group"><label>Sector:</label><p className="font-semibold">{getSectorNombre(selectedMulta)}</p></div>
+                  <div className="detail-group" style={{gridColumn:'1/-1',marginTop:'1rem'}}>
+                    <label className="text-orange-600 font-semibold flex items-center gap-2"><FileText className="w-4 h-4" />Detalles de la Multa</label>
+                  </div>
+                  <div className="detail-group"><label>Tipo:</label><p className="font-semibold">{getTipoMultaNombre(selectedMulta)}</p></div>
+                  <div className="detail-group"><label>Monto:</label><p className="text-xl font-bold text-red-600">{formatCurrency(selectedMulta.monto)}</p></div>
+                  <div className="detail-group"><label>Fecha Multa:</label><p className="font-semibold">{formatDate(selectedMulta.fecha_multa)}</p></div>
                   <div className="detail-group">
-                    <label>ID Multa:</label>
-                    <p className="font-semibold text-blue-600">#{selectedMulta.id_multa_afi}</p>
-                  </div>
-
-                  <div className="detail-group">
-                    <label>Estado:</label>
-                    {getEstadoBadge(selectedMulta.estado)}
-                  </div>
-
-                  <div className="detail-group" style={{gridColumn: '1 / -1', marginTop: '1rem'}}>
-                    <label className="text-blue-600 font-semibold flex items-center gap-2">
-                      <UserCheck className="w-4 h-4" />
-                      Información del Afiliado
-                    </label>
-                  </div>
-                  
-                  <div className="detail-group">
-                    <label>Nombre Completo:</label>
-                    <p className="font-semibold">{getAfiliadoNombre(selectedMulta)}</p>
-                  </div>
-                  
-                  <div className="detail-group">
-                    <label>Código:</label>
-                    <p className="font-semibold">{getAfiliadoCodigo(selectedMulta)}</p>
-                  </div>
-                  
-                  <div className="detail-group">
-                    <label>Cédula:</label>
-                    <p className="font-semibold">{getAfiliadoCedula(selectedMulta)}</p>
-                  </div>
-                  
-                  <div className="detail-group">
-                    <label>Sector:</label>
-                    <p className="font-semibold">{getSectorNombre(selectedMulta)}</p>
-                  </div>
-
-                  <div className="detail-group" style={{ gridColumn: '1 / -1', marginTop: '1rem' }}>
-                    <label className="text-orange-600 font-semibold flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
-                      Detalles de la Multa
-                    </label>
-                  </div>
-
-                  <div className="detail-group">
-                    <label>Tipo de Multa:</label>
-                    <p className="font-semibold">{getTipoMultaNombre(selectedMulta)}</p>
-                  </div>
-
-                  <div className="detail-group">
-                    <label>Monto:</label>
-                    <p className="text-xl font-bold text-red-600">
-                      {formatCurrency(selectedMulta.monto)}
-                    </p>
-                  </div>
-
-                  <div className="detail-group">
-                    <label>Fecha de Multa:</label>
-                    <p className="font-semibold">{formatDate(selectedMulta.fecha_multa)}</p>
-                  </div>
-
-                  <div className="detail-group">
-                    <label>Fecha de Pago:</label>
+                    <label>Fecha Pago:</label>
                     <p className={selectedMulta.fecha_pago ? 'font-semibold text-green-600' : 'text-gray-400'}>
                       {formatDate(selectedMulta.fecha_pago)}
                     </p>
                   </div>
-
                   {selectedMulta.observaciones && (
-                    <div className="detail-group" style={{ gridColumn: '1 / -1' }}>
+                    <div className="detail-group" style={{gridColumn:'1/-1'}}>
                       <label>Observaciones:</label>
-                      <p className="text-sm text-gray-700 bg-yellow-50 p-3 rounded border-l-4 border-yellow-400">
-                        {selectedMulta.observaciones}
-                      </p>
+                      <p className="text-sm text-gray-700 bg-yellow-50 p-3 rounded border-l-4 border-yellow-400">{selectedMulta.observaciones}</p>
                     </div>
                   )}
-
                   {selectedMulta.estado === 'pendiente' && permissions.canUpdate && (
-                    <div style={{ gridColumn: '1 / -1', marginTop: '1.5rem' }}>
-                      <button
-                        className="btn-primary w-full"
-                        onClick={() => {
-                          closeModal();
-                          openModal('pagar', selectedMulta);
-                        }}
-                      >
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Registrar Pago de {formatCurrency(selectedMulta.monto)}
+                    <div style={{gridColumn:'1/-1',marginTop:'1.5rem'}}>
+                      <button className="btn-primary w-full" onClick={() => { closeModal(); openModal('pagar', selectedMulta); }}>
+                        <CheckCircle className="w-4 h-4 mr-2" />Registrar Pago de {formatCurrency(selectedMulta.monto)}
                       </button>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* MODAL CREATE */}
+              {/* CREATE */}
               {modalType === 'create' && (
                 <form onSubmit={handleSubmit} className="user-form">
                   <div className="form-grid">
                     <div className="form-group form-group-full">
                       <label>Afiliado: *</label>
-                      
                       <div className="meter-search-container">
                         <div className="meter-search-input-wrapper">
                           <Search className="w-4 h-4 text-gray-400" />
-                          <input
-                            type="text"
-                            placeholder="Buscar por código, nombre o cédula..."
-                            value={affiliateSearchTerm}
-                            onChange={(e) => setAffiliateSearchTerm(e.target.value)}
-                          />
+                          <input type="text" placeholder="Buscar por código, nombre o cédula..."
+                            value={affiliateSearchTerm} onChange={e => setAffiliateSearchTerm(e.target.value)} />
                           {affiliateSearchTerm && (
-                            <button
-                              type="button"
-                              onClick={() => setAffiliateSearchTerm('')}
-                              className="meter-search-clear-btn"
-                            >
+                            <button type="button" onClick={() => setAffiliateSearchTerm('')} className="meter-search-clear-btn">
                               <X className="w-4 h-4 text-gray-400" />
                             </button>
                           )}
                         </div>
                       </div>
-
-                      <select
-                        value={formData.id_usuario_afi || ''}
-                        onChange={(e) => handleAffiliateChange(e.target.value)}
-                        required
-                      >
+                      <select value={formData.id_usuario_afi || ''} onChange={e => handleAffiliateChange(e.target.value)} required>
                         <option value="">Seleccionar afiliado</option>
-                        {filteredAffiliates.map(aff => (
-                          <option key={aff.id_usuario_afi} value={aff.id_usuario_afi}>
-                            {`${aff.cod_usuario_afi} - ${aff.nombres} ${aff.apellidos} - CI: ${aff.cedula}`}
+                        {filteredAffiliates.map(a => (
+                          <option key={a.id_usuario_afi} value={a.id_usuario_afi}>
+                            {a.cod_usuario_afi} — {a.nombres} {a.apellidos} · CI: {a.cedula}
                           </option>
                         ))}
                       </select>
-
-                      {selectedAffiliateInfo && selectedAffiliateInfo.usuario && (
-                        <div className="meter-info-card">
-                          <h4 className="meter-info-title">
-                            <UserCheck className="w-4 h-4 mr-2" />
-                            Información del Afiliado
-                          </h4>
-                          <div className="meter-info-content">
-                            <p><strong>Código:</strong> {selectedAffiliateInfo.cod_usuario_afi}</p>
-                            <p><strong>Nombre:</strong> {selectedAffiliateInfo.usuario.nombres} {selectedAffiliateInfo.usuario.apellidos}</p>
-                            <p><strong>Cédula:</strong> {selectedAffiliateInfo.usuario.cedula}</p>
-                            {selectedAffiliateInfo.num_medidor && (
-                              <p><strong>Medidor:</strong> {selectedAffiliateInfo.num_medidor}</p>
-                            )}
-                            {selectedAffiliateInfo.usuario.email && (
-                              <p><strong>Email:</strong> {selectedAffiliateInfo.usuario.email}</p>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
 
                     <div className="form-group">
                       <label>Tipo de Multa: *</label>
-                      <select
-                        value={formData.id_tipo_multa || ''}
-                        onChange={(e) => {
-                          const tipoId = parseInt(e.target.value);
-                          const tipo = tiposMulta.find(t => t.id_tipo_multa === tipoId);
-                          setFormData({
-                            ...formData,
-                            id_tipo_multa: tipoId,
-                            monto: tipo?.monto || ''
-                          });
-                        }}
-                        required
-                      >
+                      <select value={formData.id_tipo_multa || ''} onChange={e => {
+                        const id = parseInt(e.target.value);
+                        const t  = tiposMulta.find(x => x.id_tipo_multa === id);
+                        setFormData(f => ({ ...f, id_tipo_multa: id, monto: t?.monto || '' }));
+                      }} required>
                         <option value="">Seleccionar tipo</option>
-                        {tiposMulta.map(tipo => (
-                          <option key={tipo.id_tipo_multa} value={tipo.id_tipo_multa}>
-                            {tipo.nombre_multa} - {formatCurrency(tipo.monto)}
+                        {tiposMulta.map(t => (
+                          <option key={t.id_tipo_multa} value={t.id_tipo_multa}>
+                            {t.nombre_multa} — {formatCurrency(t.monto)}
                           </option>
                         ))}
                       </select>
@@ -1457,145 +937,70 @@ useEffect(() => {
 
                     <div className="form-group">
                       <label>Monto: *</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formData.monto}
-                        onChange={(e) => setFormData({ ...formData, monto: e.target.value })}
-                        required
-                        readOnly
-                        className="bg-gray-100 font-semibold"
-                      />
-                      <small className="text-gray-500 text-xs mt-1">
-                        El monto se establece automáticamente según el tipo de multa
-                      </small>
+                      <input type="number" step="0.01" min="0" value={formData.monto} readOnly className="bg-gray-100 font-semibold" />
+                      <small className="text-gray-500 text-xs mt-1">Se establece automáticamente según el tipo</small>
                     </div>
 
                     <div className="form-group">
                       <label>Fecha Multa:</label>
-                      <input
-                        type="date"
-                        value={formData.fecha_multa}
-                        onChange={(e) => setFormData({ ...formData, fecha_multa: e.target.value })}
-                      />
+                      <input type="date" value={formData.fecha_multa} onChange={e => setFormData(f => ({ ...f, fecha_multa: e.target.value }))} />
                     </div>
 
                     <div className="form-group form-group-full">
                       <label>Observaciones:</label>
-                      <textarea
-                        value={formData.observaciones}
-                        onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                        rows="3"
-                        placeholder="Ingrese observaciones sobre la multa..."
-                      />
+                      <textarea value={formData.observaciones} onChange={e => setFormData(f => ({ ...f, observaciones: e.target.value }))} rows="3" placeholder="Observaciones sobre la multa..." />
                     </div>
                   </div>
-
                   <div className="form-actions">
-                    <button type="button" className="btn-secondary" onClick={closeModal}>
-                      <X className="w-4 h-4 mr-2" />
-                      Cancelar
-                    </button>
-                    <button type="submit" className="btn-primary">
-                      <Save className="w-4 h-4 mr-2" />
-                      Crear Multa
-                    </button>
+                    <button type="button" className="btn-secondary" onClick={closeModal}><X className="w-4 h-4 mr-2" />Cancelar</button>
+                    <button type="submit" className="btn-primary"><Save className="w-4 h-4 mr-2" />Crear Multa</button>
                   </div>
                 </form>
               )}
 
-
-              {/* MODAL EDIT */}
+              {/* EDIT */}
               {modalType === 'edit' && selectedMulta && (
                 <form onSubmit={handleSubmit} className="user-form">
                   <div className="alert alert-info mb-4">
                     <AlertCircle className="w-5 h-5 mr-2" />
-                    <div>
-                      <p className="text-sm">Solo puedes modificar el tipo de multa y las observaciones. El monto se actualizará automáticamente según el tipo seleccionado.</p>
-                    </div>
+                    <p className="text-sm">Solo puedes modificar el tipo de multa y las observaciones.</p>
                   </div>
-
                   <div className="user-details mb-4">
-                    <div className="detail-group">
-                      <label>Afiliado:</label>
-                      <p>{getAfiliadoNombre(selectedMulta)}</p>
-                    </div>
-                    <div className="detail-group">
-                      <label>Cédula:</label>
-                      <p>{getAfiliadoCedula(selectedMulta)}</p>
-                    </div>
-                    <div className="detail-group">
-                      <label>Monto Actual:</label>
-                      <p className="text-lg font-bold">{formatCurrency(selectedMulta.monto)}</p>
-                    </div>
-                    <div className="detail-group">
-                      <label>Fecha Multa:</label>
-                      <p>{formatDate(selectedMulta.fecha_multa)}</p>
-                    </div>
+                    <div className="detail-group"><label>Afiliado:</label><p>{getAfiliadoNombre(selectedMulta)}</p></div>
+                    <div className="detail-group"><label>Cédula:</label><p>{getAfiliadoCedula(selectedMulta)}</p></div>
+                    <div className="detail-group"><label>Monto Actual:</label><p className="text-lg font-bold">{formatCurrency(selectedMulta.monto)}</p></div>
+                    <div className="detail-group"><label>Fecha Multa:</label><p>{formatDate(selectedMulta.fecha_multa)}</p></div>
                   </div>
-
                   <div className="form-grid">
                     <div className="form-group">
                       <label>Tipo de Multa: *</label>
-                      <select
-                        value={formData.id_tipo_multa || ''}
-                        onChange={(e) => {
-                          const tipoId = parseInt(e.target.value);
-                          setFormData({
-                            ...formData,
-                            id_tipo_multa: tipoId
-                          });
-                        }}
-                        required
-                      >
+                      <select value={formData.id_tipo_multa || ''} onChange={e => setFormData(f => ({ ...f, id_tipo_multa: parseInt(e.target.value) }))} required>
                         <option value="">Seleccionar tipo</option>
-                        {tiposMulta.map(tipo => (
-                          <option key={tipo.id_tipo_multa} value={tipo.id_tipo_multa}>
-                            {tipo.nombre_multa} - {formatCurrency(tipo.monto)}
-                          </option>
+                        {tiposMulta.map(t => (
+                          <option key={t.id_tipo_multa} value={t.id_tipo_multa}>{t.nombre_multa} — {formatCurrency(t.monto)}</option>
                         ))}
                       </select>
-                      <small className="text-gray-500 text-xs mt-1">
-                        Al cambiar el tipo, el monto se actualizará automáticamente
-                      </small>
                     </div>
-
                     <div className="form-group">
                       <label>Estado:</label>
-                      <select
-                        value={formData.activo}
-                        onChange={(e) => setFormData({ ...formData, activo: e.target.value === 'true' })}
-                      >
+                      <select value={formData.activo} onChange={e => setFormData(f => ({ ...f, activo: e.target.value === 'true' }))}>
                         <option value="true">Activo</option>
                         <option value="false">Inactivo</option>
                       </select>
                     </div>
-
                     <div className="form-group form-group-full">
                       <label>Observaciones:</label>
-                      <textarea
-                        value={formData.observaciones}
-                        onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                        rows="3"
-                        placeholder="Ingrese observaciones..."
-                      />
+                      <textarea value={formData.observaciones} onChange={e => setFormData(f => ({ ...f, observaciones: e.target.value }))} rows="3" />
                     </div>
                   </div>
-
                   <div className="form-actions">
-                    <button type="button" className="btn-secondary" onClick={closeModal}>
-                      Cancelar
-                    </button>
-                    <button type="submit" className="btn-primary">
-                      <Save className="w-4 h-4 mr-2" />
-                      Guardar Cambios
-                    </button>
+                    <button type="button" className="btn-secondary" onClick={closeModal}>Cancelar</button>
+                    <button type="submit" className="btn-primary"><Save className="w-4 h-4 mr-2" />Guardar Cambios</button>
                   </div>
                 </form>
               )}
 
-              {/* MODAL PAGAR */}
+              {/* PAGAR */}
               {modalType === 'pagar' && selectedMulta && (
                 <form onSubmit={handlePago} className="user-form">
                   <div className="alert alert-info mb-4">
@@ -1603,52 +1008,34 @@ useEffect(() => {
                     <div>
                       <h4 className="font-semibold">Resumen de Pago</h4>
                       <p className="text-sm mt-1"><strong>Afiliado:</strong> {getAfiliadoNombre(selectedMulta)}</p>
-                      <p className="text-sm"><strong>Tipo de Multa:</strong> {getTipoMultaNombre(selectedMulta)}</p>
-                      <p className="text-sm"><strong>Monto a pagar:</strong> <span className="font-bold text-lg">{formatCurrency(selectedMulta.monto)}</span></p>
+                      <p className="text-sm"><strong>Tipo:</strong> {getTipoMultaNombre(selectedMulta)}</p>
+                      <p className="text-sm"><strong>Monto:</strong> <span className="font-bold text-lg">{formatCurrency(selectedMulta.monto)}</span></p>
                     </div>
                   </div>
-
                   <div className="form-grid">
                     <div className="form-group">
                       <label>Fecha de Pago:</label>
-                      <input
-                        type="date"
-                        value={pagoData.fecha_pago}
-                        onChange={(e) => setPagoData({ ...pagoData, fecha_pago: e.target.value })}
-                        max={new Date().toISOString().split('T')[0]}
-                      />
+                      <input type="date" value={pagoData.fecha_pago} onChange={e => setPagoData(p => ({ ...p, fecha_pago: e.target.value }))} max={new Date().toISOString().split('T')[0]} />
                     </div>
-
                     <div className="form-group form-group-full">
                       <label>Observaciones del Pago:</label>
-                      <textarea
-                        value={pagoData.observaciones}
-                        onChange={(e) => setPagoData({ ...pagoData, observaciones: e.target.value })}
-                        rows="3"
-                        placeholder="Número de comprobante, método de pago, etc..."
-                      />
+                      <textarea value={pagoData.observaciones} onChange={e => setPagoData(p => ({ ...p, observaciones: e.target.value }))} rows="3" placeholder="Número de comprobante, método de pago, etc..." />
                     </div>
                   </div>
-
                   <div className="form-actions">
-                    <button type="button" className="btn-secondary" onClick={closeModal}>
-                      Cancelar
-                    </button>
-                    <button type="submit" className="btn-primary">
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      Confirmar Pago
-                    </button>
+                    <button type="button" className="btn-secondary" onClick={closeModal}>Cancelar</button>
+                    <button type="submit" className="btn-primary"><CheckCircle className="w-4 h-4 mr-2" />Confirmar Pago</button>
                   </div>
                 </form>
               )}
 
-              {/* MODAL ANULAR */}
+              {/* ANULAR */}
               {modalType === 'anular' && selectedMulta && (
                 <form onSubmit={handleAnular} className="user-form">
                   <div className="alert alert-error mb-4">
                     <AlertCircle className="w-6 h-6 mr-3" />
                     <div>
-                      <h4 className="font-semibold text-lg mb-2">¿Estás seguro de anular esta multa?</h4>
+                      <h4 className="font-semibold text-lg mb-2">¿Anular esta multa?</h4>
                       <p className="text-sm"><strong>ID:</strong> #{selectedMulta.id_multa_afi}</p>
                       <p className="text-sm"><strong>Afiliado:</strong> {getAfiliadoNombre(selectedMulta)}</p>
                       <p className="text-sm"><strong>Tipo:</strong> {getTipoMultaNombre(selectedMulta)}</p>
@@ -1656,68 +1043,34 @@ useEffect(() => {
                       <p className="text-sm font-semibold mt-2 text-red-700">Esta acción no se puede deshacer.</p>
                     </div>
                   </div>
-
                   <div className="form-grid">
                     <div className="form-group form-group-full">
                       <label>Motivo de Anulación: *</label>
-                      <select
-                        value={anulacionData.motivo}
-                        onChange={(e) => setAnulacionData({ ...anulacionData, motivo: e.target.value })}
-                        required
-                        className="w-full"
-                      >
+                      <select value={anulacionData.motivo} onChange={e => setAnulacionData(a => ({ ...a, motivo: e.target.value }))} required>
                         <option value="">Seleccione un motivo</option>
-                        {motivosAnulacion.map((motivo, index) => (
-                          <option key={index} value={motivo}>
-                            {motivo}
-                          </option>
-                        ))}
+                        {motivosAnulacion.map((m, i) => <option key={i} value={m}>{m}</option>)}
                       </select>
                     </div>
-
                     {anulacionData.motivo === 'Otro (especificar)' && (
                       <div className="form-group form-group-full">
                         <label>Especifique el motivo: *</label>
-                        <textarea
-                          value={anulacionData.motivoPersonalizado}
-                          onChange={(e) => setAnulacionData({ ...anulacionData, motivoPersonalizado: e.target.value })}
-                          rows="4"
-                          placeholder="Ingrese el motivo de anulación (mínimo 10 caracteres)..."
-                          required
-                          minLength={10}
-                          className="w-full"
-                        />
-                        <small className="text-gray-500 text-xs mt-1">
-                          {anulacionData.motivoPersonalizado.length}/10 caracteres mínimos
-                        </small>
+                        <textarea value={anulacionData.motivoPersonalizado} onChange={e => setAnulacionData(a => ({ ...a, motivoPersonalizado: e.target.value }))}
+                          rows="4" placeholder="Mínimo 10 caracteres..." required minLength={10} />
+                        <small className="text-gray-500 text-xs">{anulacionData.motivoPersonalizado.length}/10 mín.</small>
                       </div>
                     )}
-
                     {anulacionData.motivo && anulacionData.motivo !== 'Otro (especificar)' && (
                       <div className="form-group form-group-full">
                         <label>Observaciones adicionales (opcional):</label>
-                        <textarea
-                          value={anulacionData.motivoPersonalizado}
-                          onChange={(e) => setAnulacionData({ ...anulacionData, motivoPersonalizado: e.target.value })}
-                          rows="3"
-                          placeholder="Puede agregar información adicional sobre la anulación..."
-                          className="w-full"
-                        />
+                        <textarea value={anulacionData.motivoPersonalizado} onChange={e => setAnulacionData(a => ({ ...a, motivoPersonalizado: e.target.value }))} rows="3" />
                       </div>
                     )}
                   </div>
-
                   <div className="form-actions">
-                    <button type="button" className="btn-secondary" onClick={closeModal}>
-                      Cancelar
-                    </button>
-                    <button 
-                      type="submit" 
-                      className="btn-danger"
-                      disabled={!anulacionData.motivo || (anulacionData.motivo === 'Otro (especificar)' && anulacionData.motivoPersonalizado.length < 10)}
-                    >
-                      <Ban className="w-4 h-4 mr-2" />
-                      Confirmar Anulación
+                    <button type="button" className="btn-secondary" onClick={closeModal}>Cancelar</button>
+                    <button type="submit" className="btn-danger"
+                      disabled={!anulacionData.motivo || (anulacionData.motivo === 'Otro (especificar)' && anulacionData.motivoPersonalizado.length < 10)}>
+                      <Ban className="w-4 h-4 mr-2" />Confirmar Anulación
                     </button>
                   </div>
                 </form>

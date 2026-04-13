@@ -621,7 +621,7 @@ const toggleSidebar = () => {
 
             {!sidebarCollapsed && (
               <div className="logo-text">
-                <h2>TecniCobro</h2>
+                <h2>TecniCobro 2.0</h2>
                 <p>JAAP Sanjapamba</p>
               </div>
             )}
@@ -813,7 +813,7 @@ const toggleSidebar = () => {
           {/* 🔥 FOOTER  */}
           <footer className="dashboard-footer">
             <div className="footer-bottom">
-              <p>© 2025 TecniCobro. Todos los derechos reservados.</p>
+              <p>© 2025 TecniCobro 2.0. Todos los derechos reservados.</p>
             </div>
           </footer>
         </div>

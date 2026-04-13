@@ -8,7 +8,7 @@ import math
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload, aliased
-from sqlalchemy import and_, case, desc, extract, or_, cast, String, func
+from sqlalchemy import and_, case, desc, extract, or_, cast, String, func, select
 from typing import List, Optional
 from datetime import datetime, date
 import io
@@ -713,30 +713,26 @@ def get_periodos_lecturas(
 # ============================================================================
 # 7. REPORTE DE FACTURAS
 # ============================================================================
-
 @router.get("/facturas")
 def get_reporte_facturas(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    search: Optional[str] = Query(None, description="Buscar por nombre, cédula, cod afiliado, medidor"),
+    search: Optional[str] = Query(None),
     mes: Optional[int] = Query(None, ge=1, le=12),
     anio: Optional[int] = Query(None, ge=2020),
-    periodo: Optional[str] = Query(None, description="Formato: YYYY-MM"),
+    periodo: Optional[str] = Query(None),
     estado: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    📊 REPORTE DE FACTURAS CON INFORMACIÓN DE MORA
-    """
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "reportes", "lectura")
-    
+
     try:
         import math
         from sqlalchemy import cast, String, func as sql_func
         from models.mora import MoraFactura
-        
+
         # SUBQUERY: SUMA DE MORAS POR FACTURA
         mora_subquery = (
             db.query(
@@ -749,10 +745,11 @@ def get_reporte_facturas(
             .group_by(MoraFactura.id_factura)
             .subquery()
         )
-        
-        # QUERY OPTIMIZADO
+
+        # ✅ QUERY CORREGIDO — join por Lectura → Medidor (igual que listar_facturas)
         query = (
             db.query(
+                Medidor.num_medidor,                    # ← viene de Medidor directamente
                 Factura.id_factura,
                 Factura.num_factura,
                 Factura.periodo,
@@ -767,7 +764,6 @@ def get_reporte_facturas(
                 Factura.impuesto,
                 Factura.total,
                 UsuarioAfiliado.cod_usuario_afi,
-                UsuarioAfiliado.num_medidor,
                 UsuarioSistema.nombres,
                 UsuarioSistema.apellidos,
                 UsuarioSistema.cedula,
@@ -779,19 +775,21 @@ def get_reporte_facturas(
                 mora_subquery.c.max_dias_mora,
                 mora_subquery.c.cantidad_moras
             )
-            .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            # ✅ Cadena correcta: Factura → Lectura → Medidor → Afiliado → Usuario → Sector
+            .join(Lectura, Factura.id_lectura == Lectura.id_lectura)
+            .join(Medidor, Lectura.id_medidor == Medidor.id_medidor)
+            .join(UsuarioAfiliado, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
             .outerjoin(mora_subquery, Factura.id_factura == mora_subquery.c.id_factura)
         )
-        
+
         # FILTROS
         if mes and anio:
-            periodo_buscado = f"{anio}-{mes:02d}"
-            query = query.filter(Factura.periodo == periodo_buscado)
+            query = query.filter(Factura.periodo == f"{anio}-{mes:02d}")
         elif periodo:
             query = query.filter(Factura.periodo == periodo)
-        
+
         if search:
             search_pattern = f"%{search}%"
             query = query.filter(
@@ -800,42 +798,32 @@ def get_reporte_facturas(
                     UsuarioSistema.apellidos.ilike(search_pattern),
                     UsuarioSistema.cedula.ilike(search_pattern),
                     cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
-                    UsuarioAfiliado.num_medidor.ilike(search_pattern),
+                    Medidor.num_medidor.ilike(search_pattern),   # ← Medidor, no UsuarioAfiliado
                     Factura.num_factura.ilike(search_pattern)
                 )
             )
-        
+
         if estado and estado.lower() != 'todos':
             query = query.filter(Factura.estado_factura == estado.lower())
-        
+
         query = query.order_by(Factura.fecha_emision.desc(), Factura.num_factura.desc())
-        
+
         total_count = query.count()
-        
         facturas = query.offset(skip).limit(limit).all()
-        
+
         if not facturas:
             return {
-                "success": True,
-                "data": [],
-                "total": 0,
-                "skip": skip,
-                "limit": limit,
-                "pages": 0,
+                "success": True, "data": [], "total": 0,
+                "skip": skip, "limit": limit, "pages": 0,
                 "estadisticas": {
-                    "total_facturas": 0,
-                    "total_facturado": 0.0,
-                    "total_pagado": 0.0,
-                    "total_pendiente": 0.0,
-                    "total_vencido": 0.0,
-                    "facturas_con_mora": 0,
-                    "total_mora": 0.0
+                    "total_facturas": 0, "total_facturado": 0.0,
+                    "total_pagado": 0.0, "total_pendiente": 0.0,
+                    "total_vencido": 0.0, "facturas_con_mora": 0, "total_mora": 0.0
                 }
             }
-        
-        # OBTENER DETALLES DE FACTURAS
+
+        # DETALLES DE FACTURAS
         ids_facturas = [f.id_factura for f in facturas]
-        
         detalles_query = (
             db.query(
                 DetalleFactura.id_factura,
@@ -852,10 +840,9 @@ def get_reporte_facturas(
                     (DetalleFactura.tipo_detalle == 'multa', 3),
                     else_=4
                 )
-            )
-            .all()
+            ).all()
         )
-        
+
         detalles_por_factura = {}
         for d in detalles_query:
             if d.id_factura not in detalles_por_factura:
@@ -865,113 +852,87 @@ def get_reporte_facturas(
                 "descripcion": d.descripcion or "Sin descripción",
                 "monto": float(d.subtotal_detalle) if d.subtotal_detalle else 0.0
             })
-        
-        # ========================================
-        # 📋 FORMATEAR RESPUESTA + CALCULAR ESTADÍSTICAS
-        # ========================================
+
+        # FORMATEAR + ESTADÍSTICAS
         facturas_formateadas = []
-        
-        # ✅ VARIABLES PARA ESTADÍSTICAS
-        total_facturado = 0.0
-        total_pagado = 0.0
-        total_pendiente = 0.0
-        total_vencido = 0.0
+        total_facturado = total_pagado = total_pendiente = total_vencido = 0.0
         facturas_con_mora = 0
         total_mora_acumulado = 0.0
-        
+
         for f in facturas:
             detalles = detalles_por_factura.get(f.id_factura, [])
             conceptos_texto = " | ".join([
-                f"{d['tipo'].upper()} (${d['monto']:.2f})"
-                for d in detalles
+                f"{d['tipo'].upper()} (${d['monto']:.2f})" for d in detalles
             ]) if detalles else "Sin conceptos"
-            
+
             nombre_completo = f"{f.nombres} {f.apellidos}".strip()
-            
             total_factura = float(f.total) if f.total else 0.0
             total_facturado += total_factura
-            
-            if f.estado_factura == 'pagada':
-                total_pagado += total_factura
-            elif f.estado_factura == 'pendiente':
-                total_pendiente += total_factura
-            elif f.estado_factura == 'vencida':
-                total_vencido += total_factura
-            
-            # CALCULAR DATOS DE MORA
+
+            if f.estado_factura == 'pagada':     total_pagado    += total_factura
+            elif f.estado_factura == 'pendiente': total_pendiente += total_factura
+            elif f.estado_factura == 'vencida':   total_vencido   += total_factura
+
             valor_mora = float(f.total_mora) if f.total_mora else 0.0
-            dias_mora = int(f.max_dias_mora) if f.max_dias_mora else 0
+            dias_mora  = int(f.max_dias_mora) if f.max_dias_mora else 0
             tiene_mora = valor_mora > 0
-            
-            meses_adeudo = math.ceil(dias_mora / 30) if dias_mora > 0 else 0
+            meses_adeudo   = math.ceil(dias_mora / 30) if dias_mora > 0 else 0
             total_con_mora = total_factura + valor_mora
-            
-            # ✅ ACUMULAR ESTADÍSTICAS DE MORA
+
             if tiene_mora:
-                facturas_con_mora += 1
-                total_mora_acumulado += valor_mora
-            
-            factura_dict = {
-                "num_factura": f.num_factura,
-                "periodo": f.periodo,
-                "cod_usuario_afi": f.cod_usuario_afi,
-                "num_medidor": f.num_medidor or "N/A",
-                "cedula": f.cedula,
-                "Nombres": nombre_completo,
-                "direccion": f.direccion,
-                "telefono": f.telefono,
-                "email": f.email,
-                "sector": f.nombre_sector or "Sin sector",
-                "consumo_m3": f.consumo_m3 or 0,
-                "exceso_m3": f.exceso_m3 or 0,
-                "valor_consumo": float(f.valor_consumo) if f.valor_consumo else 0.0,
-                "valor_exceso": float(f.valor_exceso) if f.valor_exceso else 0.0,
-                "descuento": float(f.descuento) if f.descuento else 0.0,
-                "subtotal": float(f.subtotal) if f.subtotal else 0.0,
-                "impuesto": float(f.impuesto) if f.impuesto else 0.0,
-                "total_factura": total_factura,
-                "tiene_mora": tiene_mora,
-                "meses_adeudo": meses_adeudo,
-                "valor_mora": valor_mora,
-                "total_con_mora": total_con_mora,
-                "fecha_emision": f.fecha_emision.strftime("%d/%m/%Y") if f.fecha_emision else None,
-                "estado": f.estado_factura,
+                facturas_con_mora     += 1
+                total_mora_acumulado  += valor_mora
+
+            facturas_formateadas.append({
+                "num_factura":           f.num_factura,
+                "cod_usuario_afi":       f.cod_usuario_afi,
+                "num_medidor":           f.num_medidor or "N/A",  # ← ahora sí existe
+                "cedula":                f.cedula,
+                "Nombres":               nombre_completo,
+                "direccion":             f.direccion,
+                "telefono":              f.telefono,
+                "email":                 f.email,
+                "sector":                f.nombre_sector or "Sin sector",
+                "consumo_m3":            f.consumo_m3 or 0,
+                "exceso_m3":             f.exceso_m3 or 0,
+                "valor_consumo":         float(f.valor_consumo)  if f.valor_consumo  else 0.0,
+                "valor_exceso":          float(f.valor_exceso)   if f.valor_exceso   else 0.0,
+                "descuento":             float(f.descuento)       if f.descuento      else 0.0,
+                "subtotal":              float(f.subtotal)        if f.subtotal       else 0.0,
+                "impuesto":              float(f.impuesto)        if f.impuesto       else 0.0,
+                "total_factura":         total_factura,
+                "tiene_mora":            tiene_mora,
+                "meses_adeudo":          meses_adeudo,
+                "valor_mora":            valor_mora,
+                "total_con_mora":        total_con_mora,
+                "fecha_emision":         f.fecha_emision.strftime("%d/%m/%Y") if f.fecha_emision else None,
+                "estado":                f.estado_factura,
                 "conceptos_facturacion": conceptos_texto
-            }
-            
-            facturas_formateadas.append(factura_dict)
-        
-        print(f"✅ Reporte generado: {len(facturas_formateadas)} de {total_count} facturas")
-        print(f"📊 Estadísticas: {facturas_con_mora} facturas con mora, total mora: ${total_mora_acumulado:.2f}")
-        
-        # ✅ RESPUESTA CON ESTADÍSTICAS DE MORA
+            })
+
         return {
             "success": True,
             "data": facturas_formateadas,
             "total": total_count,
-            "skip": skip,
-            "limit": limit,
+            "skip": skip, "limit": limit,
             "pages": (total_count + limit - 1) // limit,
             "estadisticas": {
-                "total_facturas": len(facturas_formateadas),
-                "total_facturado": round(total_facturado, 2),
-                "total_pagado": round(total_pagado, 2),
-                "total_pendiente": round(total_pendiente, 2),
-                "total_vencido": round(total_vencido, 2),
+                "total_facturas":    len(facturas_formateadas),
+                "total_facturado":   round(total_facturado, 2),
+                "total_pagado":      round(total_pagado, 2),
+                "total_pendiente":   round(total_pendiente, 2),
+                "total_vencido":     round(total_vencido, 2),
                 "facturas_con_mora": facturas_con_mora,
-                "total_mora": round(total_mora_acumulado, 2)
+                "total_mora":        round(total_mora_acumulado, 2)
             }
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error al generar reporte de facturas: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error al generar reporte de facturas: {str(e)}")
 
 
 # ============================================================================
@@ -1028,6 +989,8 @@ def get_periodos_facturas(
 @router.get("/pagos")
 def get_reporte_pagos(
     periodo: Optional[str] = Query(None, description="Formato: YYYY-MM"),
+    mes: Optional[int] = Query(None, ge=1, le=12),
+    anio: Optional[int] = Query(None, ge=2020),
     metodo_pago: Optional[str] = Query(None),
     estado_pago: Optional[str] = Query(None),
     pago_completo: Optional[bool] = Query(None),
@@ -1074,7 +1037,7 @@ def get_reporte_pagos(
                 UsuarioSistema.telefono,
                 UsuarioSistema.email,
                 UsuarioAfiliado.cod_usuario_afi,
-                UsuarioAfiliado.num_medidor,
+                Medidor.num_medidor,                   # ← viene de Medidor, no de UsuarioAfiliado
                 Sector.nombre_sector,
                 Factura.id_factura,
                 Factura.num_factura,
@@ -1104,18 +1067,25 @@ def get_reporte_pagos(
                 mora_subquery.c.max_dias_mora,
                 mora_subquery.c.cantidad_moras
             )
-            .join(Factura, Pago.id_factura == Factura.id_factura)
-            .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
-            .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
-            .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
-            .outerjoin(Cajero, Pago.id_cajero == Cajero.id_usuario_sistema)
-            .outerjoin(mora_subquery, Factura.id_factura == mora_subquery.c.id_factura)
+            # ✅ Cadena correcta: Pago → Factura → Lectura → Medidor → Afiliado → Usuario
+            .join(Factura,        Pago.id_factura         == Factura.id_factura)
+            .join(Lectura,        Factura.id_lectura       == Lectura.id_lectura)
+            .join(Medidor,        Lectura.id_medidor       == Medidor.id_medidor)
+            .join(UsuarioAfiliado, Medidor.id_usuario_afi  == UsuarioAfiliado.id_usuario_afi)
+            .join(UsuarioSistema,  UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
+            .outerjoin(Sector,   UsuarioAfiliado.id_sector == Sector.id_sector)
+            .outerjoin(Cajero,   Pago.id_cajero            == Cajero.id_usuario_sistema)
+            .outerjoin(mora_subquery, Factura.id_factura   == mora_subquery.c.id_factura)
         )
         
         # FILTROS
         if periodo:
             query = query.filter(Factura.periodo == periodo)
         
+        # ✅ AGREGAR ESTO — igual que en get_reporte_facturas
+        if mes and anio:
+            query = query.filter(Factura.periodo == f"{anio}-{mes:02d}")
+            
         if metodo_pago:
             query = query.filter(Pago.metodo_pago.ilike(f"%{metodo_pago}%"))
         
@@ -1138,7 +1108,7 @@ def get_reporte_pagos(
                     UsuarioSistema.apellidos.ilike(search_pattern),
                     UsuarioSistema.cedula.ilike(search_pattern),
                     cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
-                    UsuarioAfiliado.num_medidor.ilike(search_pattern),
+                    Medidor.num_medidor.ilike(search_pattern),
                     Factura.num_factura.ilike(search_pattern)
                 )
             )
@@ -1386,47 +1356,90 @@ def get_estadisticas_pagos(
 # ============================================================================
 # 8.2. OBTENER PERIODOS DISPONIBLES (MES/AÑO) DE PAGOS
 # ============================================================================
-
 @router.get("/pagos/periodos")
 def get_periodos_pagos(
     payload: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
-    """📅 Obtiene los periodos (mes/año) disponibles de pagos"""
+    """📅 Periodos disponibles para reporte de pagos (misma lógica que módulo pagos)"""
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "reportes", "lectura")
-    
-    periodos = db.query(
-        extract('year', Pago.fecha_pago).label('anio'),
-        extract('month', Pago.fecha_pago).label('mes')
-    ).filter(
-        Pago.fecha_pago.isnot(None),
-        Pago.activo == True  # ✅ Solo pagos activos
-    ).distinct().order_by(
-        desc(extract('year', Pago.fecha_pago)),
-        desc(extract('month', Pago.fecha_pago))
-    ).all()
-    
+
+    hoy = date.today()
+    mes_actual = hoy.month
+    anio_actual = hoy.year
+
     meses_nombres = {
         1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
         5: 'Mayo', 6: 'Junio', 7: 'Julio', 8: 'Agosto',
         9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
     }
-    
-    return [
-        {
-            "anio": int(p.anio),
-            "mes": int(p.mes),
-            "mes_nombre": meses_nombres.get(int(p.mes), 'Desconocido'),
-            "periodo": f"{meses_nombres.get(int(p.mes), 'Mes')} {int(p.anio)}"
-        }
-        for p in periodos if p.anio and p.mes
-    ]
+
+    # ── 1. Generar ventana: igual que /periodos/disponibles ──────────────
+    periodos_ventana = []
+    for offset in range(-6, 3):
+        mes = mes_actual + offset
+        anio = anio_actual
+        while mes > 12:
+            mes -= 12
+            anio += 1
+        while mes < 1:
+            mes += 12
+            anio -= 1
+        periodos_ventana.append((mes, anio, f"{anio}-{mes:02d}"))
+
+    # ── 2. Periodos que tienen facturas (fuente de verdad) ───────────────
+    periodos_con_facturas = {
+        row.periodo
+        for row in db.query(Factura.periodo)
+        .filter(Factura.periodo.isnot(None))
+        .distinct()
+        .all()
+        if row.periodo
+    }
+
+    # ── 3. Periodos que tienen pagos registrados ─────────────────────────
+    periodos_con_pagos = set()
+    for row in (
+        db.query(
+            extract('year',  Pago.fecha_pago).label('anio'),
+            extract('month', Pago.fecha_pago).label('mes')
+        )
+        .filter(Pago.fecha_pago.isnot(None), Pago.activo == True)
+        .distinct()
+        .all()
+    ):
+        if row.anio and row.mes:
+            periodos_con_pagos.add(f"{int(row.anio)}-{int(row.mes):02d}")
+
+    # ── 4. Unión: ventana + todos los periodos reales ─────────────────────
+    todos_los_periodos = set(p[2] for p in periodos_ventana)
+    todos_los_periodos |= periodos_con_facturas   # agrega periodos históricos
+    todos_los_periodos |= periodos_con_pagos       # agrega periodos con pagos
+
+    # ── 5. Construir respuesta ordenada desc ──────────────────────────────
+    resultado = []
+    for periodo_str in sorted(todos_los_periodos, reverse=True):
+        try:
+            anio_str, mes_str = periodo_str.split("-")
+            anio = int(anio_str)
+            mes  = int(mes_str)
+            resultado.append({
+                "anio":      anio,
+                "mes":       mes,
+                "mes_nombre": meses_nombres.get(mes, "Desconocido"),
+                "periodo":   f"{meses_nombres.get(mes, 'Mes')} {anio}",
+                "tiene_facturas": periodo_str in periodos_con_facturas,
+                "tiene_pagos":    periodo_str in periodos_con_pagos,
+            })
+        except Exception:
+            continue
+
+    return resultado
 
 # ============================================================================
 # 9. REPORTE DE MULTAS 
 # ============================================================================
-
 @router.get("/multas")
 def get_reporte_multas(
     skip: int = 0,
@@ -1523,7 +1536,6 @@ def get_reporte_multas(
 # ============================================================================
 # 10. REPORTE DE MULTAS AFILIADOS
 # ============================================================================
-
 @router.get("/multas-afiliados")
 def get_reporte_multas_afiliados(
     skip: int = 0,
@@ -1533,7 +1545,7 @@ def get_reporte_multas_afiliados(
     estado: Optional[str] = None,
     facturado: Optional[bool] = None,
     activo: Optional[bool] = None,
-    search: Optional[str] = None,  
+    search: Optional[str] = None,
     mes: Optional[int] = None,
     anio: Optional[int] = None,
     payload: dict = Depends(verify_token),
@@ -1542,100 +1554,123 @@ def get_reporte_multas_afiliados(
     """📊 Reporte de multas asignadas a afiliados"""
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "reportes", "lectura")
-    
-    # Query base con eager loading
-    query = db.query(MultaAfiliado).options(
-        joinedload(MultaAfiliado.tipo_multa),
-        joinedload(MultaAfiliado.usuario)
-            .joinedload(UsuarioAfiliado.usuario_sistema),
-        joinedload(MultaAfiliado.usuario)
-            .joinedload(UsuarioAfiliado.sector)
-    )
-    
-    # BÚSQUEDA POR TEXTO
-    if search:
-        search_pattern = f"%{search}%"
-        
-        query = query.join(MultaAfiliado.usuario).join(UsuarioAfiliado.usuario_sistema)
-        query = query.join(MultaAfiliado.tipo_multa)
-        
-        query = query.filter(
-            or_(
-                cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
-                func.concat(
-                    UsuarioSistema.nombres, ' ', UsuarioSistema.apellidos
-                ).ilike(search_pattern),
-                UsuarioSistema.cedula.ilike(search_pattern),
-                TipoMulta.nombre_multa.ilike(search_pattern),
-                MultaAfiliado.observaciones.ilike(search_pattern),
-                UsuarioAfiliado.num_medidor.ilike(search_pattern)
+
+    try:
+        # Query base con eager loading — agrega medidores para accederlos en la respuesta
+        query = db.query(MultaAfiliado).options(
+            joinedload(MultaAfiliado.tipo_multa),
+            joinedload(MultaAfiliado.usuario)
+                .joinedload(UsuarioAfiliado.usuario_sistema),
+            joinedload(MultaAfiliado.usuario)
+                .joinedload(UsuarioAfiliado.sector),
+            joinedload(MultaAfiliado.usuario)
+                .joinedload(UsuarioAfiliado.medidores),   # ← carga la lista de medidores
+        )
+
+        # BÚSQUEDA POR TEXTO — necesita joins explícitos
+        if search:
+            search_pattern = f"%{search}%"
+            query = (
+                query
+                .join(MultaAfiliado.usuario)
+                .join(UsuarioAfiliado.usuario_sistema)
+                .join(MultaAfiliado.tipo_multa)
+                .outerjoin(Medidor, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)  # ← join a Medidor
+                .filter(
+                    or_(
+                        cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
+                        func.concat(
+                            UsuarioSistema.nombres, ' ', UsuarioSistema.apellidos
+                        ).ilike(search_pattern),
+                        UsuarioSistema.cedula.ilike(search_pattern),
+                        TipoMulta.nombre_multa.ilike(search_pattern),
+                        MultaAfiliado.observaciones.ilike(search_pattern),
+                        Medidor.num_medidor.ilike(search_pattern),   # ← Medidor, no UsuarioAfiliado
+                    )
+                )
+                .distinct()   # ← evita duplicados si el afiliado tiene varios medidores
             )
-        )
-    
-    # Filtros adicionales
-    if mes and anio:
-        query = query.filter(
-            extract('month', MultaAfiliado.fecha_multa) == mes,
-            extract('year', MultaAfiliado.fecha_multa) == anio
+
+        # FILTROS ADICIONALES
+        if mes and anio:
+            query = query.filter(
+                extract('month', MultaAfiliado.fecha_multa) == mes,
+                extract('year',  MultaAfiliado.fecha_multa) == anio
+            )
+
+        if id_usuario_afi:
+            query = query.filter(MultaAfiliado.id_usuario_afi == id_usuario_afi)
+
+        if id_tipo_multa:
+            query = query.filter(MultaAfiliado.id_tipo_multa == id_tipo_multa)
+
+        if estado:
+            query = query.filter(MultaAfiliado.estado == estado)
+
+        if facturado is not None:
+            query = query.filter(MultaAfiliado.facturado == facturado)
+
+        if activo is not None:
+            query = query.filter(MultaAfiliado.activo == activo)
+
+        total = query.count()
+
+        multas = (
+            query
+            .order_by(MultaAfiliado.fecha_multa.desc(), MultaAfiliado.id_multa_afi.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
         )
 
-    if id_usuario_afi:
-        query = query.filter(MultaAfiliado.id_usuario_afi == id_usuario_afi)
-    
-    if id_tipo_multa:
-        query = query.filter(MultaAfiliado.id_tipo_multa == id_tipo_multa)
-    
-    if estado:
-        query = query.filter(MultaAfiliado.estado == estado)
-    
-    if facturado is not None:
-        query = query.filter(MultaAfiliado.facturado == facturado)
-    
-    if activo is not None:
-        query = query.filter(MultaAfiliado.activo == activo)
-    
-    # Obtener total ANTES de paginar
-    total = query.count()
-    
-    # Ordenar por fecha de multa descendente
-    query = query.order_by(
-        MultaAfiliado.fecha_multa.desc(),
-        MultaAfiliado.id_multa_afi.desc()
-    )
-    
-    # Aplicar paginación
-    multas = query.offset(skip).limit(limit).all()
-    
-    # ✅ Formatear respuesta - SOLO DATOS BRUTOS
-    multas_formateadas = [
-        {
-            "medidor": m.usuario.num_medidor if m.usuario else None,
-            "cod_usuario_afi": m.usuario.cod_usuario_afi if m.usuario else None,
-            "nombres": m.usuario.usuario_sistema.nombres if m.usuario and m.usuario.usuario_sistema else "N/A",
-            "apellidos": m.usuario.usuario_sistema.apellidos if m.usuario and m.usuario.usuario_sistema else "",
-            "nombre_completo": f"{m.usuario.usuario_sistema.nombres} {m.usuario.usuario_sistema.apellidos}" if m.usuario and m.usuario.usuario_sistema else "N/A",
-            "cedula": m.usuario.usuario_sistema.cedula if m.usuario and m.usuario.usuario_sistema else None,
-            "sector": m.usuario.sector.nombre_sector if m.usuario and m.usuario.sector else None,
-            "nombre_multa": m.tipo_multa.nombre_multa if m.tipo_multa else "N/A",
-            "monto": float(m.monto),
-            "fecha_multa": m.fecha_multa.isoformat() if m.fecha_multa else None,
-            "fecha_pago": m.fecha_pago.isoformat() if m.fecha_pago else None,
-            "observaciones": m.observaciones,
-            "estado": m.estado,
-            "facturado": m.facturado,
-            "activo": m.activo,
+        # ✅ HELPER: primer medidor activo del afiliado, o el primero disponible
+        def get_num_medidor(usuario_afiliado):
+            if not usuario_afiliado or not usuario_afiliado.medidores:
+                return None
+            activos = [m for m in usuario_afiliado.medidores if m.activo]
+            fuente = activos if activos else usuario_afiliado.medidores
+            return fuente[0].num_medidor
+
+        # FORMATEAR RESPUESTA
+        multas_formateadas = [
+            {
+                "medidor":         get_num_medidor(m.usuario),          # ← corregido
+                "cod_usuario_afi": m.usuario.cod_usuario_afi if m.usuario else None,
+                "nombres":         m.usuario.usuario_sistema.nombres if m.usuario and m.usuario.usuario_sistema else "N/A",
+                "apellidos":       m.usuario.usuario_sistema.apellidos if m.usuario and m.usuario.usuario_sistema else "",
+                "cedula":          m.usuario.usuario_sistema.cedula if m.usuario and m.usuario.usuario_sistema else None,
+                "sector":          m.usuario.sector.nombre_sector if m.usuario and m.usuario.sector else None,
+                "nombre_multa":    m.tipo_multa.nombre_multa if m.tipo_multa else "N/A",
+                "monto":           float(m.monto),
+                "fecha_multa":     m.fecha_multa.isoformat() if m.fecha_multa else None,
+                "fecha_pago":      m.fecha_pago.isoformat()  if m.fecha_pago  else None,
+                "observaciones":   m.observaciones,
+                "estado":          m.estado,
+                "facturado":       m.facturado,
+                "activo":          m.activo,
+            }
+            for m in multas
+        ]
+
+        print(f"✅ Reporte multas: {len(multas_formateadas)} de {total}")
+
+        return {
+            "success": True,
+            "data":    multas_formateadas,
+            "total":   total,
+            "skip":    skip,
+            "limit":   limit
         }
-        for m in multas
-    ]
-    
-    return {
-        "success": True,
-        "data": multas_formateadas,
-        "total": total,  
-        "skip": skip,
-        "limit": limit
-    }
 
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al generar reporte de multas: {str(e)}"
+        )
 
 # ============================================================================
 # 10.1 PERIODOS DE MULTAS AFILIADOS

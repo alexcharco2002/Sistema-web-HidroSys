@@ -2,11 +2,116 @@
 
 
 import * as XLSX from 'xlsx-js-style';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 /**
  * Componente para exportación de reportes a Excel e impresión
  */
 export const ReportExport = {
+  /**
+   * Exportar a PDF
+   */
+  exportarPDF: (data, moduleName, moduleDescription = '') => {
+    if (!data || data.length === 0) {
+      alert('No hay datos para exportar');
+      return;
+    }
+
+    try {
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const fecha = new Date().toLocaleDateString('es-EC', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const headers = Object.keys(data[0]).map(h =>
+        h.replace(/_/g, ' ').toUpperCase()
+      );
+
+      const dataRows = data.map((row, index) => [
+        index + 1,
+        ...Object.values(row).map(v =>
+          v === null || v === undefined ? 'N/A' :
+          typeof v === 'boolean' ? (v ? 'Sí' : 'No') :
+          Array.isArray(v) ? (v.length > 0 ? v.join(', ') : 'N/A') :
+          typeof v === 'object' ? JSON.stringify(v) :
+          String(v)
+        )
+      ]);
+
+      // Título principal
+      doc.setFontSize(18);
+      doc.setTextColor(31, 71, 136);
+      doc.text('JAAP - SANJAPAMBA', 148.5, 15, { align: 'center' });
+
+      // Subtítulo
+      doc.setFontSize(11);
+      doc.setTextColor(64, 64, 64);
+      doc.text('SANJAPAMBA - San Andrés - Chimborazo', 148.5, 22, { align: 'center' });
+
+      // Título del reporte
+      doc.setFontSize(14);
+      doc.setTextColor(31, 71, 136);
+      doc.text(` ${moduleDescription || moduleName}`.toUpperCase(), 148.5, 30, { align: 'center' });
+
+      // Fecha de generación
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Fecha de generación: ${fecha}`, 148.5, 37, { align: 'center' });
+
+      // Tabla de datos
+      autoTable(doc, {
+        startY: 45,
+        head: [['#', ...headers]],
+        body: dataRows,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [68, 114, 196],
+          textColor: [255, 255, 255],
+          fontSize: 9,
+          halign: 'center',
+          valign: 'middle'
+        },
+        bodyStyles: {
+          fontSize: 8,
+          textColor: [50, 50, 50],
+          valign: 'middle'
+        },
+        alternateRowStyles: {
+          fillColor: [248, 249, 250]
+        },
+        margin: { top: 45, bottom: 20 },
+        didDrawPage: (data) => {
+          // Footer
+          const str = `Página ${doc.internal.getNumberOfPages()}`;
+          doc.setFontSize(8);
+          doc.setTextColor(150, 150, 150);
+          doc.text(str, 280, 200, { align: 'right' });
+          doc.text('Sistema web de Facturación TecniCobro 2.0', 15, 200);
+        }
+      });
+
+      const fechaArchivo = new Date().toISOString().split('T')[0];
+      const filename = `JAAP_${moduleName}_${fechaArchivo}.pdf`;
+      doc.save(filename);
+
+      console.log(`✅ PDF exportado correctamente: ${filename}`);
+
+    } catch (error) {
+      console.error('❌ Error al exportar PDF:', error);
+      alert('Error al exportar el archivo PDF. Por favor, intente nuevamente.');
+    }
+  },
+
    /**
    * Exportar a Excel 
    */
@@ -33,10 +138,13 @@ export const ReportExport = {
       );
       
       const dataRows = data.map(row => 
-        Object.values(row).map(v => 
-          v === null || v === undefined ? 'N/A' : 
-          typeof v === 'boolean' ? (v ? 'Sí' : 'No') : 
-          v
+        Object.values(row)
+        .map(v =>
+          v === null || v === undefined ? 'N/A' :
+          typeof v === 'boolean' ? (v ? 'Sí' : 'No') :
+          Array.isArray(v) ? (v.length > 0 ? v.join(', ') : 'N/A') :
+          typeof v === 'object' ? JSON.stringify(v) :
+          String(v)
         )
       );
 
@@ -531,7 +639,7 @@ export const ReportExport = {
                 </div>
                 <div class="footer-item">
                 <strong>Sistema:</strong>
-                Sistema de Facturación TecniCobro
+                Sistema web de Facturación TecniCobro 2.0
                 </div>
                 <div class="footer-item">
                 <strong>Documento:</strong>

@@ -48,7 +48,7 @@ export const CATEGORIES = {
   },
   REPORTS_ANALYSIS: {
     id: "REPORTS_ANALYSIS",
-    label: "Reportes y Análisis",
+    label: "Reportes",
     icon: PieChart,
     order: 4,
     collapsible: true,
@@ -138,7 +138,7 @@ export const MODULE_DEFINITIONS = {
     icon: FileText ,
     color: "blue",
     category: "OPERATIONS",
-    order: 1,
+    order: 5,
     componentName: "MiMedidorSection",
     description: "Visualización y gestión del medidor personal."
   },
@@ -149,7 +149,7 @@ export const MODULE_DEFINITIONS = {
     icon: Gauge,
     color: "cyan",
     category: "OPERATIONS",
-    order: 2,
+    order: 1,
     componentName: "MetersSection",
     description: "Administración de medidores asignados a usuarios."
   },
@@ -160,7 +160,7 @@ export const MODULE_DEFINITIONS = {
     icon: BookOpen,
     color: "indigo",
     category: "OPERATIONS",
-    order: 3,
+    order: 2,
     componentName: "ReadingsSection",
     description: "Registro y control de lecturas de medidores."
   },
@@ -183,7 +183,7 @@ export const MODULE_DEFINITIONS = {
     icon: Layers,
     color: "purple",
     category: "OPERATIONS",
-    order: 5,
+    order: 3,
     componentName: "SectorsSection",
     description: "Gestión de sectores geográficos."
   },
@@ -197,7 +197,7 @@ export const MODULE_DEFINITIONS = {
     icon: ClipboardList,
     color: "green",
     category: "FINANCIAL",
-    order: 1,
+    order: 5,
     componentName: "InvoicesSection",
     description: "Generación y control de facturas."
   },
@@ -208,7 +208,7 @@ export const MODULE_DEFINITIONS = {
     icon: DollarSign,
     color: "emerald",
     category: "FINANCIAL",
-    order: 2,
+    order: 6,
     componentName: "PaymentsSection",
     description: "Registro y administración de pagos."
   },
@@ -234,28 +234,6 @@ export const MODULE_DEFINITIONS = {
     componentName: "FinesAffiliatesSection",
     description: "Asignación y gestión de multas aplicadas a usuarios afiliados."
   },
-  cobranzas: {
-    id: "collections",
-    path: "collections",
-    label: "Cobranzas",
-    icon: DollarSign,
-    color: "lime",
-    category: "FINANCIAL",
-    order: 5,
-    componentName: "CollectionsSection",
-    description: "Gestión de cobranzas y estados de cuenta."
-  },
-  cajas: {
-    id: "cashboxes",
-    path: "cashboxes",
-    label: "Cajas",
-    icon: DollarSign,
-    color: "yellow",
-    category: "FINANCIAL",
-    order: 6,
-    componentName: "CashboxesSection",
-    description: "Control de ingresos y egresos de caja."
-  },
   tarifas: {
     id: "rates",
     path: "rates",
@@ -263,7 +241,7 @@ export const MODULE_DEFINITIONS = {
     icon: DollarSign,
     color: "orange",
     category: "FINANCIAL",
-    order: 7,
+    order: 1,
     componentName: "TarifasSection",
     description: "Configuración de tarifas y precios."
   },
@@ -274,7 +252,7 @@ export const MODULE_DEFINITIONS = {
     icon: Briefcase,
     color: "violet",
     category: "FINANCIAL",
-    order: 8,
+    order: 2,
     componentName: "ServiciosSection",
     description: "Gestión de servicios ofrecidos."
   },

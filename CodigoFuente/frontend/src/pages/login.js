@@ -1,7 +1,7 @@
 // src/pages/Login.js
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Lock, Eye, EyeOff, Droplets, AlertCircle, Facebook, Instagram, Mail, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Droplets, User, Lock, Eye, EyeOff, AlertCircle, Facebook, Instagram, Mail, ArrowLeft } from 'lucide-react';
 import authService from '../services/authServices';
 import './Login.css';
 
@@ -11,46 +11,16 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [currentSlide, setCurrentSlide] = useState(0);
-
-  // Carrusel de imágenes/contenido
-  const slides = [
-    {
-      title: "Gestión Inteligente del Agua",
-      description: "Sistema integrado de facturación y control para la Junta de Agua Potable de Sanjapamba.",
-      image: "/img/imagenjaap1.jpg"
-    },
-    {
-      title: "Tecnología al Servicio de la Comunidad",
-      description: "Automatización de procesos de facturación, lectura de medidores y gestión de pagos.",
-      image: "/img/imagenjaap2.jpeg"
-    },
-    {
-      title: "Transparencia y Eficiencia",
-      description: "Control total de consumos, reportes en tiempo real y atención ágil a la comunidad.",
-      image: "/img/imagenjaap3.jpeg"
-    }
-  ];
 
   useEffect(() => {
     if (authService.isAuthenticated()) {
       const user = authService.getCurrentUser();
       if (user) {
-        console.log('✅ Usuario ya autenticado, redirigiendo...');
         const redirectRoute = authService.getRoleBasedRoute();
-        console.log(`🔀 Redirigiendo a: ${redirectRoute}`);
         navigate(redirectRoute, { replace: true });
       }
     }
   }, [navigate]);
-
-  // Auto-avance del carrusel cada 5 segundos
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }, 25000);
-    return () => clearInterval(timer);
-  }, [slides.length]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -59,9 +29,7 @@ const Login = () => {
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      handleSubmit();
-    }
+    if (e.key === 'Enter') handleSubmit();
   };
 
   const handleSubmit = async () => {
@@ -98,230 +66,168 @@ const Login = () => {
     }
   };
 
-  const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % slides.length);
-  };
-
-  const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
-  };
-
-  const goToSlide = (index) => {
-    setCurrentSlide(index);
-  };
-
   return (
-    <div className="login-main-container">
-      <div className="login-main-background"></div>
-      
-      <div className="login-main-wrapper">
-        {/* Panel Izquierdo - Carrusel */}
-        <div className="login-l1-hero-panel">
-          <div className="login-l1-carousel-container">
-            {/* Logo fijo en la parte superior izquierda */}
-            <div className="login-l1-fixed-logo">
-              <div className="login-l1-logo-container">
-                <Droplets className="login-l1-logo-icon" />
-              </div>
-              <div className="login-l1-brand-text">
-                <h1 className="login-l1-brand-name">TecniCobro</h1>
-                <p className="login-l1-brand-subtitle">JAAP Sanjapamba</p>
-              </div>
-            </div>
+    <div className="lv2-container">
 
-            {/* Slides */}
-            <div className="login-l1-carousel-slides">
-              {slides.map((slide, index) => (
-                <div
-                  key={index}
-                  className={`login-l1-carousel-slide ${index === currentSlide ? 'active' : ''}`}
-                  style={{
-                    backgroundImage: `url(${slide.image})`
-                  }}
-                >
-                  
-                </div>
-              ))}
-            </div>
+      {/* ── PANEL IZQUIERDO ── */}
+      <div className="lv2-left">
+        <div className="lv2-left-bg" />
+        <div className="lv2-left-overlay" />
+        <div className="lv2-left-pattern" />
 
-            {/* Controles de navegación */}
-            <button
-              className="login-l1-carousel-control login-l1-control-prev"
-              onClick={prevSlide}
-              aria-label="Anterior"
-            >
-              <ChevronLeft size={28} />
-            </button>
-            <button
-              className="login-l1-carousel-control login-l1-control-next"
-              onClick={nextSlide}
-              aria-label="Siguiente"
-            >
-              <ChevronRight size={28} />
-            </button>
-
-            {/* Indicadores */}
-            <div className="login-l1-carousel-indicators">
-              {slides.map((_, index) => (
-                <button
-                  key={index}
-                  className={`login-l1-indicator ${index === currentSlide ? 'active' : ''}`}
-                  onClick={() => goToSlide(index)}
-                  aria-label={`Ir a slide ${index + 1}`}
-                />
-              ))}
-            </div>
-
-            {/* Footer con redes sociales */}
-            <div className="login-l1-hero-footer">
-              <p className="login-l1-social-title">Encuéntranos en:</p>
-              <div className="login-l1-social-links">
-                <a href="https://facebook.com/jaapsanjapamba" target="_blank" rel="noopener noreferrer" className="login-l1-social-link facebook" title="Facebook">
-                  <Facebook size={18} />
-                </a>
-                <a href="https://instagram.com/jaapsanjapamba" target="_blank" rel="noopener noreferrer" className="login-l1-social-link instagram" title="Instagram">
-                  <Instagram size={18} />
-                </a>
-                <a href="mailto:sanjapambaj@gmail.com" className="login-l1-social-link email" title="Email">
-                  <Mail size={18} />
-                </a>
-              </div>
-            </div>
+        <div className="lv2-brand">
+          <div className="lv2-brand-icon">
+            <Droplets className="lv2-droplets-icon" />
           </div>
+          <h1 className="lv2-brand-name">TecniCobro 2.0</h1>
+          <p className="lv2-brand-sub">JAAP Sanjapamba</p>
+
+          <div className="lv2-divider-short" />
+
+          <ul className="lv2-taglines">
+            <li><span className="lv2-dot" />Gestión inteligente del agua</li>
+            <li><span className="lv2-dot" />Facturación automatizada</li>
+            <li><span className="lv2-dot" />Reportes en tiempo real</li>
+            <li><span className="lv2-dot" />Transparencia y eficiencia</li>
+          </ul>
         </div>
 
-        {/* Panel Derecho - Formulario */}
-        <div className="login-main-form-panel">
-          <div className="login-main-form-card">
-            <div className="login-main-back-button">
-              <button onClick={() => window.location.href = '/'} className="login-main-btn-back">
-                ← Volver al inicio
-              </button>
-            </div>
+        <div className="lv2-left-footer">
+          <span className="lv2-footer-label">Síguenos</span>
+          <a href="https://facebook.com/jaapsanjapamba" target="_blank" rel="noopener noreferrer" className="lv2-social-btn" title="Facebook">
+            <Facebook size={15} />
+          </a>
+          <a href="https://instagram.com/jaapsanjapamba" target="_blank" rel="noopener noreferrer" className="lv2-social-btn" title="Instagram">
+            <Instagram size={15} />
+          </a>
+          <a href="mailto:sanjapambaj@gmail.com" className="lv2-social-btn" title="Email">
+            <Mail size={15} />
+          </a>
+        </div>
+      </div>
 
-            <div className="login-main-form-header">
-              <h2 className="login-main-form-title">Iniciar Sesión</h2>
-              <p className="login-main-form-subtitle">
-                Accede a tu cuenta del sistema TecniCobro
-              </p>
-            </div>
+      {/* ── PANEL DERECHO ── */}
+      <div className="lv2-right">
+        <div className="lv2-form-card">
 
-            {error && (
-              <div className="login-main-error-alert">
-                <AlertCircle className="login-main-error-icon" />
-                <span>{error}</span>
-              </div>
-            )}
+          <button className="lv2-back-btn" onClick={() => window.location.href = '/'}>
+            <ArrowLeft size={15} />
+            Volver al inicio
+          </button>
 
-            <form className="login-main-form" onSubmit={(e) => e.preventDefault()}>
-              <div className="login-main-input-field">
-                <label htmlFor="username" className="login-main-input-label">
-                  Usuario
-                </label>
-                <div className="login-main-input-wrapper">
-                  <User className="login-main-input-icon" />
-                  <input
-                    id="username"
-                    name="username"
-                    type="text"
-                    placeholder="Ingresa tu usuario"
-                    className="login-main-form-control"
-                    value={formData.username}
-                    onChange={handleInputChange}
-                    onKeyPress={handleKeyPress}
-                    disabled={isLoading}
-                    autoComplete="username"
-                  />
-                </div>
-              </div>
-
-              <div className="login-main-input-field">
-                <label htmlFor="password" className="login-main-input-label">
-                  Contraseña
-                </label>
-                <div className="login-main-input-wrapper">
-                  <Lock className="login-main-input-icon" />
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Ingresa tu contraseña"
-                    className="login-main-form-control login-main-password-field"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    onKeyPress={handleKeyPress}
-                    disabled={isLoading}
-                    autoComplete="current-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="login-main-toggle-password"
-                    disabled={isLoading}
-                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="login-main-eye-icon" />
-                    ) : (
-                      <Eye className="login-main-eye-icon" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div className="login-main-forgot-password">
-                <a href="/forgot-password" className="login-main-forgot-link">
-                  ¿Olvidaste tu contraseña?
-                </a>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={isLoading}
-                className="login-main-btn-submit"
-              >
-                {isLoading ? (
-                  <div className="login-main-loading-container">
-                    <div className="login-main-spinner"></div>
-                    <span>Iniciando sesión...</span>
-                  </div>
-                ) : (
-                  'Iniciar Sesión'
-                )}
-              </button>
-            </form>
-
-            <div className="login-main-divider">
-              <span className="login-main-divider-text">Síguenos en redes sociales</span>
-            </div>
-
-            <div className="login-main-social-buttons">
-              <a 
-                href="https://facebook.com/jaapsanjapamba" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="login-main-social-btn facebook-btn"
-              >
-                <Facebook size={20} />
-                <span>Facebook</span>
-              </a>
-              <a 
-                href="https://instagram.com/jaapsanjapamba" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="login-main-social-btn instagram-btn"
-              >
-                <Instagram size={20} />
-                <span>Instagram</span>
-              </a>
-            </div>
-
-            <div className="login-main-form-footer">
-              <p className="login-main-footer-brand">TecniCobro - Sistema de Facturación v1.0</p>
-              <p className="login-main-footer-copyright">JAAP Sanjapamba © 2025 - Todos los derechos reservados</p>
-            </div>
+          <div className="lv2-form-header">
+            <h2 className="lv2-form-title">Bienvenido de vuelta</h2>
+            <p className="lv2-form-subtitle">Accede a tu cuenta del sistema web TecniCobro 2.0</p>
           </div>
+
+          {error && (
+            <div className="lv2-error-alert">
+              <AlertCircle size={18} className="lv2-error-icon" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form className="lv2-form" onSubmit={(e) => e.preventDefault()}>
+
+            <div className="lv2-field">
+              <label htmlFor="username" className="lv2-label">Usuario</label>
+              <div className="lv2-input-wrap">
+                <User size={17} className="lv2-input-icon" />
+                <input
+                  id="username"
+                  name="username"
+                  type="text"
+                  placeholder="Ingresa tu usuario"
+                  className="lv2-input"
+                  value={formData.username}
+                  onChange={handleInputChange}
+                  onKeyPress={handleKeyPress}
+                  disabled={isLoading}
+                  autoComplete="username"
+                />
+              </div>
+            </div>
+
+            <div className="lv2-field">
+              <label htmlFor="password" className="lv2-label">Contraseña</label>
+              <div className="lv2-input-wrap">
+                <Lock size={17} className="lv2-input-icon" />
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Ingresa tu contraseña"
+                  className="lv2-input lv2-input--password"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  onKeyPress={handleKeyPress}
+                  disabled={isLoading}
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  className="lv2-eye-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={isLoading}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="lv2-forgot-row">
+              <a href="/forgot-password" className="lv2-forgot-link">¿Olvidaste tu contraseña?</a>
+            </div>
+
+            <button
+              type="button"
+              className="lv2-submit-btn"
+              onClick={handleSubmit}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <span className="lv2-loading">
+                  <span className="lv2-spinner" />
+                  Iniciando sesión...
+                </span>
+              ) : 'Iniciar Sesión'}
+            </button>
+
+          </form>
+
+          <div className="lv2-divider">
+            <span className="lv2-divider-line" />
+            <span className="lv2-divider-text">Síguenos en redes sociales</span>
+            <span className="lv2-divider-line" />
+          </div>
+
+          <div className="lv2-social-row">
+            <a
+              href="https://facebook.com/jaapsanjapamba"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="lv2-social-link-btn"
+            >
+              <Facebook size={17} />
+              Facebook
+            </a>
+            <a
+              href="https://instagram.com/jaapsanjapamba"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="lv2-social-link-btn"
+            >
+              <Instagram size={17} />
+              Instagram
+            </a>
+          </div>
+
+          <div className="lv2-card-footer">
+            <p className="lv2-footer-brand">TecniCobro 2.0 — Sistema web de Facturación v2.0</p>
+            <p className="lv2-footer-copy">JAAP Sanjapamba © 2025 — Todos los derechos reservados</p>
+          </div>
+
         </div>
       </div>
     </div>

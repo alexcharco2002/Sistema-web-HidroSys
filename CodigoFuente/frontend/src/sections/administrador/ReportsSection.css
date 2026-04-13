@@ -1302,3 +1302,57 @@
 .filter-control-btn.active .control-arrow {
   transform: rotate(180deg);
 }
+
+/* Botones de exportación mejorados */
+.btn-export {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: all 0.18s ease;
+}
+
+.btn-export-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* Color verde para PDF */
+.btn-export-pdf {
+  color: #dc2626 !important;
+  border-color: #fca5a5 !important;
+}
+
+.btn-export-pdf:hover {
+  background-color: #fef2f2 !important;
+  border-color: #dc2626 !important;
+}
+
+/* Chip de mes seleccionado activo */
+.historial-mes-chip.seleccionado {
+  background-color: #dbeafe;
+  border: 2px solid #3b82f6;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+/* Toggle del contenedor completo del historial */
+.periodo-historial-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 12px 16px;
+}
+
+.periodo-historial-toggle:hover {
+  background-color: #f0f7ff;
+  border-radius: 8px;
+}

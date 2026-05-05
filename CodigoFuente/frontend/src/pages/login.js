@@ -1,10 +1,10 @@
 // src/pages/Login.js
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Droplets, User, Lock, Eye, EyeOff, AlertCircle, Facebook, Instagram, Mail, ArrowLeft } from 'lucide-react';
+import {  User, Lock, Eye, EyeOff, AlertCircle, Facebook, Instagram, Mail, ArrowLeft } from 'lucide-react';
 import authService from '../services/authServices';
 import './Login.css';
-
+// ../../public/quality.ico
 const Login = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ username: '', password: '' });
@@ -77,9 +77,13 @@ const Login = () => {
 
         <div className="lv2-brand">
           <div className="lv2-brand-icon">
-            <Droplets className="lv2-droplets-icon" />
+            <img
+              src="/quality.ico"
+              alt="HidroSys Logo"
+              className="lv2-brand-img"
+            />
           </div>
-          <h1 className="lv2-brand-name">TecniCobro 2.0</h1>
+          <h1 className="lv2-brand-name">HidroSys</h1>
           <p className="lv2-brand-sub">JAAP Sanjapamba</p>
 
           <div className="lv2-divider-short" />
@@ -117,7 +121,7 @@ const Login = () => {
 
           <div className="lv2-form-header">
             <h2 className="lv2-form-title">Bienvenido de vuelta</h2>
-            <p className="lv2-form-subtitle">Accede a tu cuenta del sistema web TecniCobro 2.0</p>
+            <p className="lv2-form-subtitle">Accede a tu cuenta del sistema web HidroSys</p>
           </div>
 
           {error && (
@@ -224,8 +228,8 @@ const Login = () => {
           </div>
 
           <div className="lv2-card-footer">
-            <p className="lv2-footer-brand">TecniCobro 2.0 — Sistema web de Facturación v2.0</p>
-            <p className="lv2-footer-copy">JAAP Sanjapamba © 2025 — Todos los derechos reservados</p>
+            <p className="lv2-footer-brand">HidroSys — Sistema web de Facturación v1.0</p>
+            <p className="lv2-footer-copy">© 2025 — Todos los derechos reservados</p>
           </div>
 
         </div>

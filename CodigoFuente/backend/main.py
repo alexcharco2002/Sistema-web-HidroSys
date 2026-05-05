@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
     """
     # 🚀 STARTUP
     logger.info("=" * 60)
-    logger.info("🚀 Iniciando TecniCobro API v1.0.0")
+    logger.info("🚀 Iniciando HidroSys API v1.0.0")
     logger.info("=" * 60)
     
     try:
@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
 # ========================================
 
 app = FastAPI(
-    title="TecniCobro - Sistema de Facturación de Agua",
+    title="HidroSys - Sistema de Facturación de Agua",
     description="API REST para el sistema de facturación JAAP Sanjapamba",
     version="1.0.0",
     lifespan=lifespan,  # ✅ Integrar eventos de ciclo de vida
@@ -91,7 +91,7 @@ import os
 # Obtener orígenes permitidos desde variable de entorno o usar valores por defecto
 allowed_origins = os.getenv(
     "ALLOWED_ORIGINS",
-    "https://localhost:3000,http://localhost:3000,https://tecnicobrosanjapamba.netlify.app"
+    "https://localhost:3000,http://localhost:3000,https://HidroSyssanjapamba.netlify.app"
 ).split(",")
 
 app.add_middleware(
@@ -119,7 +119,7 @@ from routes import (
     afiliates, meters, backups, tarifas, servicios,
     lecturas, multas, multas_afiliados, limite_geografico,
     iva, facturas, pagos, reports, affiliate_billing,
-    afiliatesGeneral, mora, servicio_permanente
+    afiliatesGeneral, mora, servicio_permanente, geolocation as geo_router
 )
 from routes.test_sqli import router as sqli_router
 
@@ -153,7 +153,7 @@ app.include_router(affiliate_billing.router)
 app.include_router(afiliatesGeneral.router)
 app.include_router(mora.router)
 app.include_router(servicio_permanente.router)
-
+app.include_router(geo_router.router)
 # Router de pruebas (solo desarrollo)
 if os.getenv("ENVIRONMENT", "development") == "development":
     app.include_router(sqli_router, prefix="/test")
@@ -166,7 +166,7 @@ if os.getenv("ENVIRONMENT", "development") == "development":
 async def root():
     """Endpoint raíz con información de la API"""
     return {
-        "message": "TecniCobro - API Sistema de Facturación JAAP Sanjapamba",
+        "message": "HidroSys - API Sistema de Facturación JAAP Sanjapamba",
         "version": "1.0.0",
         "status": "online",
         "docs": "/docs",
@@ -189,7 +189,7 @@ async def health_check():
     
     return {
         "status": "healthy",
-        "service": "tecnicobro-api",
+        "service": "HidroSys-api",
         "version": "1.0.0",
         "secure": True,
         "scheduler": scheduler_status,

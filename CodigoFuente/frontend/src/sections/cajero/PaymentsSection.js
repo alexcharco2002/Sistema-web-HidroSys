@@ -156,10 +156,13 @@ const PaymentsSection = () => {
   // ============================================================
   const calcularTotalFacturasSeleccionadas = () => {
     return facturasSeleccionadasPago.reduce((sum, factura) => {
-      const totalFactura = factura.total_con_mora || 
-                          (factura.saldo_pendiente + (factura.mora_monto || 0));
-      
-      return sum + parseFloat(totalFactura || 0);
+      const total = parseFloat(
+        factura.totalconmora ||           // normalizado en el modal
+        factura.total_con_mora ||         // snake_case del back
+        factura.saldopendiente ||         // normalizado
+        factura.saldo_pendiente || 0
+      );
+      return sum + total;
     }, 0);
   };
 
@@ -302,14 +305,14 @@ const PaymentsSection = () => {
 
   const facturasPendientesCache = useRef({});
 
-  const cargarFacturasPendientesAfiliado = useCallback(async (idUsuarioAfi) => {
-    if (!idUsuarioAfi || !periodoSeleccionado) {
+  const cargarFacturasPendientesAfiliado = useCallback(async (idUsuarioAfi, idMedidor) => {
+    if (!idUsuarioAfi || !idMedidor || !periodoSeleccionado) {
       console.warn('⚠️ No hay periodo seleccionado');
       return null;
     }
 
     const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
-    const cacheKey = `${idUsuarioAfi}-${periodoStr}`;
+    const cacheKey = `${idUsuarioAfi}-${idMedidor}-${periodoStr}`;
     
     // ✅ Verificar caché sin causar re-renders
     if (facturasPendientesCache.current[cacheKey]) {
@@ -324,7 +327,8 @@ const PaymentsSection = () => {
       const result = await paymentsServices.getFacturasPendientesAfiliado(
         idUsuarioAfi,
         periodoStr,
-        false
+        false,
+        idMedidor
       );
 
       if (result.success && result.data) {
@@ -334,7 +338,7 @@ const PaymentsSection = () => {
         // Actualizar estado para UI
         setFacturasPendientesPorAfiliado(prev => ({
           ...prev,
-          [idUsuarioAfi]: result.data
+          [`${idUsuarioAfi}-${idMedidor}`]: result.data
         }));
         
         return result.data;
@@ -378,31 +382,29 @@ const PaymentsSection = () => {
 
         // ✅ FILTRAR SOLO FACTURAS PENDIENTES/VENCIDAS ANTES DE CARGAR ADEUDOS
         const facturasPendientesOVencidas = result.data.filter(
-          f => f.estado_factura === 'pendiente' || f.estado_factura === 'vencida' ||  f.estado_factura === 'anulada' 
+          f => f.estado_factura === 'pendiente' || f.estado_factura === 'vencida'
         );
         
         console.log(`🔍 Facturas pendientes/vencidas: ${facturasPendientesOVencidas.length} de ${result.data.length}`);
 
         // ✅ Extraer afiliados únicos SOLO de facturas pendientes/vencidas
-        const afiliadosUnicos = [
-          ...new Set(
-            facturasPendientesOVencidas
-              .map(f => f.usuario_afiliado?.id_usuario_afi)
-              .filter(Boolean)
-          )
+        const paresUnicos = [
+            ...new Map(
+                facturasPendientesOVencidas.map(f => [
+                    `${f.id_usuario_afi}-${f.id_medidor}`,
+                    { idAfi: f.id_usuario_afi, idMedidor: f.id_medidor }
+                ])
+            ).values()
         ];
-        
-        console.log(`👥 Cargando adeudos para ${afiliadosUnicos.length} afiliados con facturas pendientes`);
-        
-        // Cargar en paralelo con manejo de errores
-        const promesas = afiliadosUnicos.map(idAfi => 
-          cargarFacturasPendientesAfiliado(idAfi).catch(err => {
-            console.error(`Error cargando adeudos del afiliado ${idAfi}:`, err);
-            return null;
-          })
+
+        const promesas = paresUnicos.map(({ idAfi, idMedidor }) =>
+            cargarFacturasPendientesAfiliado(idAfi, idMedidor).catch(err => {
+                console.error(`Error cargando adeudos del afiliado ${idAfi} medidor ${idMedidor}`, err);
+                return null;
+            })
         );
-        
         await Promise.all(promesas);
+
         
         console.log('✅ Adeudos cargados solo para afiliados con deuda activa');
         
@@ -640,7 +642,7 @@ const PaymentsSection = () => {
 // ============================================================
 const openAdeudosModal = async (factura, datosAdeudo) => {
   // Validación de facturas pendientes 
-  if (!datosAdeudo || !datosAdeudo.meses_adeudo || datosAdeudo.meses_adeudo < 1) {
+  if (!datosAdeudo || !datosAdeudo.meses_adeudo || datosAdeudo.meses_adeudo <= 0) {
     alert('ℹ️ No hay adeudos pendientes anteriores para mostrar');
     return;
   }
@@ -684,7 +686,19 @@ const openAdeudosModal = async (factura, datosAdeudo) => {
   
   // Abrir modal
   setSelectedFacturaAdeudos(factura);
-  setSelectedAfiliadoAdeudos(factura.usuario_afiliado);
+  setSelectedAfiliadoAdeudos({
+    id_usuario_afi:  factura.id_usuario_afi,
+    id_medidor:     factura.id_medidor,
+    cod_usuario_afi: factura.cod_usuario_afi,
+    nombre_completo: factura.nombre_completo,
+    cedula:          factura.cedula,
+    num_medidor:     factura.num_medidor,
+    nombre_sector:   factura.nombre_sector,
+    telefono:        factura.telefono,
+    email:           factura.email,
+    direccion:       factura.direccion,
+  });
+
   setShowAdeudosModal(true);
 };
 
@@ -719,14 +733,15 @@ const closePagoMultipleModal = () => {
     
     try {
       const saldoPendiente = calcularSaldoPendiente(factura);
-      const idAfiliado = factura.usuario_afiliado?.id_usuario_afi;
-      
-      if (!idAfiliado) {
-        throw new Error('No se pudo identificar el afiliado de la factura');
-      }
+      const idAfiliado = factura.id_usuario_afi 
+        ?? factura.usuarioafiliado?.id_usuario_afi;
+      if (!idAfiliado) throw new Error('No se pudo identificar el afiliado de la factura');
+
+      const idMedidor = factura.id_medidor        ?? factura.usuarioafiliado?.num_medidor;
+      if (!idMedidor) throw new Error('No se pudo identificar el medidor de la factura');
 
       //  1. Cargar todas las facturas pendientes del afiliado
-      const facturasPendientes = await cargarFacturasPendientesAfiliado(idAfiliado);
+      const facturasPendientes = await cargarFacturasPendientesAfiliado(idAfiliado, idMedidor);
       
       //  2. Calcular resumen con mora de la factura seleccionada
       const resultado = await paymentsServices.calcularResumenPago(factura.id_factura);
@@ -1036,14 +1051,15 @@ const closePagoMultipleModal = () => {
             
             // Limpiar caché de adeudos
             const idAfiliado = selectedFactura.usuario_afiliado?.id_usuario_afi;
-            if (idAfiliado) {
+            const idMedidor = selectedFactura.id_medidor;
+            if (idAfiliado && idMedidor ) {
               const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
-              const cacheKey = `${idAfiliado}-${periodoStr}`;
+              const cacheKey = `${idAfiliado}-${idMedidor}-${periodoStr}`;
               if (facturasPendientesCache.current) {
                 delete facturasPendientesCache.current[cacheKey];
               }
               setFacturasPendientesPorAfiliado(prev => {
-                const { [idAfiliado]: _, ...rest } = prev;
+                const { [`${idAfiliado}-${idMedidor}`]: _, ...rest } = prev;
                 return rest;
               });
             }
@@ -1197,223 +1213,238 @@ const closePagoMultipleModal = () => {
   };
 
   const handlePagoMultiple = async () => {
-  // ========== VALIDACIONES ==========
-  if (facturasSeleccionadasPago.length < 2) {
-    alert('Debe seleccionar al menos 2 facturas para pago múltiple');
-    return;
-  }
-
-  if (facturasSeleccionadasPago.length > 5) {
-    alert('No puede seleccionar más de 5 facturas para pago múltiple');
-    return;
-  }
-
-  const totalAPagar = calcularTotalFacturasSeleccionadas();
-
-  // Confirmación
-  let mensaje = `¿Confirma el pago múltiple de ${formatCurrency(totalAPagar)}?\n\n`;
-  mensaje += `Facturas a pagar:\n`;
-  facturasSeleccionadasPago.forEach((f, idx) => {
-    mensaje += `${idx + 1}. ${f.num_factura} (${f.periodo}) - ${formatCurrency(f.saldo_pendiente || f.total_con_mora)}\n`;
-  });
-  mensaje += `\nMétodo de pago: ${nuevoPago.metodo_pago}`;
-
-  const confirmar = window.confirm(mensaje);
-  if (!confirmar) return;
-
-  setLoading(true);
-  setError(null);
-
-  try {
-    const currentUser = authService.getCurrentUser();
-    if (!currentUser?.id_usuario_sistema) {
-      throw new Error('No se pudo identificar al usuario actual');
+    // ========== VALIDACIONES ==========
+    if (facturasSeleccionadasPago.length < 2) {
+      alert('Debe seleccionar al menos 2 facturas para pago múltiple');
+      return;
     }
 
-    // ========== PREPARAR DATOS ==========
-    const pagoMultipleData = {
-      facturas: facturasSeleccionadasPago.map(f => ({
-        id_factura: f.id_factura,
-        monto_a_pagar: f.saldo_pendiente || f.total_con_mora,
-        incluir_multas: true,
-        incluir_mora: true,
-        incluir_consumos: true
-      })),
-      metodo_pago: nuevoPago.metodo_pago || 'EFECTIVO',
-      id_usuario_afi: selectedAfiliadoAdeudos.id_usuario_afi,
-      id_cajero: currentUser.id_usuario_sistema,
-      observaciones: nuevoPago.observaciones || `Pago múltiple de ${facturasSeleccionadasPago.length} facturas`
-    };
-
-    console.log('💰 Procesando pago múltiple...', pagoMultipleData);
-
-    // 🚀 PASO 1: CREAR EL PAGO (operación crítica)
-    const result = await paymentsServices.createPagoMultiple(pagoMultipleData);
-
-    if (!result.success) {
-      throw new Error(result.message || 'Error al procesar pago múltiple');
+    if (facturasSeleccionadasPago.length > 5) {
+      alert('No puede seleccionar más de 5 facturas para pago múltiple');
+      return;
     }
 
-    const response = result.data;
-    console.log('✅ Pago múltiple registrado:', response.pagos_creados);
+    const totalAPagar = calcularTotalFacturasSeleccionadas();
 
-    // ✅ ACTUALIZACIÓN OPTIMISTA - Actualizar facturas inmediatamente
-    const facturasIds = facturasSeleccionadasPago.map(f => f.id_factura);
-    setFacturas(prev => prev.map(factura => {
-      if (facturasIds.includes(factura.id_factura)) {
-        // Marcar como pagada
-        return {
-          ...factura,
-          estado_factura: 'pagada',
-          saldo_pendiente: 0,
-          monto_pagado: parseFloat(factura.total || 0),
-          esta_totalmente_pagada: true,
-          cantidad_pagos: (factura.cantidad_pagos || 0) + 1
-        };
+    // Confirmación
+    let mensaje = `¿Confirma el pago múltiple de ${formatCurrency(totalAPagar)}?\n\n`;
+    mensaje += `Facturas a pagar:\n`;
+    facturasSeleccionadasPago.forEach((f, idx) => {
+      mensaje += `${idx + 1}. ${f.num_factura} (${f.periodo}) - ${formatCurrency(f.saldo_pendiente || f.total_con_mora)}\n`;
+    });
+    mensaje += `\nMétodo de pago: ${nuevoPago.metodo_pago}`;
+
+    const confirmar = window.confirm(mensaje);
+    if (!confirmar) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const currentUser = authService.getCurrentUser();
+      if (!currentUser?.id_usuario_sistema) {
+        throw new Error('No se pudo identificar al usuario actual');
       }
-      return factura;
-    }));
 
-    // ✅ CERRAR MODALES INMEDIATAMENTE
-    setShowPagoMultipleModal(false);
-    closeAdeudosModal();
-    setFacturasSeleccionadasPago([]);
+      // ========== PREPARAR DATOS ==========
+      const pagoMultipleData = {
+        facturas: facturasSeleccionadasPago.map(f => ({
+          id_factura: f.id_factura,
+          monto_a_pagar: f.saldo_pendiente || f.total_con_mora,
+          incluir_multas: true,
+          incluir_mora: true,
+          incluir_consumos: true
+        })),
+        metodo_pago: nuevoPago.metodo_pago || 'EFECTIVO',
+        id_usuario_afi: selectedAfiliadoAdeudos.id_usuario_afi,
+        id_cajero: currentUser.id_usuario_sistema,
+        observaciones: nuevoPago.observaciones || `Pago múltiple de ${facturasSeleccionadasPago.length} facturas`
+      };
 
-    // ✅ MENSAJE DE ÉXITO
-    let mensajeExito = `✅ Pago múltiple registrado exitosamente\n\n`;
-    mensajeExito += `💰 Total pagado: ${formatCurrency(response.total_pagado)}\n`;
-    mensajeExito += `📋 Facturas procesadas: ${response.cantidad_facturas}\n`;
-    mensajeExito += `✅ Pagadas completas: ${response.facturas_pagadas_completas?.length || 0}\n`;
-    
-    if (response.facturas_pagadas_parciales?.length > 0) {
-      mensajeExito += `🔄 Pagadas parciales: ${response.facturas_pagadas_parciales.length}\n`;
-    }
-    
-    if (response.detalle_mora_total > 0) {
-      mensajeExito += `⏱️ Mora aplicada: ${formatCurrency(response.detalle_mora_total)}\n`;
-    }
+      console.log('💰 Procesando pago múltiple...', pagoMultipleData);
 
-    mensajeExito += `\n💳 Método: ${pagoMultipleData.metodo_pago}`;
+      // 🚀 PASO 1: CREAR EL PAGO (operación crítica)
+      const result = await paymentsServices.createPagoMultiple(pagoMultipleData);
 
-    alert(mensajeExito);
+      if (!result.success) {
+        throw new Error(result.message || 'Error al procesar pago múltiple');
+      }
 
-     // 🔄 OPERACIONES EN SEGUNDO PLANO
-    Promise.all([
-      // Generar y guardar PDF EN TODOS LOS PAGOS
-      (async () => {
-        try {
-          console.log('📄 Generando comprobante múltiple...');
-          
-          // ✅ INCLUIR TODOS LOS IDs
-          const comprobanteData = {
-            id_pago: response.pagos_creados[0],  // ID principal
-            ids_pagos: response.pagos_creados,   // ✅ TODOS LOS IDs
-            monto_pago: parseFloat(response.total_pagado),
-            fecha_pago: new Date().toISOString(),
-            metodo_pago: pagoMultipleData.metodo_pago,
-            cajero: currentUser.nombre_completo || 'Usuario actual',
-            observaciones: pagoMultipleData.observaciones,
-            cantidad_facturas: response.cantidad_facturas,
-            facturas_pagadas_completas: response.facturas_pagadas_completas?.length || 0,
-            detalle_mora_total: parseFloat(response.detalle_mora_total || 0)
+      const response = result.data;
+      console.log('✅ Pago múltiple registrado:', response.pagos_creados);
+
+      // ✅ ACTUALIZACIÓN OPTIMISTA - Actualizar facturas inmediatamente
+      const facturasIds = facturasSeleccionadasPago.map(f => f.id_factura);
+      setFacturas(prev => prev.map(factura => {
+        if (facturasIds.includes(factura.id_factura)) {
+          // Marcar como pagada
+          return {
+            ...factura,
+            estado_factura: 'pagada',
+            saldo_pendiente: 0,
+            monto_pagado: parseFloat(factura.total || 0),
+            esta_totalmente_pagada: true,
+            cantidad_pagos: (factura.cantidad_pagos || 0) + 1
           };
+        }
+        return factura;
+      }));
 
-          const pdfFile = await generateMultiplePaymentPDF(
-            comprobanteData,
-            facturasSeleccionadasPago,
-            selectedAfiliadoAdeudos
-          );
+      // ✅ CERRAR MODALES INMEDIATAMENTE
+      setShowPagoMultipleModal(false);
+      closeAdeudosModal();
+      setFacturasSeleccionadasPago([]);
 
-          if (pdfFile && pdfFile.size > 0) {
-            console.log(`☁️ Subiendo comprobante a ${response.pagos_creados.length} pagos...`);
+      // ✅ MENSAJE DE ÉXITO
+      let mensajeExito = `✅ Pago múltiple registrado exitosamente\n\n`;
+      mensajeExito += `💰 Total pagado: ${formatCurrency(response.total_pagado)}\n`;
+      mensajeExito += `📋 Facturas procesadas: ${response.cantidad_facturas}\n`;
+      mensajeExito += `✅ Pagadas completas: ${response.facturas_pagadas_completas?.length || 0}\n`;
+      
+      if (response.facturas_pagadas_parciales?.length > 0) {
+        mensajeExito += `🔄 Pagadas parciales: ${response.facturas_pagadas_parciales.length}\n`;
+      }
+      
+      if (response.detalle_mora_total > 0) {
+        mensajeExito += `⏱️ Mora aplicada: ${formatCurrency(response.detalle_mora_total)}\n`;
+      }
+
+      mensajeExito += `\n💳 Método: ${pagoMultipleData.metodo_pago}`;
+
+      alert(mensajeExito);
+
+      // 🔄 OPERACIONES EN SEGUNDO PLANO
+      Promise.all([
+        // Generar y guardar PDF EN TODOS LOS PAGOS
+        (async () => {
+          try {
+            console.log('📄 Generando comprobante múltiple...');
             
-            // ✅ SUBIR A TODOS LOS PAGOS
-            const uploadPromises = response.pagos_creados.map(async (idPago) => {
-              try {
-                await paymentsServices.uploadComprobante(idPago, pdfFile);
-                console.log(`✅ Comprobante guardado en pago ${idPago}`);
-                return { idPago, success: true };
-              } catch (error) {
-                console.error(`❌ Error en pago ${idPago}:`, error);
-                return { idPago, success: false };
-              }
-            });
+            // ✅ INCLUIR TODOS LOS IDs
+            const comprobanteData = {
+              id_pago: response.pagos_creados[0],  // ID principal
+              ids_pagos: response.pagos_creados,   // ✅ TODOS LOS IDs
+              monto_pago: parseFloat(response.total_pagado),
+              fecha_pago: new Date().toISOString(),
+              metodo_pago: pagoMultipleData.metodo_pago,
+              cajero: currentUser.nombre_completo || 'Usuario actual',
+              observaciones: pagoMultipleData.observaciones,
+              cantidad_facturas: response.cantidad_facturas,
+              facturas_pagadas_completas: response.facturas_pagadas_completas?.length || 0,
+              detalle_mora_total: parseFloat(response.detalle_mora_total || 0)
+            };
 
-            const resultados = await Promise.all(uploadPromises);
-            const exitosos = resultados.filter(r => r.success).length;
-            console.log(`✅ Comprobantes guardados: ${exitosos}/${response.pagos_creados.length}`);
-          }
-        } catch (pdfError) {
-          console.error('⚠️ Error con comprobante:', pdfError);
-        }
-      })(),
+            const pdfFile = await generateMultiplePaymentPDF(
+              comprobanteData,
+              facturasSeleccionadasPago,
+              selectedAfiliadoAdeudos
+            );
 
+            if (pdfFile && pdfFile.size > 0) {
+              console.log(`☁️ Subiendo comprobante a ${response.pagos_creados.length} pagos...`);
+              
+              // ✅ SUBIR A TODOS LOS PAGOS
+              const uploadPromises = response.pagos_creados.map(async (idPago) => {
+                try {
+                  await paymentsServices.uploadComprobante(idPago, pdfFile);
+                  console.log(`✅ Comprobante guardado en pago ${idPago}`);
+                  return { idPago, success: true };
+                } catch (error) {
+                  console.error(`❌ Error en pago ${idPago}:`, error);
+                  return { idPago, success: false };
+                }
+              });
 
-      // Recargar datos del servidor
-      (async () => {
-        try {
-          console.log('🔄 Recargando datos del servidor...');
-          await fetchFacturasPeriodo();
-          await fetchStats();
-          
-          // Limpiar caché de adeudos
-          const idAfiliado = selectedAfiliadoAdeudos.id_usuario_afi;
-          if (idAfiliado) {
-            const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
-            const cacheKey = `${idAfiliado}-${periodoStr}`;
-            if (facturasPendientesCache.current) {
-              delete facturasPendientesCache.current[cacheKey];
+              const resultados = await Promise.all(uploadPromises);
+              const exitosos = resultados.filter(r => r.success).length;
+              console.log(`✅ Comprobantes guardados: ${exitosos}/${response.pagos_creados.length}`);
             }
-            setFacturasPendientesPorAfiliado(prev => {
-              const { [idAfiliado]: _, ...rest } = prev;
-              return rest;
-            });
+          } catch (pdfError) {
+            console.error('⚠️ Error con comprobante:', pdfError);
           }
-          
-          console.log('✅ Datos recargados del servidor');
-        } catch (err) {
-          console.error('⚠️ Error al recargar datos:', err);
+        })(),
+
+
+        // Recargar datos del servidor
+        (async () => {
+          try {
+            console.log('🔄 Recargando datos del servidor...');
+            await fetchFacturasPeriodo();
+            await fetchStats();
+            
+            // Limpiar caché de adeudos
+            const idAfiliado = selectedAfiliadoAdeudos.id_usuario_afi;
+            const idMedidor = selectedAfiliadoAdeudos.id_medidor ?? selectedFacturaAdeudos?.id_medidor; 
+            if (idAfiliado && idMedidor) {
+              const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
+              const cacheKey = `${idAfiliado}-${idMedidor}-${periodoStr}`; 
+              if (facturasPendientesCache.current) {
+                delete facturasPendientesCache.current[cacheKey];
+              }
+              setFacturasPendientesPorAfiliado(prev => {
+                const { [`${idAfiliado}-${idMedidor}`]: _, ...rest } = prev;
+                return rest;
+              });
+            }
+            
+            console.log('✅ Datos recargados del servidor');
+          } catch (err) {
+            console.error('⚠️ Error al recargar datos:', err);
+          }
+        })()
+      ]).then(() => {
+        console.log('🎉 Todas las operaciones completadas');
+      });
+
+      // ✅ PREPARAR Y MOSTRAR COMPROBANTE
+      const comprobanteDataModal = {
+        id_pago: response.pagos_creados[0],
+          ids_pagos: response.pagos_creados,   // ✅ TODOS LOS IDs
+        monto_pago: parseFloat(response.total_pagado),
+        fecha_pago: new Date().toISOString(),
+        metodo_pago: pagoMultipleData.metodo_pago,
+        cajero: currentUser.nombre_completo || 'Usuario actual',
+        observaciones: pagoMultipleData.observaciones,
+        cantidad_facturas: response.cantidad_facturas,
+        facturas_pagadas_completas: response.facturas_pagadas_completas?.length || 0,
+        detalle_mora_total: parseFloat(response.detalle_mora_total || 0)
+      };
+
+      // ✅ DESPUÉS — construir afiliado desde la factura actual (estructura plana)
+      const facturaReferencia = facturasSeleccionadasPago[0] ?? selectedFacturaAdeudos;
+
+      setMultipleReceiptData({
+        pagoMultiple: comprobanteDataModal,
+        facturas: facturasSeleccionadasPago,
+        afiliado: {
+          // Intentar desde selectedAfiliadoAdeudos primero (ya corregido antes)
+          // con fallback a la factura de referencia
+          id_usuario_afi:  selectedAfiliadoAdeudos?.id_usuario_afi  ?? facturaReferencia?.id_usuario_afi,
+          cod_usuario_afi: selectedAfiliadoAdeudos?.cod_usuario_afi ?? facturaReferencia?.cod_usuario_afi,
+          nombre_completo: selectedAfiliadoAdeudos?.nombre_completo ?? facturaReferencia?.nombre_completo,
+          cedula:          selectedAfiliadoAdeudos?.cedula          ?? facturaReferencia?.cedula,
+          num_medidor:     selectedAfiliadoAdeudos?.num_medidor     ?? facturaReferencia?.num_medidor,
+          nombre_sector:   selectedAfiliadoAdeudos?.nombre_sector   ?? facturaReferencia?.nombre_sector,
+          telefono:        selectedAfiliadoAdeudos?.telefono        ?? facturaReferencia?.telefono,
+          email:           selectedAfiliadoAdeudos?.email           ?? facturaReferencia?.email,
+          direccion:       selectedAfiliadoAdeudos?.direccion       ?? facturaReferencia?.direccion,
         }
-      })()
-    ]).then(() => {
-      console.log('🎉 Todas las operaciones completadas');
-    });
-
-    // ✅ PREPARAR Y MOSTRAR COMPROBANTE
-    const comprobanteDataModal = {
-      id_pago: response.pagos_creados[0],
-         ids_pagos: response.pagos_creados,   // ✅ TODOS LOS IDs
-      monto_pago: parseFloat(response.total_pagado),
-      fecha_pago: new Date().toISOString(),
-      metodo_pago: pagoMultipleData.metodo_pago,
-      cajero: currentUser.nombre_completo || 'Usuario actual',
-      observaciones: pagoMultipleData.observaciones,
-      cantidad_facturas: response.cantidad_facturas,
-      facturas_pagadas_completas: response.facturas_pagadas_completas?.length || 0,
-      detalle_mora_total: parseFloat(response.detalle_mora_total || 0)
-    };
-
-    setMultipleReceiptData({
-      pagoMultiple: comprobanteDataModal,
-      facturas: facturasSeleccionadasPago,
-      afiliado: selectedAfiliadoAdeudos
-    });
-
-    // Mostrar comprobante después de un breve delay
-    setTimeout(() => {
-      setShowMultipleReceiptModal(true);
-    }, 300);
-
-  } catch (error) {
-    console.error('❌ Error al procesar pago múltiple:', error);
-    setError(error.message || 'Error al procesar pago múltiple');
-    alert(`Error al procesar pago múltiple:\n${error.message || 'Error desconocido'}`);
-  } finally {
-    setLoading(false);
-  }
-};
+      });
 
 
+      // Mostrar comprobante después de un breve delay
+      setTimeout(() => {
+        setShowMultipleReceiptModal(true);
+      }, 300);
+
+    } catch (error) {
+      console.error('❌ Error al procesar pago múltiple:', error);
+      setError(error.message || 'Error al procesar pago múltiple');
+      alert(`Error al procesar pago múltiple:\n${error.message || 'Error desconocido'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ============================================================
   // HELPER FUNCTIONS
@@ -2007,10 +2038,9 @@ const closePagoMultipleModal = () => {
 
                         const saldoPendiente = calcularSaldoPendiente(factura);
                         const puedeRecibirPago = factura.estado_factura === 'pendiente' || factura.estado_factura === 'vencida';
-
-                        // ✅ acceso directo — estructura plana
                         const idAfiliado = factura.id_usuario_afi;
-                        const datosAdeudo = facturasPendientesPorAfiliado[idAfiliado];
+                        const idMedidor = factura.id_medidor;
+                        const datosAdeudo = facturasPendientesPorAfiliado[`${idAfiliado}-${idMedidor}`]; // Clave única para cachear adeudos por afiliado+medidor 
 
                         const calcularAdeudoTotal = () => {
                           const adeudoAnterior = datosAdeudo?.total_adeudado || 0;
@@ -2019,9 +2049,7 @@ const closePagoMultipleModal = () => {
                         };
 
                         const calcularMesesAdeudo = () => {
-                          const mesesAnteriores = datosAdeudo?.meses_adeudo || 0;
-                          const mesActual = saldoPendiente > 0 ? 1 : 0;
-                          return mesesAnteriores + mesActual;
+                          return datosAdeudo?.meses_adeudo || 0;
                         };
 
                         const adeudoTotal = calcularAdeudoTotal();
@@ -2055,7 +2083,7 @@ const closePagoMultipleModal = () => {
                               <span>{formatDateShort(factura.fecha_emision)}</span>
                             </div>
 
-                            {/* Columna 4: Medidor ✅ acceso directo */}
+                            {/* Columna 4: Medidor */}
                             <div className="pmt-inv-col-medidor">
                               {factura.num_medidor ? (
                                 <span className="pmt-inv-medidor-badge">
@@ -2067,12 +2095,12 @@ const closePagoMultipleModal = () => {
                               )}
                             </div>
 
-                            {/* Columna 5: Código Afiliado ✅ */}
+                            {/* Columna 5: Código Afiliado */}
                             <div className="pmt-inv-col-codigo">
                               {factura.cod_usuario_afi ?? '—'}
                             </div>
 
-                            {/* Columna 6: Afiliado ✅ */}
+                            {/* Columna 6: Afiliado */}
                             <div className="pmt-inv-col-usuario">
                               {factura.nombre_completo ? (
                                 <div className="pmt-inv-usuario-info">
@@ -2090,19 +2118,30 @@ const closePagoMultipleModal = () => {
 
                             {/* Columna 7: Meses Adeudo */}
                             <div className="pmt-inv-col-meses-adeudo">
-                              {mesesAdeudoTotal > 0 &&
-                              (factura.estado_factura === 'pendiente' || factura.estado_factura === 'vencida') ? (
+                              {(factura.estado_factura === 'pendiente' || factura.estado_factura === 'vencida') ? (
                                 <span
                                   className={`pmt-meses-badge ${
-                                    mesesAdeudoTotal === 1 ? 'normal' :
-                                    mesesAdeudoTotal > 2   ? 'urgente' : 'warning'
+                                    mesesAdeudoTotal === 0 ? 'normal' :       // sin deuda anterior
+                                    mesesAdeudoTotal === 1 ? 'warning' :      // 1 mes anterior
+                                    'urgente'                                  // 2+ meses anteriores
                                   }`}
-                                  onClick={() => { if (mesesAdeudoTotal > 1) openAdeudosModal(factura, datosAdeudo); }}
-                                  style={{ cursor: mesesAdeudoTotal > 1 ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                                  title={mesesAdeudoTotal === 1 ? 'Mes actual (sin adeudos)' : 'Ver detalle de adeudos'}
+                                  onClick={() => { if (mesesAdeudoTotal > 0) openAdeudosModal(factura, datosAdeudo); }}
+                                  style={{ 
+                                    cursor: mesesAdeudoTotal > 0 ? 'pointer' : 'default', 
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    gap: '6px' 
+                                  }}
+                                  title={
+                                    mesesAdeudoTotal === 0 
+                                      ? 'Al día - sin adeudos anteriores' 
+                                      : `${mesesAdeudoTotal} mes(es) de adeudo anterior - Ver detalle`
+                                  }
                                 >
                                   <Eye className="w-3 h-3" />
-                                  {mesesAdeudoTotal === 1 ? 'Mes actual' : `${mesesAdeudoTotal} meses`}
+                                  {mesesAdeudoTotal === 0 
+                                    ? 'Al día' 
+                                    : `${mesesAdeudoTotal}`}
                                 </span>
                               ) : (
                                 <span className="text-gray-400">-</span>
@@ -2238,7 +2277,7 @@ const closePagoMultipleModal = () => {
         </div>
       )}
       
-      {/* MODAL DETALLE FACTURA CON PAGOS */}
+      {/* MODAL DE DETALLE FACTURA CON PAGOS */}
       {showModal && modalType === 'view-factura' && selectedPago && (
         <div className="modal-overlay">
           <div className="modal modal-factura">
@@ -2285,61 +2324,76 @@ const closePagoMultipleModal = () => {
                 </div>
               </div>
 
-              {/* SECCIÓN DE AFILIADO */}
-              {selectedPago.usuario_afiliado && (
+              {/* SECCIÓN DE AFILIADO  */}
+              {(selectedPago.nombre_completo || selectedPago.cod_usuario_afi) && (
                 <div className="factura-section">
-                <br/> 
+                  <br />
                   <h4 className="section-title">
                     <User className="w-4 h-4" />
                     Datos del Afiliado
                   </h4>
-                   <br/> 
+                  <br />
                   <div className="user-details">
+
                     <div className="detail-group form-group-full">
                       <label>Nombre Afiliado:</label>
                       <p>
-                        {selectedPago.usuario_afiliado.usuario_sistema?.nombre_completo}{' '}
-                        - {selectedPago.usuario_afiliado.usuario_sistema?.cedula || 'N/A'}
-                        
+                        {selectedPago.nombre_completo || 'N/A'}
+                        {selectedPago.cedula ? ` - ${selectedPago.cedula}` : ''}
                       </p>
                     </div>
 
                     <div className="detail-group">
                       <label>Código Afiliado:</label>
-                      <p className="font-mono">{selectedPago.usuario_afiliado.cod_usuario_afi}</p>
+                      <p className="font-mono">
+                        {selectedPago.cod_usuario_afi || 'N/A'}
+                      </p>
                     </div>
 
                     <div className="detail-group">
-                      <label>Medidor:</label>
-                      <p className="font-mono">{selectedPago.usuario_afiliado.num_medidor}</p>
+                      <label>Número de Medidor:</label>
+                      <p className="font-mono font-semibold text-green-600">
+                        {selectedPago.num_medidor || 'N/A'}
+                      </p>
                     </div>
 
-                    {/*  AGREGAR NÚMERO DE MEDIDOR */}
-                    {selectedPago.usuario_afiliado.medidores && 
-                    selectedPago.usuario_afiliado.medidores.length > 0 && (
+                    {selectedPago.direccion && (
                       <div className="detail-group">
-                        <label>Número de Medidor</label>
-                        <p className="font-mono font-semibold text-green-600">
-                          {selectedPago.usuario_afiliado.medidores[0].num_medidor}
-                        </p>
+                        <label>Dirección:</label>
+                        <p>{selectedPago.direccion}</p>
                       </div>
                     )}
-                    {selectedPago.usuario_afiliado.sector && (
+
+                    {selectedPago.nombre_sector && (
                       <div className="detail-group form-group-full">
                         <label>Sector:</label>
-                        <p>{selectedPago.usuario_afiliado.sector.nombre_sector}</p>
+                        <p>{selectedPago.nombre_sector}</p>
                       </div>
                     )}
+
+                    {selectedPago.telefono && (
+                      <div className="detail-group">
+                        <label>Teléfono:</label>
+                        <p>{selectedPago.telefono}</p>
+                      </div>
+                    )}
+
+                    {selectedPago.email && (
+                      <div className="detail-group">
+                        <label>Email:</label>
+                        <p>{selectedPago.email}</p>
+                      </div>
+                    )}
+
                   </div>
-                   <br/> 
+                  <br />
                   <h4 className="section-title">
                     <FileText className="w-4 h-4" />
                     Conceptos de Facturación
                   </h4>
-                  <br/> 
+                  <br />
                 </div>
               )}
-
 
               {/* Sección de CONCEPTOS DE FACTURACIÓN */}
               {selectedPago.detalles && selectedPago.detalles.length > 0 && (
@@ -2648,7 +2702,7 @@ const closePagoMultipleModal = () => {
         </div>
       )}
 
-      {/* ==================== MODAL CREAR PAGO ==================== */}
+      {/* MODAL PARA CREAR PAGO  */}
       {showCreateModal && selectedFactura && (
         <div className="modal-overlay">
           <div className="modal modal-payment">
@@ -2697,9 +2751,19 @@ const closePagoMultipleModal = () => {
                           </div>
                           <div className="payment-info-row">
                             <span className="payment-info-label">Afiliado:</span>
-                            <span className="payment-info-value">
-                              {selectedFactura.usuario_afiliado?.usuario_sistema?.nombre_completo}
-                            </span>
+                            <span className="payment-info-value">{selectedFactura.nombre_completo ?? 'N/A'}</span>
+                          </div>
+                          <div className="payment-info-row">
+                            <span className="payment-info-label">Cédula:</span>
+                            <span className="payment-info-value">{selectedFactura.cedula ?? 'N/A'}</span>
+                          </div>
+                          <div className="payment-info-row">
+                            <span className="payment-info-label">Cod. Afiliado:</span>
+                            <span className="payment-info-value font-mono">{selectedFactura.cod_usuario_afi ?? 'N/A'}</span>
+                          </div>
+                          <div className="payment-info-row">
+                            <span className="payment-info-label">Medidor:</span>
+                            <span className="payment-info-value font-mono">{selectedFactura.num_medidor ?? 'N/A'}</span>
                           </div>
                         </div>
                       </div>
@@ -2986,904 +3050,581 @@ const closePagoMultipleModal = () => {
         </div>
       )}
 
-{/* ============================================================ */}
-{/* MODAL DESGLOSE DE ADEUDOS POR PERIODOS - MEJORADO */}
-{/* ============================================================ */}
-{showAdeudosModal && selectedFacturaAdeudos && selectedAfiliadoAdeudos && (
-  <div className="modal-overlay">
-    <div className="modal modal-adeudos-desglose" style={{ maxWidth: '1100px' }}>
-      <div className="modal-header">
-        <h3>
-          <Clock className="w-5 h-5 inline mr-2" />
-          Detalles de Adeudos por Periodo - {selectedAfiliadoAdeudos.cod_usuario_afi}
-        </h3>
-        <button className="modal-close" onClick={closeAdeudosModal}>
-          <X className="w-5 h-5" />
-        </button>
-      </div>
+      {/* MODAL DE DESGLOSE DE ADEUDOS POR PERIODOS */}
+      {showAdeudosModal && selectedFacturaAdeudos && selectedAfiliadoAdeudos && (
+        <div className="modal-overlay">
+          <div className="modal modal-adeudos-desglose" style={{ maxWidth: '1100px' }}>
+            <div className="modal-header">
+              <h3>
+                <Clock className="w-5 h-5 inline mr-2" />
+                Detalles de Adeudos por Periodo - {selectedAfiliadoAdeudos?.cod_usuario_afi ?? selectedFacturaAdeudos?.cod_usuario_afi} - {selectedAfiliadoAdeudos?.nombre_completo ?? selectedFacturaAdeudos?.nombre_completo ?? 'N/A'}
+              </h3>
+              <button className="modal-close" onClick={closeAdeudosModal}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-      <div className="modal-body">
-        {/* INFORMACIÓN DEL AFILIADO */}
-        <div className="factura-section">
-          <h4 className="section-title">
-            <User className="w-4 h-4" />
-            Información del Afiliado
-          </h4>
-          <div className="user-details">
-            <div className="detail-group">
-              <label>Nombre</label>
-              <p>{selectedAfiliadoAdeudos.usuario_sistema?.nombre_completo || 'N/A'}</p>
+            <div className="modal-body">
+              {/* INFORMACIÓN DEL AFILIADO */}
+              <div className="factura-section">
+                <h4 className="section-title">
+                  <User className="w-4 h-4" />
+                  Información del Afiliado
+                </h4>
+                <br />
+                <div className="user-details">
+
+                  <div className="detail-group">
+                    <label>Nombre</label>
+                    <p>
+                      {selectedAfiliadoAdeudos?.nombre_completo 
+                        ?? selectedFacturaAdeudos?.nombre_completo 
+                        ?? 'N/A'}
+                    </p>
+                  </div>
+
+                  <div className="detail-group">
+                    <label>Código Afiliado</label>
+                    {/* ✅ Este ya era correcto */}
+                    <p className="font-mono">
+                      {selectedAfiliadoAdeudos?.cod_usuario_afi 
+                        ?? selectedFacturaAdeudos?.cod_usuario_afi}
+                    </p>
+                  </div>
+
+                  <div className="detail-group">
+                    <label>Cédula</label>
+                    <p>
+                      {selectedAfiliadoAdeudos?.cedula 
+                        ?? selectedFacturaAdeudos?.cedula 
+                        ?? 'N/A'}
+                    </p>
+                  </div>
+
+                  <div className="detail-group">
+                    <label>Medidor</label>
+                    <p className="font-mono">
+                      {selectedAfiliadoAdeudos?.num_medidor 
+                        ?? selectedFacturaAdeudos?.num_medidor 
+                        ?? 'N/A'}
+                    </p>
+                  </div>
+
+                  {(selectedAfiliadoAdeudos?.nombre_sector ?? selectedFacturaAdeudos?.nombre_sector) && (
+                    <div className="detail-group">
+                      <label>Sector</label>
+                      <p>
+                        {selectedAfiliadoAdeudos?.nombre_sector 
+                          ?? selectedFacturaAdeudos?.nombre_sector}
+                      </p>
+                      <br />
+                    </div>
+                  )}
+
+                </div>
+              </div>
+              
+              {/* RESUMEN GENERAL CON DESGLOSE POR CONCEPTOS */}
+              {(() => {
+                // ─── DATOS BASE ───────────────────────────────────────────────────────────
+                const datosAdeudo = facturasPendientesPorAfiliado[
+                  `${selectedAfiliadoAdeudos?.id_usuario_afi}-${selectedAfiliadoAdeudos?.id_medidor}`
+                ];
+
+                // ─── PASO 1: días transcurridos ──────────────────────────────────────────
+                const calcularDiasTranscurridos = (fechaEmision) => {
+                  if (!fechaEmision || typeof fechaEmision !== 'string') return 0;
+                  const partes = fechaEmision.split('-');
+                  if (partes.length !== 3) return 0;
+                  const [year, month, day] = partes.map(Number);
+                  if (!year || !month || !day) return 0;
+                  const emision = new Date(year, month - 1, day);
+                  emision.setHours(0, 0, 0, 0);
+                  const hoy = new Date();
+                  hoy.setHours(0, 0, 0, 0);
+                  return Math.floor((hoy - emision) / (1000 * 60 * 60 * 24));
+                };
+
+                // ─── PASO 2: facturas anteriores — usar campos snake_case directamente ────
+                const facturasAnteriores = (datosAdeudo?.facturas || [])
+                  .map(f => ({
+                    // Guardar referencia original
+                    ...f,
+                    // Alias normalizados para el render (todos desde snake_case del back)
+                    idfactura:      f.id_factura,
+                    numfactura:     f.num_factura,
+                    fechaemision:   f.fecha_emision,
+                    estadofactura:  f.estado_factura,
+                    saldopendiente: parseFloat(f.saldo_pendiente || 0),
+                    totalconmora:   parseFloat(f.total_con_mora || 0),
+                    consumom3:      f.consumo_m3 || 0,
+                    esactual:       false,
+                    // desglose ya viene correcto desde el back
+                    desglose:       f.desglose || { consumo: {}, servicios: {}, multas: {} },
+                    iva:            f.iva || { tasa: 0, porcentaje: 0 },
+                    mora: {
+                      diasmoraefectivos: f.mora?.dias_mora_efectivos || 0,
+                      aplica:            f.mora?.aplica || false,
+                      monto:             parseFloat(f.mora?.monto || 0),
+                    },
+                    dias_transcurridos: calcularDiasTranscurridos(f.fecha_emision),
+                  }))
+                  .sort((a, b) => new Date(a.fechaemision) - new Date(b.fechaemision));
+
+                // ─── PASO 3: factura actual ───────────────────────────────────────────────
+                const fechaEmisionActual = selectedFacturaAdeudos?.fecha_emision || '';
+                const saldoActual        = parseFloat(calcularSaldoPendiente(selectedFacturaAdeudos) || 0);
+                const moraMonto          = parseFloat(resumenPago?.mora?.monto || 0);
+
+                // Desglose real de la factura actual desde resumenPago
+                const consumoActualTotal   = parseFloat(resumenPago?.totales?.opcion_sin_multas?.total_final || 0) - moraMonto;
+                const multasActualTotal    = parseFloat(resumenPago?.multas?.total_con_iva || 0);
+
+                const facturaActualItem = {
+                  idfactura:      selectedFacturaAdeudos?.id_factura,
+                  numfactura:     selectedFacturaAdeudos?.num_factura,
+                  periodo:        selectedFacturaAdeudos?.periodo,
+                  fechaemision:   fechaEmisionActual,
+                  totalfactura:   parseFloat(selectedFacturaAdeudos?.total || 0),
+                  saldopendiente: saldoActual,
+                  consumom3:      selectedFacturaAdeudos?.consumo_m3 || 0,
+                  estadofactura:  selectedFacturaAdeudos?.estado_factura,
+                  dias_transcurridos: calcularDiasTranscurridos(fechaEmisionActual),
+                  esactual: true,
+                  desglose: {
+                    consumo:   { total: consumoActualTotal },
+                    servicios: { total: 0 },
+                    multas:    { cantidad: resumenPago?.multas?.cantidad || 0, total: multasActualTotal },
+                  },
+                  iva:  resumenPago?.iva || { tasa: 0, porcentaje: 0 },
+                  mora: {
+                    diasmoraefectivos: resumenPago?.mora?.dias_mora_efectivos || 0,
+                    aplica:            resumenPago?.mora?.aplica || false,
+                    monto:             moraMonto,
+                  },
+                  // ✅ total_con_mora de la factura actual = saldo + mora actual
+                  totalconmora: saldoActual + moraMonto,
+                };
+
+                // ─── PASO 4: array final ──────────────────────────────────────────────────
+                const todasLasFacturas = [...facturasAnteriores, facturaActualItem];
+
+                // ─── PASO 5: totales coordinados ─────────────────────────────────────────
+                // total_adeudado del back YA incluye mora de facturas anteriores
+                const totalAnteriorConMora = parseFloat(datosAdeudo?.total_adeudado || 0);
+                const totalActualConMora   = facturaActualItem.totalconmora;
+                // ✅ Total real = suma de todas las facturas con mora incluida
+                const totalGeneralReal     = todasLasFacturas.reduce(
+                  (sum, f) => sum + parseFloat(f.totalconmora || 0), 0
+                );
+
+                // Desglose por conceptos (anterior + actual)
+                const consumoAnterior   = parseFloat(datosAdeudo?.total_consumo || 0);
+                const serviciosAnterior = parseFloat(datosAdeudo?.total_servicios || 0);
+                const multasAnterior    = parseFloat(datosAdeudo?.total_multas || 0);
+                const moraAnterior      = parseFloat(datosAdeudo?.total_mora || 0);
+
+                const consumoActual2    = consumoActualTotal;
+                const multasActual2     = multasActualTotal;
+                const moraActual2       = moraMonto;
+
+                const totalConsumo   = consumoAnterior + consumoActual2;
+                const totalServicios = serviciosAnterior;
+                const totalMultas    = multasAnterior + multasActual2;
+                const totalMora      = moraAnterior + moraActual2;
+
+                // ─── CÁLCULO TOTAL SELECCIONADAS ─────────────────────────────────────────
+                const calcularTotalSeleccionadas = () =>
+                  facturasSeleccionadasPago.reduce(
+                    (sum, f) => sum + parseFloat(f.totalconmora || f.saldopendiente || 0), 0
+                  );
+
+                // ─── RENDER ──────────────────────────────────────────────────────────────
+                return (
+                  <div className="factura-section">
+
+                    {/* ── RESUMEN GENERAL ── */}
+                    <div style={{
+                      backgroundColor: '#f9fafb',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      marginBottom: '20px'
+                    }}>
+                      <h4 className="section-title" style={{ marginBottom: '12px' }}>
+                        <TrendingUp className="w-4 h-4" />
+                        Resumen General
+                      </h4>
+
+                      {/* Cuadros de resumen */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+                        <div className="adeudo-stat">
+                          <span className="adeudo-label">Periodos con Deuda</span>
+                          <span className="adeudo-value urgente">
+                            {todasLasFacturas.length}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {facturasAnteriores.length} anterior(es) + actual
+                          </span>
+                        </div>
+                        <div className="adeudo-stat">
+                          <span className="adeudo-label">Adeudo Anterior</span>
+                          <span className="adeudo-value monto">
+                            {formatCurrency(totalAnteriorConMora)}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {datosAdeudo?.total_facturas_pendientes || 0} facturas (con mora)
+                          </span>
+                        </div>
+                        <div className="adeudo-stat">
+                          <span className="adeudo-label">Factura Actual</span>
+                          <span className="adeudo-value monto">
+                            {formatCurrency(totalActualConMora)}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {selectedFacturaAdeudos?.periodo} (con mora)
+                          </span>
+                        </div>
+                        <div className="adeudo-stat">
+                          <span className="adeudo-label">TOTAL A PAGAR</span>
+                          <span className="adeudo-value total">
+                            {formatCurrency(totalGeneralReal)}
+                          </span>
+                          <span className="text-xs text-red-500 font-semibold">Incluye mora</span>
+                        </div>
+                      </div>
+
+                      {/* Desglose por conceptos */}
+                      <h5 style={{ fontSize: '13px', fontWeight: 'bold', color: '#374151', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <DollarSign className="w-4 h-4" /> Desglose por Conceptos
+                      </h5>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+                        {[
+                          { emoji: '💧', label: 'CONSUMO',   color: '#10b981', total: totalConsumo,   ant: consumoAnterior,   act: consumoActual2 },
+                          { emoji: '🔧', label: 'SERVICIOS', color: '#3b82f6', total: totalServicios, ant: serviciosAnterior, act: 0 },
+                          { emoji: '🚨', label: 'MULTAS',    color: '#ef4444', total: totalMultas,    ant: multasAnterior,    act: multasActual2 },
+                          { emoji: '⏰', label: 'MORA',      color: '#f59e0b', total: totalMora,      ant: moraAnterior,      act: moraActual2 },
+                        ].map(({ emoji, label, color, total, ant, act }) => (
+                          <div key={label} style={{
+                            backgroundColor: 'white', border: `2px solid ${color}`,
+                            borderRadius: '8px', padding: '10px', textAlign: 'center'
+                          }}>
+                            <div style={{ fontSize: '22px', marginBottom: '4px' }}>{emoji}</div>
+                            <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: '600', marginBottom: '4px' }}>{label}</div>
+                            <div style={{ fontSize: '16px', fontWeight: 'bold', color, marginBottom: '2px' }}>{formatCurrency(total)}</div>
+                            <div style={{ fontSize: '10px', color: '#9ca3af' }}>
+                              Ant: {formatCurrency(ant)} | Act: {formatCurrency(act)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Barra total */}
+                      <div style={{
+                        backgroundColor: '#1e293b', color: 'white', borderRadius: '8px',
+                        padding: '12px', marginTop: '12px',
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                      }}>
+                        <span style={{ fontSize: '14px', fontWeight: 'bold' }}>TOTAL A PAGAR (con mora incluida)</span>
+                        <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{formatCurrency(totalGeneralReal)}</span>
+                      </div>
+                    </div>
+
+                    {/* ── LISTA DE FACTURAS ── */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <h4 className="section-title">
+                        <FileText className="w-4 h-4" />
+                        Detalles por Periodos ({todasLasFacturas.length})
+                      </h4>
+
+                      {todasLasFacturas.length <= 5 ? (
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button
+                            className="btn-secondary"
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                            onClick={() => {
+                              if (facturasSeleccionadasPago.length === todasLasFacturas.length) {
+                                setFacturasSeleccionadasPago([]);
+                              } else {
+                                setFacturasSeleccionadasPago(todasLasFacturas);
+                              }
+                            }}
+                          >
+                            {facturasSeleccionadasPago.length === todasLasFacturas.length
+                              ? '☑️ Deseleccionar Todas'
+                              : '☐ Seleccionar Todas'}
+                          </button>
+                          {facturasSeleccionadasPago.length > 0 && (
+                            <span style={{
+                              padding: '6px 12px', backgroundColor: '#eff6ff',
+                              color: '#2563eb', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold'
+                            }}>
+                              {facturasSeleccionadasPago.length} seleccionadas
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{
+                          backgroundColor: '#fef3c7', padding: '6px 12px',
+                          borderRadius: '6px', fontSize: '12px', color: '#92400e'
+                        }}>
+                          ⚠️ Más de 5 facturas. Pago múltiple no disponible.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="adeudos-desglose-list">
+                      {todasLasFacturas.map((factura, index) => {
+                        const esActual         = factura.esactual === true;
+                        const estaSeleccionada = facturasSeleccionadasPago.some(f => f.idfactura === factura.idfactura);
+                        const puedeSeleccionar = todasLasFacturas.length <= 5;
+                        const desglose         = factura.desglose || { consumo: {}, servicios: {}, multas: {} };
+                        const consumoTotal     = parseFloat(desglose.consumo?.total || 0);
+                        const serviciosTotal   = parseFloat(desglose.servicios?.total || 0);
+                        const multasTotal      = parseFloat(desglose.multas?.total || 0);
+                        const moraTotal        = parseFloat(factura.mora?.monto || 0);
+
+                        return (
+                          <div
+                            key={factura.idfactura ?? index}
+                            className={`adeudo-periodo-card ${esActual ? 'periodo-actual' : ''} ${estaSeleccionada ? 'factura-seleccionada' : ''}`}
+                            style={{
+                              border: estaSeleccionada ? '2px solid #10b981' : esActual ? '2px solid #3b82f6' : '1px solid #e5e7eb',
+                              backgroundColor: estaSeleccionada ? '#f0fdf4' : esActual ? '#eff6ff' : 'white',
+                              padding: '16px', borderRadius: '8px', marginBottom: '12px',
+                              position: 'relative', cursor: puedeSeleccionar ? 'pointer' : 'default',
+                            }}
+                            onClick={() => puedeSeleccionar && toggleFacturaParaPago(factura)}
+                          >
+                            {/* Checkbox */}
+                            {puedeSeleccionar && (
+                              <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={estaSeleccionada}
+                                  onChange={e => { e.stopPropagation(); toggleFacturaParaPago(factura); }}
+                                  style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                                />
+                              </div>
+                            )}
+
+                            {/* Header */}
+                            <div style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb',
+                              paddingRight: puedeSeleccionar ? '40px' : '0',
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <span style={{
+                                  backgroundColor: esActual ? '#3b82f6' : '#6b7280',
+                                  color: 'white', padding: '4px 12px', borderRadius: '4px',
+                                  fontSize: '12px', fontWeight: 'bold',
+                                }}>
+                                  {esActual ? 'PERIODO ACTUAL' : `PERIODO ${index + 1}`}
+                                </span>
+                                <span style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: 'bold' }}>
+                                  {factura.numfactura}
+                                </span>
+                                <span style={{
+                                  backgroundColor: factura.estadofactura === 'vencida' ? '#fef3c7' : '#e5e7eb',
+                                  color: factura.estadofactura === 'vencida' ? '#d97706' : '#6b7280',
+                                  padding: '2px 8px', borderRadius: '4px', fontSize: '11px',
+                                  fontWeight: '600', textTransform: 'uppercase',
+                                }}>
+                                  {factura.estadofactura}
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '16px', fontWeight: 'bold', color: esActual ? '#3b82f6' : '#1f2937' }}>
+                                {factura.periodo}
+                              </span>
+                            </div>
+
+                            {/* Desglose conceptos */}
+                            <div style={{ backgroundColor: '#f9fafb', borderRadius: '6px', padding: '12px', marginBottom: '12px' }}>
+                              <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '8px' }}>
+                                Desglose de Conceptos:
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                                {consumoTotal > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                                    <span style={{ color: '#10b981' }}>💧 Consumo ({factura.consumom3 || 0} m³):</span>
+                                    <span style={{ fontWeight: 'bold', color: '#10b981' }}>{formatCurrency(consumoTotal)}</span>
+                                  </div>
+                                )}
+                                {serviciosTotal > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                                    <span style={{ color: '#3b82f6' }}>🔧 Servicios:</span>
+                                    <span style={{ fontWeight: 'bold', color: '#3b82f6' }}>{formatCurrency(serviciosTotal)}</span>
+                                  </div>
+                                )}
+                                {multasTotal > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                                    <span style={{ color: '#ef4444' }}>🚨 Multas ({desglose.multas?.cantidad || 0}):</span>
+                                    <span style={{ fontWeight: 'bold', color: '#ef4444' }}>{formatCurrency(multasTotal)}</span>
+                                  </div>
+                                )}
+                                {moraTotal > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                                    <span style={{ color: '#f59e0b' }}>
+                                      ⏰ Mora ({factura.mora?.diasmoraefectivos || 0} días):
+                                    </span>
+                                    <span style={{ fontWeight: 'bold', color: '#f59e0b' }}>{formatCurrency(moraTotal)}</span>
+                                  </div>
+                                )}
+                                {consumoTotal === 0 && serviciosTotal === 0 && multasTotal === 0 && moraTotal === 0 && (
+                                  <div style={{ fontSize: '12px', color: '#9ca3af', gridColumn: 'span 2' }}>
+                                    Sin desglose disponible
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Info básica */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '12px' }}>
+                              <div>
+                                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
+                                  <Calendar className="w-3 h-3 inline mr-1" /> Fecha Emisión
+                                </div>
+                                <div style={{ fontSize: '13px', fontWeight: '500' }}>
+                                  {formatDateShort(factura.fechaemision)}
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
+                                  <Clock className="w-3 h-3 inline mr-1" /> Días Transcurridos
+                                </div>
+                                <div style={{ fontSize: '13px', fontWeight: 'bold', color: factura.dias_transcurridos > 30 ? '#ef4444' : '#f59e0b' }}>
+                                  {factura.dias_transcurridos} días
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
+                                  IVA ({factura.iva?.porcentaje || 0}%)
+                                </div>
+                                <div style={{ fontSize: '13px', color: '#374151' }}>
+                                  {factura.iva?.porcentaje > 0 ? `${factura.iva.porcentaje}%` : 'Exento'}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Total con mora */}
+                            <div style={{
+                              backgroundColor: estaSeleccionada ? '#d1fae5' : esActual ? '#dbeafe' : '#f3f4f6',
+                              padding: '10px', borderRadius: '6px',
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            }}>
+                              <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>
+                                Total a Pagar (con mora)
+                              </span>
+                              <span style={{
+                                fontSize: '16px', fontWeight: 'bold',
+                                color: estaSeleccionada ? '#059669' : esActual ? '#2563eb' : '#1f2937',
+                              }}>
+                                {formatCurrency(factura.totalconmora)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Panel pago múltiple */}
+                    {todasLasFacturas.length <= 5 && facturasSeleccionadasPago.length > 1 && (
+                      <div style={{
+                        backgroundColor: '#eff6ff', border: '2px solid #3b82f6',
+                        padding: '16px', borderRadius: '8px', marginTop: '16px',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <h5 style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e40af', marginBottom: '4px' }}>
+                              💰 Pago Múltiple
+                            </h5>
+                            <p style={{ fontSize: '12px', color: '#3b82f6' }}>
+                              {facturasSeleccionadasPago.length} facturas seleccionadas
+                            </p>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>Total a Pagar</div>
+                            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e40af' }}>
+                              {/* ✅ Total = suma de totalconmora de cada factura seleccionada */}
+                              {formatCurrency(calcularTotalSeleccionadas())}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recomendación */}
+                    <div style={{
+                      backgroundColor: '#fef3c7', border: '1px solid #fde68a',
+                      padding: '12px', borderRadius: '8px', marginTop: '16px',
+                      display: 'flex', gap: '12px',
+                    }}>
+                      <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                      <div>
+                        <p style={{ fontSize: '13px', color: '#92400e', fontWeight: '600', marginBottom: '4px' }}>
+                          Recomendación
+                        </p>
+                        <p style={{ fontSize: '12px', color: '#78350f' }}>
+                          {todasLasFacturas.length <= 5
+                            ? 'Puede seleccionar múltiples facturas para pagar todo de una vez. Los totales mostrados ya incluyen mora calculada.'
+                            : 'Tiene más de 5 facturas pendientes. Deberá hacer varios pagos. Recomendamos pagar las facturas más antiguas primero.'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
             </div>
-            <div className="detail-group">
-              <label>Código Afiliado</label>
-              <p className="font-mono">{selectedAfiliadoAdeudos.cod_usuario_afi}</p>
-            </div>
-            <div className="detail-group">
-              <label>Cédula</label>
-              <p>{selectedAfiliadoAdeudos.usuario_sistema?.cedula || 'N/A'}</p>
-            </div>
-            <div className="detail-group">
-              <label>Medidor</label>
-              <p className="font-mono">{selectedAfiliadoAdeudos.num_medidor || 'N/A'}</p>
+
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={closeAdeudosModal}>
+                <X className="w-4 h-4 mr-2" />
+                Cerrar
+              </button>
+
+              {/* BOTÓN PAGO MÚLTIPLE */}
+              {permissions.canCreate && facturasSeleccionadasPago.length > 1 && (
+                <button
+                  className="btn-success"
+                  onClick={() => {
+                    setShowPagoMultipleModal(true);
+                  }}
+                  style={{ backgroundColor: '#10b981' }}
+                >
+                  <DollarSign className="w-4 h-4 mr-2" />
+                  Pagar {facturasSeleccionadasPago.length} Facturas ({formatCurrency(calcularTotalFacturasSeleccionadas())})
+                </button>
+              )}
+
+              {/* Botón pago individual */}
+              {permissions.canCreate && facturasSeleccionadasPago.length === 0 && calcularSaldoPendiente(selectedFacturaAdeudos) > 0 && (
+                <button
+                  className="btn-primary"
+                  onClick={() => {
+                    closeAdeudosModal();
+                    openPaymentModal(selectedFacturaAdeudos);
+                  }}
+                >
+                  <DollarSign className="w-4 h-4 mr-2" />
+                  Registrar Pago Individual
+                </button>
+              )}
+
             </div>
           </div>
         </div>
+      )}
 
-        {/* ✅ RESUMEN GENERAL CON DESGLOSE POR CONCEPTOS */}
-        {(() => {
-          const datosAdeudo = facturasPendientesPorAfiliado[selectedAfiliadoAdeudos.id_usuario_afi];
-          const saldoActual = calcularSaldoPendiente(selectedFacturaAdeudos);
-          
-          // Totales de facturas anteriores
-          const consumoAnterior = datosAdeudo?.total_consumo || 0;
-          const serviciosAnterior = datosAdeudo?.total_servicios || 0;
-          const multasAnterior = datosAdeudo?.total_multas || 0;
-          const moraAnterior = datosAdeudo?.total_mora || 0;
-          const totalAnterior = datosAdeudo?.total_adeudado || 0;
-          
-          // Totales de factura actual (del resumen)
-          const consumoActual = resumenPago?.desglose?.consumo_subtotal || 0;
-          const serviciosActual = resumenPago?.desglose?.servicios_subtotal || 0;
-          const multasActual = resumenPago?.multas?.subtotal_sin_iva || 0;
-          const moraActual = resumenPago?.mora?.monto || 0;
-          
-          // Totales generales
-          const totalGeneral = totalAnterior + saldoActual;
-          const totalConsumo = consumoAnterior + consumoActual;
-          const totalServicios = serviciosAnterior + serviciosActual;
-          const totalMultas = multasAnterior + multasActual;
-          const totalMora = moraAnterior + moraActual;
-          
-          return (
-            <>
-              {/* RESUMEN DE MESES */}
-              <div className="factura-section">
-                <h4 className="section-title">
-                  <TrendingUp className="w-4 h-4" />
-                  Resumen General
-                </h4>
-                <div className="adeudos-resumen" style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: 'repeat(4, 1fr)', 
-                  gap: '12px',
-                  marginBottom: '20px' 
-                }}>
-                  <div className="adeudo-stat">
-                    <span className="adeudo-label">Meses Adeudo</span>
-                    <span className="adeudo-value urgente">
-                      {datosAdeudo?.meses_adeudo || 0} + 1
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {(datosAdeudo?.meses_adeudo || 0) + 1} periodos
-                    </span>
-                  </div>
-                  <div className="adeudo-stat">
-                    <span className="adeudo-label">Adeudo Anterior</span>
-                    <span className="adeudo-value monto">
-                      {formatCurrency(totalAnterior)}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {datosAdeudo?.total_facturas_pendientes || 0} facturas
-                    </span>
-                  </div>
-                  <div className="adeudo-stat">
-                    <span className="adeudo-label">Factura Actual</span>
-                    <span className="adeudo-value monto">
-                      {formatCurrency(saldoActual)}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {selectedFacturaAdeudos.periodo}
-                    </span>
-                  </div>
-                  <div className="adeudo-stat">
-                    <span className="adeudo-label">Total General</span>
-                    <span className="adeudo-value total">
-                      {formatCurrency(totalGeneral)}
-                    </span>
-                    <span className="text-xs text-red-500 font-semibold">
-                      A pagar
-                    </span>
-                  </div>
-                </div>
-
-                {/* ✅ DESGLOSE POR CONCEPTOS */}
-                <div style={{
-                  backgroundColor: '#f9fafb',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  padding: '16px'
-                }}>
-                  <h5 style={{ 
-                    fontSize: '14px', 
-                    fontWeight: 'bold', 
-                    color: '#374151',
-                    marginBottom: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}>
-                    <DollarSign className="w-4 h-4" />
-                    Desglose por Conceptos
-                  </h5>
-                  
-                  <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(4, 1fr)', 
-                    gap: '12px' 
-                  }}>
-                    {/* CONSUMO */}
-                    <div style={{
-                      backgroundColor: 'white',
-                      border: '2px solid #10b981',
-                      borderRadius: '8px',
-                      padding: '12px',
-                      textAlign: 'center'
-                    }}>
-                      <div style={{ 
-                        fontSize: '24px', 
-                        marginBottom: '4px' 
-                      }}>
-                        💧
-                      </div>
-                      <div style={{ 
-                        fontSize: '11px', 
-                        color: '#6b7280',
-                        marginBottom: '4px',
-                        fontWeight: '600'
-                      }}>
-                        CONSUMO AGUA
-                      </div>
-                      <div style={{ 
-                        fontSize: '18px', 
-                        fontWeight: 'bold',
-                        color: '#10b981',
-                        marginBottom: '2px'
-                      }}>
-                        {formatCurrency(totalConsumo)}
-                      </div>
-                      <div style={{ fontSize: '10px', color: '#9ca3af' }}>
-                        Ant: {formatCurrency(consumoAnterior)} | 
-                        Act: {formatCurrency(consumoActual)}
-                      </div>
-                    </div>
-
-                    {/* SERVICIOS */}
-                    <div style={{
-                      backgroundColor: 'white',
-                      border: '2px solid #3b82f6',
-                      borderRadius: '8px',
-                      padding: '12px',
-                      textAlign: 'center'
-                    }}>
-                      <div style={{ 
-                        fontSize: '24px', 
-                        marginBottom: '4px' 
-                      }}>
-                        🔧
-                      </div>
-                      <div style={{ 
-                        fontSize: '11px', 
-                        color: '#6b7280',
-                        marginBottom: '4px',
-                        fontWeight: '600'
-                      }}>
-                        SERVICIOS
-                      </div>
-                      <div style={{ 
-                        fontSize: '18px', 
-                        fontWeight: 'bold',
-                        color: '#3b82f6',
-                        marginBottom: '2px'
-                      }}>
-                        {formatCurrency(totalServicios)}
-                      </div>
-                      <div style={{ fontSize: '10px', color: '#9ca3af' }}>
-                        Ant: {formatCurrency(serviciosAnterior)} | 
-                        Act: {formatCurrency(serviciosActual)}
-                      </div>
-                    </div>
-
-                    {/* MULTAS */}
-                    <div style={{
-                      backgroundColor: 'white',
-                      border: '2px solid #ef4444',
-                      borderRadius: '8px',
-                      padding: '12px',
-                      textAlign: 'center'
-                    }}>
-                      <div style={{ 
-                        fontSize: '24px', 
-                        marginBottom: '4px' 
-                      }}>
-                        🚨
-                      </div>
-                      <div style={{ 
-                        fontSize: '11px', 
-                        color: '#6b7280',
-                        marginBottom: '4px',
-                        fontWeight: '600'
-                      }}>
-                        MULTAS
-                      </div>
-                      <div style={{ 
-                        fontSize: '18px', 
-                        fontWeight: 'bold',
-                        color: '#ef4444',
-                        marginBottom: '2px'
-                      }}>
-                        {formatCurrency(totalMultas)}
-                      </div>
-                      <div style={{ fontSize: '10px', color: '#9ca3af' }}>
-                        Ant: {formatCurrency(multasAnterior)} | 
-                        Act: {formatCurrency(multasActual)}
-                      </div>
-                    </div>
-
-                    {/* MORA */}
-                    <div style={{
-                      backgroundColor: 'white',
-                      border: '2px solid #f59e0b',
-                      borderRadius: '8px',
-                      padding: '12px',
-                      textAlign: 'center'
-                    }}>
-                      <div style={{ 
-                        fontSize: '24px', 
-                        marginBottom: '4px' 
-                      }}>
-                        ⏰
-                      </div>
-                      <div style={{ 
-                        fontSize: '11px', 
-                        color: '#6b7280',
-                        marginBottom: '4px',
-                        fontWeight: '600'
-                      }}>
-                        MORA
-                      </div>
-                      <div style={{ 
-                        fontSize: '18px', 
-                        fontWeight: 'bold',
-                        color: '#f59e0b',
-                        marginBottom: '2px'
-                      }}>
-                        {formatCurrency(totalMora)}
-                      </div>
-                      <div style={{ fontSize: '10px', color: '#9ca3af' }}>
-                        Ant: {formatCurrency(moraAnterior)} | 
-                        Act: {formatCurrency(moraActual)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* TOTAL RESUMIDO */}
-                  <div style={{
-                    backgroundColor: '#1e293b',
-                    color: 'white',
-                    borderRadius: '8px',
-                    padding: '12px',
-                    marginTop: '12px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <span style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                      TOTAL A PAGAR
-                    </span>
-                    <span style={{ fontSize: '24px', fontWeight: 'bold' }}>
-                      {formatCurrency(totalGeneral)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </>
-          );
-        })()}
-
-        {(() => {
-          const datosAdeudo = facturasPendientesPorAfiliado[selectedAfiliadoAdeudos.id_usuario_afi];
-          
-          if (!datosAdeudo || !datosAdeudo.facturas || datosAdeudo.facturas.length === 0) {
-            return (
-              <div className="factura-section">
-                <div className="empty-state-small">
-                  <AlertCircle className="w-8 h-8 text-gray-400" />
-                  <p>No hay facturas pendientes anteriores</p>
-                </div>
-              </div>
-            );
-          }
-
-          const calcularDiasTranscurridos = (fechaEmision) => {
-            // fechaEmision = "2026-01-08"
-
-            const [year, month, day] = fechaEmision.split("-").map(Number);
-
-            // Fecha emisión local REAL (sin UTC)
-            const emision = new Date(year, month - 1, day);
-            emision.setHours(0, 0, 0, 0);
-
-            // Hoy local REAL
-            const hoy = new Date();
-            hoy.setHours(0, 0, 0, 0);
-
-            const diffTime = hoy - emision;
-            const diffDays = diffTime / (1000 * 60 * 60 * 24);
-
-            return diffDays;
-          };
-
-
-
-          // Ordenar facturas por fecha y calcular días transcurridos
-          const facturasOrdenadas = [...datosAdeudo.facturas]
-            .sort((a, b) => new Date(a.fecha_emision) - new Date(b.fecha_emision))
-            .map(factura => ({
-              ...factura,
-              // ✅ CALCULAR DÍAS TRANSCURRIDOS CORRECTAMENTE
-              dias_transcurridos: calcularDiasTranscurridos(factura.fecha_emision)
-            }));
-
-          // Debug: verificar cálculos
-          console.log('📅 Verificación de días transcurridos:');
-          facturasOrdenadas.forEach(f => {
-            console.log(`  ${f.periodo}: Emisión ${f.fecha_emision} = ${f.dias_transcurridos} días`);
-          });
-
-          // Incluir la factura actual
-          const diasActual = calcularDiasTranscurridos(selectedFacturaAdeudos.fecha_emision);
-          console.log(`  ACTUAL ${selectedFacturaAdeudos.periodo}: Emisión ${selectedFacturaAdeudos.fecha_emision} = ${diasActual} días`);
-
-          const todasLasFacturas = [
-            ...facturasOrdenadas,
-            {
-              id_factura: selectedFacturaAdeudos.id_factura,
-              num_factura: selectedFacturaAdeudos.num_factura,
-              periodo: selectedFacturaAdeudos.periodo,
-              fecha_emision: selectedFacturaAdeudos.fecha_emision,
-              total_factura: parseFloat(selectedFacturaAdeudos.total),
-              saldo_pendiente: calcularSaldoPendiente(selectedFacturaAdeudos),
-              consumo_m3: selectedFacturaAdeudos.consumo_m3,
-              estado_factura: selectedFacturaAdeudos.estado_factura,
-              // ✅ USAR LA FUNCIÓN CORREGIDA
-              dias_transcurridos: diasActual,
-              es_actual: true,
-              
-              desglose: {
-                consumo: {
-                  subtotal: resumenPago?.desglose?.consumo_subtotal || 0,
-                  iva: (resumenPago?.desglose?.consumo_subtotal || 0) * (resumenPago?.iva?.tasa || 0),
-                  total: (resumenPago?.desglose?.consumo_subtotal || 0) * (1 + (resumenPago?.iva?.tasa || 0))
-                },
-                servicios: {
-                  cantidad: 0,
-                  subtotal: resumenPago?.desglose?.servicios_subtotal || 0,
-                  iva: (resumenPago?.desglose?.servicios_subtotal || 0) * (resumenPago?.iva?.tasa || 0),
-                  total: (resumenPago?.desglose?.servicios_subtotal || 0) * (1 + (resumenPago?.iva?.tasa || 0))
-                },
-                multas: {
-                  cantidad: resumenPago?.multas?.cantidad || 0,
-                  subtotal: resumenPago?.multas?.subtotal_sin_iva || 0,
-                  iva: resumenPago?.multas?.iva || 0,
-                  total: resumenPago?.multas?.total_con_iva || 0
-                }
-              },
-              iva: resumenPago?.iva || { tasa: 0, porcentaje: 0 },
-              mora: {
-                dias_mora_efectivos: resumenPago?.mora?.dias_mora_efectivos || 0,
-                aplica: resumenPago?.mora?.aplica || false,
-                monto: resumenPago?.mora?.monto || 0
-              },
-              total_con_mora: calcularSaldoPendiente(selectedFacturaAdeudos) + (resumenPago?.mora?.monto || 0)
-            }
-          ];
-          // Función de cálculo de total
-          const calcularTotalSeleccionadas = () => {
-            if (facturasSeleccionadasPago.length === 0) return 0;
-            
-            if (facturasSeleccionadasPago.length === todasLasFacturas.length) {
-              const saldoActual = calcularSaldoPendiente(selectedFacturaAdeudos);
-              const totalGeneral = (datosAdeudo?.total_adeudado || 0) + saldoActual;
-              return totalGeneral;
-            }
-            
-            const soloAnteriores = facturasSeleccionadasPago.every(f => !f.es_actual);
-            if (soloAnteriores) {
-              return facturasSeleccionadasPago.reduce((sum, f) => 
-                sum + parseFloat(f.total_con_mora || f.saldo_pendiente || 0), 0
-              );
-            }
-            
-            const incluyeActual = facturasSeleccionadasPago.some(f => f.es_actual);
-            if (incluyeActual) {
-              let total = 0;
-              
-              facturasSeleccionadasPago.forEach(f => {
-                if (f.es_actual) {
-                  total += calcularSaldoPendiente(selectedFacturaAdeudos);
-                } else {
-                  total += parseFloat(f.total_con_mora || f.saldo_pendiente || 0);
-                }
-              });
-              
-              return total;
-            }
-            
-            return 0;
-          };
-
-          return (
-            <div className="factura-section">
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                marginBottom: '16px' 
-              }}>
-                <h4 className="section-title">
-                  <FileText className="w-4 h-4" />
-                  Detalles por Periodos ({todasLasFacturas.length})
-                </h4>
-                
-                {/* BOTONES DE SELECCIÓN */}
-                {todasLasFacturas.length <= 5 && (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      className="btn-secondary"
-                      style={{ padding: '6px 12px', fontSize: '12px' }}
-                      onClick={() => {
-                        if (facturasSeleccionadasPago.length === todasLasFacturas.length) {
-                          setFacturasSeleccionadasPago([]);
-                        } else {
-                          setFacturasSeleccionadasPago(todasLasFacturas);
-                        }
-                      }}
-                    >
-                      {facturasSeleccionadasPago.length === todasLasFacturas.length ? 
-                        '☑️ Deseleccionar Todas' : 
-                        '☐ Seleccionar Todas'
-                      }
-                    </button>
-                    
-                    {facturasSeleccionadasPago.length > 0 && (
-                      <span style={{
-                        padding: '6px 12px',
-                        backgroundColor: '#eff6ff',
-                        color: '#2563eb',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: 'bold'
-                      }}>
-                        {facturasSeleccionadasPago.length} seleccionadas
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {todasLasFacturas.length > 5 && (
-                  <div style={{
-                    backgroundColor: '#fef3c7',
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    color: '#92400e'
-                  }}>
-                    ⚠️ Más de 5 facturas. Pago múltiple no disponible.
-                  </div>
-                )}
-              </div>
-              
-              <div className="adeudos-desglose-list">
-                {todasLasFacturas.map((factura, index) => {
-                  const esActual = factura.es_actual === true;
-                  const estaSeleccionada = facturasSeleccionadasPago.some(f => f.id_factura === factura.id_factura);
-                  const puedeSeleccionar = todasLasFacturas.length <= 5;
-                  
-                  // ✅ Usar desglose del endpoint
-                  const desglose = factura.desglose || { consumo: {}, servicios: {}, multas: {} };
-                  const consumoTotal = desglose.consumo?.total || 0;
-                  const serviciosTotal = desglose.servicios?.total || 0;
-                  const multasTotal = desglose.multas?.total || 0;
-                  const moraTotal = factura.mora?.monto || 0;
-                    // ✅ CALCULAR DÍAS DE MORA (para facturas anteriores)
-                  //const diasMoraEfectivos = factura.mora?.dias_mora_efectivos || 0;
-                  //const diasTranscurridos = factura.dias_transcurridos || 0;
-                  
-                  return (
-                    <div 
-                      key={factura.id_factura} 
-                      className={`adeudo-periodo-card ${esActual ? 'periodo-actual' : ''} ${estaSeleccionada ? 'factura-seleccionada' : ''}`}
-                      style={{
-                        border: estaSeleccionada ? '2px solid #10b981' : 
-                                esActual ? '2px solid #3b82f6' : '1px solid #e5e7eb',
-                        backgroundColor: estaSeleccionada ? '#f0fdf4' :
-                                        esActual ? '#eff6ff' : 'white',
-                        padding: '16px',
-                        borderRadius: '8px',
-                        marginBottom: '12px',
-                        position: 'relative',
-                        cursor: puedeSeleccionar ? 'pointer' : 'default'
-                      }}
-                      onClick={() => puedeSeleccionar && toggleFacturaParaPago(factura)}
-                    >
-                      {/* CHECKBOX */}
-                      {puedeSeleccionar && (
-                        <div style={{
-                          position: 'absolute',
-                          top: '12px',
-                          right: '12px'
-                        }}>
-                          <input
-                            type="checkbox"
-                            checked={estaSeleccionada}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              toggleFacturaParaPago(factura);
-                            }}
-                            style={{
-                              width: '20px',
-                              height: '20px',
-                              cursor: 'pointer'
-                            }}
-                          />
-                        </div>
-                      )}
-
-                      {/* Header */}
-                      <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center',
-                        marginBottom: '12px',
-                        paddingBottom: '12px',
-                        borderBottom: '1px solid #e5e7eb',
-                        paddingRight: puedeSeleccionar ? '40px' : '0'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <span style={{
-                            backgroundColor: esActual ? '#3b82f6' : '#6b7280',
-                            color: 'white',
-                            padding: '4px 12px',
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            fontWeight: 'bold'
-                          }}>
-                            {esActual ? 'PERIODO ACTUAL' : `PERIODO ${index + 1}`}
-                          </span>
-                          <span style={{ 
-                            fontFamily: 'monospace', 
-                            fontSize: '14px',
-                            fontWeight: 'bold'
-                          }}>
-                            {factura.num_factura}
-                          </span>
-                          <span style={{
-                            backgroundColor: factura.estado_factura === 'vencida' ? '#fef3c7' : '#e5e7eb',
-                            color: factura.estado_factura === 'vencida' ? '#d97706' : '#6b7280',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: '600',
-                            textTransform: 'uppercase'
-                          }}>
-                            {factura.estado_factura}
-                          </span>
-                        </div>
-                        <span style={{ 
-                          fontSize: '16px', 
-                          fontWeight: 'bold',
-                          color: esActual ? '#3b82f6' : '#1f2937'
-                        }}>
-                          {factura.periodo}
-                        </span>
-                      </div>
-
-                      {/* ✅ DESGLOSE POR CONCEPTOS */}
-                      <div style={{
-                        backgroundColor: '#f9fafb',
-                        borderRadius: '6px',
-                        padding: '12px',
-                        marginBottom: '12px'
-                      }}>
-                        <div style={{ 
-                          fontSize: '12px', 
-                          fontWeight: '600', 
-                          color: '#6b7280',
-                          marginBottom: '8px'
-                        }}>
-                          Desglose de Conceptos:
-                        </div>
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(2, 1fr)',
-                          gap: '8px'
-                        }}>
-                          {/* Consumo */}
-                          {consumoTotal > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                              <span style={{ color: '#10b981' }}>💧 Consumo ({factura.consumo_m3 || 0} m³):</span>
-                              <span style={{ fontWeight: 'bold', color: '#10b981' }}>
-                                {formatCurrency(consumoTotal)}
-                              </span>
-                            </div>
-                          )}
-                          
-                          {/* Servicios */}
-                          {serviciosTotal > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                              <span style={{ color: '#3b82f6' }}>🔧 Servicios:</span>
-                              <span style={{ fontWeight: 'bold', color: '#3b82f6' }}>
-                                {formatCurrency(serviciosTotal)}
-                              </span>
-                            </div>
-                          )}
-                          
-                          {/* Multas */}
-                          {multasTotal > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                              <span style={{ color: '#ef4444' }}>
-                                🚨 Multas ({desglose.multas?.cantidad || 0}):
-                              </span>
-                              <span style={{ fontWeight: 'bold', color: '#ef4444' }}>
-                                {formatCurrency(multasTotal)}
-                              </span>
-                            </div>
-                          )}
-                          
-                          {/* Mora */}
-                          {moraTotal > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                              <span style={{ color: '#f59e0b' }}>
-                                ⏰ Mora ({factura.mora?.dias_mora_efectivos || 0} días):
-                              </span>
-                              <span style={{ fontWeight: 'bold', color: '#f59e0b' }}>
-                                {formatCurrency(moraTotal)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Información básica */}
-                      <div style={{ 
-                        display: 'grid', 
-                        gridTemplateColumns: 'repeat(3, 1fr)', 
-                        gap: '12px',
-                        marginBottom: '12px'
-                      }}>
-                        <div>
-                          <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
-                            <Calendar className="w-3 h-3 inline mr-1" />
-                            Fecha Emisión
-                          </div>
-                          <div style={{ fontSize: '13px', fontWeight: '500' }}>
-                            {formatDateShort(factura.fecha_emision)}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
-                            <Clock className="w-3 h-3 inline mr-1" />
-                            Días Transcurridos
-                          </div>
-                          <div style={{ 
-                            fontSize: '13px', 
-                            fontWeight: 'bold',
-                            color: factura.dias_transcurridos > 30 ? '#ef4444' : '#f59e0b'
-                          }}>
-                            {factura.dias_transcurridos} días
-                          </div>
-                        </div>
-
-                        <div>
-                          <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
-                            IVA ({factura.iva?.porcentaje || 0}%)
-                          </div>
-                         
-                        </div>
-                      </div>
-
-                      {/* Total con mora */}
-                      <div style={{
-                        backgroundColor: estaSeleccionada ? '#d1fae5' :
-                                        esActual ? '#dbeafe' : '#f3f4f6',
-                        padding: '10px',
-                        borderRadius: '6px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>
-                          Total a Pagar (este periodo)
-                        </span>
-                        <span style={{ 
-                          fontSize: '16px', 
-                          fontWeight: 'bold', 
-                          color: estaSeleccionada ? '#059669' :
-                                  esActual ? '#2563eb' : '#1f2937'
-                        }}>
-                          {formatCurrency(factura.total_con_mora)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* PANEL DE PAGO MÚLTIPLE */}
-              {todasLasFacturas.length <= 5 && facturasSeleccionadasPago.length > 1 && (
-                <div style={{
-                  backgroundColor: '#eff6ff',
-                  border: '2px solid #3b82f6',
-                  padding: '16px',
-                  borderRadius: '8px',
-                  marginTop: '16px'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <h5 style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e40af', marginBottom: '4px' }}>
-                        💰 Pago Múltiple
-                      </h5>
-                      <p style={{ fontSize: '12px', color: '#3b82f6' }}>
-                        {facturasSeleccionadasPago.length} facturas seleccionadas
-                      </p>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>
-                        Total a Pagar
-                      </div>
-                      <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e40af' }}>
-                        {formatCurrency(calcularTotalSeleccionadas())}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Recomendación */}
-              <div style={{
-                backgroundColor: '#fef3c7',
-                border: '1px solid #fde68a',
-                padding: '12px',
-                borderRadius: '8px',
-                marginTop: '16px',
-                display: 'flex',
-                gap: '12px'
-              }}>
-                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                <div>
-                  <p style={{ fontSize: '13px', color: '#92400e', fontWeight: '600', marginBottom: '4px' }}>
-                    Recomendación
-                  </p>
-                  <p style={{ fontSize: '12px', color: '#78350f' }}>
-                    {todasLasFacturas.length <= 5 ? (
-                      <>
-                        Puede seleccionar múltiples facturas para pagar todo de una vez. 
-                        Los conceptos mostrados incluyen IVA. La mora se calcula automáticamente.
-                      </>
-                    ) : (
-                      <>
-                        Tiene más de 5 facturas pendientes. Para pagar todo, deberá hacerlo en varios pagos.
-                        Recomendamos pagar las facturas más antiguas primero.
-                      </>
-                    )}
-                  </p>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-      </div>
-
-      <div className="modal-footer">
-        <button className="btn-secondary" onClick={closeAdeudosModal}>
-          Cerrar
-        </button>
-
-        {/* BOTÓN PAGO MÚLTIPLE */}
-        {permissions.canCreate && facturasSeleccionadasPago.length > 1 && (
-          <button
-            className="btn-success"
-            onClick={() => {
-              setShowPagoMultipleModal(true);
-            }}
-            style={{ backgroundColor: '#10b981' }}
-          >
-            <DollarSign className="w-4 h-4 mr-2" />
-            Pagar {facturasSeleccionadasPago.length} Facturas ({formatCurrency(calcularTotalFacturasSeleccionadas())})
-          </button>
-        )}
-
-        {/* Botón pago individual */}
-        {permissions.canCreate && facturasSeleccionadasPago.length === 0 && calcularSaldoPendiente(selectedFacturaAdeudos) > 0 && (
-          <button
-            className="btn-primary"
-            onClick={() => {
-              closeAdeudosModal();
-              openPaymentModal(selectedFacturaAdeudos);
-            }}
-          >
-            <DollarSign className="w-4 h-4 mr-2" />
-            Registrar Pago Individual
-          </button>
-        )}
-
-      </div>
-    </div>
-  </div>
-)}
-
-      {/* MODAL CONFIRMACIÓN PAGO MÚLTIPLE */}
+      {/* MODAL DE CONFIRMACIÓN PAGO MÚLTIPLE */}
       {showPagoMultipleModal && facturasSeleccionadasPago.length > 1 && (() => {
-        // ========================================
-        // 🔧 CALCULAR TOTAL CORRECTO AQUÍ
-        // ========================================
-        const datosAdeudo = facturasPendientesPorAfiliado[selectedAfiliadoAdeudos?.id_usuario_afi];
-        
-        const calcularTotalPagoMultiple = () => {
-          if (facturasSeleccionadasPago.length === 0) return 0;
-          
-          // Contar cuántas facturas hay en total (anteriores + actual)
-          const totalFacturasDisponibles = (datosAdeudo?.facturas?.length || 0) + 1;
-          
-          // Si están TODAS seleccionadas, usar el total del resumen general
-          if (facturasSeleccionadasPago.length === totalFacturasDisponibles) {
-            const saldoActual = calcularSaldoPendiente(selectedFacturaAdeudos);
-            const totalGeneral = (datosAdeudo?.total_adeudado || 0) + saldoActual;
-            return totalGeneral;
-          }
-          
-          // Si son SOLO facturas anteriores (sin la actual)
-          const soloAnteriores = facturasSeleccionadasPago.every(f => !f.es_actual);
-          if (soloAnteriores) {
-            return facturasSeleccionadasPago.reduce((sum, f) => 
-              sum + parseFloat(f.total_con_mora || f.saldo_pendiente || 0), 0
-            );
-          }
-          
-          // Si incluye la factura actual
-          const incluyeActual = facturasSeleccionadasPago.some(f => f.es_actual);
-          if (incluyeActual) {
-            let total = 0;
-            
-            facturasSeleccionadasPago.forEach(f => {
-              if (f.es_actual) {
-                // Para la factura actual, usar saldo pendiente
-                total += calcularSaldoPendiente(selectedFacturaAdeudos);
-              } else {
-                // Para facturas anteriores, usar total_con_mora
-                total += parseFloat(f.total_con_mora || f.saldo_pendiente || 0);
-              }
-            });
-            
-            return total;
-          }
-          
-          return 0;
-        };
 
-        const totalAPagar = calcularTotalPagoMultiple();
+        // Total a pagar = suma de totalconmora de cada factura seleccionada (con fallback a saldopendiente)
+        const totalAPagar = facturasSeleccionadasPago.reduce((sum, f) => {
+          return sum + parseFloat(f.totalconmora || f.total_con_mora || f.saldopendiente || f.saldo_pendiente || 0);
+        }, 0);
 
         return (
           <div className="modal-overlay">
@@ -3899,78 +3640,68 @@ const closePagoMultipleModal = () => {
               </div>
 
               <div className="modal-body">
-                {/* RESUMEN DE FACTURAS */}
+                {/* LISTA DE FACTURAS */}
                 <div className="factura-section">
                   <h4 className="section-title">
                     <FileText className="w-4 h-4" />
                     Facturas a Pagar
                   </h4>
-                  
+
                   <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     {facturasSeleccionadasPago.map((factura, idx) => {
-                      // 🔧 CALCULAR MONTO CORRECTO POR FACTURA
-                      let montoFactura;
-                      if (factura.es_actual) {
-                        // Factura actual: usar saldo pendiente
-                        montoFactura = calcularSaldoPendiente(selectedFacturaAdeudos);
-                      } else {
-                        // Facturas anteriores: usar total_con_mora
-                        montoFactura = factura.total_con_mora || factura.saldo_pendiente || 0;
-                      }
+                      // ✅ Usar campos normalizados, con fallback a snake_case
+                      const esActual    = factura.esactual === true;
+                      const numFactura  = factura.numfactura  || factura.num_factura;
+                      const periodo     = factura.periodo;
+                      const montoFactura = parseFloat(
+                        factura.totalconmora || factura.total_con_mora ||
+                        factura.saldopendiente || factura.saldo_pendiente || 0
+                      );
+                      const moraMonto   = parseFloat(factura.mora?.monto || 0);
+                      const tieneMora   = moraMonto > 0;
 
                       return (
-                        <div 
-                          key={factura.id_factura}
+                        <div
+                          key={factura.idfactura || factura.id_factura || idx}
                           style={{
-                            backgroundColor: '#f9fafb',
+                            backgroundColor: esActual ? '#eff6ff' : '#f9fafb',
                             padding: '12px',
                             borderRadius: '8px',
                             marginBottom: '8px',
-                            border: '1px solid #e5e7eb'
+                            border: esActual ? '1px solid #3b82f6' : '1px solid #e5e7eb'
                           }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                               <span style={{ fontWeight: 'bold', fontSize: '14px' }}>
-                                {idx + 1}. {factura.num_factura}
+                                {idx + 1}. {numFactura}
                               </span>
-                              <span style={{ 
-                                marginLeft: '12px',
-                                fontSize: '12px',
-                                color: '#6b7280'
-                              }}>
-                                {factura.periodo}
+                              <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                                {periodo}
                               </span>
-                              {/* 🔧 MOSTRAR SI ES ACTUAL */}
-                              {factura.es_actual && (
+
+                              {esActual && (
                                 <span style={{
-                                  marginLeft: '8px',
-                                  backgroundColor: '#3b82f6',
-                                  color: 'white',
-                                  padding: '2px 6px',
-                                  borderRadius: '4px',
-                                  fontSize: '10px',
-                                  fontWeight: 'bold'
+                                  backgroundColor: '#3b82f6', color: 'white',
+                                  padding: '2px 6px', borderRadius: '4px',
+                                  fontSize: '10px', fontWeight: 'bold'
                                 }}>
                                   ACTUAL
                                 </span>
                               )}
-                              {/* 🔧 MOSTRAR SI TIENE MORA */}
-                              {factura.mora_aplicable && factura.mora_monto > 0 && (
+
+                              {tieneMora && (
                                 <span style={{
-                                  marginLeft: '8px',
-                                  backgroundColor: '#fef3c7',
-                                  color: '#92400e',
-                                  padding: '2px 6px',
-                                  borderRadius: '4px',
-                                  fontSize: '10px',
-                                  fontWeight: 'bold'
+                                  backgroundColor: '#fef3c7', color: '#92400e',
+                                  padding: '2px 6px', borderRadius: '4px',
+                                  fontSize: '10px', fontWeight: 'bold'
                                 }}>
-                                  + Mora: {formatCurrency(factura.mora_monto)}
+                                  + Mora: {formatCurrency(moraMonto)}
                                 </span>
                               )}
                             </div>
-                            <span style={{ fontWeight: 'bold', fontSize: '15px', color: '#1f2937' }}>
+
+                            <span style={{ fontWeight: 'bold', fontSize: '15px', color: '#1f2937', whiteSpace: 'nowrap' }}>
                               {formatCurrency(montoFactura)}
                             </span>
                           </div>
@@ -3981,17 +3712,19 @@ const closePagoMultipleModal = () => {
 
                   {/* TOTAL */}
                   <div style={{
-                    backgroundColor: '#eff6ff',
-                    padding: '16px',
-                    borderRadius: '8px',
-                    marginTop: '16px',
-                    border: '2px solid #3b82f6'
+                    backgroundColor: '#eff6ff', padding: '16px',
+                    borderRadius: '8px', marginTop: '16px', border: '2px solid #3b82f6'
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1e40af' }}>
-                        TOTAL A PAGAR
-                      </span>
-                      <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e40af' }}>
+                      <div>
+                        <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1e40af' }}>
+                          TOTAL A PAGAR
+                        </span>
+                        <div style={{ fontSize: '12px', color: '#3b82f6', marginTop: '2px' }}>
+                          {facturasSeleccionadasPago.length} facturas · mora incluida
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '28px', fontWeight: 'bold', color: '#1e40af' }}>
                         {formatCurrency(totalAPagar)}
                       </span>
                     </div>
@@ -4032,13 +3765,9 @@ const closePagoMultipleModal = () => {
 
                 {/* ADVERTENCIA */}
                 <div style={{
-                  backgroundColor: '#fef3c7',
-                  border: '1px solid #fde68a',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  marginTop: '16px',
-                  display: 'flex',
-                  gap: '12px'
+                  backgroundColor: '#fef3c7', border: '1px solid #fde68a',
+                  padding: '12px', borderRadius: '8px', marginTop: '16px',
+                  display: 'flex', gap: '12px'
                 }}>
                   <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
                   <div>
@@ -4046,22 +3775,17 @@ const closePagoMultipleModal = () => {
                       Importante
                     </p>
                     <p style={{ fontSize: '12px', color: '#78350f' }}>
-                      Este pago se aplicará a todas las facturas seleccionadas. 
+                      Este pago se aplicará a todas las facturas seleccionadas.
                       Se generará un comprobante único con el detalle de todas las facturas pagadas.
-                      {facturasSeleccionadasPago.some(f => f.mora_aplicable) && (
-                        <strong> La mora ya está incluida en el total mostrado.</strong>
-                      )}
-                      {facturasSeleccionadasPago.some(f => f.es_actual) && (
-                        <strong> La mora de la factura actual se calculará automáticamente al procesar el pago.</strong>
-                      )}
+                      Los totales mostrados ya incluyen mora calculada.
                     </p>
                   </div>
                 </div>
               </div>
 
               <div className="modal-footer">
-                <button 
-                  className="btn-secondary" 
+                <button
+                  className="btn-secondary"
                   onClick={() => setShowPagoMultipleModal(false)}
                   disabled={loading}
                 >
@@ -4082,14 +3806,12 @@ const closePagoMultipleModal = () => {
                     </>
                   ) : (
                     <>
-                      <CheckCircle className="w-4 h-4 mr-2"/>
+                      <CheckCircle className="w-4 h-4 mr-2" />
                       Confirmar Pago Múltiple
                       <span style={{
-                        marginLeft: '8px',
-                        padding: '4px 8px',
+                        marginLeft: '8px', padding: '4px 8px',
                         backgroundColor: 'rgba(255,255,255,0.3)',
-                        borderRadius: '4px',
-                        fontWeight: 'bold'
+                        borderRadius: '4px', fontWeight: 'bold'
                       }}>
                         {formatCurrency(totalAPagar)}
                       </span>
@@ -4102,7 +3824,7 @@ const closePagoMultipleModal = () => {
         );
       })()}
 
-      {/* COMPROBANTE DE PAGO */}
+      {/* MODAL DE COMPROBANTE DE PAGO */}
       {showReceipt && pagoRegistrado && (
         <PaymentReceipt
           pago={pagoRegistrado}
@@ -4115,33 +3837,31 @@ const closePagoMultipleModal = () => {
         />
       )}
 
- 
-{showMultipleReceiptModal && multipleReceiptData && (
-  <MultiplePaymentReceipt
-    pagoMultiple={multipleReceiptData.pagoMultiple}
-    facturas={multipleReceiptData.facturas}
-    afiliado={multipleReceiptData.afiliado}
-    onClose={() => {
-      setShowMultipleReceiptModal(false);
-      setMultipleReceiptData(null);
-      // Limpiar selección después de cerrar
-      setFacturasSeleccionadasPago([]);
-    }}
-    onSave={async (comprobanteData) => {
-      try {
-        await paymentsServices.uploadComprobante(
-          comprobanteData.id_pago, 
-          comprobanteData.pdf_base64
-        );
-        console.log('✅ Comprobante guardado en base de datos');
-      } catch (error) {
-        console.error('Error guardando comprobante:', error);
-      }
-    }}
-  />
-)}
-
-
+      {/* MODAL DE COMPROBANTE DE PAGO MÚLTIPLE */}
+      {showMultipleReceiptModal && multipleReceiptData && (
+        <MultiplePaymentReceipt
+          pagoMultiple={multipleReceiptData.pagoMultiple}
+          facturas={multipleReceiptData.facturas}
+          afiliado={multipleReceiptData.afiliado}
+          onClose={() => {
+            setShowMultipleReceiptModal(false);
+            setMultipleReceiptData(null);
+            // Limpiar selección después de cerrar
+            setFacturasSeleccionadasPago([]);
+          }}
+          onSave={async (comprobanteData) => {
+            try {
+              await paymentsServices.uploadComprobante(
+                comprobanteData.id_pago, 
+                comprobanteData.pdf_base64
+              );
+              console.log('✅ Comprobante guardado en base de datos');
+            } catch (error) {
+              console.error('Error guardando comprobante:', error);
+            }
+          }}
+        />
+      )}
     
     </div>
   );

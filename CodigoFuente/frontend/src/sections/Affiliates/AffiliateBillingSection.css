@@ -1,16 +1,14 @@
 /* ========================================
-   ESTILOS ESPECÍFICOS PARA FACTURAS
+   LISTA DE FACTURAS CON ENCABEZADOS
    ======================================== */
 
-/* Contenedor principal */
 .facturas-container {
-  background-color: white;
+  background: white;
   border-radius: 0.75rem;
   padding: 1.5rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1);
 }
 
-/* Header de facturas */
 .facturas-header-row {
   display: flex;
   align-items: center;
@@ -24,9 +22,197 @@
   gap: 0.5rem;
 }
 
-.facturas-count-text {
-  font-size: 0.875rem;
-  color: #6b7280;
+/* ── Grid compartido: encabezado + card ── */
+.fcols-header,
+.factura-card-item {
+  display: grid;
+  grid-template-columns: 1.9fr 0.9fr 0.85fr 0.9fr 1fr 1.15fr 0.5fr;
+  gap: 12px;
+  align-items: center;
+}
+
+/* ── Encabezado de columnas ── */
+.fcols-header {
+  padding: 0 1rem 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 0.5rem;
+}
+
+.fcol-h {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.fcol-h-right { justify-content: flex-end; }
+.fcol-h-center { justify-content: center; }
+
+/* ── Card ── */
+.facturas-grid-list { display: flex; flex-direction: column; gap: 6px; }
+
+.factura-card-item {
+  padding: 0.7rem 1rem;
+  background: #ffffff;
+  border: 0.5px solid #e5e7eb;
+  border-radius: 0.5rem;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  animation: fcFadeIn 0.2s ease-out;
+}
+
+.factura-card-item:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 2px 10px rgba(59,130,246,0.1);
+  transform: translateY(-1px);
+}
+
+.factura-clickable { cursor: pointer; }
+
+/* Col 1 — Fecha */
+.fc-fecha { display: flex; flex-direction: column; gap: 2px; }
+
+.fc-fecha-dia {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.fc-fact-num {
+  font-size: 11px;
+  color: #9ca3af;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.01em;
+}
+
+.fc-pago-fecha {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #059669;
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+/* Col 2 — Medidor */
+.fc-medidor { display: flex; flex-direction: column; gap: 3px; }
+
+.fc-med-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #eff6ff;
+  border: 0.5px solid #bfdbfe;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1d4ed8;
+  width: fit-content;
+}
+
+.fc-sector {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+/* Col 3 — Consumo */
+.fc-consumo { display: flex; flex-direction: column; gap: 2px; }
+
+.fc-cons-val {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 2px 7px;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  border: 0.5px solid #bfdbfe;
+  border-radius: 0.375rem;
+  width: fit-content;
+}
+
+.fc-cons-num { font-size: 14px; font-weight: 600; color: #1e40af; }
+.fc-cons-unit { font-size: 11px; color: #60a5fa; font-weight: 500; }
+.fc-exceso { font-size: 11px; color: #d97706; font-weight: 500; }
+
+/* Col 4 — Total */
+.fc-total {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: right;
+  align-items: flex-end;
+}
+
+.fc-total-num { font-size: 14px; font-weight: 600; color: #111827; }
+.fc-saldo { font-size: 11px; color: #dc2626; font-weight: 500; }
+
+/* Col 5 — Estado */
+.fc-estado { display: flex; justify-content: center; }
+
+/* Col 6 — Comprobante */
+.fc-comprobante { display: flex; justify-content: center; }
+
+.fc-comp-dl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 0.375rem;
+  font-size: 12px;
+  font-weight: 500;
+  background: #f0fdf4;
+  border: 0.5px solid #10b981;
+  color: #047857;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.fc-comp-dl:hover {
+  background: #10b981;
+  color: white;
+  box-shadow: 0 2px 6px rgba(16,185,129,0.25);
+}
+
+.fc-comp-none {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+/* Col 7 — Acción */
+.fc-accion { display: flex; justify-content: center; }
+
+.factura-btn-ver {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 0.375rem;
+  font-size: 12px;
+  font-weight: 500;
+  background: #eff6ff;
+  border: 0.5px solid #93c5fd;
+  color: #2563eb;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.factura-btn-ver:hover {
+  background: #3b82f6;
+  color: white;
+  box-shadow: 0 2px 6px rgba(59,130,246,0.25);
 }
 
 /* Estado vacío */
@@ -40,225 +226,25 @@
   color: #6b7280;
 }
 
-/* Lista de facturas en grid */
-.facturas-grid-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+/* Animación */
+@keyframes fcFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Card de cada factura */
-.factura-card-item {
-  display: grid;
-  grid-template-columns: 2fr 1.5fr 2fr 1fr 1.2fr 0.8fr;
-  gap: 1rem;
-  align-items: center;
-  padding: 1rem;
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  transition: all 0.2s ease;
-}
-
-.factura-card-item:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 
-              0 2px 4px -1px rgba(59, 130, 246, 0.06);
-  transform: translateY(-1px);
-}
-
-/* Secciones clickeables */
-.factura-clickable {
-  cursor: pointer;
-}
-
-/* Sección de información */
-.factura-info-section {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.factura-info-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.factura-numero {
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: #111827;
-}
-
-.factura-fecha-periodo {
-  font-size: 0.75rem;
-  color: #6b7280;
-}
-
-/* Sección de estadísticas */
-.factura-stats-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.factura-stat-box {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.875rem;
-  color: #374151;
-}
-
-/* Sección de usuario */
-.factura-user-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.factura-user-name {
-  font-size: 0.875rem;
-  color: #374151;
-  font-weight: 500;
-}
-
-.factura-medidor-text {
-  font-size: 0.875rem;
-  color: #6b7280;
-}
-
-/* Sección de estado */
-.factura-estado-section {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-/* ========================================
-   SECCIÓN DE COMPROBANTE
-   ======================================== */
-
-.factura-comprobante-section {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-/* Botón de descarga (verde) */
-.factura-comprobante-download {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.875rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  background-color: #f0fdf4;
-  border: 1px solid #10b981;
-  color: #10b981;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  width: 100%;
-  white-space: nowrap;
-}
-
-.factura-comprobante-download:hover {
-  background-color: #10b981;
-  color: white;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3);
-}
-
-.factura-comprobante-download:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 4px -1px rgba(16, 185, 129, 0.3);
-}
-
-/* Sin comprobante (gris) */
-.factura-comprobante-none {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.875rem;
-  border-radius: 0.375rem;
-  font-size: 0.75rem;
-  background-color: #f9fafb;
-  border: 1px solid #e5e7eb;
-  color: #9ca3af;
-  cursor: not-allowed;
-  opacity: 0.75;
-  width: 100%;
-}
-
-/* ========================================
-   SECCIÓN DE ACCIONES
-   ======================================== */
-
-.factura-actions-section {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-/* Botón Ver (azul) */
-.factura-btn-ver {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  background-color: #eff6ff;
-  border: 1px solid #3b82f6;
-  color: #3b82f6;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  width: 100%;
-}
-
-.factura-btn-ver:hover {
-  background-color: #3b82f6;
-  color: white;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
-}
-
-.factura-btn-ver:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 4px -1px rgba(59, 130, 246, 0.3);
-}
-
-/* ========================================
-   RESPONSIVE
-   ======================================== */
-
+/* ── Responsive ── */
 @media (max-width: 1280px) {
+  .fcols-header,
   .factura-card-item {
-    grid-template-columns: 1.5fr 1.2fr 1.8fr 0.8fr 1fr 0.7fr;
-    gap: 0.75rem;
-    font-size: 0.875rem;
+    grid-template-columns: 1.7fr 0.8fr 0.8fr 0.85fr 1fr 1.1fr 0.5fr;
   }
 }
 
 @media (max-width: 1024px) {
+  .fcols-header { display: none; }
   .factura-card-item {
     grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-  }
-
-  .factura-info-section,
-  .factura-stats-section,
-  .factura-user-section,
-  .factura-estado-section,
-  .factura-comprobante-section,
-  .factura-actions-section {
-    grid-column: span 1;
+    gap: 0.75rem;
   }
 }
 
@@ -267,61 +253,114 @@
     grid-template-columns: 1fr;
     padding: 0.875rem;
   }
-
-  .factura-comprobante-download,
-  .factura-comprobante-none,
-  .factura-btn-ver {
-    width: 100%;
-    justify-content: center;
+  .facturas-container { padding: 1rem; }
+}
+@media print {
+  .filters-main-container,
+  .afl-actions,
+  .medidor-tabs-wrapper,
+  .modal-overlay {
+    display: none !important;
   }
-
   .facturas-container {
-    padding: 1rem;
+    box-shadow: none !important;
   }
 }
 
-/* ========================================
-   ANIMACIONES
-   ======================================== */
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.afl-actions {
+  display: flex;
+  gap: 8px;
 }
 
-.factura-card-item {
-  animation: fadeInUp 0.3s ease-out;
+
+/* HEADER LAYOUT */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  background: #fff;
+  border-radius: 12px;
 }
 
-/* Mejorar el estilo del comprobante existente */
-.pago-detail .pago-value.text-green-600.underline {
+/* TÍTULO */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* CONTENEDOR BOTONES */
+.report-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+/* =========================
+   BOTÓN BASE (PILL)
+========================= */
+.btn-report {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.75rem;
-  background-color: #f3f4f6;
-  border: 1px solid #d1d5db;
-  border-radius: 0.5rem;
-  color: #4b5563;
-  text-decoration: none;
-  font-weight: 500;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
+  background: #f3f4f6;
+  color: #374151;
 }
 
-.pago-detail .pago-value.text-green-600.underline:hover {
-  background-color: #e5e7eb;
-  border-color: #9ca3af;
+.btn-report:hover {
+  transform: translateY(-1px);
+  background: #e5e7eb;
+}
+
+/* =========================
+   EXCEL (gris neutro)
+========================= */
+.btn-excel {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.btn-excel:hover {
+  background: #d1d5db;
+}
+
+/* =========================
+   PDF (rojo suave)
+========================= */
+.btn-pdf {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.btn-pdf:hover {
+  background: #fecaca;
+}
+
+/* =========================
+   IMPRIMIR (gris elegante)
+========================= */
+.btn-print {
+  background: #e5e7eb;
   color: #1f2937;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
-.pago-detail .pago-value.text-green-600.underline svg {
-  color: #6b7280;
+/* =========================
+   ACTUALIZAR (verde primary)
+========================= */
+.btn-refresh {
+  background: #22c55e;
+  color: white;
+}
+
+.btn-refresh:hover {
+  background: #16a34a;
 }

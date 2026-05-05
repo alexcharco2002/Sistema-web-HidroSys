@@ -140,9 +140,7 @@ class PaymentsServices {
     }
   }
 
-  /**
-   * Obtener desglose de montos de una factura (con y sin multas)
-   */
+  // Obtener montos de una factura (total, adeudo, mora, etc)
   async getFacturaMontos(idFactura) {
     try {
       const endpoint = `/pagos/factura/${idFactura}/montos`;
@@ -160,7 +158,8 @@ class PaymentsServices {
     }
   }
 
- async getFacturasPendientesAfiliado(idUsuarioAfi, periodoActual, aplicarMora = false) {
+  // Obtener facturas pendientes de un afiliado para el periodo actual
+ async getFacturasPendientesAfiliado(idUsuarioAfi, periodoActual, aplicarMora, idMedidor) {
     // ✅ Validación de parámetros
     if (!idUsuarioAfi) {
       console.error('❌ idUsuarioAfi es requerido');
@@ -176,6 +175,10 @@ class PaymentsServices {
         success: false, 
         message: 'Periodo actual es requerido' 
       };
+    }
+
+    if (!idMedidor) {
+        console.warn(`getFacturasPendientesAfiliado: sin id_medidor para afiliado ${idUsuarioAfi} — puede mezclar datos`);
     }
 
     // ✅ Validar formato del periodo (YYYY-MM)
@@ -196,6 +199,8 @@ class PaymentsServices {
       if (aplicarMora) {
         params.append('aplicar_mora', 'true');
       }
+
+      if (idMedidor) params.append('id_medidor', idMedidor);
       
       const endpoint = `/pagos/afiliado/${idUsuarioAfi}/facturas-pendientes?${params.toString()}`;
       
@@ -203,6 +208,7 @@ class PaymentsServices {
         idUsuarioAfi,
         periodoActual,
         aplicarMora,
+        idMedidor,
         endpoint
       });
       
@@ -210,6 +216,7 @@ class PaymentsServices {
       
       console.log('✅ Facturas pendientes obtenidas:', {
         afiliado: idUsuarioAfi,
+        medidor: idMedidor,
         tiene_deuda: data.tiene_deuda,
         meses_adeudo: data.meses_adeudo,
         total_adeudado: data.total_adeudado,
@@ -234,9 +241,7 @@ class PaymentsServices {
     }
   }
 
-  /**
-   * Helper: Obtener periodo actual en formato YYYY-MM
-   */
+  // Obtener periodo actual en formato YYYY-MM
   static getPeriodoActual() {
     const hoy = new Date();
     const anio = hoy.getFullYear();
@@ -244,9 +249,7 @@ class PaymentsServices {
     return `${anio}-${mes}`;
   }
 
-  /**
-   * Helper: Validar formato de periodo
-   */
+  // Validar formato de periodo (YYYY-MM) 
   static validarPeriodo(periodo) {
     const regex = /^\d{4}-(0[1-9]|1[0-2])$/;
     return regex.test(periodo);

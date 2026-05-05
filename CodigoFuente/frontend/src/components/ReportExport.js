@@ -96,7 +96,7 @@ export const ReportExport = {
           doc.setFontSize(8);
           doc.setTextColor(150, 150, 150);
           doc.text(str, 280, 200, { align: 'right' });
-          doc.text('Sistema web de Facturación TecniCobro 2.0', 15, 200);
+          doc.text('Sistema web de Facturación HidroSys', 15, 200);
         }
       });
 
@@ -639,7 +639,7 @@ export const ReportExport = {
                 </div>
                 <div class="footer-item">
                 <strong>Sistema:</strong>
-                Sistema web de Facturación TecniCobro 2.0
+                Sistema web de Facturación HidroSys
                 </div>
                 <div class="footer-item">
                 <strong>Documento:</strong>

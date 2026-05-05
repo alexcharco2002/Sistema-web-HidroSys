@@ -694,6 +694,8 @@ def exportar_lecturas_excel(
             detail="Error generando el archivo de exportación"
         )
 
+
+
 @router.get("/mis-medidores")
 def obtener_mis_medidores(
     db: Session = Depends(get_db),

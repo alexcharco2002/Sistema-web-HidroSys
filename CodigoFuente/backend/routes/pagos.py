@@ -789,9 +789,10 @@ def listar_pagos(
     require_permission(current_user, db, "pagos", "lectura")
 
     try:
-        # ========================================
-        # QUERY PRINCIPAL — parte desde Pago ✅
-        # ========================================
+        # Alias para el cajero (usuario sistema que registró el pago)
+        CajeroUsuario = aliased(UsuarioSistema)
+
+        # Query principal con joins correctos y campos necesarios para filtros y respuesta
         query = (
             db.query(
                 # ===== PAGO =====
@@ -810,7 +811,7 @@ def listar_pagos(
                 Factura.total.label('total_factura'),
                 Factura.estado_factura,
 
-                # ===== MEDIDOR (via Lectura) =====
+                # ===== MEDIDOR =====
                 Medidor.id_medidor,
                 Medidor.num_medidor,
 
@@ -834,21 +835,23 @@ def listar_pagos(
 
                 # ===== CAJERO =====
                 func.concat(
-                    func.coalesce(aliased(UsuarioSistema).nombres, ''),
+                    func.coalesce(CajeroUsuario.nombres, ''),
                     ' ',
-                    func.coalesce(aliased(UsuarioSistema).apellidos, '')
+                    func.coalesce(CajeroUsuario.apellidos, '')
                 ).label('nombre_cajero'),
             )
-            # Pago → Factura → Lectura → Medidor
+            # Cadena principal: Pago → Factura → Lectura → Medidor
             .join(Factura, Pago.id_factura == Factura.id_factura)
             .join(Lectura, Factura.id_lectura == Lectura.id_lectura)
             .join(Medidor, Lectura.id_medidor == Medidor.id_medidor)
-            # Medidor → Afiliado → Usuario Sistema
+
+            # Unir con UsuarioAfiliado a través de Medidor (no de Factura) para obtener datos del afiliado correcto
             .join(UsuarioAfiliado, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
-            # Cajero (quien registró el pago)
-            .outerjoin(aliased(UsuarioSistema), Pago.id_cajero == aliased(UsuarioSistema).id_usuario_sistema)
+
+            # Cajero con alias correcto
+            .outerjoin(CajeroUsuario, Pago.id_cajero == CajeroUsuario.id_usuario_sistema)
         )
 
         # ========================================
@@ -1770,12 +1773,12 @@ def calcular_saldo_pendiente_factura(factura: Factura) -> Decimal:
 
 
 # ========================================
-# ENDPOINT: OBTENER FACTURAS PENDIENTES 
+# ENDPOINT: OBTENER FACTURAS PENDIENTES PARA MODAL DE DESGLOSE DE PENDIENTES
 # ========================================
-
 @router.get("/afiliado/{id_afiliado}/facturas-pendientes")
 def obtener_facturas_pendientes_afiliado(
     id_afiliado: int,
+    id_medidor: Optional[int] = Query(None, description="Número de medidor para filtrar facturas"),
     periodo_actual: Optional[str] = Query(None, description="Periodo actual en formato YYYY-MM"),
     aplicar_mora: bool = Query(False, description="Si True, registra mora en BD"),
     db: Session = Depends(get_db),
@@ -1822,8 +1825,9 @@ def obtener_facturas_pendientes_afiliado(
         
         # 3. Consultar facturas pendientes con relaciones
         from models.multa_afiliado import MultaAfiliado
-        
-        facturas_pendientes = db.query(Factura).filter(
+
+        # ✅ CORRECTO: definir siempre como facturas_query desde el inicio
+        facturas_query = db.query(Factura).filter(
             Factura.id_usuario_afi == id_afiliado,
             or_(
                 Factura.estado_factura == 'pendiente',
@@ -1831,29 +1835,21 @@ def obtener_facturas_pendientes_afiliado(
                 Factura.estado_factura == 'parcial'
             ),
             Factura.periodo < periodo_actual
-        ).options(
+        )
+
+        # ✅ Filtrar por medidor si se proporciona
+        if id_medidor:
+            facturas_query = (
+                facturas_query
+                .join(Lectura, Factura.id_lectura == Lectura.id_lectura)
+                .filter(Lectura.id_medidor == id_medidor)
+            )
+
+        # ✅ Cargar relaciones y ejecutar
+        facturas_pendientes = facturas_query.options(
             joinedload(Factura.pagos),
             joinedload(Factura.detalles)
         ).order_by(Factura.fecha_emision.asc()).all()
-        
-        if not facturas_pendientes:
-            print(f"✅ No hay facturas pendientes (periodos anteriores a {periodo_actual})")
-            print(f"{'='*60}\n")
-            return {
-                "tiene_deuda": False,
-                "meses_adeudo": 0,
-                "total_adeudado": 0.0,
-                "total_consumo": 0.0,
-                "total_servicios": 0.0,
-                "total_multas": 0.0,
-                "total_mora": 0.0,
-                "total_facturas_pendientes": 0,
-                "periodo_referencia": periodo_actual,
-                "configuracion_mora": None,
-                "facturas": []
-            }
-        
-        print(f"📊 Facturas encontradas: {len(facturas_pendientes)}")
         
         # 4. Procesar cada factura con desglose detallado
         facturas_procesadas = []
@@ -2858,7 +2854,7 @@ def obtener_montos_factura(
         )
     
     #  OBTENER IVA DINÁMICO
-    from utils.facturacion import obtener_configuracion_iva  # Ajustar ruta según tu proyecto
+    from utils.facturacion import obtener_configuracion_iva
     
     tasa_impuesto, iva_config = obtener_configuracion_iva(db)
     

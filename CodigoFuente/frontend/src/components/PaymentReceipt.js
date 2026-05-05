@@ -73,16 +73,14 @@ const extraerDatos = () => {
   // 👉 PAGO REAL (primer pago)
   const pagoActual = factura?.pagos?.[0];
 
-  // ✅ CONVERTIR TODOS LOS VALORES A STRING
-  const nombreCliente = String(usuario?.nombre_completo || 'N/A');
-  const cedulaCliente = String(usuario?.cedula || 'N/A');
-  const direccionCliente = String(usuario?.direccion || 'N/A');
-  const telefonoCliente = String(usuario?.telefono || 'N/A');
-  const codigoAfiliado = String(afiliado?.cod_usuario_afi || 'N/A');
-  const numMedidor = String(afiliado?.num_medidor || 'N/A');
-  const nombreSector = String(afiliado?.sector?.nombre_sector || 'N/A');
-
-  const nombreCajero = String(pagoActual?.cajero || 'N/A');
+  const nombreCliente    = String(factura?.nombre_completo    ?? 'N/A');
+  const cedulaCliente    = String(factura?.cedula             ?? 'N/A');
+  const direccionCliente = String(factura?.direccion          ?? 'N/A');
+  const telefonoCliente  = String(factura?.telefono           ?? 'N/A');
+  const codigoAfiliado   = String(factura?.cod_usuario_afi    ?? 'N/A');
+  const numMedidor       = String(factura?.num_medidor        ?? 'N/A');
+  const nombreSector     = String(factura?.nombre_sector      ?? 'N/A');
+  const nombreCajero     = String(pagoActual?.cajero          ?? 'N/A');
 
   const detalles = factura?.detalles || [];
   const detallesConsumo = detalles.filter(d => d.tipo_detalle === 'consumo');
@@ -1340,13 +1338,13 @@ export const generatePaymentPDF = async (pago, factura) => {
   const pagoActual = factura?.pagos?.[0];
 
   // ✅ CONVERTIR TODOS LOS VALORES A STRING
-  const nombreCliente = toString(usuario?.nombre_completo || 'N/A');
-  const cedulaCliente = toString(usuario?.cedula || 'N/A');
-  const direccionCliente = toString(usuario?.direccion || 'N/A');
-  const telefonoCliente = toString(usuario?.telefono || 'N/A');
-  const codigoAfiliado = toString(afiliado?.cod_usuario_afi || 'N/A');
-  const numMedidor = toString(afiliado?.num_medidor || 'N/A');
-  const nombreSector = toString(afiliado?.sector?.nombre_sector || 'N/A');
+  const nombreCliente    = toString(factura?.nombre_completo ?? 'N/A');
+  const cedulaCliente    = toString(factura?.cedula          ?? 'N/A');
+  const direccionCliente = toString(factura?.direccion       ?? 'N/A');
+  const telefonoCliente  = toString(factura?.telefono        ?? 'N/A');
+  const codigoAfiliado   = toString(factura?.cod_usuario_afi ?? 'N/A');
+  const numMedidor       = toString(factura?.num_medidor     ?? 'N/A');
+  const nombreSector     = toString(factura?.nombre_sector   ?? 'N/A');
   const nombreCajero = String(pagoActual?.cajero || 'N/A');
 
   const detalles = factura?.detalles || [];
@@ -1853,11 +1851,11 @@ export const generateMultiplePaymentPDF = async (pagoMultiple, facturas, afiliad
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(31, 41, 55);
 
-    const nombreCliente = toString(afiliado?.usuario_sistema?.nombre_completo);
-    const cedulaCliente = toString(afiliado?.usuario_sistema?.cedula);
-    const codigoAfiliado = toString(afiliado?.cod_usuario_afi);
-    const numMedidor = toString(afiliado?.num_medidor);
-    const direccion = toString(afiliado?.usuario_sistema?.direccion);
+    const nombreCliente  = toString(afiliado?.nombre_completo ?? 'N/A');
+    const cedulaCliente  = toString(afiliado?.cedula          ?? 'N/A');
+    const codigoAfiliado = toString(afiliado?.cod_usuario_afi ?? 'N/A');
+    const numMedidor     = toString(afiliado?.num_medidor     ?? 'N/A');
+    const direccion      = toString(afiliado?.direccion       ?? 'N/A');
 
     doc.text('Cliente:', margin, y);
     doc.setFont('helvetica', 'bold');
@@ -2238,14 +2236,14 @@ export const printMultipleThermalTicket = (pagoMultiple, facturas, afiliado) => 
       <!-- DATOS DEL AFILIADO -->
       <div>
         <div class="bold">AFILIADO</div>
-        <div>${String(afiliado?.usuario_sistema?.nombre_completo || 'N/A')}</div>
+        <div>${String(afiliado?.nombre_completo ?? 'N/A')}</div>
         <div class="row">
           <span>Código:</span>
-          <span>${String(afiliado?.cod_usuario_afi || 'N/A')}</span>
+          <span>${String(afiliado?.cod_usuario_afi ?? 'N/A')}</span>
         </div>
         <div class="row">
           <span>Medidor:</span>
-          <span>${String(afiliado?.num_medidor || 'N/A')}</span>
+          <span>${String(afiliado?.num_medidor ?? 'N/A')}</span>
         </div>
       </div>
       <div class="line"></div>

@@ -37,6 +37,13 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
     notificaciones: '/reportes/notificaciones',
     estadisticas: '/reportes/estadisticas',
     historialConsumo: '/reportes/historial-consumo',
+
+    // caja general
+    // caja general
+    cajaMensual: '/reportes/caja/mensual',
+    cajaAnual: '/reportes/caja/anual',
+    cajaDetalleDiario: '/reportes/caja/detalle-diario',
+    cajaAniosDisponibles: '/reportes/caja/anios-disponibles',
     
     // Endpoint de exportación
     exportar: (modulo) => `/reportes/exportar/${modulo}`
@@ -782,6 +789,87 @@ async getMisLecturas(filtros = {}) {
     }
   }
 
+  // ============================================================
+// FUNCIONES DE CAJA GENERAL
+// ============================================================
+
+/**
+ * Caja mensual: resumen de cobros, multas y mora de un mes
+ */
+async getCajaMensual(filtros = {}) {
+  try {
+    const queryString = this.buildQueryString({
+      mes: filtros.mes,
+      anio: filtros.anio
+    });
+    const url = queryString
+      ? `${API_CONFIG.endpoints.cajaMensual}?${queryString}`
+      : API_CONFIG.endpoints.cajaMensual;
+
+    const response = await this.makeRequest(url);
+    return { success: true, data: response };
+  } catch (error) {
+    console.error('❌ Error obteniendo caja mensual:', error);
+    return { success: false, message: error.message, data: null };
+  }
+}
+
+/**
+ * Caja anual: evolución mes a mes de un año
+ */
+async getCajaAnual(filtros = {}) {
+  try {
+    const queryString = this.buildQueryString({ anio: filtros.anio });
+    const url = queryString
+      ? `${API_CONFIG.endpoints.cajaAnual}?${queryString}`
+      : API_CONFIG.endpoints.cajaAnual;
+
+    const response = await this.makeRequest(url);
+    return { success: true, data: response };
+  } catch (error) {
+    console.error('❌ Error obteniendo caja anual:', error);
+    return { success: false, message: error.message, data: null };
+  }
+}
+
+/**
+ * Detalle diario de caja de un mes
+ */
+async getCajaDetalleDiario(filtros = {}) {
+  try {
+    const queryString = this.buildQueryString({
+      mes: filtros.mes,
+      anio: filtros.anio
+    });
+    const url = queryString
+      ? `${API_CONFIG.endpoints.cajaDetalleDiario}?${queryString}`
+      : API_CONFIG.endpoints.cajaDetalleDiario;
+
+    const response = await this.makeRequest(url);
+    return { success: true, data: response };
+  } catch (error) {
+    console.error('❌ Error obteniendo detalle diario:', error);
+    return { success: false, message: error.message, data: null };
+  }
+}
+
+/**
+ * Años disponibles con movimientos en caja
+ */
+async getCajaAniosDisponibles() {
+  try {
+    const response = await this.makeRequest(API_CONFIG.endpoints.cajaAniosDisponibles);
+    return {
+      success: true,
+      data: response.anios || []
+    };
+  } catch (error) {
+    console.error('❌ Error obteniendo años disponibles:', error);
+    return { success: false, message: error.message, data: [] };
+  }
+}
+
+
   /**
    * Router principal - Obtener reporte por módulo
    */
@@ -801,7 +889,11 @@ async getMisLecturas(filtros = {}) {
       'multas': () => this.getReporteMultas(filtros),
       'servicios': () => this.getReporteServicios(filtros),
       'multasafiliados': () => this.getReporteMultasAfiliados(filtros),
-      'historialconsumo': () => this.getReporteHistorialConsumo(filtros)
+      'historialconsumo': () => this.getReporteHistorialConsumo(filtros),
+      'caja': () => this.getCajaMensual(filtros),
+      'cajamensual': () => this.getCajaMensual(filtros),
+      'cajaanual': () => this.getCajaAnual(filtros),
+      'cajadetallediario': () => this.getCajaDetalleDiario(filtros),
     };
 
     const reporteFunction = reporteFunctions[moduloLower];
@@ -816,6 +908,7 @@ async getMisLecturas(filtros = {}) {
       };
     }
   }
+
 
   // ============================================================
   // FUNCIONES DE EXPORTACIÓN

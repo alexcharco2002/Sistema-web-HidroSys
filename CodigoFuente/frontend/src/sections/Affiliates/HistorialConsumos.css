@@ -25,12 +25,6 @@
   gap: 0.5rem;
 }
 
-.lecturas-count-text {
-  font-size: 0.875rem;
-  color: #6b7280;
-  font-weight: 500;
-}
-
 /* Estado vacío */
 .lecturas-empty-state {
   display: flex;
@@ -655,47 +649,6 @@
 }
 
 /* Clasificación de consumo */
-.lectura-clasificacion-section {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
-}
-
-.clasificacion-badge {
-  white-space: nowrap;
-  transition: all 0.2s ease;
-}
-
-.clasificacion-badge:hover {
-  transform: scale(1.05);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-/* Ajustar grid para incluir nueva columna */
-.lecturas-grid-list .lectura-card-item {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr 1.5fr 1.2fr 1fr 0.8fr; /* 6 columnas */
-  gap: 0.75rem;
-  align-items: center;
-  padding: 1rem;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-@media (max-width: 1200px) {
-  .lecturas-grid-list .lectura-card-item {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-  
-  .lectura-clasificacion-section {
-    justify-content: flex-start;
-  }
-}
-
 /* ==================== LECTURA BADGES - CLASIFICACIÓN ==================== */
 
 /* BAJO MÍNIMO */
@@ -740,12 +693,218 @@
   padding: 0.5rem;
 }
 
-/* Ajustar grid para incluir nueva columna */
+/* ========================================
+   PESTAÑAS DE MEDIDORES
+   ======================================== */
+
+/* ========================================
+   PESTAÑAS DE MEDIDORES
+   Añadir al final de HistorialConsumos.css
+   ======================================== */
+
+/* Wrapper de pestañas — encabezado del contenedor de lecturas */
+.medidor-tabs-wrapper {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  margin: -1.5rem -1.5rem 1rem -1.5rem;
+  padding: 0 1rem;
+  overflow-x: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  border-radius: 0.75rem 0.75rem 0 0;
+}
+
+.medidor-tabs-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+/* Botón de pestaña */
+.medidor-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 400;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.medidor-tab:hover:not(.active) {
+  color: #111827;
+  background: #f3f4f6;
+  border-bottom-color: #d1d5db;
+}
+
+.medidor-tab.active {
+  color: #1d4ed8;
+  border-bottom-color: #3b82f6;
+  font-weight: 500;
+  background: white;
+}
+
+/* Icono circular dentro de la pestaña */
+.medidor-tab-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Paleta "Todos" — azul */
+.medidor-tab-icon-all {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* Paleta rotatoria para cada medidor */
+.medidor-tab-icon-green  { background: #dcfce7; color: #166534; }
+.medidor-tab-icon-amber  { background: #fef3c7; color: #92400e; }
+.medidor-tab-icon-purple { background: #ede9fe; color: #5b21b6; }
+.medidor-tab-icon-coral  { background: #fee2e2; color: #991b1b; }
+.medidor-tab-icon-teal   { background: #ccfbf1; color: #0f766e; }
+
+/* Texto + sub-sector apilados */
+.medidor-tab-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-items: flex-start;
+}
+
+.medidor-tab-label {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.medidor-tab-sector {
+  font-size: 10px;
+  color: #9ca3af;
+  font-style: italic;
+  line-height: 1;
+}
+
+.medidor-tab.active .medidor-tab-sector {
+  color: #93c5fd;
+}
+
+/* Badge de conteo */
+.medidor-tab-badge {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 0.5px solid #e5e7eb;
+  min-width: 22px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.medidor-tab-badge.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+/* ========================================
+   BARRA DE INFO DEL MEDIDOR ACTIVO
+   ======================================== */
+
+.medidor-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #f9fafb;
+  border-radius: 0.375rem;
+  margin-bottom: 1rem;
+  font-size: 12px;
+  color: #6b7280;
+  border: 0.5px solid #e5e7eb;
+  flex-wrap: wrap;
+}
+
+.medidor-info-bar strong {
+  color: #111827;
+  font-weight: 500;
+}
+
+.medidor-info-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #86efac;
+  flex-shrink: 0;
+}
+
+.medidor-info-sep {
+  color: #d1d5db;
+}
+
+/* ========================================
+   ETIQUETA DE MEDIDOR EN ESTADÍSTICAS
+   ======================================== */
+
+.stats-medidor-tag {
+  font-size: 13px;
+  font-weight: 400;
+  color: #6b7280;
+  margin-left: 4px;
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+
+@media (max-width: 768px) {
+  .medidor-tabs-wrapper {
+    margin: -1rem -1rem 1rem -1rem;
+    padding: 0 0.5rem;
+  }
+
+  .medidor-tab {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .medidor-tab-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .medidor-info-bar {
+    font-size: 11px;
+    gap: 7px;
+  }
+}
+
+/* ========================================
+   ENCABEZADOS DE COLUMNAS — LECTURAS
+   ======================================== */
+
+/* Grid compartido entre header y cards */
+.lec-cols-header,
 .lecturas-grid-list .lectura-card-item {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1.5fr 1.2fr 1fr 0.8fr; /* 6 columnas ahora */
-  gap: 0.75rem;
+  grid-template-columns: 1fr 1fr 1.8fr 1.1fr 0.9fr 0.5fr;
+  gap: 12px;
   align-items: center;
+}
+
+.lecturas-grid-list .lectura-card-item {
   padding: 1rem;
   background: white;
   border: 1px solid #e5e7eb;
@@ -753,14 +912,36 @@
   transition: all 0.2s ease;
 }
 
+/* Encabezado */
+.lec-cols-header {
+  padding: 0 1rem 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 0.5rem;
+}
+
+.lec-ch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.lec-ch-center { justify-content: center; }
+
 @media (max-width: 1200px) {
+  .lec-cols-header {
+    display: none;
+  }
+
   .lecturas-grid-list .lectura-card-item {
     grid-template-columns: 1fr;
     gap: 1rem;
   }
-  
+
   .lectura-clasificacion-section {
     justify-content: flex-start;
   }
 }
-

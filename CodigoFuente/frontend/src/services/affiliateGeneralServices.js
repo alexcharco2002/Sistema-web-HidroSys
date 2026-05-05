@@ -14,7 +14,9 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
     estadisticasGenerales: '/afiliados/estadisticas',
     exportarLecturas: '/afiliados/exportar-lecturas',
     misLecturasPeriodosDisponibles: '/afiliados/mis-lecturas/periodos-disponibles',
-     tarifasVigentes: '/afiliados/tarifas-vigentes' 
+     tarifasVigentes: '/afiliados/tarifas-vigentes' ,
+    // mis medidores: '/afiliados/mis-medidores' (si se necesita)
+    misMedidores: '/afiliados/mis-medidores'
 
   }
 };
@@ -93,6 +95,17 @@ class AffiliateGeneralServices {
     }
   }
 
+  // funcion para obtener mis medidores
+  async getMisMedidores() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.misMedidores);
+      return { success: true, data };
+    } catch (error) {
+      console.error('❌ Error obteniendo mis medidores:', error);
+      return {  success: false, message: error.message || 'Error al obtener mis medidores' };
+    }
+  }
+
   /**
    * Obtener años y meses disponibles con lecturas
    */
@@ -115,20 +128,20 @@ class AffiliateGeneralServices {
   }
 
   /**
- * Obtener tarifas vigentes (básica y exceso)
- */
-async getTarifasVigentes() {
-  try {
-    const data = await this.makeRequest(API_CONFIG.endpoints.tarifasVigentes);
-    return { success: true, data };
-  } catch (error) {
-    console.error('Error obteniendo tarifas vigentes', error);
-    return { 
-      success: false, 
-      message: error.message || 'Error al obtener tarifas'
-    };
+   * Obtener tarifas vigentes (básica y exceso)
+   */
+  async getTarifasVigentes() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.tarifasVigentes);
+      return { success: true, data };
+    } catch (error) {
+      console.error('Error obteniendo tarifas vigentes', error);
+      return { 
+        success: false, 
+        message: error.message || 'Error al obtener tarifas'
+      };
+    }
   }
-}
 
 
   /**
@@ -152,7 +165,7 @@ async getTarifasVigentes() {
       if (filtrosAdicionales.id_medidor) {
         params.append('id_medidor', filtrosAdicionales.id_medidor);
       }
-      
+     
       const queryString = params.toString();
       const url = queryString 
         ? `${API_CONFIG.endpoints.misLecturas}?${queryString}`
@@ -300,26 +313,28 @@ async getTarifasVigentes() {
   }
 
   /**
- * Obtener periodos disponibles SOLO para mis lecturas
- */
-async getPeriodosMisLecturas() {
-  try {
-    const data = await this.makeRequest(
-      API_CONFIG.endpoints.misLecturasPeriodosDisponibles
-    );
+   * Obtener periodos disponibles SOLO para mis lecturas
+   */
+  async getPeriodosMisLecturas() {
+    try {
+      const data = await this.makeRequest(
+        API_CONFIG.endpoints.misLecturasPeriodosDisponibles
+      );
 
-    return {
-      success: true,
-      data
-    };
-  } catch (error) {
-    console.error('❌ Error obteniendo periodos de mis lecturas:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al obtener periodos de lecturas'
-    };
+      return {
+        success: true,
+        data
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo periodos de mis lecturas:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener periodos de lecturas'
+      };
+    }
   }
-}
+
+  
 
   /**
    * Obtener información del medidor del usuario logueado

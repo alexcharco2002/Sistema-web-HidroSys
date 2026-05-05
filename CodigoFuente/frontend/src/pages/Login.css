@@ -122,8 +122,8 @@
   align-items: center;
   justify-content: center;
   margin-bottom: 20px;
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   animation: lv2-pulseIcon 3.5s ease-in-out infinite;
 }
 
@@ -215,8 +215,8 @@
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -734,4 +734,13 @@
   .lv2-form        { margin-bottom: 18px; }
   .lv2-social-row  { margin-bottom: 18px; }
   .lv2-back-btn    { margin-bottom: 20px; }
+}
+
+/* Reemplaza o complementa .lv2-droplets-icon */
+.lv2-brand-img {
+  width: 72px;          /* Ajusta el tamaño según tu diseño */
+  height: 72px;
+  object-fit: contain;
+  filter: brightness(0) invert(1); /* Opcional: lo pone blanco si el fondo es oscuro */
+  border-radius: 12px;  /* Opcional: bordes redondeados */
 }

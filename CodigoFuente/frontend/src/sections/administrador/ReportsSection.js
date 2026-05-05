@@ -1,6 +1,6 @@
 // src/sections/administrador/ReportsSection.js
 // MÓDULO DE GENERACIÓN DE REPORTES DEL SISTEMA
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo , useRef} from 'react';
 import authService from '../../services/authServices';
 import reportsServices from '../../services/reportsServices';
 import './ReportsSection.css';
@@ -9,7 +9,7 @@ import './ReportsSection.css';
 import { FileText, Calendar, Search, BarChart3, Users, Droplet, 
   DollarSign, AlertCircle, CheckCircle, RefreshCw, Loader, Settings, 
   Database, MapPin, CreditCard, Shield, Activity, Clock, ArrowLeft, 
-  Eraser, XCircle, User, TrendingUp, FileSpreadsheet, Printer, FileDown, ChevronDown 
+  Eraser, XCircle, User, TrendingUp, FileSpreadsheet, Printer, FileDown, ChevronDown, Wallet
 } from 'lucide-react'
 
 
@@ -44,6 +44,18 @@ const ReportsSection = () => {
   // estados para ordenamiento
   const [sortBy, setSortBy] = useState('');
   const [sortOrder, setSortOrder] = useState('asc');
+
+  // ============================================================
+  // ESTADOS ESPECÍFICOS DE CAJA
+  // ============================================================
+  const [cajaMensualData, setCajaMensualData] = useState(null);
+  const [cajaAnualData, setCajaAnualData] = useState(null);
+  const [cajaDetalleDiario, setCajaDetalleDiario] = useState([]);
+  const [cajaAniosDisponibles, setCajaAniosDisponibles] = useState([]);
+  const [cajaVistaActiva, setCajaVistaActiva] = useState('mensual'); // 'mensual' | 'anual' | 'diario'
+  const [cajaMesFiltro, setCajaMesFiltro] = useState(null);
+  const [cajaAnioFiltro, setCajaAnioFiltro] = useState(null);
+
 
   // ============================================================
   // ESTADOS DE DATOS
@@ -125,9 +137,16 @@ const ReportsSection = () => {
       color: '#14b8a6',
       description: 'Gestión de servicios adicionales ofrecidos'
     },
+     { 
+      value: 'Multas', 
+      label: 'Multas', 
+      icon: AlertCircle, 
+      color: '#ef4444',
+      description: 'Registro de multas y penalizaciones'
+    },
     { 
       value: 'Lecturas', 
-      label: 'Lecturas de Consumo', 
+      label: 'Lecturas', 
       icon: Droplet, 
       color: '#3b82f6',
       description: 'Registro histórico de lecturas de medidores'
@@ -141,25 +160,27 @@ const ReportsSection = () => {
     },
     { 
       value: 'Pagos', 
-      label: 'Pagos Recibidos', 
+      label: 'Pagos', 
       icon: CreditCard, 
       color: '#22c55e',
       description: 'Control de pagos y transacciones realizadas'
     },
-    { 
-      value: 'Multas', 
-      label: 'Multas', 
-      icon: AlertCircle, 
-      color: '#ef4444',
-      description: 'Registro de multas y penalizaciones'
-    },
+   
     { 
       value: 'MultasAfiliados', 
       label: 'Multas a Afiliados', 
       icon: AlertCircle, 
       color: '#f97316',
       description: 'Multas específicas aplicadas a usuarios'
-    }
+    },
+    { 
+      value: 'Caja', 
+      label: 'Caja General', 
+      icon: Wallet, 
+      color: '#10b981',
+      description: 'Resumen de ingresos por cobros de agua y multas'
+    },
+
     
   ], []);
 
@@ -236,7 +257,8 @@ const ReportsSection = () => {
           { label: 'Sectores', value: sectoresUnicos, icon: 'MapPin', color: 'text-purple-600' }
         );
         break;
-      // caso de tarifas
+      
+        // caso de tarifas
       case 'Tarifas': {
         const precios = reporteData.map(t => Number(t.precio_por_m3) || 0);
         const max = precios.length ? Math.max(...precios) : 0;
@@ -557,6 +579,155 @@ const ReportsSection = () => {
         break;
       }
 
+      case 'Caja': {
+  const resumen   = cajaMensualData?.resumen;
+  const facturacion = cajaMensualData?.facturacion;
+  const meses     = cajaAnualData?.meses || [];
+
+  // ── Vista MENSUAL (hay resumen de un mes específico) ─────────
+  if (resumen) {
+    const totalGeneral   = parseFloat(resumen.total_general  || 0);
+    const totalAgua      = parseFloat(resumen.total_agua     || 0);
+    const totalMultas    = parseFloat(resumen.total_multas   || 0);
+    const totalMora      = parseFloat(resumen.total_mora     || 0);
+    const cantidadPagos  = resumen.cantidad_pagos || 0;
+    const promedioPago   = cantidadPagos > 0 ? (totalGeneral / cantidadPagos) : 0;
+
+    stats.push(
+      {
+        label: 'Total Ingresado',
+        value: `$${totalGeneral.toFixed(2)}`,
+        icon: 'DollarSign',
+        color: 'text-green-600',
+        subtitle: `${cantidadPagos} pagos registrados`
+      },
+      {
+        label: 'Cobros de Agua',
+        value: `$${totalAgua.toFixed(2)}`,
+        icon: 'Droplet',
+        color: 'text-blue-600',
+        subtitle: `${((totalAgua / (totalGeneral || 1)) * 100).toFixed(1)}% del total`
+      },
+      {
+        label: 'Multas Cobradas',
+        value: `$${totalMultas.toFixed(2)}`,
+        icon: 'AlertCircle',
+        color: 'text-red-600',
+        subtitle: `${((totalMultas / (totalGeneral || 1)) * 100).toFixed(1)}% del total`
+      },
+      {
+        label: 'Mora Cobrada',
+        value: `$${totalMora.toFixed(2)}`,
+        icon: 'Clock',
+        color: 'text-orange-600',
+        subtitle: `${((totalMora / (totalGeneral || 1)) * 100).toFixed(1)}% del total`
+      },
+      {
+        label: 'N° de Pagos',
+        value: cantidadPagos,
+        icon: 'CreditCard',
+        color: 'text-purple-600',
+        subtitle: `Promedio $${promedioPago.toFixed(2)} / pago`
+      }
+    );
+
+    if (facturacion) {
+      const totalFacturado  = parseFloat(facturacion.total_facturado  || 0);
+      const totalPendiente  = parseFloat(facturacion.total_pendiente  || 0);
+      const porcentajeCobrado = parseFloat(facturacion.porcentaje_cobrado || 0);
+
+      stats.push(
+        {
+          label: 'Total Facturado',
+          value: `$${totalFacturado.toFixed(2)}`,
+          icon: 'FileText',
+          color: 'text-gray-700',
+          subtitle: `Pendiente: $${totalPendiente.toFixed(2)}`
+        },
+        {
+          label: '% Cobrado',
+          value: `${porcentajeCobrado.toFixed(1)}%`,
+          icon: 'TrendingUp',
+          color: porcentajeCobrado >= 80 ? 'text-green-600' : porcentajeCobrado >= 50 ? 'text-orange-500' : 'text-red-600',
+          subtitle: porcentajeCobrado >= 80 ? '✅ Buena recaudación' : '⚠️ Recaudación baja'
+        }
+      );
+    }
+
+  // ── Vista ANUAL (solo hay datos de meses) ───────────────────
+  } else if (meses.length > 0) {
+    const totalAnualAgua   = meses.reduce((s, m) => s + (parseFloat(m.total_agua)   || 0), 0);
+    const totalAnualMultas = meses.reduce((s, m) => s + (parseFloat(m.total_multas) || 0), 0);
+    const totalAnualMora   = meses.reduce((s, m) => s + (parseFloat(m.total_mora)   || 0), 0);
+    const totalAnual       = totalAnualAgua + totalAnualMultas + totalAnualMora;
+    const totalPagos       = meses.reduce((s, m) => s + (parseInt(m.cantidad_pagos) || 0), 0);
+    const mesConMasIngresos = meses.reduce(
+      (max, m) => (parseFloat(m.total_general || 0) > parseFloat(max.total_general || 0) ? m : max),
+      meses[0] || {}
+    );
+    const nombreMeses = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+                              'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+    stats.push(
+      {
+        label: 'Total Anual',
+        value: `$${totalAnual.toFixed(2)}`,
+        icon: 'DollarSign',
+        color: 'text-green-600',
+        subtitle: `${totalPagos} pagos en el año`
+      },
+      {
+        label: 'Total Agua (año)',
+        value: `$${totalAnualAgua.toFixed(2)}`,
+        icon: 'Droplet',
+        color: 'text-blue-600',
+        subtitle: `${((totalAnualAgua / (totalAnual || 1)) * 100).toFixed(1)}% del total`
+      },
+      {
+        label: 'Total Multas (año)',
+        value: `$${totalAnualMultas.toFixed(2)}`,
+        icon: 'AlertCircle',
+        color: 'text-red-600',
+        subtitle: `${((totalAnualMultas / (totalAnual || 1)) * 100).toFixed(1)}% del total`
+      },
+      {
+        label: 'Total Mora (año)',
+        value: `$${totalAnualMora.toFixed(2)}`,
+        icon: 'Clock',
+        color: 'text-orange-600',
+        subtitle: `${((totalAnualMora / (totalAnual || 1)) * 100).toFixed(1)}% del total`
+      },
+      {
+        label: 'Mejor Mes',
+        value: nombreMeses[mesConMasIngresos.mes] || '—',
+        icon: 'TrendingUp',
+        color: 'text-teal-600',
+        subtitle: `$${parseFloat(mesConMasIngresos.total_general || 0).toFixed(2)}`
+      },
+      {
+        label: 'Meses con datos',
+        value: meses.filter(m => parseFloat(m.total_general || 0) > 0).length,
+        icon: 'Calendar',
+        color: 'text-indigo-600',
+        subtitle: `de ${meses.length} meses`
+      }
+    );
+
+  // ── Fallback — datos planos del reporteData ─────────────────
+  } else {
+    const totalAgua   = reporteData.reduce((s, r) => s + (parseFloat(r.total_agua)   || 0), 0);
+    const totalMultas = reporteData.reduce((s, r) => s + (parseFloat(r.total_multas) || 0), 0);
+    const totalMora   = reporteData.reduce((s, r) => s + (parseFloat(r.total_mora)   || 0), 0);
+    stats.push(
+      { label: 'Total Agua',   value: `$${totalAgua.toFixed(2)}`,   icon: 'Droplet',      color: 'text-blue-600'   },
+      { label: 'Total Multas', value: `$${totalMultas.toFixed(2)}`, icon: 'AlertCircle',  color: 'text-red-600'    },
+      { label: 'Total Mora',   value: `$${totalMora.toFixed(2)}`,   icon: 'Clock',        color: 'text-orange-600' }
+    );
+  }
+  break;
+}
+
+
 
       default:
         // Estadísticas genéricas para módulos sin configuración específica
@@ -571,7 +742,7 @@ const ReportsSection = () => {
     }
 
     return stats;
-  }, [reporteData, selectedModulo]);
+  }, [reporteData, selectedModulo, cajaMensualData, cajaAnualData]);
 
   /**
    * Mapeo de iconos
@@ -624,6 +795,7 @@ const ReportsSection = () => {
         case 'MultasAfiliados':
           result = await reportsServices.getPeriodosMultasAfiliados();
           break;
+        
         default:
           return;
       }
@@ -683,6 +855,28 @@ const ReportsSection = () => {
     
     cargarSectores();
   }, [selectedModulo]);
+
+  // ============================================================
+  // CARGAR AÑOS DISPONIBLES DE CAJA AL SELECCIONAR EL MÓDULO
+  // ============================================================
+  useEffect(() => {
+    if (selectedModulo !== 'Caja') {
+      setCajaAniosDisponibles([]);
+      return;
+    }
+    const cargarAniosCaja = async () => {
+      const result = await reportsServices.getCajaAniosDisponibles();
+      if (result.success && result.data.length > 0) {
+        setCajaAniosDisponibles(result.data);
+        // Seleccionar el año más reciente si no hay uno activo
+        if (!cajaAnioFiltro) {
+          setCajaAnioFiltro(result.data[0]); // el más reciente
+        }
+      }
+    };
+    cargarAniosCaja();
+  }, [selectedModulo]);
+
 
 
   // ============================================================
@@ -812,6 +1006,34 @@ const ReportsSection = () => {
           });
           break;
 
+        case 'Caja': {
+          const hoy = new Date();
+          const mesActual = cajaMesFiltro || hoy.getMonth() + 1;
+          const anioActual = cajaAnioFiltro || hoy.getFullYear();
+
+          // Cargar los 3 reportes en paralelo
+          const [mensualRes, anualRes, diarioRes, aniosRes] = await Promise.all([
+            reportsServices.getCajaMensual({ mes: mesActual, anio: anioActual }),
+            reportsServices.getCajaAnual({ anio: anioActual }),
+            reportsServices.getCajaDetalleDiario({ mes: mesActual, anio: anioActual }),
+            reportsServices.getCajaAniosDisponibles()
+          ]);
+
+          if (mensualRes.success) setCajaMensualData(mensualRes.data);
+          if (anualRes.success) setCajaAnualData(anualRes.data);
+          if (diarioRes.success) setCajaDetalleDiario(diarioRes.data?.detalle || []);
+          if (aniosRes.success) setCajaAniosDisponibles(aniosRes.data);
+
+          // Para la tabla general usamos los meses del anual
+          result = {
+            success: true,
+            data: anualRes.data?.meses || [],
+            total: 12
+          };
+          break;
+        }
+
+
         default:
           // Fallback genérico
           result = await reportsServices.getReporteByModulo(selectedModulo, filtros);
@@ -836,7 +1058,7 @@ const ReportsSection = () => {
         } finally {
           setLoading(false);
         }
-  }, [selectedModulo, filterEstado, searchTerm, modulosSistema, periodoSeleccionado, filterSector, filterPagoCompleto, filterTipoLectura, filterActivoMultas]);
+  }, [selectedModulo, filterEstado, searchTerm, modulosSistema, periodoSeleccionado, filterSector, filterPagoCompleto, filterTipoLectura, filterActivoMultas, cajaMesFiltro, cajaAnioFiltro]);
 
   useEffect(() => {
     if (reporteData.length > 0) {
@@ -860,6 +1082,22 @@ const ReportsSection = () => {
 
     generarReporte();
   }, [selectedModulo, periodoSeleccionado, permissions.canRead, generarReporte]);
+
+  // RE-GENERAR REPORTE CUANDO CAMBIA AÑO O MES DE CAJA
+const cajaFiltrosRef = useRef({ anio: null, mes: null });
+
+useEffect(() => {
+  if (selectedModulo !== 'Caja') return;
+  if (!permissions.canRead) return;
+  if (!cajaAnioFiltro) return;
+
+  // Evitar re-ejecución si los filtros no cambiaron realmente
+  const prev = cajaFiltrosRef.current;
+  if (prev.anio === cajaAnioFiltro && prev.mes === cajaMesFiltro) return;
+  
+  cajaFiltrosRef.current = { anio: cajaAnioFiltro, mes: cajaMesFiltro };
+  generarReporte();
+}, [cajaAnioFiltro, cajaMesFiltro, selectedModulo, permissions.canRead, generarReporte]);
 
   // ============================================================
   // FUNCIONES DE EXPORTACIÓN - CONECTADAS AL BACKEND
@@ -1004,11 +1242,17 @@ const ReportsSection = () => {
   // FUNCIONES AUXILIARES
   // ============================================================
 
-
   const handleModuloSelect = (moduloValue) => {
     setSelectedModulo(moduloValue);
     setReporteData([]);
     setError(null);
+    // limpiar estados de caja
+    setCajaMensualData(null);
+    setCajaAnualData(null);
+    setCajaDetalleDiario([]);
+    setCajaVistaActiva('mensual');
+    setCajaAnioFiltro(null);   
+    setCajaMesFiltro(null);    
   };
 
   const toggleColumna = (columna) => {
@@ -1477,7 +1721,109 @@ const formatTooltip = (key, value) => {
             </div>
           )}
 
+          {/* ─── SELECTOR DE AÑO/MES — solo para Caja ─────────────────── */}
+          {selectedModulo === 'Caja' && cajaAniosDisponibles.length > 0 && (
+            <div className="periodo-historial-container">
 
+              {/* ENCABEZADO */}
+              <button
+                className="periodo-historial-header periodo-historial-toggle"
+                onClick={() => setHistorialExpandido(prev => !prev)}
+              >
+                <div>
+                  <h3 className="font-semibold text-[16px] leading-[1.2] flex items-center">
+                    <Wallet className="w-5 h-5 text-green-600 mr-2 flex-shrink-0" />
+                    Caja General
+                    <span className="historial-anio-badge ml-2">
+                      {cajaAniosDisponibles.length} {cajaAniosDisponibles.length === 1 ? 'año' : 'años'} disponibles
+                    </span>
+                  </h3>
+                  <p className="periodo-historial-subtitle text-[14px]">
+                    Selecciona el año y mes que deseas visualizar
+                  </p>
+                </div>
+                <ChevronDown
+                  className={`w-5 h-5 historial-chevron text-green-500 ${historialExpandido ? 'open' : ''}`}
+                />
+              </button>
+
+              {/* CONTENIDO */}
+              {historialExpandido && (
+                <div className="historial-anios-lista">
+                  {cajaAniosDisponibles.map(anio => {
+                    const estaExpandido = aniosExpandidos[anio] !== false;
+                    const mesesDisponibles = [
+                      { num: null, label: 'Todo el año', abrev: 'Año' },
+                      { num: 1,  label: 'Enero',      abrev: 'Ene' },
+                      { num: 2,  label: 'Febrero',    abrev: 'Feb' },
+                      { num: 3,  label: 'Marzo',      abrev: 'Mar' },
+                      { num: 4,  label: 'Abril',      abrev: 'Abr' },
+                      { num: 5,  label: 'Mayo',       abrev: 'May' },
+                      { num: 6,  label: 'Junio',      abrev: 'Jun' },
+                      { num: 7,  label: 'Julio',      abrev: 'Jul' },
+                      { num: 8,  label: 'Agosto',     abrev: 'Ago' },
+                      { num: 9,  label: 'Septiembre', abrev: 'Sep' },
+                      { num: 10, label: 'Octubre',    abrev: 'Oct' },
+                      { num: 11, label: 'Noviembre',  abrev: 'Nov' },
+                      { num: 12, label: 'Diciembre',  abrev: 'Dic' },
+                    ];
+
+                    return (
+                      <div key={anio} className="historial-anio-bloque">
+
+                        {/* CABECERA DEL AÑO */}
+                        <button
+                          className="historial-anio-header"
+                          onClick={() => toggleAnio(anio)}
+                        >
+                          <span className="historial-anio-label">
+                            <Calendar className="w-4 h-4" />
+                            {anio}
+                            <span className="historial-anio-badge">
+                              {cajaAnioFiltro === anio
+                                ? (cajaMesFiltro
+                                    ? mesesDisponibles.find(m => m.num === cajaMesFiltro)?.label
+                                    : 'Vista anual')
+                                : '12 meses'}
+                            </span>
+                          </span>
+                          <ChevronDown
+                            className={`w-4 h-4 historial-chevron ${estaExpandido ? 'open' : ''}`}
+                          />
+                        </button>
+
+                        {/* CHIPS DE MES */}
+                        {estaExpandido && (
+                          <div className="historial-meses-grid">
+                            {mesesDisponibles.map(({ num, label, abrev }) => {
+                              const esSeleccionado =
+                                cajaAnioFiltro === anio && cajaMesFiltro === num;
+
+                              return (
+                                <button
+                                  key={num ?? 'all'}
+                                  className={`historial-mes-chip ${esSeleccionado ? 'seleccionado' : 'incompleto'}`}
+                                  onClick={() => {
+                                    setCajaAnioFiltro(anio);
+                                    setCajaMesFiltro(num);
+                                  }}
+                                  title={label}
+                                >
+                                  <span className={`historial-mes-dot ${esSeleccionado ? 'completo' : 'incompleto'}`} />
+                                  <span className="historial-mes-nombre">{abrev}</span>
+                                  <span className="historial-mes-pct">{anio}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ==================== RESUMEN DEL REPORTE ==================== */}
           {reporteData.length > 0 && (

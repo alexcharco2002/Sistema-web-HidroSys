@@ -1,417 +1,304 @@
-/**
- * src/services/geolocationsServices.js
- * Servicio de Geolocalización de Medidores
- * Consume endpoints de medidores pero enfocado en visualización de mapas
- */
+// src/services/geolocationsServices.js
 
 import authService from './authServices';
 
 const API_CONFIG = {
   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
-  endpoints: {
-    medidores:    '/meters',
-    sectores:     '/sectors',
-    medidoresGeo: '/meters/geo/all',
-    medidorGeo:   (id) => `/meters/${id}/geo`,
-    stats:        '/meters/stats/geo',
-    // ✅ CORREGIDO: ahora apunta al endpoint que retorna ARRAY de medidores
-    misMedidores: '/meters/mis-medidores',
-  }
+   endpoints: {
+    medidoresGeo:     '/geo/medidores',
+    misMedidores:     '/geo/medidores/mis-medidores',
+    medidoresCercanos:'/geo/medidores/cercanos',
+    sectores:         '/geo/sectores',
+    estadisticas:     '/geo/estadisticas',
+    validarUbicacion: '/geo/validar-ubicacion',
+    actualizarCoords: '/geo/medidores', // + /{id}/
+    baseGeoMedidores:    '/geo/medidores', // para PUT con ID
+    limitesGeograficos: '/geo/limites',
+  },
+  // ← Cuántos minutos se considera válido el caché en memoria
+  CACHE_TTL_MIN: 5,
 };
 
 class GeolocalizacionService {
   constructor() {
-    this.cachedMedidores = null;
-    this.cachedSectores  = null;
-    this.lastUpdate      = null;
+    this._cache = {};          // { [key]: { data, expiresAt } }
+    this._inflight = {};       // promesas en vuelo para deduplicar
   }
 
-  /**
-   * Realizar petición HTTPS con configuración común
-   */
+  // ── Caché en memoria con TTL ─────────────────────────────────────────
+  _getCache(key) {
+    const entry = this._cache[key];
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+      delete this._cache[key];
+      return null;
+    }
+    return entry.data;
+  }
+
+  _setCache(key, data, ttlMin = API_CONFIG.CACHE_TTL_MIN) {
+    this._cache[key] = {
+      data,
+      expiresAt: Date.now() + ttlMin * 60 * 1000,
+    };
+  }
+
+  // ── Request base con deduplicación ──────────────────────────────────
   async makeRequest(endpoint, options = {}) {
     const url = `${API_CONFIG.baseURL}${endpoint}`;
+    const key  = `${options.method || 'GET'}::${url}`;
 
-    const defaultOptions = {
+    // Si ya hay una petición igual en vuelo, reutilizarla
+    if (options.method === undefined || options.method === 'GET') {
+      if (this._inflight[key]) return this._inflight[key];
+    }
+
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 15000);
+
+    const promise = fetch(url, {
       method: 'GET',
-      headers: {
-        'Accept':        'application/json',
-        'Authorization': `Bearer ${authService.getToken()}`
-      },
-      timeout: 15000,
-    };
-
-    const finalOptions = {
-      ...defaultOptions,
       ...options,
       headers: {
-        ...defaultOptions.headers,
+        Accept: 'application/json',
+        Authorization: `Bearer ${authService.getToken()}`,
         ...options.headers,
       },
-    };
-
-    if (finalOptions.body instanceof FormData) {
-      delete finalOptions.headers['Content-Type'];
-    } else if (finalOptions.body && typeof finalOptions.body === 'object') {
-      finalOptions.headers['Content-Type'] = 'application/json';
-      finalOptions.body = JSON.stringify(finalOptions.body);
-    }
-
-    try {
-      console.log(`🌐 GEO API Request: ${finalOptions.method} ${url}`);
-      const controller = new AbortController();
-      const timeoutId  = setTimeout(() => controller.abort(), finalOptions.timeout);
-
-      const response = await fetch(url, {
-        ...finalOptions,
-        signal: controller.signal,
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        clearTimeout(timeoutId);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(
+            typeof err.detail === 'string' ? err.detail : `HTTP ${res.status}`
+          );
+        }
+        return res.json();
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') throw new Error('Tiempo de espera agotado');
+        if (err.message?.includes('Failed to fetch'))
+          throw new Error('No se pudo conectar con el servidor');
+        throw err;
+      })
+      .finally(() => {
+        delete this._inflight[key];
       });
 
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorData    = await response.json().catch(() => ({}));
-        let   errorMessage = '';
-
-        if (typeof errorData.detail === 'string') {
-          errorMessage = errorData.detail;
-        } else if (Array.isArray(errorData.detail)) {
-          errorMessage = errorData.detail.map(err => err.msg).join(', ');
-        } else if (typeof errorData.detail === 'object') {
-          errorMessage = JSON.stringify(errorData.detail);
-        } else {
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      console.log(`✅ GEO API Response:`, data.length ?? 'OK');
-      return data;
-
-    } catch (error) {
-      console.error(`❌ GEO API Error:`, error);
-
-      if (error.name === 'AbortError') {
-        throw new Error('La petición tardó demasiado tiempo');
-      }
-      if (error.message.includes('Failed to fetch')) {
-        throw new Error('No se pudo conectar con el servidor');
-      }
-
-      throw error;
+    if (options.method === undefined || options.method === 'GET') {
+      this._inflight[key] = promise;
     }
+
+    return promise;
   }
 
-  /**
-   * Obtener todos los medidores con información geográfica
-   */
-  async getMedidoresGeo(filters = {}) {
+  // ── Medidores con coordenadas — con caché real ───────────────────────
+  async getMedidoresGeo() {
+    const CACHE_KEY = 'medidores_geo';
+
+    // ✅ Verificar caché antes de ir al servidor
+    const cached = this._getCache(CACHE_KEY);
+    if (cached) {
+      console.log('📦 GEO: usando caché de medidores');
+      return { success: true, data: cached, fromCache: true };
+    }
+
     try {
-      const allMedidores = [];
-      let skip    = 0;
-      const limit = 500;
-      let hasMore = true;
-
-      while (hasMore) {
-        const params = new URLSearchParams();
-
-        if (filters.search)              params.append('search',    filters.search);
-        if (filters.id_sector)           params.append('id_sector', filters.id_sector);
-        if (filters.activo !== undefined) params.append('activo',   filters.activo);
-        if (filters.asignado !== undefined) params.append('asignado', filters.asignado);
-
-        params.append('limit', limit);
-        params.append('skip',  skip);
-
-        const queryString = params.toString();
-        const endpoint    = queryString
-          ? `${API_CONFIG.endpoints.medidores}?${queryString}`
-          : API_CONFIG.endpoints.medidores;
-
-        const data = await this.makeRequest(endpoint);
-
-        if (!data || data.length === 0) {
-          hasMore = false;
-          break;
-        }
-
-        const medidoresConGeo = data.filter(m =>
-          m.latitud  !== null && m.longitud !== null &&
-          !isNaN(parseFloat(m.latitud)) && !isNaN(parseFloat(m.longitud))
-        );
-
-        allMedidores.push(...medidoresConGeo);
-
-        skip   += limit;
-        hasMore = data.length === limit;
-      }
-
-      this.cachedMedidores = allMedidores;
-      this.lastUpdate      = new Date();
-
-      return {
-        success:    true,
-        data:       allMedidores,
-        total:      allMedidores.length,
-        lastUpdate: this.lastUpdate
-      };
-
+      const data = await this.makeRequest(API_CONFIG.endpoints.medidoresGeo);
+      const lista = Array.isArray(data) ? data : [];
+      // Solo almacenar en caché si hay datos
+      if (lista.length > 0) this._setCache(CACHE_KEY, lista);
+      return { success: true, data: lista, fromCache: false };
     } catch (error) {
       console.error('❌ Error obteniendo medidores geo:', error);
+      // ── Fallback: devolver caché expirado si existe ──────────────
+      const stale = this._cache[CACHE_KEY]?.data;
+      if (stale) {
+        console.warn('⚠️ GEO: usando caché expirado como fallback');
+        return { success: true, data: stale, fromCache: true, stale: true };
+      }
+      return { success: false, message: error.message, data: [] };
+    }
+  }
+
+  // función para obtener los límites geográficos del área de cobertura, 
+  // sin caché (cambia poco pero es importante tenerlo actualizado)
+  async getLimitesGeograficos() {
+    const cacheKey = 'limites_geograficos';
+    const cached = this._getCache(cacheKey);
+
+    if (cached) {
+      return { success: true, data: cached };
+    }
+
+    try {
+      const res = await this._fetch(API_CONFIG.endpoints.limitesGeograficos);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return {
+          success: false,
+          data: [],
+          message: err.detail || `HTTP ${res.status}`,
+        };
+      }
+
+      const payload = await res.json();
+      const data = Array.isArray(payload) ? payload : (payload.data ?? []);
+
+      this._setCache(cacheKey, data);
+      return { success: true, data };
+    } catch (error) {
       return {
         success: false,
-        message: error.message || 'Error al obtener medidores',
-        data:    []
+        data: [],
+        message: error.message,
       };
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  /**
-   * ✅ CORREGIDO: Obtener TODOS los medidores del usuario autenticado.
-   * El backend retorna un array (puede ser vacío, uno o varios medidores).
-   * Devuelve { success, data: MedidorListItem[] }
-   */
+  // ── Mis medidores — caché de 10 min (cambia poco) ───────────────────
   async getMisMedidores() {
+    const CACHE_KEY = 'mis_medidores';
+    const cached = this._getCache(CACHE_KEY);
+    if (cached) return { success: true, data: cached };
+
     try {
       const data = await this.makeRequest(API_CONFIG.endpoints.misMedidores);
-
-      // El backend siempre retorna array; normalizamos por seguridad
       const lista = Array.isArray(data) ? data : (data ? [data] : []);
-
+      this._setCache(CACHE_KEY, lista, 10);
       return { success: true, data: lista };
-
     } catch (error) {
-      // 404 = usuario no es afiliado, no es error crítico
-      if (error.message?.includes('404') || error.status === 404) {
-        return { success: true, data: [], sinMedidor: true };
-      }
-      console.error('❌ Error obteniendo mis medidores:', error);
+      if (error.message?.includes('404')) return { success: true, data: [], sinMedidor: true };
       return { success: false, data: [], message: error.message };
     }
   }
-  // ─────────────────────────────────────────────────────────────────────────
 
-  /**
-   * Obtener medidor específico con info geográfica
-   */
-  async getMedidorGeoById(medidorId) {
-    try {
-      const data = await this.makeRequest(`${API_CONFIG.endpoints.medidores}/${medidorId}`);
-      return { success: true, data };
-    } catch (error) {
-      console.error('❌ Error obteniendo medidor geo:', error);
-      return { success: false, message: error.message || 'Error al obtener medidor' };
-    }
-  }
-
-  /**
-   * Obtener todos los sectores
-   */
+  // ── Sectores — caché de 30 min (cambia muy poco) ────────────────────
   async getSectores() {
+    const CACHE_KEY = 'sectores';
+    const cached = this._getCache(CACHE_KEY);
+    if (cached) return { success: true, data: cached };
+
     try {
       const data = await this.makeRequest(API_CONFIG.endpoints.sectores);
-      this.cachedSectores = data;
+      this._setCache(CACHE_KEY, data, 30);
       return { success: true, data };
     } catch (error) {
-      console.error('❌ Error obteniendo sectores:', error);
-      return { success: false, message: error.message || 'Error al obtener sectores', data: [] };
+      return { success: false, message: error.message, data: [] };
     }
   }
 
-  /**
-   * Obtener medidores agrupados por sector
-   */
-  async getMedidoresPorSector() {
-    try {
-      const medidoresResult = await this.getMedidoresGeo();
-      if (!medidoresResult.success) return medidoresResult;
-
-      const agrupados = {};
-
-      medidoresResult.data.forEach(medidor => {
-        const sectorId     = medidor.id_sector     || 'sin_sector';
-        const sectorNombre = medidor.nombre_sector || 'Sin Sector';
-
-        if (!agrupados[sectorId]) {
-          agrupados[sectorId] = {
-            id_sector:    sectorId === 'sin_sector' ? null : sectorId,
-            nombre_sector: sectorNombre,
-            medidores:    [],
-            total:        0,
-            activos:      0,
-            inactivos:    0,
-            asignados:    0,
-            sin_asignar:  0
-          };
-        }
-
-        agrupados[sectorId].medidores.push(medidor);
-        agrupados[sectorId].total++;
-
-        if (medidor.activo)          agrupados[sectorId].activos++;
-        else                          agrupados[sectorId].inactivos++;
-        if (medidor.id_usuario_afi)  agrupados[sectorId].asignados++;
-        else                          agrupados[sectorId].sin_asignar++;
-      });
-
-      return { success: true, data: Object.values(agrupados) };
-
-    } catch (error) {
-      console.error('❌ Error agrupando medidores por sector:', error);
-      return { success: false, message: error.message || 'Error al agrupar medidores' };
-    }
-  }
-
-  /**
-   * Obtener estadísticas geográficas
-   */
+  // ── Estadísticas — calculadas del caché de medidores ────────────────
   async getEstadisticasGeo() {
-    try {
-      const result = await this.getMedidoresGeo();
-      if (!result.success) return result;
-
-      const medidores = result.data;
-
-      const stats = {
-        total_medidores:       medidores.length,
-        medidores_con_geo:     medidores.filter(m =>  m.latitud && m.longitud).length,
-        medidores_sin_geo:     medidores.filter(m => !m.latitud || !m.longitud).length,
-        medidores_activos:     medidores.filter(m =>  m.activo).length,
-        medidores_inactivos:   medidores.filter(m => !m.activo).length,
-        medidores_asignados:   medidores.filter(m =>  m.id_usuario_afi).length,
-        medidores_sin_asignar: medidores.filter(m => !m.id_usuario_afi).length,
-        sectores_unicos:       [...new Set(medidores.map(m => m.id_sector).filter(Boolean))].length,
-        cobertura_geo:         0
-      };
-
-      stats.cobertura_geo = stats.total_medidores > 0
-        ? ((stats.medidores_con_geo / stats.total_medidores) * 100).toFixed(1)
-        : 0;
-
-      if (medidores.length > 0) {
-        const latitudes  = medidores.map(m => parseFloat(m.latitud)).filter(Boolean);
-        const longitudes = medidores.map(m => parseFloat(m.longitud)).filter(Boolean);
-
-        if (latitudes.length > 0 && longitudes.length > 0) {
-          stats.centro = {
-            lat: latitudes.reduce((a, b)  => a + b, 0) / latitudes.length,
-            lng: longitudes.reduce((a, b) => a + b, 0) / longitudes.length
-          };
-          stats.bounds = {
-            norte: Math.max(...latitudes),
-            sur:   Math.min(...latitudes),
-            este:  Math.max(...longitudes),
-            oeste: Math.min(...longitudes)
-          };
-        }
-      }
-
-      return { success: true, data: stats };
-
-    } catch (error) {
-      console.error('❌ Error obteniendo estadísticas geo:', error);
-      return { success: false, message: error.message || 'Error al obtener estadísticas' };
-    }
+    const result = await this.getMedidoresGeo();
+    if (!result.success) return result;
+    const meds = result.data;
+    const stats = {
+      total_medidores:     meds.length,
+      medidores_con_geo:   meds.length,    // ya vienen filtrados
+      medidores_activos:   meds.filter(m => m.activo).length,
+      medidores_inactivos: meds.filter(m => !m.activo).length,
+      medidores_asignados: meds.filter(m => m.id_usuario_afi).length,
+      sectores_unicos:     new Set(meds.map(m => m.id_sector).filter(Boolean)).size,
+      cobertura_geo:       '100.0',
+    };
+    return { success: true, data: stats };
   }
 
-  /**
-   * Buscar medidores cercanos a una coordenada (fórmula de Haversine)
-   */
+  // ── Medidores cercanos (Haversine — sin llamada extra) ───────────────
   async getMedidoresCercanos(lat, lng, radioKm = 1) {
-    try {
-      const result = await this.getMedidoresGeo();
-      if (!result.success) return result;
-
-      const calcularDistancia = (lat1, lon1, lat2, lon2) => {
-        const R    = 6371;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a    =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-          Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      };
-
-      const medidoresCercanos = result.data
-        .map(medidor => ({
-          ...medidor,
-          distancia: calcularDistancia(lat, lng, parseFloat(medidor.latitud), parseFloat(medidor.longitud))
-        }))
-        .filter(medidor => medidor.distancia <= radioKm)
-        .sort((a, b) => a.distancia - b.distancia);
-
-      return { success: true, data: medidoresCercanos, total: medidoresCercanos.length };
-
-    } catch (error) {
-      console.error('❌ Error buscando medidores cercanos:', error);
-      return { success: false, message: error.message || 'Error al buscar medidores cercanos' };
-    }
+    const result = await this.getMedidoresGeo();
+    if (!result.success) return result;
+    const R = 6371;
+    const dist = (la1, lo1, la2, lo2) => {
+      const dLat = (la2 - la1) * Math.PI / 180;
+      const dLon = (lo2 - lo1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 +
+        Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    };
+    const cercanos = result.data
+      .map(m => ({ ...m, distancia: dist(lat, lng, m.latitud, m.longitud) }))
+      .filter(m => m.distancia <= radioKm)
+      .sort((a, b) => a.distancia - b.distancia);
+    return { success: true, data: cercanos };
   }
 
-  /**
-   * Actualizar coordenadas de un medidor
-   */
+  // ── Actualizar SOLO coordenadas de un medidor ────────────────────────────
   async actualizarCoordenadas(medidorId, coordenadas) {
     try {
-      const data = await this.makeRequest(`${API_CONFIG.endpoints.medidores}/${medidorId}`, {
-        method: 'PUT',
-        body: {
-          latitud:  coordenadas.latitud,
-          longitud: coordenadas.longitud,
-          altitud:  coordenadas.altitud || null
+      const res = await fetch(
+        `${API_CONFIG.baseURL}${API_CONFIG.endpoints.baseGeoMedidores}/${medidorId}/coordenadas`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authService.getToken()}`,
+          },
+          body: JSON.stringify({
+            latitud:  coordenadas.latitud,
+            longitud: coordenadas.longitud,
+            altitud:  coordenadas.altitud ?? null,
+          }),
         }
-      });
+      );
 
-      this.clearCache();
-      return { success: true, data, message: 'Coordenadas actualizadas exitosamente' };
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const detalle = err.detail;
+        // El backend puede devolver detail como objeto {error, mensaje}
+        const msg = typeof detalle === 'string'
+          ? detalle
+          : detalle?.mensaje || detalle?.error || `HTTP ${res.status}`;
+        return { success: false, message: msg };
+      }
+
+      const data = await res.json();
+
+      // ── Invalidar el caché para que el próximo getMedidoresGeo
+      //    traiga las coords actualizadas (R03: no-store en la respuesta)
+      this.clearCache('medidores_geo');
+      this.clearCache('mis_medidores');
+
+      return { success: true, data, message: data.message || 'Coordenadas actualizadas' };
 
     } catch (error) {
-      console.error('❌ Error actualizando coordenadas:', error);
-      return { success: false, message: error.message || 'Error al actualizar coordenadas' };
+      if (error.name === 'AbortError') return { success: false, message: 'Tiempo de espera agotado' };
+      if (error.message?.includes('Failed to fetch'))
+        return { success: false, message: 'No se pudo conectar con el servidor' };
+      return { success: false, message: error.message };
     }
   }
 
-  /**
-   * Validar coordenadas (con validación específica para Ecuador)
-   */
+
   validarCoordenadas(lat, lng) {
-    const latNum = parseFloat(lat);
-    const lngNum = parseFloat(lng);
-
-    if (isNaN(latNum) || isNaN(lngNum))
-      return { valido: false, mensaje: 'Las coordenadas deben ser números válidos' };
-    if (latNum < -90 || latNum > 90)
-      return { valido: false, mensaje: 'La latitud debe estar entre -90 y 90' };
-    if (lngNum < -180 || lngNum > 180)
-      return { valido: false, mensaje: 'La longitud debe estar entre -180 y 180' };
-    if (latNum < -5 || latNum > 2)
-      return { valido: false, mensaje: 'La latitud parece estar fuera de Ecuador', advertencia: true };
-    if (lngNum < -92 || lngNum > -75)
-      return { valido: false, mensaje: 'La longitud parece estar fuera de Ecuador', advertencia: true };
-
+    const la = parseFloat(lat), ln = parseFloat(lng);
+    if (isNaN(la) || isNaN(ln)) return { valido: false, mensaje: 'Coordenadas inválidas' };
+    if (la < -5 || la > 2)      return { valido: false, mensaje: 'Latitud fuera de Ecuador', advertencia: true };
+    if (ln < -92 || ln > -75)   return { valido: false, mensaje: 'Longitud fuera de Ecuador', advertencia: true };
     return { valido: true, mensaje: 'Coordenadas válidas' };
   }
 
-  getCachedMedidores()  { return this.cachedMedidores || []; }
-  getCachedSectores()   { return this.cachedSectores  || []; }
-
-  clearCache() {
-    this.cachedMedidores = null;
-    this.cachedSectores  = null;
-    this.lastUpdate      = null;
+  // ── Utilidades de caché ──────────────────────────────────────────────
+  clearCache(key = null) {
+    if (key) delete this._cache[key];
+    else this._cache = {};
   }
 
-  isCacheReciente() {
-    if (!this.lastUpdate) return false;
-    return ((new Date() - this.lastUpdate) / 60000) < 5;
+  isCacheReciente(key = 'medidores_geo') {
+    return this._getCache(key) !== null;
+  }
+
+  getCacheInfo() {
+    return Object.entries(this._cache).map(([k, v]) => ({
+      key: k,
+      expiresIn: Math.round((v.expiresAt - Date.now()) / 1000) + 's',
+    }));
   }
 }
 
 const geolocalizacionService = new GeolocalizacionService();
-
 export default geolocalizacionService;
 export { GeolocalizacionService };

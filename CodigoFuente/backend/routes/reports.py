@@ -16,6 +16,7 @@ import csv
 
 from db.session import SessionLocal
 from models.detalle_factura import DetalleFactura
+from models.mora import MoraFactura
 from models.user import UsuarioSistema
 from models.role import Rol, RolAccion
 from models.affiliate import UsuarioAfiliado
@@ -1870,3 +1871,527 @@ def exportar_reporte(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Formato no soportado. Use 'csv'"
         )
+
+
+# ============================================================================
+# 9. REPORTE DE CAJA GENERAL
+# Incluye: cobros de agua, multas cobradas, resumen mensual, anual y diario
+# ============================================================================
+
+# ============================================================================
+# 9.1 RESUMEN MENSUAL DE CAJA
+# ============================================================================
+@router.get("/caja/mensual")
+def get_caja_mensual(
+    mes: Optional[int] = Query(None, ge=1, le=12),
+    anio: Optional[int] = Query(None, ge=2020),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    💰 Resumen mensual de caja
+    - Total recaudado por cobros de agua (pagos registrados)
+    - Total recaudado por multas cobradas
+    - Desglose por método de pago
+    - Desglose por sector
+    - Comparativa con mes anterior
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "reportes", "lectura")
+
+    hoy = date.today()
+    mes_ref = mes or hoy.month
+    anio_ref = anio or hoy.year
+
+    mes_ant = mes_ref - 1 if mes_ref > 1 else 12
+    anio_ant = anio_ref if mes_ref > 1 else anio_ref - 1
+
+    try:
+        def filtro_periodo_pago(m, a):
+            return and_(
+                extract('month', Pago.fecha_pago) == m,
+                extract('year', Pago.fecha_pago) == a,
+                Pago.estado_pago == 'REGISTRADO'
+            )
+
+        def filtro_periodo_multa(m, a):
+            return and_(
+                extract('month', MultaAfiliado.fecha_pago) == m,
+                extract('year', MultaAfiliado.fecha_pago) == a,
+                MultaAfiliado.estado == 'pagada',
+                MultaAfiliado.activo == True
+            )
+
+        # A. PAGOS DE AGUA
+        pagos_agua = (
+            db.query(
+                func.count(Pago.id_pago).label('cantidad'),
+                func.sum(Pago.monto_pago).label('total'),
+                Pago.metodo_pago
+            )
+            .filter(filtro_periodo_pago(mes_ref, anio_ref))
+            .group_by(Pago.metodo_pago)
+            .all()
+        )
+
+        total_agua = sum(float(r.total or 0) for r in pagos_agua)
+        cantidad_agua = sum(r.cantidad for r in pagos_agua)
+        desglose_agua = {
+            r.metodo_pago or 'SIN_METODO': {
+                "cantidad": r.cantidad,
+                "total": round(float(r.total or 0), 2)
+            }
+            for r in pagos_agua
+        }
+
+        # B. MULTAS COBRADAS
+        multas_row = (
+            db.query(
+                func.count(MultaAfiliado.id_multa_afi).label('cantidad'),
+                func.sum(MultaAfiliado.monto).label('total')
+            )
+            .filter(filtro_periodo_multa(mes_ref, anio_ref))
+            .one()
+        )
+        total_multas = round(float(multas_row.total or 0), 2)
+        cantidad_multas = multas_row.cantidad or 0
+
+        # C. MORA COBRADA
+        mora_sq = (
+            db.query(
+                MoraFactura.id_factura,
+                func.sum(MoraFactura.monto_mora).label('total_mora')
+            )
+            .filter(MoraFactura.aplicada == True)
+            .group_by(MoraFactura.id_factura)
+            .subquery()
+        )
+        mora_cobrada = (
+            db.query(func.sum(mora_sq.c.total_mora))
+            .join(Pago, Pago.id_factura == mora_sq.c.id_factura)
+            .filter(filtro_periodo_pago(mes_ref, anio_ref))
+            .scalar()
+        )
+        total_mora = round(float(mora_cobrada or 0), 2)
+
+        # D. DESGLOSE POR SECTOR
+        sector_rows = (
+            db.query(
+                Sector.nombre_sector,
+                func.count(Pago.id_pago).label('cantidad'),
+                func.sum(Pago.monto_pago).label('total')
+            )
+            .join(Factura, Pago.id_factura == Factura.id_factura)
+            .join(Lectura, Factura.id_lectura == Lectura.id_lectura)
+            .join(Medidor, Lectura.id_medidor == Medidor.id_medidor)
+            .join(UsuarioAfiliado, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
+            .filter(filtro_periodo_pago(mes_ref, anio_ref))
+            .group_by(Sector.nombre_sector)
+            .all()
+        )
+        desglose_sector = [
+            {
+                "sector": r.nombre_sector or "Sin sector",
+                "cantidad": r.cantidad,
+                "total": round(float(r.total or 0), 2)
+            }
+            for r in sorted(sector_rows, key=lambda x: -(x.total or 0))
+        ]
+
+        # E. COMPARATIVA MES ANTERIOR
+        pagos_ant = (
+            db.query(func.sum(Pago.monto_pago))
+            .filter(filtro_periodo_pago(mes_ant, anio_ant))
+            .scalar()
+        )
+        multas_ant = (
+            db.query(func.sum(MultaAfiliado.monto))
+            .filter(filtro_periodo_multa(mes_ant, anio_ant))
+            .scalar()
+        )
+        total_ant = round(float(pagos_ant or 0) + float(multas_ant or 0), 2)
+        total_mes_actual = round(total_agua + total_multas, 2)
+        variacion_pct = (
+            round(((total_mes_actual - total_ant) / total_ant) * 100, 1)
+            if total_ant > 0 else 0.0
+        )
+
+        # F. FACTURAS PENDIENTES DEL MES
+        periodo_str = f"{anio_ref}-{mes_ref:02d}"
+        pendientes_row = (
+            db.query(
+                func.count(Factura.id_factura).label('cantidad'),
+                func.sum(Factura.total).label('total')
+            )
+            .filter(
+                Factura.periodo == periodo_str,
+                Factura.estado_factura.in_(['pendiente', 'vencida'])
+            )
+            .one()
+        )
+        total_pendiente = round(float(pendientes_row.total or 0), 2)
+        cantidad_pendiente = pendientes_row.cantidad or 0
+
+        # G. TOTAL FACTURADO DEL MES
+        facturado_row = (
+            db.query(func.sum(Factura.total))
+            .filter(Factura.periodo == periodo_str)
+            .scalar()
+        )
+        total_facturado = round(float(facturado_row or 0), 2)
+        porcentaje_cobrado = (
+            round((total_agua / total_facturado) * 100, 1)
+            if total_facturado > 0 else 0.0
+        )
+
+        meses_nombres = {
+            1:'Enero', 2:'Febrero', 3:'Marzo', 4:'Abril', 5:'Mayo', 6:'Junio',
+            7:'Julio', 8:'Agosto', 9:'Septiembre', 10:'Octubre', 11:'Noviembre', 12:'Diciembre'
+        }
+
+        return {
+            "success": True,
+            "periodo": {
+                "mes": mes_ref,
+                "anio": anio_ref,
+                "nombre": f"{meses_nombres[mes_ref]} {anio_ref}",
+                "periodo_str": periodo_str
+            },
+            "resumen": {
+                "total_general": round(total_mes_actual + total_mora, 2),
+                "total_agua": round(total_agua, 2),
+                "total_multas": total_multas,
+                "total_mora": total_mora,
+                "cantidad_pagos": cantidad_agua,
+                "cantidad_multas": cantidad_multas,
+            },
+            "facturacion": {
+                "total_facturado": total_facturado,
+                "total_cobrado": round(total_agua, 2),
+                "total_pendiente": total_pendiente,
+                "cantidad_pendiente": cantidad_pendiente,
+                "porcentaje_cobrado": porcentaje_cobrado,
+                "porcentaje_pendiente": round(100 - porcentaje_cobrado, 1)
+            },
+            "metodos_pago": desglose_agua,
+            "desglose_sector": desglose_sector,
+            "comparativa": {
+                "mes_anterior": {
+                    "nombre": f"{meses_nombres[mes_ant]} {anio_ant}",
+                    "total": total_ant
+                },
+                "variacion_monto": round(total_mes_actual - total_ant, 2),
+                "variacion_porcentaje": variacion_pct,
+                "tendencia": "subida" if variacion_pct > 0 else "bajada" if variacion_pct < 0 else "igual"
+            }
+        }
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error en reporte de caja mensual: {str(e)}")
+
+
+# ============================================================================
+# 9.2 RESUMEN ANUAL DE CAJA
+# ============================================================================
+@router.get("/caja/anual")
+def get_caja_anual(
+    anio: Optional[int] = Query(None, ge=2020),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """📅 Resumen anual de caja mes a mes"""
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "reportes", "lectura")
+
+    anio_ref = anio or date.today().year
+
+    try:
+        meses_nombres = {
+            1:'Enero', 2:'Febrero', 3:'Marzo', 4:'Abril', 5:'Mayo', 6:'Junio',
+            7:'Julio', 8:'Agosto', 9:'Septiembre', 10:'Octubre', 11:'Noviembre', 12:'Diciembre'
+        }
+
+        pagos_por_mes = (
+            db.query(
+                extract('month', Pago.fecha_pago).label('mes'),
+                func.sum(Pago.monto_pago).label('total'),
+                func.count(Pago.id_pago).label('cantidad')
+            )
+            .filter(
+                extract('year', Pago.fecha_pago) == anio_ref,
+                Pago.estado_pago == 'REGISTRADO'
+            )
+            .group_by(extract('month', Pago.fecha_pago))
+            .all()
+        )
+        agua_por_mes = {int(r.mes): {"total": float(r.total or 0), "cantidad": r.cantidad}
+                        for r in pagos_por_mes}
+
+        multas_por_mes = (
+            db.query(
+                extract('month', MultaAfiliado.fecha_pago).label('mes'),
+                func.sum(MultaAfiliado.monto).label('total'),
+                func.count(MultaAfiliado.id_multa_afi).label('cantidad')
+            )
+            .filter(
+                extract('year', MultaAfiliado.fecha_pago) == anio_ref,
+                MultaAfiliado.estado == 'pagada',
+                MultaAfiliado.activo == True
+            )
+            .group_by(extract('month', MultaAfiliado.fecha_pago))
+            .all()
+        )
+        multas_mes = {int(r.mes): {"total": float(r.total or 0), "cantidad": r.cantidad}
+                      for r in multas_por_mes}
+
+        mora_sq = (
+            db.query(
+                MoraFactura.id_factura,
+                func.sum(MoraFactura.monto_mora).label('total_mora')
+            )
+            .filter(MoraFactura.aplicada == True)
+            .group_by(MoraFactura.id_factura)
+            .subquery()
+        )
+        mora_por_mes_rows = (
+            db.query(
+                extract('month', Pago.fecha_pago).label('mes'),
+                func.sum(mora_sq.c.total_mora).label('total_mora')
+            )
+            .join(mora_sq, Pago.id_factura == mora_sq.c.id_factura)
+            .filter(
+                extract('year', Pago.fecha_pago) == anio_ref,
+                Pago.estado_pago == 'REGISTRADO'
+            )
+            .group_by(extract('month', Pago.fecha_pago))
+            .all()
+        )
+        mora_mes = {int(r.mes): float(r.total_mora or 0) for r in mora_por_mes_rows}
+
+        facturado_por_mes = (
+            db.query(
+                func.substring(Factura.periodo, 6, 2).label('mes_str'),
+                func.sum(Factura.total).label('total'),
+                func.count(Factura.id_factura).label('cantidad')
+            )
+            .filter(Factura.periodo.like(f"{anio_ref}-%"))
+            .group_by(func.substring(Factura.periodo, 6, 2))
+            .all()
+        )
+        facturado_mes = {
+            int(r.mes_str): {"total": float(r.total or 0), "cantidad": r.cantidad}
+            for r in facturado_por_mes
+        }
+
+        meses_data = []
+        for m in range(1, 13):
+            agua = agua_por_mes.get(m, {"total": 0, "cantidad": 0})
+            multa = multas_mes.get(m, {"total": 0, "cantidad": 0})
+            mora = mora_mes.get(m, 0)
+            fact = facturado_mes.get(m, {"total": 0, "cantidad": 0})
+            total_m = round(agua["total"] + multa["total"], 2)
+            pct = round((agua["total"] / fact["total"]) * 100, 1) if fact["total"] > 0 else 0.0
+
+            meses_data.append({
+                "mes": m,
+                "nombre_mes": meses_nombres[m],
+                "total_agua": round(agua["total"], 2),
+                "total_multas": round(multa["total"], 2),
+                "total_mora": round(mora, 2),
+                "total_general": round(total_m + mora, 2),
+                "cantidad_pagos": agua["cantidad"],
+                "cantidad_multas": multa["cantidad"],
+                "total_facturado": round(fact["total"], 2),
+                "total_pendiente": round(fact["total"] - agua["total"], 2),
+                "porcentaje_cobrado": pct
+            })
+
+        total_anual_agua = sum(m["total_agua"] for m in meses_data)
+        total_anual_multas = sum(m["total_multas"] for m in meses_data)
+        total_anual_mora = sum(m["total_mora"] for m in meses_data)
+        total_anual_fact = sum(m["total_facturado"] for m in meses_data)
+        total_anual_gral = round(total_anual_agua + total_anual_multas + total_anual_mora, 2)
+        mejor_mes = max(meses_data, key=lambda x: x["total_general"], default=None)
+
+        pagos_anio_ant = (
+            db.query(func.sum(Pago.monto_pago))
+            .filter(
+                extract('year', Pago.fecha_pago) == anio_ref - 1,
+                Pago.estado_pago == 'REGISTRADO'
+            )
+            .scalar()
+        )
+        multas_anio_ant = (
+            db.query(func.sum(MultaAfiliado.monto))
+            .filter(
+                extract('year', MultaAfiliado.fecha_pago) == anio_ref - 1,
+                MultaAfiliado.estado == 'pagada'
+            )
+            .scalar()
+        )
+        total_anio_ant = round(float(pagos_anio_ant or 0) + float(multas_anio_ant or 0), 2)
+        variacion_anual = (
+            round(((total_anual_gral - total_anio_ant) / total_anio_ant) * 100, 1)
+            if total_anio_ant > 0 else 0.0
+        )
+
+        return {
+            "success": True,
+            "anio": anio_ref,
+            "meses": meses_data,
+            "totales": {
+                "total_general": total_anual_gral,
+                "total_agua": round(total_anual_agua, 2),
+                "total_multas": round(total_anual_multas, 2),
+                "total_mora": round(total_anual_mora, 2),
+                "total_facturado": round(total_anual_fact, 2),
+                "total_pendiente": round(total_anual_fact - total_anual_agua, 2),
+                "porcentaje_cobrado": round(
+                    (total_anual_agua / total_anual_fact * 100) if total_anual_fact > 0 else 0, 1
+                )
+            },
+            "mejor_mes": mejor_mes,
+            "comparativa_anio_anterior": {
+                "anio": anio_ref - 1,
+                "total": total_anio_ant,
+                "variacion_monto": round(total_anual_gral - total_anio_ant, 2),
+                "variacion_porcentaje": variacion_anual,
+                "tendencia": "subida" if variacion_anual > 0 else "bajada" if variacion_anual < 0 else "igual"
+            }
+        }
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error en reporte de caja anual: {str(e)}")
+
+
+# ============================================================================
+# 9.3 DETALLE DIARIO DE CAJA
+# ============================================================================
+@router.get("/caja/detalle-diario")
+def get_caja_detalle_diario(
+    mes: int = Query(..., ge=1, le=12),
+    anio: int = Query(..., ge=2020),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """📋 Detalle día a día de ingresos en un mes"""
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "reportes", "lectura")
+
+    try:
+        pagos_diarios = (
+            db.query(
+                func.date(Pago.fecha_pago).label('dia'),
+                func.sum(Pago.monto_pago).label('total_agua'),
+                func.count(Pago.id_pago).label('cantidad_pagos'),
+                Pago.metodo_pago
+            )
+            .filter(
+                extract('month', Pago.fecha_pago) == mes,
+                extract('year', Pago.fecha_pago) == anio,
+                Pago.estado_pago == 'REGISTRADO'
+            )
+            .group_by(func.date(Pago.fecha_pago), Pago.metodo_pago)
+            .order_by(func.date(Pago.fecha_pago))
+            .all()
+        )
+
+        multas_diarias = (
+            db.query(
+                func.date(MultaAfiliado.fecha_pago).label('dia'),
+                func.sum(MultaAfiliado.monto).label('total_multas'),
+                func.count(MultaAfiliado.id_multa_afi).label('cantidad_multas')
+            )
+            .filter(
+                extract('month', MultaAfiliado.fecha_pago) == mes,
+                extract('year', MultaAfiliado.fecha_pago) == anio,
+                MultaAfiliado.estado == 'pagada',
+                MultaAfiliado.activo == True
+            )
+            .group_by(func.date(MultaAfiliado.fecha_pago))
+            .order_by(func.date(MultaAfiliado.fecha_pago))
+            .all()
+        )
+
+        dias = {}
+        for r in pagos_diarios:
+            dia_str = str(r.dia)
+            if dia_str not in dias:
+                dias[dia_str] = {"dia": dia_str, "total_agua": 0, "total_multas": 0,
+                                 "total_general": 0, "cantidad_pagos": 0,
+                                 "cantidad_multas": 0, "metodos": {}}
+            dias[dia_str]["total_agua"] += float(r.total_agua or 0)
+            dias[dia_str]["cantidad_pagos"] += r.cantidad_pagos
+            metodo = r.metodo_pago or "SIN_METODO"
+            dias[dia_str]["metodos"][metodo] = (
+                dias[dia_str]["metodos"].get(metodo, 0) + float(r.total_agua or 0)
+            )
+
+        for r in multas_diarias:
+            dia_str = str(r.dia)
+            if dia_str not in dias:
+                dias[dia_str] = {"dia": dia_str, "total_agua": 0, "total_multas": 0,
+                                 "total_general": 0, "cantidad_pagos": 0,
+                                 "cantidad_multas": 0, "metodos": {}}
+            dias[dia_str]["total_multas"] += float(r.total_multas or 0)
+            dias[dia_str]["cantidad_multas"] += r.cantidad_multas
+
+        detalle = []
+        for dia_str, d in sorted(dias.items()):
+            d["total_agua"] = round(d["total_agua"], 2)
+            d["total_multas"] = round(d["total_multas"], 2)
+            d["total_general"] = round(d["total_agua"] + d["total_multas"], 2)
+            d["metodos"] = {k: round(v, 2) for k, v in d["metodos"].items()}
+            detalle.append(d)
+
+        return {
+            "success": True,
+            "mes": mes,
+            "anio": anio,
+            "detalle": detalle,
+            "totales": {
+                "total_agua": round(sum(d["total_agua"] for d in detalle), 2),
+                "total_multas": round(sum(d["total_multas"] for d in detalle), 2),
+                "total_general": round(sum(d["total_general"] for d in detalle), 2),
+                "dias_con_movimiento": len(detalle)
+            }
+        }
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error en detalle diario: {str(e)}")
+
+
+# ============================================================================
+# 9.4 AÑOS DISPONIBLES EN CAJA
+# ============================================================================
+@router.get("/caja/anios-disponibles")
+def get_anios_disponibles(
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """📅 Lista de años con movimientos en caja"""
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "reportes", "lectura")
+
+    anios_pagos = (
+        db.query(extract('year', Pago.fecha_pago).label('anio'))
+        .filter(Pago.fecha_pago.isnot(None), Pago.estado_pago == 'REGISTRADO')
+        .distinct().all()
+    )
+    anios_multas = (
+        db.query(extract('year', MultaAfiliado.fecha_pago).label('anio'))
+        .filter(MultaAfiliado.fecha_pago.isnot(None), MultaAfiliado.estado == 'pagada')
+        .distinct().all()
+    )
+
+    todos = sorted(
+        set(int(r.anio) for r in anios_pagos if r.anio)
+        | set(int(r.anio) for r in anios_multas if r.anio),
+        reverse=True
+    )
+
+    return {"success": True, "anios": todos}

@@ -9,7 +9,9 @@
         "ignore": [
           "inset",
           "min-width: fit-content",
-          "min-height: auto"
+          "min-height: auto",
+          "scrollbar-width",
+          "scrollbar-width: none"
         ]
       }
     ]

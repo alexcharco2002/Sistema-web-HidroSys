@@ -5,7 +5,7 @@ from pathlib import Path
 # === CONFIGURACIÓN ===
 DB_NAME = "jaap_sanjapamba"
 DB_USER = "postgres"
-DB_PASSWORD = "TecniCobro2024"
+DB_PASSWORD = "HidroSys2024"
 DB_HOST = "localhost"
 DB_PORT = "5432"
 

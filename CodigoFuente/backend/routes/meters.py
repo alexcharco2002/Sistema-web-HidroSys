@@ -208,7 +208,8 @@ def listar_sectores_para_medidores(
         for s in sectores
     ]
 
-# endpoint para obtener "mi medidor" asignado al usuario autenticado, usado en el mapa de geolocalización para identificar "tu medidor":
+# endpoint para obtener "mi medidor" asignado al usuario autenticado,
+#  usado en el mapa de geolocalización para identificar "tu medidor":
 @router.get("/mis-medidores", response_model=list[MedidorListItem])
 def mis_medidores(
     db: Session = Depends(get_db),

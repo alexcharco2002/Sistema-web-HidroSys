@@ -80,7 +80,6 @@ import PaymentsSection from '../sections/cajero/PaymentsSection';
 // ============================================================================
 import { 
   Activity, 
-  Droplets,
   RefreshCw,
   Shield,
   ChevronDown,
@@ -604,7 +603,7 @@ const toggleSidebar = () => {
             onClick={toggleSidebarMobile}
           />
         )}
-        {/* 🔥 Botón cerrar móvil */}
+        {/* Botón cerrar móvil */}
         <button 
           className="sidebar-close-btn-mobile" 
           onClick={toggleSidebarMobile}
@@ -616,12 +615,16 @@ const toggleSidebar = () => {
         <div className="sidebar-header">
           <div className="logo-container">
             <div className="logo-icon">
-              <Droplets className="text-white" size={32} />
+              <img
+                src="/quality.ico"
+                alt="HidroSys Logo"
+                className="logo-img"
+              />
             </div>
 
             {!sidebarCollapsed && (
               <div className="logo-text">
-                <h2>TecniCobro 2.0</h2>
+                <h2>HidroSys</h2>
                 <p>JAAP Sanjapamba</p>
               </div>
             )}
@@ -813,7 +816,7 @@ const toggleSidebar = () => {
           {/* 🔥 FOOTER  */}
           <footer className="dashboard-footer">
             <div className="footer-bottom">
-              <p>© 2025 TecniCobro 2.0. Todos los derechos reservados.</p>
+              <p>© 2025 HidroSys. Todos los derechos reservados.</p>
             </div>
           </footer>
         </div>

@@ -27,6 +27,8 @@ const ReportStats = ({ data, moduloInfo, stats }) => {
         return calculatePagosCharts(data);
       case 'MultasAfiliados':
         return calculateMultasCharts(data);
+      case 'Caja':
+        return calculateCajaCharts(data);
       default:
         return null;
     }
@@ -221,6 +223,8 @@ const TablesView = ({ data, moduloInfo }) => {
         return generatePagosTable(data);
       case 'MultasAfiliados':
         return generateMultasTable(data);
+      case 'Caja':
+        return generateCajaTable(data);
       default:
         return generateGenericTable(data);
     }
@@ -818,6 +822,233 @@ const HorizontalBarChart = ({ data }) => {
   );
 };
 
+// CAJA GENERAL — Gráficos y Tablas
+// ── CAJA GENERAL — Gráficos y Tablas ──────────────────────────────────────
+
+const calculateCajaCharts = (data) => {
+  const esMeses = data.length > 0 && data[0].mes !== undefined && data[0].dia === undefined;
+  const esDias  = data.length > 0 && data[0].dia !== undefined;
+
+  const MESES = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const mesLabel = (m) => MESES[parseInt(m)] || `M${m}`;
+
+  // ── DATOS COMUNES ──────────────────────────────────────────────────────────
+  const totalAgua    = data.reduce((s, r) => s + parseFloat(r.total_agua    || 0), 0);
+  const totalMultas  = data.reduce((s, r) => s + parseFloat(r.total_multas  || 0), 0);
+  const totalMora    = data.reduce((s, r) => s + parseFloat(r.total_mora    || 0), 0);
+  const totalGeneral = totalAgua + totalMultas + totalMora;
+  const totalFacturado = data.reduce((s, r) => s + parseFloat(r.total_facturado || 0), 0);
+  const totalPendiente = totalFacturado > 0
+    ? data.reduce((s, r) => s + parseFloat(r.total_pendiente || 0), 0)
+    : Math.max(0, totalFacturado - totalAgua);
+
+  // ── GRÁFICO 1: Composición de ingresos (Pie) ──────────────────────────────
+  const pieComposicion = [
+    { label: 'Cobros de Agua',  value: parseFloat(totalAgua.toFixed(2)),   color: '#3b82f6' },
+    { label: 'Multas Cobradas', value: parseFloat(totalMultas.toFixed(2)),  color: '#ef4444' },
+    { label: 'Mora Cobrada',    value: parseFloat(totalMora.toFixed(2)),    color: '#f97316' },
+  ].filter(d => d.value > 0);
+
+  // ── GRÁFICO 2: Recaudación por período (AreaChart) ────────────────────────
+  let areaData = [];
+  if (esMeses) {
+    areaData = data.map(m => ({
+      label: mesLabel(m.mes),
+      value: parseFloat(parseFloat(m.total_general || 0).toFixed(2)),
+    }));
+  } else if (esDias) {
+    areaData = data.map(d => ({
+      label: String(d.dia).slice(-2),
+      value: parseFloat(parseFloat(d.total_general || 0).toFixed(2)),
+    }));
+  }
+
+  // ── GRÁFICO 3: Agua vs Multas vs Mora por período (GroupedBarChart) ────────
+  let groupedData = [];
+  if (esMeses) {
+    groupedData = data.map(m => ({
+      category: mesLabel(m.mes),
+      series: [
+        { name: 'Agua',   value: Math.round(parseFloat(m.total_agua   || 0)), color: '#3b82f6' },
+        { name: 'Multas', value: Math.round(parseFloat(m.total_multas || 0)), color: '#ef4444' },
+        { name: 'Mora',   value: Math.round(parseFloat(m.total_mora   || 0)), color: '#f97316' },
+      ],
+    }));
+  } else if (esDias) {
+    groupedData = data.map(d => ({
+      category: String(d.dia).slice(-2),
+      series: [
+        { name: 'Agua',   value: Math.round(parseFloat(d.total_agua   || 0)), color: '#3b82f6' },
+        { name: 'Multas', value: Math.round(parseFloat(d.total_multas || 0)), color: '#ef4444' },
+        { name: 'Mora',   value: Math.round(parseFloat(d.total_mora   || 0)), color: '#f97316' },
+      ],
+    }));
+  }
+
+  // ── GRÁFICO 4: Facturación por mes (HorizontalBarChart) ───────────────────
+  let facturacionData = [];
+  if (esMeses) {
+    facturacionData = data
+      .filter(m => parseFloat(m.totalfacturado || 0) > 0)
+      .map(m => ({
+        label:    mesLabel(m.mes),
+        value:    Math.round(parseFloat(m.total_facturado || 0)),
+        color:    '#6366f1',
+        subtitle: `Cobrado: $${parseFloat(m.total_agua || 0).toFixed(2)}`,
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+  }
+
+  // ── GRÁFICO 5: % Cobrado por mes (BarChart vertical) ──────────────────────
+  let porcentajeData = [];
+  if (esMeses) {
+    porcentajeData = data
+      .filter(m => parseFloat(m.porcentajecobrado || 0) > 0)
+      .map(m => {
+        const pct = parseFloat(m.porcentajecobrado || 0);
+        return {
+          label: mesLabel(m.mes),
+          value: pct,
+          color: pct >= 80 ? '#22c55e' : pct >= 50 ? '#f97316' : '#ef4444',
+        };
+      });
+  }
+
+  // ── GRÁFICO 6: Cobrado vs Pendiente (PieChart) ────────────────────────────
+  const pieCobrado = [
+    { label: 'Cobrado',   value: parseFloat(totalAgua.toFixed(2)),     color: '#22c55e' },
+    { label: 'Pendiente', value: parseFloat(totalPendiente.toFixed(2)), color: '#ef4444' },
+  ].filter(d => d.value > 0);
+
+  return {
+    pieChart:         pieComposicion.length > 0   ? { title: 'Composición de Ingresos',          data: pieComposicion  } : null,
+    pieChart2:        pieCobrado.length > 0        ? { title: 'Cobrado vs Pendiente',             data: pieCobrado      } : null,
+    areaChart:        areaData.length > 0          ? { title: 'Evolución de Recaudación',         data: areaData        } : null,
+    groupedBarChart:  groupedData.length > 0       ? { title: 'Agua · Multas · Mora por Período', data: groupedData,
+                        series: [{ name: 'Agua', color: '#3b82f6' }, { name: 'Multas', color: '#ef4444' }, { name: 'Mora', color: '#f97316' }] } : null,
+    horizontalBarChart: facturacionData.length > 0 ? { title: 'Facturación por Mes',             data: facturacionData } : null,
+    barChart:         porcentajeData.length > 0    ? { title: '% Cobrado por Mes',               data: porcentajeData  } : null,
+  };
+};
+
+const generateCajaTable = (data) => {
+  const tables = [];
+  if (!data || data.length === 0) return tables;
+
+  const esMeses = data[0].mes !== undefined && data[0].dia === undefined;
+  const MESES_CORTOS = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const MESES_LARGOS = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const mesLabel = (m) => MESES_CORTOS[parseInt(m)] || `M${m}`;
+
+  // ── Totales generales ──────────────────────────────────────────────────────
+  const totalAgua      = data.reduce((s, r) => s + parseFloat(r.total_agua      || 0), 0);
+  const totalMultas    = data.reduce((s, r) => s + parseFloat(r.total_multas    || 0), 0);
+  const totalMora      = data.reduce((s, r) => s + parseFloat(r.total_mora      || 0), 0);
+  const totalGeneral   = totalAgua + totalMultas + totalMora;
+  const totalFacturado = data.reduce((s, r) => s + parseFloat(r.total_facturado || 0), 0);
+  const totalPendiente = data.reduce((s, r) => s + parseFloat(r.total_pendiente || 0), 0);
+  const totalPagos      = data.reduce((s, r) => s + parseInt(r.cantidad_pagos   || 0), 0);
+  const totalCantMultas = data.reduce((s, r) => s + parseInt(r.cantidad_multas  || 0), 0);
+
+
+  // ── TABLA 1: Resumen General ───────────────────────────────────────────────
+  tables.push({
+    title: 'Resumen General de Caja',
+    headers: ['Concepto', 'Monto', '% del Total'],
+    rows: [
+      ['Cobros de Agua',  `$${totalAgua.toFixed(2)}`,    totalGeneral > 0 ? `${(totalAgua   / totalGeneral * 100).toFixed(1)}%` : '0%'],
+      ['Multas Cobradas', `$${totalMultas.toFixed(2)}`,  totalGeneral > 0 ? `${(totalMultas / totalGeneral * 100).toFixed(1)}%` : '0%'],
+      ['Mora Cobrada',    `$${totalMora.toFixed(2)}`,    totalGeneral > 0 ? `${(totalMora   / totalGeneral * 100).toFixed(1)}%` : '0%'],
+      ['TOTAL INGRESOS',  `$${totalGeneral.toFixed(2)}`, '100%'],
+    ],
+  });
+
+  // ── TABLA 2: Facturación vs Recaudación ────────────────────────────────────
+  if (totalFacturado > 0) {
+    const pctCobrado  = (totalAgua    / totalFacturado * 100).toFixed(1);
+    const pctPendiente = (totalPendiente / totalFacturado * 100).toFixed(1);
+    tables.push({
+      title: 'Facturación vs Recaudación',
+      headers: ['Métrica', 'Monto'],
+      rows: [
+        ['Total Facturado',   `$${totalFacturado.toFixed(2)}`],
+        ['Total Cobrado',     `$${totalAgua.toFixed(2)}`],
+        ['Total Pendiente',   `$${totalPendiente.toFixed(2)}`],
+        ['% Cobrado',         `${pctCobrado}%`],
+        ['% Pendiente',       `${pctPendiente}%`],
+        ['N° Pagos de Agua',  totalPagos.toString()],
+        ['N° Multas Cobradas',totalCantMultas.toString()],
+      ],
+    });
+  }
+
+  // ── TABLA 3: Detalle por Período ───────────────────────────────────────────
+  if (esMeses && data.length > 0) {
+    tables.push({
+      title: 'Detalle por Mes',
+      headers: ['Mes', 'Total Agua', 'Multas', 'Mora', 'Total General', 'Facturado', '% Cobrado'],
+      rows: data.map(m => [
+        MESES_LARGOS[parseInt(m.mes)] || `Mes ${m.mes}`,
+        `$${parseFloat(m.total_agua      || 0).toFixed(2)}`,
+        `$${parseFloat(m.total_multas    || 0).toFixed(2)}`,
+        `$${parseFloat(m.total_mora      || 0).toFixed(2)}`,
+        `$${parseFloat(m.total_general   || 0).toFixed(2)}`,
+        `$${parseFloat(m.total_facturado || 0).toFixed(2)}`,
+        `${parseFloat(m.porcentaje_cobrado || 0).toFixed(1)}%`,
+      ]),
+    });
+  } else if (!esMeses && data.length > 0) {
+    tables.push({
+      title: 'Detalle Diario',
+      headers: ['Día', 'Total Agua', 'Multas', 'Total General', 'N° Pagos', 'N° Multas'],
+      rows: data.map(d => [
+        d.dia,
+        `$${parseFloat(d.total_agua    || 0).toFixed(2)}`,
+        `$${parseFloat(d.total_multas  || 0).toFixed(2)}`,
+        `$${parseFloat(d.total_general || 0).toFixed(2)}`,
+        d.cantidad_pagos  || 0,
+        d.cantidad_multas || 0,
+      ]),
+    });
+  }
+
+  // ── TABLA 4: Estadísticas de Recaudación ───────────────────────────────────
+  if (data.length > 0) {
+    const valores    = data.map(r => parseFloat(r.total_general || 0)).filter(v => v > 0);
+    const promedio   = valores.length > 0 ? (valores.reduce((a, b) => a + b, 0) / valores.length) : 0;
+    const maximo     = valores.length > 0 ? Math.max(...valores) : 0;
+    const minimo     = valores.length > 0 ? Math.min(...valores) : 0;
+    const mejorPeriodo = data.length > 0
+      ? data.reduce((max, r) =>
+          parseFloat(r.total_general || 0) > parseFloat(max.total_general || 0) ? r : max,
+          data[0])
+      : null;
+    const labelMejor = mejorPeriodo
+      ? (esMeses
+          ? `${MESES_LARGOS[parseInt(mejorPeriodo.mes)] || mejorPeriodo.mes} — $${parseFloat(mejorPeriodo.total_general || 0).toFixed(2)}`
+          : `Día ${mejorPeriodo.dia} — $${parseFloat(mejorPeriodo.total_general || 0).toFixed(2)}`)
+      : 'Sin datos';
+
+    tables.push({
+      title: 'Estadísticas de Recaudación',
+      headers: ['Métrica', 'Valor'],
+      rows: [
+        ['Períodos con movimiento',  data.length.toString()],
+        ['Total General',            `$${totalGeneral.toFixed(2)}`],
+        ['Promedio por Período',     `$${promedio.toFixed(2)}`],
+        ['Mejor Período',            labelMejor],
+        ['Máximo Recaudado',         `$${maximo.toFixed(2)}`],
+        ['Mínimo Recaudado',         `$${minimo.toFixed(2)}`],
+        ['Total N° Pagos Agua',      totalPagos.toString()],
+        ['Total N° Multas Cobradas', totalCantMultas.toString()],
+      ],
+    });
+  }
+
+  return tables;
+};
+
 
 // ============================================================================
 // FUNCIONES DE CÁLCULO DE DATOS PARA GRÁFICOS
@@ -985,8 +1216,6 @@ const calculateLecturasCharts = (data) => {
     }
   };
 };
-
-
 
 const calculateFacturasCharts = (data) => {
   // Estados de facturas - INCLUIR ANULADAS
@@ -1214,8 +1443,6 @@ const calculateFacturasCharts = (data) => {
   };
 };
 
-
-
 const calculatePagosCharts = (data) => {
   // Métodos de pago
   const efectivo = data.filter(p => 
@@ -1408,7 +1635,6 @@ const calculatePagosCharts = (data) => {
   };
 };
 
-
 const calculateMultasCharts = (data) => {
   // Estados de multas
   const pendientes = data.filter(m => m.estado === 'pendiente');
@@ -1590,8 +1816,6 @@ const calculateMultasCharts = (data) => {
   };
 };
 
-
-
 // ============================================================================
 // FUNCIONES DE GENERACIÓN DE TABLAS
 // ============================================================================
@@ -1751,7 +1975,6 @@ const generateLecturasTable = (data) => {
   
   return tables;
 };
-
 
 const generateFacturasTable = (data) => {
   const tables = [];
@@ -2703,7 +2926,6 @@ const generateMultasTable = (data) => {
   return tables;
 };
 
-
 const generateGenericTable = (data) => {
   return [{
     title: 'Resumen General',
@@ -2713,5 +2935,6 @@ const generateGenericTable = (data) => {
     ]
   }];
 };
+
 
 export default ReportStats;

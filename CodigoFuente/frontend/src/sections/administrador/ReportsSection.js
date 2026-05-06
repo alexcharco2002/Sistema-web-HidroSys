@@ -1,6 +1,6 @@
 // src/sections/administrador/ReportsSection.js
 // MÓDULO DE GENERACIÓN DE REPORTES DEL SISTEMA
-import React, { useState, useEffect, useCallback, useMemo , useRef} from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import authService from '../../services/authServices';
 import reportsServices from '../../services/reportsServices';
 import './ReportsSection.css';
@@ -50,11 +50,12 @@ const ReportsSection = () => {
   // ============================================================
   const [cajaMensualData, setCajaMensualData] = useState(null);
   const [cajaAnualData, setCajaAnualData] = useState(null);
-  const [cajaDetalleDiario, setCajaDetalleDiario] = useState([]);
+  const [, setCajaDetalleDiario] = useState([]);
   const [cajaAniosDisponibles, setCajaAniosDisponibles] = useState([]);
-  const [cajaVistaActiva, setCajaVistaActiva] = useState('mensual'); // 'mensual' | 'anual' | 'diario'
+  const [, setCajaVistaActiva] = useState('mensual'); // 'mensual' | 'anual' | 'diario'
   const [cajaMesFiltro, setCajaMesFiltro] = useState(null);
   const [cajaAnioFiltro, setCajaAnioFiltro] = useState(null);
+  const [cajaMesesDisponibles, setCajaMesesDisponibles] = useState({}); 
 
 
   // ============================================================
@@ -859,24 +860,26 @@ const ReportsSection = () => {
   // ============================================================
   // CARGAR AÑOS DISPONIBLES DE CAJA AL SELECCIONAR EL MÓDULO
   // ============================================================
-  useEffect(() => {
-    if (selectedModulo !== 'Caja') {
-      setCajaAniosDisponibles([]);
-      return;
-    }
-    const cargarAniosCaja = async () => {
-      const result = await reportsServices.getCajaAniosDisponibles();
-      if (result.success && result.data.length > 0) {
-        setCajaAniosDisponibles(result.data);
-        // Seleccionar el año más reciente si no hay uno activo
-        if (!cajaAnioFiltro) {
-          setCajaAnioFiltro(result.data[0]); // el más reciente
-        }
+useEffect(() => {
+  if (selectedModulo !== 'Caja') {
+    setCajaAniosDisponibles([]);
+    return;
+  }
+  const cargarAniosCaja = async () => {
+    const result = await reportsServices.getCajaAniosDisponibles();
+    if (result.success && result.data.length > 0) {
+      setCajaAniosDisponibles(result.data);
+      // ← NUEVO: guardar meses disponibles desde el primer request
+      setCajaMesesDisponibles(result.mesesPorAnio || {});
+      if (!cajaAnioFiltro) {
+        setCajaAnioFiltro(result.data[0]); // año más reciente
+        // cajaMesFiltro queda null → vista anual por defecto
       }
-    };
-    cargarAniosCaja();
-  }, [selectedModulo]);
-
+    }
+  };
+  cargarAniosCaja();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [selectedModulo]);
 
 
   // ============================================================
@@ -1008,31 +1011,90 @@ const ReportsSection = () => {
 
         case 'Caja': {
           const hoy = new Date();
-          const mesActual = cajaMesFiltro || hoy.getMonth() + 1;
           const anioActual = cajaAnioFiltro || hoy.getFullYear();
+          const mesActual  = cajaMesFiltro ?? null; // null = vista anual
 
-          // Cargar los 3 reportes en paralelo
-          const [mensualRes, anualRes, diarioRes, aniosRes] = await Promise.all([
-            reportsServices.getCajaMensual({ mes: mesActual, anio: anioActual }),
+          const [anualRes, mensualRes, diarioRes] = await Promise.all([
             reportsServices.getCajaAnual({ anio: anioActual }),
-            reportsServices.getCajaDetalleDiario({ mes: mesActual, anio: anioActual }),
-            reportsServices.getCajaAniosDisponibles()
+            mesActual !== null
+              ? reportsServices.getCajaMensual({ mes: mesActual, anio: anioActual })
+              : Promise.resolve({ success: false, data: null }),
+            mesActual !== null
+              ? reportsServices.getCajaDetalleDiario({ mes: mesActual, anio: anioActual })
+              : Promise.resolve({ success: false, data: null }),
           ]);
 
-          if (mensualRes.success) setCajaMensualData(mensualRes.data);
-          if (anualRes.success) setCajaAnualData(anualRes.data);
-          if (diarioRes.success) setCajaDetalleDiario(diarioRes.data?.detalle || []);
-          if (aniosRes.success) setCajaAniosDisponibles(aniosRes.data);
+          // Siempre cargar anual
+          if (anualRes.success) {
+            setCajaAnualData(anualRes.data);
+            // Actualizar meses que tienen datos reales
+            const mesesConDatos = (anualRes.data?.meses || [])
+              .filter(m => m.total_general > 0)
+              .map(m => m.mes);
+            setCajaMesesDisponibles(prev => ({
+              ...prev,
+              [anioActual]: mesesConDatos
+            }));
+          }
 
-          // Para la tabla general usamos los meses del anual
-          result = {
-            success: true,
-            data: anualRes.data?.meses || [],
-            total: 12
-          };
+          // Mensual y diario: solo si hay mes seleccionado
+          if (mensualRes.success && mensualRes.data) {
+            setCajaMensualData(mensualRes.data);
+          } else {
+            setCajaMensualData(null);
+          }
+
+          const detalleDiario = diarioRes?.success ? (diarioRes.data?.detalle || []) : [];
+          setCajaDetalleDiario(detalleDiario);
+
+          // ─── DECIDIR QUÉ MUESTRA LA TABLA ───────────────────────────────
+          // Vista mensual → detalle diario formateado para la tabla
+          // Vista anual   → meses del año
+          if (mesActual !== null && detalleDiario.length > 0) {
+            // Formatear detalle diario para que la tabla lo entienda
+            const detalleFormateado = detalleDiario.map(d => ({
+              dia:             d.dia,
+              total_agua:      d.total_agua,
+              total_multas:    d.total_multas,
+              total_general:   d.total_general,
+              cantidad_pagos:  d.cantidad_pagos,
+              cantidad_multas: d.cantidad_multas,
+              // Métodos de pago como columnas separadas
+              ...(d.metodos
+                ? Object.fromEntries(
+                    Object.entries(d.metodos).map(([k, v]) => [`metodo_${k}`, v])
+                  )
+                : {}),
+            }));
+            result = {
+              success: true,
+              data:  detalleFormateado,
+              total: detalleFormateado.length,
+            };
+          } else {
+            // Vista anual: solo meses con movimiento
+            const mesesConMovimiento = (anualRes.data?.meses || [])
+              .filter(m => m.total_general > 0)
+              .map(m => ({
+                mes:                m.mes,
+                nombre_mes:         m.nombre_mes,
+                total_agua:         m.total_agua,
+                total_multas:       m.total_multas,
+                total_mora:         m.total_mora,
+                total_general:      m.total_general,
+                cantidad_pagos:     m.cantidad_pagos,
+                cantidad_multas:    m.cantidad_multas,
+                total_facturado:    m.total_facturado,
+                porcentaje_cobrado: m.porcentaje_cobrado,
+              }));
+            result = {
+              success: true,
+              data:  mesesConMovimiento,
+              total: mesesConMovimiento.length,
+            };
+          }
           break;
         }
-
 
         default:
           // Fallback genérico
@@ -1083,21 +1145,16 @@ const ReportsSection = () => {
     generarReporte();
   }, [selectedModulo, periodoSeleccionado, permissions.canRead, generarReporte]);
 
-  // RE-GENERAR REPORTE CUANDO CAMBIA AÑO O MES DE CAJA
-const cajaFiltrosRef = useRef({ anio: null, mes: null });
 
+// REEMPLAZAR el useEffect de cajaFiltros por este:
 useEffect(() => {
   if (selectedModulo !== 'Caja') return;
   if (!permissions.canRead) return;
-  if (!cajaAnioFiltro) return;
+  if (!cajaAnioFiltro) return;   // esperar hasta tener año
 
-  // Evitar re-ejecución si los filtros no cambiaron realmente
-  const prev = cajaFiltrosRef.current;
-  if (prev.anio === cajaAnioFiltro && prev.mes === cajaMesFiltro) return;
-  
-  cajaFiltrosRef.current = { anio: cajaAnioFiltro, mes: cajaMesFiltro };
   generarReporte();
-}, [cajaAnioFiltro, cajaMesFiltro, selectedModulo, permissions.canRead, generarReporte]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [cajaAnioFiltro, cajaMesFiltro, selectedModulo, permissions.canRead]);
 
   // ============================================================
   // FUNCIONES DE EXPORTACIÓN - CONECTADAS AL BACKEND
@@ -1109,7 +1166,7 @@ useEffect(() => {
 
   // Opciones de ordenamiento por módulo
   const sortOptions = {
-    Usuarios: [                                                    // ← AGREGA ESTO
+    Usuarios: [                                                     
       { value: 'nombres',         label: 'Nombres' },
       { value: 'apellidos',       label: 'Apellidos' },
       { value: 'usuario',         label: 'Usuario' },
@@ -1250,6 +1307,7 @@ useEffect(() => {
     setCajaMensualData(null);
     setCajaAnualData(null);
     setCajaDetalleDiario([]);
+    setCajaMesesDisponibles({});
     setCajaVistaActiva('mensual');
     setCajaAnioFiltro(null);   
     setCajaMesFiltro(null);    
@@ -1653,11 +1711,6 @@ const formatTooltip = (key, value) => {
                   .map(Number)
                   .sort((a, b) => b - a)
 
-                const nombresMeses = [
-                  '', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-                  'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
-                ]
-
                 return (
                   <div className="historial-anios-lista">
                     {aniosOrdenados.map(anio => {
@@ -1685,33 +1738,60 @@ const formatTooltip = (key, value) => {
                           </button>
 
                           {/* CHIPS DE MESES */}
-                          {estaExpandido && (
-                            <div className="historial-meses-grid">
-                              {mesesDelAnio.map(periodo => {
-                                const esSeleccionado =
-                                  periodoSeleccionado === `${periodo.mes}-${periodo.anio}`
+                          {estaExpandido && (() => {
+                            // Meses que tienen datos para este año (del backend)
+                            const mesesConDatos = cajaMesesDisponibles[anio] || [];
+                            // Si todavía no cargamos datos del año, mostrar todos (estado inicial)
+                            const sinInfoAun = mesesConDatos.length === 0;
 
-                                return (
-                                  <button
-                                    key={`${periodo.mes}-${periodo.anio}`}
-                                    className={`historial-mes-chip ${esSeleccionado ? 'seleccionado' : 'incompleto'}`}
-                                    onClick={() =>
-                                      setPeriodoSeleccionado(`${periodo.mes}-${periodo.anio}`)
-                                    }
-                                    title={periodo.periodo}
-                                  >
-                                    <span className={`historial-mes-dot ${esSeleccionado ? 'completo' : 'incompleto'}`} />
-                                    <span className="historial-mes-nombre">
-                                      {nombresMeses[periodo.mes]}
-                                    </span>
-                                    <span className="historial-mes-pct">
-                                      {periodo.anio}
-                                    </span>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          )}
+                            const mesesDisponibles = [
+                              { num: null, label: 'Todo el año', abrev: 'Año' },
+                              { num: 1,  label: 'Enero',      abrev: 'Ene' },
+                              { num: 2,  label: 'Febrero',    abrev: 'Feb' },
+                              { num: 3,  label: 'Marzo',      abrev: 'Mar' },
+                              { num: 4,  label: 'Abril',      abrev: 'Abr' },
+                              { num: 5,  label: 'Mayo',       abrev: 'May' },
+                              { num: 6,  label: 'Junio',      abrev: 'Jun' },
+                              { num: 7,  label: 'Julio',      abrev: 'Jul' },
+                              { num: 8,  label: 'Agosto',     abrev: 'Ago' },
+                              { num: 9,  label: 'Septiembre', abrev: 'Sep' },
+                              { num: 10, label: 'Octubre',    abrev: 'Oct' },
+                              { num: 11, label: 'Noviembre',  abrev: 'Nov' },
+                              { num: 12, label: 'Diciembre',  abrev: 'Dic' },
+                            ];
+
+                            // Filtrar: "Todo el año" siempre; meses solo si tienen datos
+                            const mesesFiltrados = mesesDisponibles.filter(({ num }) => {
+                              if (num === null) return true;              // "Todo el año" siempre visible
+                              if (sinInfoAun)   return true;             // aún cargando: mostrar todos
+                              return mesesConDatos.includes(num);        // solo meses con movimientos
+                            });
+
+                            return (
+                              <div className="historial-meses-grid">
+                                {mesesFiltrados.map(({ num, label, abrev }) => {
+                                  const esSeleccionado =
+                                    cajaAnioFiltro === anio && cajaMesFiltro === num;
+
+                                  return (
+                                    <button
+                                      key={num ?? 'all'}
+                                      className={`historial-mes-chip ${esSeleccionado ? 'seleccionado' : 'incompleto'}`}
+                                      onClick={() => {
+                                        setCajaAnioFiltro(anio);
+                                        setCajaMesFiltro(num);   // null = vista anual completa
+                                      }}
+                                      title={label}
+                                    >
+                                      <span className={`historial-mes-dot ${esSeleccionado ? 'completo' : 'incompleto'}`} />
+                                      <span className="historial-mes-nombre">{abrev}</span>
+                                      <span className="historial-mes-pct">{anio}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
                         </div>
                       )
                     })}
@@ -1721,10 +1801,9 @@ const formatTooltip = (key, value) => {
             </div>
           )}
 
-          {/* ─── SELECTOR DE AÑO/MES — solo para Caja ─────────────────── */}
+          {/* SELECTOR DE AÑO/MES solo para Caja */}
           {selectedModulo === 'Caja' && cajaAniosDisponibles.length > 0 && (
             <div className="periodo-historial-container">
-
               {/* ENCABEZADO */}
               <button
                 className="periodo-historial-header periodo-historial-toggle"
@@ -1742,9 +1821,7 @@ const formatTooltip = (key, value) => {
                     Selecciona el año y mes que deseas visualizar
                   </p>
                 </div>
-                <ChevronDown
-                  className={`w-5 h-5 historial-chevron text-green-500 ${historialExpandido ? 'open' : ''}`}
-                />
+                <ChevronDown className={`w-5 h-5 historial-chevron text-green-500 ${historialExpandido ? 'open' : ''}`} />
               </button>
 
               {/* CONTENIDO */}
@@ -1752,25 +1829,36 @@ const formatTooltip = (key, value) => {
                 <div className="historial-anios-lista">
                   {cajaAniosDisponibles.map(anio => {
                     const estaExpandido = aniosExpandidos[anio] !== false;
+
+                    //  Meses que tienen datos para este año (del backend)
+                    const mesesConDatos = cajaMesesDisponibles?.[anio] ?? [];
+                    const sinInfoAun = mesesConDatos.length === 0;
+
                     const mesesDisponibles = [
-                      { num: null, label: 'Todo el año', abrev: 'Año' },
-                      { num: 1,  label: 'Enero',      abrev: 'Ene' },
-                      { num: 2,  label: 'Febrero',    abrev: 'Feb' },
-                      { num: 3,  label: 'Marzo',      abrev: 'Mar' },
-                      { num: 4,  label: 'Abril',      abrev: 'Abr' },
-                      { num: 5,  label: 'Mayo',       abrev: 'May' },
-                      { num: 6,  label: 'Junio',      abrev: 'Jun' },
-                      { num: 7,  label: 'Julio',      abrev: 'Jul' },
-                      { num: 8,  label: 'Agosto',     abrev: 'Ago' },
-                      { num: 9,  label: 'Septiembre', abrev: 'Sep' },
-                      { num: 10, label: 'Octubre',    abrev: 'Oct' },
-                      { num: 11, label: 'Noviembre',  abrev: 'Nov' },
-                      { num: 12, label: 'Diciembre',  abrev: 'Dic' },
+                      { num: null, label: 'Todo el año',   abrev: 'Año' },
+                      { num: 1,    label: 'Enero',          abrev: 'Ene' },
+                      { num: 2,    label: 'Febrero',         abrev: 'Feb' },
+                      { num: 3,    label: 'Marzo',           abrev: 'Mar' },
+                      { num: 4,    label: 'Abril',           abrev: 'Abr' },
+                      { num: 5,    label: 'Mayo',            abrev: 'May' },
+                      { num: 6,    label: 'Junio',           abrev: 'Jun' },
+                      { num: 7,    label: 'Julio',           abrev: 'Jul' },
+                      { num: 8,    label: 'Agosto',          abrev: 'Ago' },
+                      { num: 9,    label: 'Septiembre',      abrev: 'Sep' },
+                      { num: 10,   label: 'Octubre',         abrev: 'Oct' },
+                      { num: 11,   label: 'Noviembre',       abrev: 'Nov' },
+                      { num: 12,   label: 'Diciembre',       abrev: 'Dic' },
                     ];
+
+                    //filtrar igual que el bloque de Lecturas/Pagos/Facturas
+                    const mesesFiltrados = mesesDisponibles.filter(({ num }) => {
+                      if (num === null) return true;   // "Todo el año" siempre visible
+                      if (sinInfoAun)  return true;    // aún cargando → mostrar todos
+                      return mesesConDatos.includes(num); // solo meses con movimiento
+                    });
 
                     return (
                       <div key={anio} className="historial-anio-bloque">
-
                         {/* CABECERA DEL AÑO */}
                         <button
                           className="historial-anio-header"
@@ -1779,34 +1867,29 @@ const formatTooltip = (key, value) => {
                           <span className="historial-anio-label">
                             <Calendar className="w-4 h-4" />
                             {anio}
-                            <span className="historial-anio-badge">
-                              {cajaAnioFiltro === anio
-                                ? (cajaMesFiltro
-                                    ? mesesDisponibles.find(m => m.num === cajaMesFiltro)?.label
-                                    : 'Vista anual')
-                                : '12 meses'}
-                            </span>
                           </span>
-                          <ChevronDown
-                            className={`w-4 h-4 historial-chevron ${estaExpandido ? 'open' : ''}`}
-                          />
+                          <span className="historial-anio-badge">
+                            {cajaAnioFiltro === anio
+                              ? cajaMesFiltro
+                                ? mesesDisponibles.find(m => m.num === cajaMesFiltro)?.label
+                                : 'Vista anual'
+                              : `${mesesFiltrados.filter(m => m.num !== null).length} meses`}
+                          </span>
+                          <span>
+                            <ChevronDown className={`w-4 h-4 historial-chevron ${estaExpandido ? 'open' : ''}`} />
+                          </span>
                         </button>
 
-                        {/* CHIPS DE MES */}
+                        {/* CHIPS DE MES — solo meses con datos */}
                         {estaExpandido && (
                           <div className="historial-meses-grid">
-                            {mesesDisponibles.map(({ num, label, abrev }) => {
-                              const esSeleccionado =
-                                cajaAnioFiltro === anio && cajaMesFiltro === num;
-
+                            {mesesFiltrados.map(({ num, label, abrev }) => {
+                              const esSeleccionado = cajaAnioFiltro === anio && cajaMesFiltro === num;
                               return (
                                 <button
                                   key={num ?? 'all'}
                                   className={`historial-mes-chip ${esSeleccionado ? 'seleccionado' : 'incompleto'}`}
-                                  onClick={() => {
-                                    setCajaAnioFiltro(anio);
-                                    setCajaMesFiltro(num);
-                                  }}
+                                  onClick={() => { setCajaAnioFiltro(anio); setCajaMesFiltro(num); }}
                                   title={label}
                                 >
                                   <span className={`historial-mes-dot ${esSeleccionado ? 'completo' : 'incompleto'}`} />
@@ -2062,7 +2145,7 @@ const formatTooltip = (key, value) => {
                 </button>
 
                 {/* Botón estadísticas - SOLO para Lecturas, Facturas, Pagos, MultasAfiliados */}
-                {['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo) && (
+                {['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados', 'Caja'].includes(selectedModulo) && (
                   <button
                     onClick={() => setMostrarEstadisticas(!mostrarEstadisticas)}
                     className={`filter-control-btn ${mostrarEstadisticas ? 'active' : ''}`}
@@ -2127,10 +2210,16 @@ const formatTooltip = (key, value) => {
           {/* PANEL DE ESTADÍSTICAS AVANZADAS (FUERA DE FILTERS-SECTION) */}
           {reporteData.length > 0 && 
           mostrarEstadisticas && 
-          ['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo) && (
+          ['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados', 'Caja'].includes(selectedModulo) && (
             <div className="stats-panel">
               <ReportStats 
-                data={reporteData} 
+                 data={
+    selectedModulo === 'Caja'
+      // Vista anual → array de meses
+      ? (cajaAnualData?.meses ?? [])
+      // Vista mensual → envolver resumen en array para que tenga estructura
+      : reporteData
+  }
                 moduloInfo={modulosSistema.find(m => m.value === selectedModulo)} 
                 stats={estadisticasDinamicas}
               />

@@ -2185,14 +2185,35 @@ def get_caja_anual(
             for r in facturado_por_mes
         }
 
+        # ── Construir lista SOLO con meses que tienen movimiento ──────────────
         meses_data = []
         for m in range(1, 13):
-            agua = agua_por_mes.get(m, {"total": 0, "cantidad": 0})
-            multa = multas_mes.get(m, {"total": 0, "cantidad": 0})
-            mora = mora_mes.get(m, 0)
-            fact = facturado_mes.get(m, {"total": 0, "cantidad": 0})
-            total_m = round(agua["total"] + multa["total"], 2)
-            pct = round((agua["total"] / fact["total"]) * 100, 1) if fact["total"] > 0 else 0.0
+            agua  = agua_por_mes.get(m,  {"total": 0, "cantidad": 0})
+            multa = multas_mes.get(m,    {"total": 0, "cantidad": 0})
+            mora  = mora_mes.get(m, 0)
+            fact  = facturado_mes.get(m, {"total": 0, "cantidad": 0})
+
+            # ✅ FILTRO CORREGIDO: solo mostrar si hay algún INGRESO real
+            # (no basta con que haya facturación, debe haber al menos un cobro o multa)
+            tiene_ingresos = agua["total"] > 0 or multa["total"] > 0 or mora > 0
+            if not tiene_ingresos:
+                continue
+
+            # ── En get_caja_anual, reemplazar el bloque del % cobrado ──────────────────
+
+            total_cobrado = round(agua["total"] + multa["total"] + mora, 2)
+
+            # ✅ % COBRADO: total cobrado (agua + multas + mora) vs total facturado
+            # Si hay cobros pero no hay facturación del mes = pagos/multas de otro período
+            if fact["total"] > 0:
+                pct = round((total_cobrado / fact["total"]) * 100, 1)
+                pct = min(pct, 100.0)
+            elif total_cobrado > 0:
+                # Hubo cobros (ej: solo multas) pero sin factura del mes
+                # Mostramos 100% porque todo lo cobrable se cobró
+                pct = 100.0
+            else:
+                pct = 0.0
 
             meses_data.append({
                 "mes": m,
@@ -2200,14 +2221,14 @@ def get_caja_anual(
                 "total_agua": round(agua["total"], 2),
                 "total_multas": round(multa["total"], 2),
                 "total_mora": round(mora, 2),
-                "total_general": round(total_m + mora, 2),
+                "total_general": total_cobrado,
                 "cantidad_pagos": agua["cantidad"],
                 "cantidad_multas": multa["cantidad"],
                 "total_facturado": round(fact["total"], 2),
-                "total_pendiente": round(fact["total"] - agua["total"], 2),
+                "total_pendiente": round(max(fact["total"] - agua["total"], 0), 2),
                 "porcentaje_cobrado": pct
             })
-
+            
         total_anual_agua = sum(m["total_agua"] for m in meses_data)
         total_anual_multas = sum(m["total_multas"] for m in meses_data)
         total_anual_mora = sum(m["total_mora"] for m in meses_data)
@@ -2373,15 +2394,17 @@ def get_anios_disponibles(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """📅 Lista de años con movimientos en caja"""
+    """📅 Lista de años con movimientos en caja, y meses disponibles por año"""
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "reportes", "lectura")
 
+    # ── Años con pagos de agua ──────────────────────────────────────────
     anios_pagos = (
         db.query(extract('year', Pago.fecha_pago).label('anio'))
         .filter(Pago.fecha_pago.isnot(None), Pago.estado_pago == 'REGISTRADO')
         .distinct().all()
     )
+    # ── Años con multas cobradas ────────────────────────────────────────
     anios_multas = (
         db.query(extract('year', MultaAfiliado.fecha_pago).label('anio'))
         .filter(MultaAfiliado.fecha_pago.isnot(None), MultaAfiliado.estado == 'pagada')
@@ -2394,4 +2417,42 @@ def get_anios_disponibles(
         reverse=True
     )
 
-    return {"success": True, "anios": todos}
+    # ── Meses con datos por año (pagos de agua) ─────────────────────────
+    meses_pagos = (
+        db.query(
+            extract('year',  Pago.fecha_pago).label('anio'),
+            extract('month', Pago.fecha_pago).label('mes'),
+        )
+        .filter(Pago.fecha_pago.isnot(None), Pago.estado_pago == 'REGISTRADO')
+        .distinct()
+        .all()
+    )
+    # ── Meses con datos por año (multas cobradas) ───────────────────────
+    meses_multas = (
+        db.query(
+            extract('year',  MultaAfiliado.fecha_pago).label('anio'),
+            extract('month', MultaAfiliado.fecha_pago).label('mes'),
+        )
+        .filter(MultaAfiliado.fecha_pago.isnot(None), MultaAfiliado.estado == 'pagada')
+        .distinct()
+        .all()
+    )
+
+    # Unir y agrupar: { anio: sorted([meses]) }
+    meses_por_anio: dict[int, set] = {}
+    for r in (*meses_pagos, *meses_multas):
+        a, m = int(r.anio), int(r.mes)
+        if a not in meses_por_anio:
+            meses_por_anio[a] = set()
+        meses_por_anio[a].add(m)
+
+    meses_por_anio_sorted = {
+        a: sorted(meses)
+        for a, meses in meses_por_anio.items()
+    }
+
+    return {
+        "success": True,
+        "anios": todos,                        # lista de años  (igual que antes)
+        "meses_por_anio": meses_por_anio_sorted  # { 2024: [1,3,5], 2025: [1,2] }
+    }

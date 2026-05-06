@@ -861,11 +861,13 @@ async getCajaAniosDisponibles() {
     const response = await this.makeRequest(API_CONFIG.endpoints.cajaAniosDisponibles);
     return {
       success: true,
-      data: response.anios || []
+      data: response.anios || [],
+      // ← NUEVO: meses disponibles por año
+      mesesPorAnio: response.meses_por_anio || {}
     };
   } catch (error) {
     console.error('❌ Error obteniendo años disponibles:', error);
-    return { success: false, message: error.message, data: [] };
+    return { success: false, message: error.message, data: [], mesesPorAnio: {} };
   }
 }
 

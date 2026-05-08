@@ -761,46 +761,60 @@ async downloadComprobante(idPago) {
 }
 // services/paymentsServices.js
 
-/**
- * Registrar pago múltiple
- */
+// 
 async createPagoMultiple(pagoMultipleData) {
   try {
-    const data = await this.makeRequest(`${API_CONFIG.endpoints.pagos}/multiple`, {
-      method: 'POST',
-      body: {
-        facturas: pagoMultipleData.facturas.map(f => ({
-          id_factura: parseInt(f.id_factura),
-          monto_a_pagar: parseFloat(f.monto_a_pagar),
-          incluir_multas: f.incluir_multas !== undefined ? f.incluir_multas : true,
-          incluir_mora: f.incluir_mora !== undefined ? f.incluir_mora : true,
-          incluir_consumos: f.incluir_consumos !== undefined ? f.incluir_consumos : true
-        })),
-        metodo_pago: pagoMultipleData.metodo_pago || 'EFECTIVO',
-        id_usuario_afi: pagoMultipleData.id_usuario_afi ? parseInt(pagoMultipleData.id_usuario_afi) : null,
-        id_cajero: pagoMultipleData.id_cajero ? parseInt(pagoMultipleData.id_cajero) : null,
-        observaciones: pagoMultipleData.observaciones || null
+    // ✅ El payload ya viene bien formado desde handlePagoMultiple,
+    //    solo aseguramos los tipos críticos que Pydantic valida como integer > 0
+    const body = {
+      facturas: pagoMultipleData.facturas.map(f => ({
+        id_factura:       parseInt(f.id_factura, 10),           // ✅ ya viene con underscore
+        monto_a_pagar:    parseFloat(f.monto_a_pagar) || 0.01,  // fallback mínimo
+        incluir_multas:   f.incluir_multas  ?? true,
+        incluir_mora:     f.incluir_mora    ?? true,
+        incluir_consumos: f.incluir_consumos ?? true,
+      })),
+      metodo_pago:    pagoMultipleData.metodo_pago    || 'EFECTIVO',
+      id_usuario_afi: pagoMultipleData.id_usuario_afi
+                        ? parseInt(pagoMultipleData.id_usuario_afi, 10)
+                        : null,
+      id_cajero:      pagoMultipleData.id_cajero
+                        ? parseInt(pagoMultipleData.id_cajero, 10)
+                        : null,
+      observaciones:  pagoMultipleData.observaciones  || null,
+    };
+
+    // 🔍 Verificar antes de enviar
+    console.log('📤 Body enviado al backend:', JSON.stringify(body, null, 2));
+
+    // Validación previa — detectar IDs inválidos antes de que falle Pydantic
+    body.facturas.forEach((f, i) => {
+      if (!f.id_factura || f.id_factura <= 0 || isNaN(f.id_factura)) {
+        throw new Error(`Factura [${i}]: id_factura inválido → ${f.id_factura}`);
       }
     });
+    if (!body.id_cajero || body.id_cajero <= 0) {
+      throw new Error(`id_cajero inválido → ${body.id_cajero}`);
+    }
 
-    console.log('📤 Pago múltiple enviado:', pagoMultipleData);
+    const data = await this.makeRequest(
+      `${API_CONFIG.endpoints.pagos}/multiple`,
+      { method: 'POST', body }
+    );
 
-    // Limpiar cachés
     this.cachedPagos = null;
     this.cachedStats = null;
 
     return {
       success: true,
-      data: data,
+      data,
       message: 'Pago múltiple registrado exitosamente'
     };
-    
+
   } catch (error) {
     console.error('❌ Error registrando pago múltiple:', error);
-    return {
-      success: false,
-      message: error.message || 'Error al registrar pago múltiple'
-    };
+    // ✅ Re-lanzar para que handlePagoMultiple lo capture en su try/catch
+    throw error;
   }
 }
 

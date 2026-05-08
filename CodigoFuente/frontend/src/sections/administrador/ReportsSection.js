@@ -33,7 +33,7 @@ const ReportsSection = () => {
   const [filterEstado, setFilterEstado] = useState('todos');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // ====== FILTROS ESPECÍFICOS POR MÓDULO ======
+  // FILTROS ESPECÍFICOS POR MÓDULO 
   const [filterSector, setFilterSector] = useState('todos');        // Para Medidores
   const [filterTipoLectura, setFilterTipoLectura] = useState('todos'); // Para Lecturas (real/estimada)
   const [filterPagoCompleto, setFilterPagoCompleto] = useState('todos'); // Para Pagos
@@ -56,6 +56,30 @@ const ReportsSection = () => {
   const [cajaMesFiltro, setCajaMesFiltro] = useState(null);
   const [cajaAnioFiltro, setCajaAnioFiltro] = useState(null);
   const [cajaMesesDisponibles, setCajaMesesDisponibles] = useState({}); 
+
+  // ── ESTADO DEL MODAL INDIVIDUAL ──────────────────────────────
+  const [modalIndividual, setModalIndividual] = useState(false);
+  const [pasoModal, setPasoModal] = useState(1);
+  const [afiliadosModal, setAfiliadosModal] = useState([]);
+  const [searchAfiliado, setSearchAfiliado] = useState('');
+  const [afiliadoSeleccionado, setAfiliadoSeleccionado] = useState(null);
+  const [tipoPeriodoIndividual, setTipoPeriodoIndividual] = useState('mes');
+  const [periodoIndMes, setPeriodoIndMes] = useState(new Date().getMonth() + 1);
+  const [periodoIndAnio, setPeriodoIndAnio] = useState(new Date().getFullYear());
+  const [rangoDesde, setRangoDesde] = useState({ mes: 1, anio: new Date().getFullYear() });
+  const [rangoHasta, setRangoHasta] = useState({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear() });
+  const [anioIndividual, setAnioIndividual] = useState(new Date().getFullYear());
+  const [loadingReporteIndividual, setLoadingReporteIndividual] = useState(false);
+  const [periodosIndividuales, setPeriodosIndividuales] = useState({});
+  // { Lecturas: [{mes, anio},...], Facturas: [...], Pagos: [...], MultasAfiliados: [...] }
+  const [periodoIndividualSeleccionado, setPeriodoIndividualSeleccionado] = useState(null);
+// ELIMINA: tipoPeriodoIndividual, periodoIndMes, periodoIndAnio, rangoDesde, rangoHasta, anioIndividual
+// AGREGA estos:
+const [modoSeleccion, setModoSeleccion] = useState('mes'); // 'mes' | 'rango' | 'anio'
+
+const [rangoDesdeInd, setRangoDesdeInd] = useState(null);   // "mes-anio"
+const [rangoHastaInd, setRangoHastaInd] = useState(null);   // "mes-anio"
+const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
 
 
   // ============================================================
@@ -774,6 +798,7 @@ const ReportsSection = () => {
     setPermissions({ canRead });
   };
 
+  // cargar periodos disponibles cuando se selecciona un módulo que los requiere
   useEffect(() => {
     const cargarPeriodos = async () => {
       if (!['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo)) {
@@ -800,7 +825,6 @@ const ReportsSection = () => {
         default:
           return;
       }
-
       if (result.success && result.data.length > 0) {
         setPeriodos(result.data);
 
@@ -808,19 +832,32 @@ const ReportsSection = () => {
         const mesActual = fechaActual.getMonth() + 1;
         const anioActual = fechaActual.getFullYear();
 
-        const periodoActual = result.data.find(
+        // ── Filtrar solo periodos válidos (no futuros) ──
+        const periodosValidos = result.data.filter(p => {
+          const esFuturo =
+            p.anio > anioActual ||
+            (p.anio === anioActual && p.mes > mesActual);
+          return !esFuturo;
+        });
+
+        // ── Buscar el periodo actual exacto ──
+        const periodoActual = periodosValidos.find(
           p => p.mes === mesActual && p.anio === anioActual
         );
 
         let periodoValue;
         if (periodoActual) {
+          // Hay datos del mes actual → seleccionarlo
           periodoValue = `${periodoActual.mes}-${periodoActual.anio}`;
-        } else {
-          const masReciente = result.data[0];
+        } else if (periodosValidos.length > 0) {
+          // No hay datos del mes actual → el más reciente válido
+          const masReciente = periodosValidos[0];
           periodoValue = `${masReciente.mes}-${masReciente.anio}`;
+        } else {
+          // No hay periodos válidos
+          periodoValue = '';
         }
 
-        // Solo setear el periodo, NO llamar a generarReporte aquí
         setPeriodoSeleccionado(periodoValue);
       } else {
         setPeriodos([]);
@@ -839,7 +876,7 @@ const ReportsSection = () => {
   // Cargar sectores cuando se selecciona Medidores
   useEffect(() => {
     const cargarSectores = async () => {
-      if (selectedModulo !== 'Medidores' && selectedModulo !== 'Afiliados') {
+      if (selectedModulo !== 'Medidores' && selectedModulo !== 'Afiliados' && selectedModulo !== 'Lecturas') {
         setSectoresDisponibles([]);
         return;
       }
@@ -860,26 +897,25 @@ const ReportsSection = () => {
   // ============================================================
   // CARGAR AÑOS DISPONIBLES DE CAJA AL SELECCIONAR EL MÓDULO
   // ============================================================
-useEffect(() => {
-  if (selectedModulo !== 'Caja') {
-    setCajaAniosDisponibles([]);
-    return;
-  }
-  const cargarAniosCaja = async () => {
-    const result = await reportsServices.getCajaAniosDisponibles();
-    if (result.success && result.data.length > 0) {
-      setCajaAniosDisponibles(result.data);
-      // ← NUEVO: guardar meses disponibles desde el primer request
-      setCajaMesesDisponibles(result.mesesPorAnio || {});
-      if (!cajaAnioFiltro) {
-        setCajaAnioFiltro(result.data[0]); // año más reciente
-        // cajaMesFiltro queda null → vista anual por defecto
-      }
+  useEffect(() => {
+    if (selectedModulo !== 'Caja') {
+      setCajaAniosDisponibles([]);
+      return;
     }
-  };
-  cargarAniosCaja();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [selectedModulo]);
+    const cargarAniosCaja = async () => {
+      const result = await reportsServices.getCajaAniosDisponibles();
+      if (result.success && result.data.length > 0) {
+        setCajaAniosDisponibles(result.data);
+        // ← NUEVO: guardar meses disponibles desde el primer request
+        setCajaMesesDisponibles(result.mesesPorAnio || {});
+        if (!cajaAnioFiltro) {
+          setCajaAnioFiltro(result.data[0]); // año más reciente
+          // cajaMesFiltro queda null → vista anual por defecto
+        }
+      }
+    };
+    cargarAniosCaja();
+  }, [selectedModulo, cajaAnioFiltro]);
 
 
   // ============================================================
@@ -952,7 +988,8 @@ useEffect(() => {
         case 'Lecturas':
         result = await reportsServices.getReporteLecturas({
           ...filtros,
-          es_estimada: filterTipoLectura === 'estimadas' ? true : (filterTipoLectura === 'reales' ? false : undefined)
+          es_estimada: filterTipoLectura === 'estimadas' ? true : (filterTipoLectura === 'reales' ? false : undefined),
+          sector: filterSector !== 'todos' ? filterSector : undefined
         });
         break;
 
@@ -997,13 +1034,9 @@ useEffect(() => {
           });
           break;
 
-        case 'Notificaciones':
-          result = await reportsServices.getReporteNotificaciones(filtros);
-          break;
-
         case 'MultasAfiliados':
           result = await reportsServices.getReporteMultasAfiliados({
-            ...filtros,  // ✅ Incluye mes, anio, search, skip, limit
+            ...filtros,  
             estado: filterEstado !== 'todos' ? filterEstado : undefined,
             activo: filterActivoMultas === 'activos' ? true : (filterActivoMultas === 'inactivos' ? false : undefined)
           });
@@ -1136,25 +1169,83 @@ useEffect(() => {
   // ============================================================
   // GENERAR REPORTE CUANDO CAMBIA EL PERIODO SELECCIONADO
   // ============================================================
+
+ // cargar reporte automáticamente al cambiar filtros o periodo, pero solo para módulos que requieren periodo
   useEffect(() => {
     if (!selectedModulo || !permissions.canRead) return;
 
-    const esModuloConPeriodo = ['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo);
-    if (esModuloConPeriodo && !periodoSeleccionado) return; // esperar al más reciente
+    const esModuloConPeriodo = ['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo);
+    
+    if (esModuloConPeriodo) {
+      // Solo disparar cuando hay un periodo seleccionado válido
+      if (!periodoSeleccionado) return;
+      generarReporte();
+      return;
+    }
+
+    // Módulos sin periodo ni caja — debounce para búsqueda/filtros
+    if (selectedModulo === 'Caja') return;
+
+    const timer = setTimeout(() => {
+      generarReporte();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [
+    searchTerm,
+    filterEstado,
+    filterSector,
+    filterTipoLectura,
+    filterPagoCompleto,
+    periodoSeleccionado,   // ← agregado aquí
+    generarReporte,
+    permissions.canRead,
+    selectedModulo,
+  ]);
+
+  // Generar reporte de Caja cuando cambian los filtros de año/mes
+  useEffect(() => {
+    if (selectedModulo !== 'Caja') return;
+    if (!permissions.canRead) return;
+    if (!cajaAnioFiltro) return;   // esperar hasta tener año
 
     generarReporte();
-  }, [selectedModulo, periodoSeleccionado, permissions.canRead, generarReporte]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cajaAnioFiltro, cajaMesFiltro, selectedModulo, permissions.canRead]);
 
+  // Cargar periodos del afiliado seleccionado cuando se avanza al paso 2
+  useEffect(() => {
+    if (!afiliadoSeleccionado || pasoModal !== 2) return;
 
-// REEMPLAZAR el useEffect de cajaFiltros por este:
-useEffect(() => {
-  if (selectedModulo !== 'Caja') return;
-  if (!permissions.canRead) return;
-  if (!cajaAnioFiltro) return;   // esperar hasta tener año
+    const cargar = async () => {
+      const codusuarioafi = afiliadoSeleccionado.cod_usuario_afi;
+      let result;
+      switch (selectedModulo) {
+        case 'Lecturas':
+          result = await reportsServices.getPeriodosLecturas();
+          break;
+        case 'Facturas':
+          result = await reportsServices.getPeriodosFacturas();
+          break;
+        case 'Pagos':
+          result = await reportsServices.getPeriodosPagos();
+          break;
+        case 'MultasAfiliados':
+          result = await reportsServices.getPeriodosMultasAfiliados();
+          break;
+        default:
+          return;
+      }
+      if (result.success) {
+        setPeriodosIndividuales(prev => ({
+          ...prev,
+          [selectedModulo]: result.data
+        }));
+      }
+    };
 
-  generarReporte();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [cajaAnioFiltro, cajaMesFiltro, selectedModulo, permissions.canRead]);
+    cargar();
+  }, [afiliadoSeleccionado, pasoModal, selectedModulo]);
 
   // ============================================================
   // FUNCIONES DE EXPORTACIÓN - CONECTADAS AL BACKEND
@@ -1332,136 +1423,224 @@ const toggleTodasColumnas = (seleccionar) => {
 };
 
 
-// ============================================================
-// FUNCIONES DE FORMATEO DE COLUMNAS
-// ============================================================
+  // ============================================================
+  // FUNCIONES DE FORMATEO DE COLUMNAS
+  // ============================================================
 
-// Formatear nombre de columna
-const formatColumnName = (key) => {
-  const specialNames = {
-    'num_medidor': 'N° Medidor',
-    'cod_usuario_afi': 'Código',
-    'consumo_m3': 'Consumo (m³)',
-    'fecha_emision': 'F. Emisión',
-    'fecha_lectura': 'F. Lectura',
-    'num_factura': 'N° Factura',
-    'metodo_pago': 'Método',
-    'estado_factura': 'Estado',
-    'tipo_lectura': 'Tipo'
+  // Formatear nombre de columna
+  const formatColumnName = (key) => {
+    const specialNames = {
+      'num_medidor': 'N° Medidor',
+      'cod_usuario_afi': 'Código',
+      'consumo_m3': 'Consumo (m³)',
+      'fecha_emision': 'F. Emisión',
+      'fecha_lectura': 'F. Lectura',
+      'num_factura': 'N° Factura',
+      'metodo_pago': 'Método',
+      'estado_factura': 'Estado',
+      'tipo_lectura': 'Tipo'
+    };
+    
+    return specialNames[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
+
+  // Obtener clase CSS según tipo de columna
+  const getColumnClass = (key, value) => {
+    // Columnas de código
+    if (key.includes('cod_') || key.includes('num_')) {
+      return 'col-code';
+    }
+    
+    // Columnas de fecha
+    if (key.includes('fecha')) {
+      return 'col-date';
+    }
+    
+    // Columnas de estado
+    if (key === 'estado' || key === 'estado_factura' || key === 'activo') {
+      return 'col-status';
+    }
+    
+    // Columnas numéricas (consumo, monto, total, etc.)
+    if (
+      key.includes('consumo') || 
+      key.includes('total') || 
+      key.includes('monto') || 
+      key.includes('valor') ||
+      key.includes('precio') ||
+      key.includes('exceso')
+    ) {
+      return 'col-numeric';
+    }
+    
+    // Columnas booleanas
+    if (typeof value === 'boolean') {
+      return 'col-boolean';
+    }
+    
+    // Columnas de texto por defecto
+    return 'col-text';
+  };
+
+  // Formatear valor de celda
+  const formatCellValue = (key, value) => {
+    // Valores nulos
+    if (value === null || value === undefined || value === '') {
+      return <span className="value-empty">N/A</span>;
+    }
+    
+    // Valores booleanos
+    if (typeof value === 'boolean') {
+      return value ? (
+        <CheckCircle className="w-4 h-4 text-green-600" />
+      ) : (
+        <XCircle className="w-4 h-4 text-red-600" />
+      );
+    }
+    
+    // Estado de factura/lectura
+    if (key === 'estado' || key === 'estado_factura') {
+      const estadoLower = value?.toLowerCase();
+      return (
+        <span className={`status-badge status-${estadoLower}`}>
+          {value}
+        </span>
+      );
+    }
+    
+    // Activo/Inactivo
+    if (key === 'activo') {
+      const isActive = value === true || value === 'Sí' || value === 'S';
+      return (
+        <span className={`status-badge ${isActive ? 'status-active' : 'status-inactive'}`}>
+          {isActive ? 'Activo' : 'Inactivo'}
+        </span>
+      );
+    }
+    
+    // Valores monetarios
+    if (
+      key.includes('total') || 
+      key.includes('monto') || 
+      key.includes('valor') ||
+      key.includes('precio') ||
+      key.includes('descuento') ||
+      key.includes('impuesto') 
+
+    ) {
+      const num = parseFloat(value);
+      return isNaN(num) ? value : `$${num.toFixed(2)}`;
+    }
+    
+    // Valores de consumo
+    if (key.includes('consumo') && key.includes('m3')) {
+      const num = parseFloat(value);
+      return isNaN(num) ? value : `${num.toFixed(2)} m³`;
+    }
+    
   
-  return specialNames[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    
+    // Valor por defecto
+    return <span className="value-text">{value.toString()}</span>;
+  };
+
+  // Formatear tooltip
+  const formatTooltip = (key, value) => {
+    if (value === null || value === undefined || value === '') {
+      return 'Sin datos';
+    }
+    
+    const columnName = formatColumnName(key);
+    return `${columnName}: ${value.toString()}`;
+  };
+
+  // Abrir modal de reporte individual (para Afiliados)
+const abrirModalIndividual = async () => {
+  // ✅ Solo abrir en módulos con reporte individual
+  const modulosIndividuales = ['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'];
+  if (!modulosIndividuales.includes(selectedModulo)) return;
+
+  setModalIndividual(true);
+  setPasoModal(1);
+  setAfiliadoSeleccionado(null);
+  setSearchAfiliado('');
+  setLoadingReporteIndividual(false);
+
+  const result = await reportsServices.getReporteAfiliados({ limit: 1000 });
+  if (result.success) setAfiliadosModal(result.data);
 };
 
-// Obtener clase CSS según tipo de columna
-const getColumnClass = (key, value) => {
-  // Columnas de código
-  if (key.includes('cod_') || key.includes('num_')) {
-    return 'col-code';
+const generarReporteIndividual = async () => {
+  if (!afiliadoSeleccionado) return;
+  setLoadingReporteIndividual(true);
+
+  let filtrosPeriodo = { limit: 1000 };
+
+  // ✅ Usa las variables del modo nuevo
+  if (modoSeleccion === 'mes' && periodoIndividualSeleccionado) {
+    const [mes, anio] = periodoIndividualSeleccionado.split('-').map(Number);
+    filtrosPeriodo.mes  = mes;
+    filtrosPeriodo.anio = anio;
+  } else if (modoSeleccion === 'rango' && rangoDesdeInd && rangoHastaInd) {
+    const [mesdesde, aniodesde] = rangoDesdeInd.split('-').map(Number);
+    const [meshasta, aniohasta] = rangoHastaInd.split('-').map(Number);
+    filtrosPeriodo.mesdesde  = mesdesde;
+    filtrosPeriodo.aniodesde = aniodesde;
+    filtrosPeriodo.meshasta  = meshasta;
+    filtrosPeriodo.aniohasta = aniohasta;
+  } else if (modoSeleccion === 'anio' && anioSeleccionado) {
+    filtrosPeriodo.anio = anioSeleccionado;
+  } else {
+    setError('Selecciona un período válido');
+    setLoadingReporteIndividual(false);
+    return;
+  }
+
+  const codusuarioafi = afiliadoSeleccionado.cod_usuario_afi;
+
+  if (!codusuarioafi) {
+    setError('No se pudo obtener el código del afiliado');
+    setLoadingReporteIndividual(false);
+    return;
+  }
+
+  try {
+    let result = { success: false, data: [], total: 0 };
+
+    if (selectedModulo === 'Lecturas') {
+      result = await reportsServices.getReporteIndividualLecturas(codusuarioafi, filtrosPeriodo);
+    } else if (selectedModulo === 'Facturas') {
+      result = await reportsServices.getReporteIndividualFacturas(codusuarioafi, filtrosPeriodo);
+    } else if (selectedModulo === 'Pagos') {
+      result = await reportsServices.getReporteIndividualPagos(codusuarioafi, filtrosPeriodo);
+    } else if (selectedModulo === 'MultasAfiliados') {
+      result = await reportsServices.getReporteIndividualMultasAfiliados(codusuarioafi, filtrosPeriodo);
+    }
+
+      console.log('📊 Resultado individual:', result);
+  console.log('📊 Total:', result?.total);
+  console.log('📊 Data[0]:', result?.data?.[0]);
+
+    if (result.success) {
+      setReporteData(result.data);
+      setStats({
+        totalregistros: result.total ?? result.data.length,
+        periodo: `${afiliadoSeleccionado.nombres} ${afiliadoSeleccionado.apellidos}`,
+        modulo: `Reporte Individual · ${selectedModulo}`,
+      });
+      setModalIndividual(false);
+    } else {
+      setError(result.message || 'Error al generar el reporte individual');
+    }
+  } catch (err) {
+    console.error('Error generando reporte individual:', err);
+    setError('Error inesperado al generar el reporte individual');
+  } finally {
+    setLoadingReporteIndividual(false);
   }
   
-  // Columnas de fecha
-  if (key.includes('fecha')) {
-    return 'col-date';
-  }
-  
-  // Columnas de estado
-  if (key === 'estado' || key === 'estado_factura' || key === 'activo') {
-    return 'col-status';
-  }
-  
-  // Columnas numéricas (consumo, monto, total, etc.)
-  if (
-    key.includes('consumo') || 
-    key.includes('total') || 
-    key.includes('monto') || 
-    key.includes('valor') ||
-    key.includes('precio') ||
-    key.includes('exceso')
-  ) {
-    return 'col-numeric';
-  }
-  
-  // Columnas booleanas
-  if (typeof value === 'boolean') {
-    return 'col-boolean';
-  }
-  
-  // Columnas de texto por defecto
-  return 'col-text';
 };
 
-// Formatear valor de celda
-const formatCellValue = (key, value) => {
-  // Valores nulos
-  if (value === null || value === undefined || value === '') {
-    return <span className="value-empty">N/A</span>;
-  }
-  
-  // Valores booleanos
-  if (typeof value === 'boolean') {
-    return value ? (
-      <CheckCircle className="w-4 h-4 text-green-600" />
-    ) : (
-      <XCircle className="w-4 h-4 text-red-600" />
-    );
-  }
-  
-  // Estado de factura/lectura
-  if (key === 'estado' || key === 'estado_factura') {
-    const estadoLower = value?.toLowerCase();
-    return (
-      <span className={`status-badge status-${estadoLower}`}>
-        {value}
-      </span>
-    );
-  }
-  
-  // Activo/Inactivo
-  if (key === 'activo') {
-    const isActive = value === true || value === 'Sí' || value === 'S';
-    return (
-      <span className={`status-badge ${isActive ? 'status-active' : 'status-inactive'}`}>
-        {isActive ? 'Activo' : 'Inactivo'}
-      </span>
-    );
-  }
-  
-  // Valores monetarios
-  if (
-    key.includes('total') || 
-    key.includes('monto') || 
-    key.includes('valor') ||
-    key.includes('precio') ||
-    key.includes('descuento') ||
-    key.includes('impuesto') 
-
-  ) {
-    const num = parseFloat(value);
-    return isNaN(num) ? value : `$${num.toFixed(2)}`;
-  }
-  
-  // Valores de consumo
-  if (key.includes('consumo') && key.includes('m3')) {
-    const num = parseFloat(value);
-    return isNaN(num) ? value : `${num.toFixed(2)} m³`;
-  }
-  
- 
-  
-  // Valor por defecto
-  return <span className="value-text">{value.toString()}</span>;
-};
-
-// Formatear tooltip
-const formatTooltip = (key, value) => {
-  if (value === null || value === undefined || value === '') {
-    return 'Sin datos';
-  }
-  
-  const columnName = formatColumnName(key);
-  return `${columnName}: ${value.toString()}`;
-};
 
   // ============================================================
   // RENDERIZADO - ESTADOS ESPECIALES
@@ -1619,20 +1798,13 @@ const formatTooltip = (key, value) => {
                 </>
               )}
 
-              {/* Botón Actualizar */}
-              <button onClick={generarReporte} className="btn-primary" disabled={loading}>
-                {loading ? (
-                  <>
-                    <Loader className="w-4 h-4 animate-spin" />
-                    <span className="ml-2">Actualizando...</span>
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4" />
-                    <span className="ml-2">Actualizar Reporte</span>
-                  </>
-                )}
-              </button>
+              {/* Botón reporte individual: SOLO para módulos con período */}
+              {['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo) && (
+                <button onClick={abrirModalIndividual} className="btn-primary" disabled={loading}>
+                  <User className="w-4 h-4" />
+                  <span className="ml-2">Reporte individual</span>
+                </button>
+              )}
             </div>
 
           </div>
@@ -1649,7 +1821,7 @@ const formatTooltip = (key, value) => {
           {['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'].includes(selectedModulo) && periodos.length > 0 && (
             <div className="periodo-historial-container">
 
-              {/* ENCABEZADO — clic para colapsar toda la sección */}
+              {/* ENCABEZADO */}
               <button
                 className="periodo-historial-header periodo-historial-toggle"
                 onClick={() => setHistorialExpandido(prev => !prev)}
@@ -1660,9 +1832,12 @@ const formatTooltip = (key, value) => {
                     Historial de Períodos
                     <span className="historial-anio-badge ml-2">
                       {periodos.filter(p => {
-                        const hoy = new Date()
-                        const diff = (p.anio - hoy.getFullYear()) * 12 + (p.mes - (hoy.getMonth() + 1))
-                        return diff <= 0
+                        const hoy = new Date();
+                        // Filtrar futuros y el año actual no mayor al mes actual
+                        const esFuturo =
+                          p.anio > hoy.getFullYear() ||
+                          (p.anio === hoy.getFullYear() && p.mes > hoy.getMonth() + 1);
+                        return !esFuturo;
                       }).length} periodos disponibles
                     </span>
                   </h3>
@@ -1675,47 +1850,55 @@ const formatTooltip = (key, value) => {
                 />
               </button>
 
-              {/* CONTENIDO — se oculta al colapsar */}
+              {/* CONTENIDO */}
               {historialExpandido && (() => {
-                const hoy = new Date()
-                const mesActual = hoy.getMonth() + 1
-                const anioActual = hoy.getFullYear()
+                const hoy = new Date();
+                const mesActual = hoy.getMonth() + 1;
+                const anioActual = hoy.getFullYear();
 
-                const calcularDiferenciaMeses = (mes, anio) =>
-                  (anio - anioActual) * 12 + (mes - mesActual)
+                // ── 1. Filtrar solo periodos pasados + actual (descartar futuros/erróneos) ──
+                const periodosValidos = periodos.filter(p => {
+                  const esFuturo =
+                    p.anio > anioActual ||
+                    (p.anio === anioActual && p.mes > mesActual);
+                  return !esFuturo;
+                });
 
-                // Solo períodos pasados y el actual (sin futuros)
-                const periodosHistorial = periodos.filter(periodo => {
-                  const diff = calcularDiferenciaMeses(periodo.mes, periodo.anio)
-                  return diff <= 0
-                })
-
-                if (periodosHistorial.length === 0) {
+                if (periodosValidos.length === 0) {
                   return (
                     <div className="periodo-historial-empty">
                       <AlertCircle className="w-12 h-12 text-gray-300 mb-2" />
                       <p>No hay períodos disponibles</p>
                     </div>
-                  )
+                  );
                 }
 
-                // Agrupar por año
-                const agrupado = periodosHistorial.reduce((acc, periodo) => {
-                  const anio = periodo.anio
-                  if (!acc[anio]) acc[anio] = []
-                  acc[anio].push(periodo)
-                  return acc
-                }, {})
+                // ── 2. Agrupar por año — solo los meses que vienen del backend ──
+                const agrupado = periodosValidos.reduce((acc, p) => {
+                  if (!acc[p.anio]) acc[p.anio] = [];
+                  acc[p.anio].push(p.mes); // guardar solo el número de mes
+                  return acc;
+                }, {});
 
                 const aniosOrdenados = Object.keys(agrupado)
                   .map(Number)
-                  .sort((a, b) => b - a)
+                  .sort((a, b) => b - a); // más reciente primero
+
+                const nombresMeses = {
+                  1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun',
+                  7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'
+                };
+                const nombresMesesCompletos = {
+                  1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo',
+                  6: 'Junio', 7: 'Julio', 8: 'Agosto', 9: 'Septiembre',
+                  10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+                };
 
                 return (
                   <div className="historial-anios-lista">
                     {aniosOrdenados.map(anio => {
-                      const mesesDelAnio = agrupado[anio].sort((a, b) => b.mes - a.mes)
-                      const estaExpandido = aniosExpandidos[anio] !== false
+                      const mesesDelAnio = agrupado[anio].sort((a, b) => b - a); // desc
+                      const estaExpandido = aniosExpandidos[anio] !== false;
 
                       return (
                         <div key={anio} className="historial-anio-bloque">
@@ -1729,7 +1912,7 @@ const formatTooltip = (key, value) => {
                               <Calendar className="w-4 h-4" />
                               {anio}
                               <span className="historial-anio-badge">
-                                {mesesDelAnio.length} periodos
+                                {mesesDelAnio.length} {mesesDelAnio.length === 1 ? 'periodo' : 'periodos'}
                               </span>
                             </span>
                             <ChevronDown
@@ -1737,66 +1920,39 @@ const formatTooltip = (key, value) => {
                             />
                           </button>
 
-                          {/* CHIPS DE MESES */}
-                          {estaExpandido && (() => {
-                            // Meses que tienen datos para este año (del backend)
-                            const mesesConDatos = cajaMesesDisponibles[anio] || [];
-                            // Si todavía no cargamos datos del año, mostrar todos (estado inicial)
-                            const sinInfoAun = mesesConDatos.length === 0;
+                          {/* CHIPS — solo los meses que existen en el backend */}
+                          {estaExpandido && (
+                            <div className="historial-meses-grid">
+                              {mesesDelAnio.map(mes => {
+                                const valorChip = `${mes}-${anio}`;
+                                const esSeleccionado = periodoSeleccionado === valorChip;
+                                const esActual = mes === mesActual && anio === anioActual;
 
-                            const mesesDisponibles = [
-                              { num: null, label: 'Todo el año', abrev: 'Año' },
-                              { num: 1,  label: 'Enero',      abrev: 'Ene' },
-                              { num: 2,  label: 'Febrero',    abrev: 'Feb' },
-                              { num: 3,  label: 'Marzo',      abrev: 'Mar' },
-                              { num: 4,  label: 'Abril',      abrev: 'Abr' },
-                              { num: 5,  label: 'Mayo',       abrev: 'May' },
-                              { num: 6,  label: 'Junio',      abrev: 'Jun' },
-                              { num: 7,  label: 'Julio',      abrev: 'Jul' },
-                              { num: 8,  label: 'Agosto',     abrev: 'Ago' },
-                              { num: 9,  label: 'Septiembre', abrev: 'Sep' },
-                              { num: 10, label: 'Octubre',    abrev: 'Oct' },
-                              { num: 11, label: 'Noviembre',  abrev: 'Nov' },
-                              { num: 12, label: 'Diciembre',  abrev: 'Dic' },
-                            ];
-
-                            // Filtrar: "Todo el año" siempre; meses solo si tienen datos
-                            const mesesFiltrados = mesesDisponibles.filter(({ num }) => {
-                              if (num === null) return true;              // "Todo el año" siempre visible
-                              if (sinInfoAun)   return true;             // aún cargando: mostrar todos
-                              return mesesConDatos.includes(num);        // solo meses con movimientos
-                            });
-
-                            return (
-                              <div className="historial-meses-grid">
-                                {mesesFiltrados.map(({ num, label, abrev }) => {
-                                  const esSeleccionado =
-                                    cajaAnioFiltro === anio && cajaMesFiltro === num;
-
-                                  return (
-                                    <button
-                                      key={num ?? 'all'}
-                                      className={`historial-mes-chip ${esSeleccionado ? 'seleccionado' : 'incompleto'}`}
-                                      onClick={() => {
-                                        setCajaAnioFiltro(anio);
-                                        setCajaMesFiltro(num);   // null = vista anual completa
-                                      }}
-                                      title={label}
-                                    >
-                                      <span className={`historial-mes-dot ${esSeleccionado ? 'completo' : 'incompleto'}`} />
-                                      <span className="historial-mes-nombre">{abrev}</span>
-                                      <span className="historial-mes-pct">{anio}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })()}
+                                return (
+                                  <button
+                                    key={valorChip}
+                                    className={`historial-mes-chip ${esSeleccionado ? 'seleccionado' : 'incompleto'}`}
+                                    onClick={() => setPeriodoSeleccionado(valorChip)}
+                                    title={`${nombresMesesCompletos[mes]} ${anio}${esActual ? ' (mes actual)' : ''}`}
+                                  >
+                                    <span
+                                      className={`historial-mes-dot ${esSeleccionado ? 'completo' : esActual ? 'completo' : 'incompleto'}`}
+                                    />
+                                    <span className="historial-mes-nombre">{nombresMeses[mes]}</span>
+                                    <span className="historial-mes-pct">{anio}</span>
+                                    {esActual && !esSeleccionado && (
+                                      <span style={{ fontSize: '9px', color: '#3b82f6', fontWeight: 700 }}>●</span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      )
+                      );
                     })}
                   </div>
-                )
+                );
               })()}
             </div>
           )}
@@ -2001,16 +2157,32 @@ const formatTooltip = (key, value) => {
 
             {/* FILTRO PARA LECTURAS: Tipo (Real/Estimada) */}
             {selectedModulo === 'Lecturas' && (
-              <select
-                className="filter-select"
-                value={filterTipoLectura}
-                onChange={(e) => setFilterTipoLectura(e.target.value)}
-              >
-                <option value="todos">Todos los tipos</option>
-                <option value="reales">Reales</option>
-                <option value="estimadas">Estimadas</option>
-              </select>
+              <>
+                <select
+                  className="filter-select"
+                  value={filterTipoLectura}
+                  onChange={(e) => setFilterTipoLectura(e.target.value)}
+                >
+                  <option value="todos">Todos los tipos</option>
+                  <option value="reales">Reales</option>
+                  <option value="estimadas">Estimadas</option>
+                </select>
+
+                <select
+                  className="filter-select"
+                  value={filterSector}
+                  onChange={(e) => setFilterSector(e.target.value)}
+                >
+                  <option value="todos">Todos los sectores</option>
+                  {sectoresDisponibles.map((sector) => (
+                    <option key={sector.id_sector} value={sector.nombre_sector}>
+                      {sector.nombre_sector}
+                    </option>
+                  ))}
+                </select>
+              </>
             )}
+
 
             {/* FILTRO PARA FACTURAS: Estado */}
             {selectedModulo === 'Facturas' && (
@@ -2110,8 +2282,21 @@ const formatTooltip = (key, value) => {
                 )}
               </>
             )}
-
-
+            
+            {/* Botón Actualizar */}
+            <button
+              onClick={generarReporte}
+              className="btn-secondary"
+              disabled={loading}
+              title="Actualizar reporte"
+            >
+              {loading ? (
+                <Loader className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+            </button>
+        
             {/* Botón limpiar filtros */}
             <button
               onClick={limpiarFiltrosSinModulo}
@@ -2214,12 +2399,12 @@ const formatTooltip = (key, value) => {
             <div className="stats-panel">
               <ReportStats 
                  data={
-    selectedModulo === 'Caja'
-      // Vista anual → array de meses
-      ? (cajaAnualData?.meses ?? [])
-      // Vista mensual → envolver resumen en array para que tenga estructura
-      : reporteData
-  }
+                    selectedModulo === 'Caja'
+                      // Vista anual → array de meses
+                      ? (cajaAnualData?.meses ?? [])
+                      // Vista mensual → envolver resumen en array para que tenga estructura
+                      : reporteData
+                  }
                 moduloInfo={modulosSistema.find(m => m.value === selectedModulo)} 
                 stats={estadisticasDinamicas}
               />
@@ -2364,7 +2549,451 @@ const formatTooltip = (key, value) => {
 
         </div>
       )}
+
+      {modalIndividual && (
+        <div className="modal-overlay" onClick={() => setModalIndividual(false)}>
+          <div className="modal-container" onClick={e => e.stopPropagation()}>
+
+            {/* HEADER */}
+            <div className="modal-header">
+              <div className="modal-title-row">
+                <FileText className="w-5 h-5 text-blue-600" />
+                <div>
+                  <h2>Reporte individual</h2>
+                  <p>Genera un reporte por afiliado y periodo</p>
+                </div>
+              </div>
+              <button onClick={() => setModalIndividual(false)}>
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* STEPS */}
+            <div className="modal-steps">
+              {['Afiliado', 'Periodo', 'Confirmar'].map((label, i) => (
+                <React.Fragment key={i}>
+                  <div className={`step ${pasoModal === i+1 ? 'active' : ''} ${pasoModal > i+1 ? 'done' : ''}`}>
+                    <div className="step-num">
+                      {pasoModal > i+1 ? <CheckCircle className="w-3 h-3" /> : i+1}
+                    </div>
+                    <span>{label}</span>
+                  </div>
+                  {i < 2 && <div className="step-line" />}
+                </React.Fragment>
+              ))}
+            </div>
+
+            {/* PASO 1: AFILIADO */}
+            {pasoModal === 1 && (
+              <div className="modal-body">
+                <div className="search-container">
+                  <Search className="search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nombre, código o cédula..."
+                    value={searchAfiliado}
+                    onChange={e => setSearchAfiliado(e.target.value)}
+                    className="search-input"
+                  />
+                </div>
+
+                <div className="affiliates-modal-list">
+                  {afiliadosModal
+                    .filter(a => {
+                      const q = searchAfiliado.toLowerCase();
+                      return (
+                        `${a.nombres} ${a.apellidos}`.toLowerCase().includes(q) ||
+                        String(a.cod_usuario_afi).includes(q) ||
+                        String(a.cedula).includes(q)
+                      );
+                    })
+                    .map((a) => {
+                      const isSelected = afiliadoSeleccionado?.cod_usuario_afi === a.cod_usuario_afi;
+                      return (
+                        <div
+                          key={a.cod_usuario_afi}
+                          className={`affiliate-modal-item ${isSelected ? 'selected' : ''}`}
+                          onClick={() => setAfiliadoSeleccionado(a)}
+                        >
+                          <div className="avatar-circle">
+                            {`${a.nombres?.[0] || ''}${a.apellidos?.[0] || ''}`}
+                          </div>
+                          <div className="affiliate-info">
+                            <p className="affiliate-name">{a.nombres} {a.apellidos}</p>
+                            <p className="affiliate-meta">{afiliadoSeleccionado?.cod_usuario_afi} · {afiliadoSeleccionado?.cedula} · {afiliadoSeleccionado?.sector}</p>
+                          </div>
+                          {isSelected && <CheckCircle className="w-4 h-4 text-blue-600" />}
+                        </div>
+                      );
+                    })
+                  }
+                </div>
+              </div>
+            )}
+
+            {/* PASO 2: PERIODO */}
+            {pasoModal === 2 && (() => {
+              const periodos = periodosIndividuales[selectedModulo] || [];
+              const hoy = new Date();
+              const mesActual = hoy.getMonth() + 1;
+              const anioActual = hoy.getFullYear();
+
+              // Filtrar futuros y agrupar
+              const validos = periodos.filter(p => {
+                const esFuturo = p.anio > anioActual || (p.anio === anioActual && p.mes > mesActual);
+                return !esFuturo;
+              });
+
+              const agrupado = validos.reduce((acc, p) => {
+                if (!acc[p.anio]) acc[p.anio] = [];
+                acc[p.anio].push(p.mes);
+                return acc;
+              }, {});
+
+              const aniosOrdenados = Object.keys(agrupado).map(Number).sort((a, b) => b - a);
+              const nm = { 1:'Ene',2:'Feb',3:'Mar',4:'Abr',5:'May',6:'Jun',7:'Jul',8:'Ago',9:'Sep',10:'Oct',11:'Nov',12:'Dic' };
+
+              // ── Helpers para rango ──────────────────────────────────────────
+              // Convierte "mes-anio" a número comparable: anio*100 + mes
+              const toNum = (val) => { if (!val) return 0; const [m,a] = val.split('-'); return Number(a)*100+Number(m); };
+
+              const isEnRango = (mes, anio) => {
+                if (!rangoDesdeInd || !rangoHastaInd) return false;
+                const v = anio*100 + mes;
+                return v >= toNum(rangoDesdeInd) && v <= toNum(rangoHastaInd);
+              };
+
+              const handleChipRango = (valor) => {
+                if (!rangoDesdeInd || (rangoDesdeInd && rangoHastaInd)) {
+                  // Primer clic: limpiar y poner inicio
+                  setRangoDesdeInd(valor);
+                  setRangoHastaInd(null);
+                } else {
+                  // Segundo clic: poner fin (en orden)
+                  if (toNum(valor) >= toNum(rangoDesdeInd)) {
+                    setRangoHastaInd(valor);
+                  } else {
+                    setRangoHastaInd(rangoDesdeInd);
+                    setRangoDesdeInd(valor);
+                  }
+                }
+              };
+
+              return (
+                <div className="modal-body">
+                  {/* Tarjeta afiliado */}
+                  <div className="selected-affiliate-card">
+                    <div className="avatar-circle">
+                      {afiliadoSeleccionado?.nombres?.[0]}{afiliadoSeleccionado?.apellidos?.[0]}
+                    </div>
+                    <div>
+                      <p className="affiliate-name">
+                        {afiliadoSeleccionado?.nombres} {afiliadoSeleccionado?.apellidos}
+                      </p>
+                      <p className="affiliate-meta">
+                        {afiliadoSeleccionado?.cod_usuario_afi} · {afiliadoSeleccionado?.cedula}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Selector de modo */}
+                  <div className="period-type-grid" style={{ marginBottom: 16 }}>
+                    {[
+                      { key: 'mes',  label: 'Mes específico', sub: '1 mes exacto',       Icon: Calendar   },
+                      { key: 'rango',label: 'Rango',           sub: 'Desde → Hasta',      Icon: BarChart3  },
+                      { key: 'anio', label: 'Año completo',    sub: 'Todos los meses',    Icon: FileText   },
+                    ].map(({ key, label, sub, Icon }) => (
+                      <div
+                        key={key}
+                        className={`period-type-card ${modoSeleccion === key ? 'selected' : ''}`}
+                        onClick={() => {
+                          setModoSeleccion(key);
+                          // Reset selecciones al cambiar modo
+                          setPeriodoIndividualSeleccionado(null);
+                          setRangoDesdeInd(null);
+                          setRangoHastaInd(null);
+                          setAnioSeleccionado(null);
+                        }}
+                      >
+                        <Icon className="w-5 h-5 mb-1" />
+                        <p className="opt-label">{label}</p>
+                        <p className="opt-sub">{sub}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Loading */}
+                  {validos.length === 0 && (
+                    <div className="empty-state" style={{ padding: '16px 0' }}>
+                      <Loader className="w-6 h-6 animate-spin text-blue-500 mx-auto mb-2" />
+                      <p>Cargando períodos de {selectedModulo}...</p>
+                    </div>
+                  )}
+
+                  {/* ── MODO: AÑO COMPLETO ── */}
+                  {modoSeleccion === 'anio' && validos.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 8 }}>
+                        Selecciona el año:
+                      </p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {aniosOrdenados.map(anio => (
+                          <button
+                            key={anio}
+                            className={`historial-mes-chip ${anioSeleccionado === anio ? 'seleccionado' : 'incompleto'}`}
+                            onClick={() => setAnioSeleccionado(anio)}
+                            style={{ minWidth: 64, justifyContent: 'center' }}
+                          >
+                            <span className="historial-mes-nombre">{anio}</span>
+                            <span className="historial-mes-pct">{agrupado[anio].length} meses</span>
+                          </button>
+                        ))}
+                      </div>
+                      {anioSeleccionado && (
+                        <p style={{ fontSize: 12, color: 'var(--color-primary)', marginTop: 8 }}>
+                          ✓ Se incluirán {agrupado[anioSeleccionado]?.length} períodos de {anioSeleccionado}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── MODO: MES ESPECÍFICO ── */}
+                  {modoSeleccion === 'mes' && validos.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 8 }}>
+                        Selecciona el período:
+                      </p>
+                      {aniosOrdenados.map(anio => (
+                        <div key={anio} style={{ marginBottom: 10 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-faint)', marginRight: 8 }}>
+                            {anio}
+                          </span>
+                          <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6 }}>
+                            {agrupado[anio].sort((a, b) => b - a).map(mes => {
+                              const valor = `${mes}-${anio}`;
+                              const sel = periodoIndividualSeleccionado === valor;
+                              return (
+                                <button
+                                  key={valor}
+                                  className={`historial-mes-chip ${sel ? 'seleccionado' : 'incompleto'}`}
+                                  onClick={() => setPeriodoIndividualSeleccionado(valor)}
+                                >
+                                  <span className="historial-mes-nombre">{nm[mes]}</span>
+                                  <span className="historial-mes-pct">{anio}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── MODO: RANGO ── */}
+                  {modoSeleccion === 'rango' && validos.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 4 }}>
+                        {!rangoDesdeInd
+                          ? '① Clic en el período de inicio'
+                          : !rangoHastaInd
+                          ? '② Clic en el período de fin'
+                          : `✓ Rango: ${nm[+rangoDesdeInd.split('-')[0]]} ${rangoDesdeInd.split('-')[1]} → ${nm[+rangoHastaInd.split('-')[0]]} ${rangoHastaInd.split('-')[1]}`
+                        }
+                      </p>
+                      {(rangoDesdeInd || rangoHastaInd) && (
+                        <button
+                          style={{ fontSize: 11, color: 'var(--color-error)', marginBottom: 8, textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}
+                          onClick={() => { setRangoDesdeInd(null); setRangoHastaInd(null); }}
+                        >
+                          Limpiar selección
+                        </button>
+                      )}
+                      {aniosOrdenados.map(anio => (
+                        <div key={anio} style={{ marginBottom: 10 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-faint)', marginRight: 8 }}>
+                            {anio}
+                          </span>
+                          <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6 }}>
+                            {agrupado[anio].sort((a, b) => b - a).map(mes => {
+                              const valor = `${mes}-${anio}`;
+                              const esInicio = rangoDesdeInd === valor;
+                              const esFin    = rangoHastaInd === valor;
+                              const enRango  = isEnRango(mes, anio);
+                              return (
+                                <button
+                                  key={valor}
+                                  className={`historial-mes-chip ${
+                                    esInicio || esFin ? 'seleccionado' :
+                                    enRango ? 'en-rango' : 'incompleto'
+                                  }`}
+                                  onClick={() => handleChipRango(valor)}
+                                  title={esInicio ? 'Inicio' : esFin ? 'Fin' : nm[mes] + ' ' + anio}
+                                >
+                                  <span className="historial-mes-nombre">{nm[mes]}</span>
+                                  <span className="historial-mes-pct">{anio}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* PASO 3: CONFIRMAR */}
+            {pasoModal === 3 && (
+              <div className="modal-body">
+                <div className="preview-summary">
+                  {[
+                    [
+                      'Afiliado',
+                      `${afiliadoSeleccionado?.nombres} ${afiliadoSeleccionado?.apellidos}`,
+                    ],
+                    [
+                      'Código',
+                      afiliadoSeleccionado?.cod_usuario_afi,
+                    ],
+                    [
+                      'Módulo',
+                      modulosSistema.find(m => m.value === selectedModulo)?.label ?? selectedModulo,
+                    ],
+                    [
+                      'Tipo de período',
+                      { mes: 'Mes específico', rango: 'Rango de períodos', anio: 'Año completo' }[modoSeleccion],
+                    ],
+                    [
+                      'Período',
+                      (() => {
+                        const nm = {
+                          1:'Enero', 2:'Febrero', 3:'Marzo', 4:'Abril', 5:'Mayo', 6:'Junio',
+                          7:'Julio', 8:'Agosto', 9:'Septiembre', 10:'Octubre', 11:'Noviembre', 12:'Diciembre',
+                        };
+                        if (modoSeleccion === 'mes' && periodoIndividualSeleccionado) {
+                          const [m, a] = periodoIndividualSeleccionado.split('-').map(Number);
+                          return `${nm[m]} ${a}`;
+                        }
+                        if (modoSeleccion === 'anio' && anioSeleccionado) {
+                          return `Año completo ${anioSeleccionado}`;
+                        }
+                        if (modoSeleccion === 'rango' && rangoDesdeInd && rangoHastaInd) {
+                          const [md, ad] = rangoDesdeInd.split('-').map(Number);
+                          const [mh, ah] = rangoHastaInd.split('-').map(Number);
+                          return `${nm[md]} ${ad} → ${nm[mh]} ${ah}`;
+                        }
+                        return '—';
+                      })(),
+                    ],
+                    [
+                      'Total períodos',
+                      (() => {
+                        if (modoSeleccion === 'mes') return '1 mes';
+                        if (modoSeleccion === 'anio' && anioSeleccionado) {
+                          const periodos = periodosIndividuales[selectedModulo] || [];
+                          const count = periodos.filter(p => p.anio === anioSeleccionado).length;
+                          return `${count} mes${count !== 1 ? 'es' : ''}`;
+                        }
+                        if (modoSeleccion === 'rango' && rangoDesdeInd && rangoHastaInd) {
+                          const toNum = v => { const [m,a] = v.split('-'); return Number(a)*100+Number(m); };
+                          const periodos = periodosIndividuales[selectedModulo] || [];
+                          const count = periodos.filter(p => {
+                            const v = p.anio * 100 + p.mes;
+                            return v >= toNum(rangoDesdeInd) && v <= toNum(rangoHastaInd);
+                          }).length;
+                          return `${count} mes${count !== 1 ? 'es' : ''}`;
+                        }
+                        return '—';
+                      })(),
+                    ],
+                  ].map(([k, v]) => (
+                    <div key={k} className="preview-row">
+                      <span className="preview-key">{k}</span>
+                      <span className="preview-val">{v}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Advertencia si falta selección */}
+                {(modoSeleccion === 'mes' && !periodoIndividualSeleccionado) ||
+                (modoSeleccion === 'anio' && !anioSeleccionado) ||
+                (modoSeleccion === 'rango' && (!rangoDesdeInd || !rangoHastaInd)) ? (
+                  <div style={{
+                    marginTop: 12,
+                    padding: '8px 12px',
+                    borderRadius: 6,
+                    background: 'color-mix(in oklch, var(--color-warning) 10%, transparent)',
+                    border: '1px solid color-mix(in oklch, var(--color-warning) 30%, transparent)',
+                    color: 'var(--color-warning)',
+                    fontSize: 13,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}>
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    Vuelve al paso anterior y completa la selección de período.
+                  </div>
+                ) : (
+                  <div style={{
+                    marginTop: 12,
+                    padding: '8px 12px',
+                    borderRadius: 6,
+                    background: 'color-mix(in oklch, var(--color-success) 10%, transparent)',
+                    border: '1px solid color-mix(in oklch, var(--color-success) 30%, transparent)',
+                    color: 'var(--color-success)',
+                    fontSize: 13,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}>
+                    <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                    Todo listo. Haz clic en <strong>&nbsp;"Generar"&nbsp;</strong> para continuar.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* FOOTER */}
+            <div className="modal-footer">
+              <span className="footer-step-info">Paso {pasoModal} de 3</span>
+              <div className="footer-btn-row">
+                {pasoModal > 1 && (
+                  <button className="btn-secondary" onClick={() => setPasoModal(p => p - 1)}>
+                    <ArrowLeft className="w-4 h-4 mr-1" /> Atrás
+                  </button>
+                )}
+                {pasoModal < 3 ? (
+                  <button
+                    className="btn-primary"
+                    disabled={pasoModal === 1 && !afiliadoSeleccionado}
+                    onClick={() => setPasoModal(p => p + 1)}
+                  >
+                    Siguiente →
+                  </button>
+                ) : (
+                  <button
+                    className="btn-primary"
+                    disabled={loadingReporteIndividual}
+                    onClick={generarReporteIndividual}
+                  >
+                    {loadingReporteIndividual ? (
+                      <><Loader className="w-4 h-4 animate-spin mr-1" /> Generando...</>
+                    ) : (
+                      <><FileText className="w-4 h-4 mr-1" /> Generar reporte</>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
+
+    
   );
 };
 

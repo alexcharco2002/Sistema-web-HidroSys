@@ -18,7 +18,8 @@ import SessionExpiredHandler from './components/SessionExpiredHandler';
 
 const App = () => {
   return (
-    <Router>
+    <div className="App-scale">
+      <Router>
       <SessionExpiredHandler />
       
       <Routes>
@@ -41,6 +42,7 @@ const App = () => {
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
+    </div>
   );
 };
 

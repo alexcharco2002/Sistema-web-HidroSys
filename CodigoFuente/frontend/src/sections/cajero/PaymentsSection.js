@@ -37,7 +37,7 @@ import {
   FileText,
   CreditCard,
   Plus, ChevronDown,
-  Wallet, XCircle, FileCheck, Gauge
+  Wallet, XCircle, FileCheck, Gauge, CheckSquare, Square, AlertTriangle, Wrench, Droplets
 } from 'lucide-react';
 
 const PaymentsSection = () => {
@@ -136,18 +136,20 @@ const PaymentsSection = () => {
   // ============================================================
   const toggleFacturaParaPago = (factura) => {
     setFacturasSeleccionadasPago(prev => {
-      const existe = prev.find(f => f.id_factura === factura.id_factura);
-      
-      if (existe) {
-        return prev.filter(f => f.id_factura !== factura.id_factura);
-      } else {
-        // Limitar a 5 facturas
-        if (prev.length >= 5) {
-          alert('⚠️ Solo puede seleccionar hasta 5 facturas para pago múltiple');
-          return prev;
-        }
-        return [...prev, factura];
-      }
+      const existe = prev.find(f => f.idfactura === factura.idfactura);
+      if (existe) return prev.filter(f => f.idfactura !== factura.idfactura);
+      if (prev.length >= 5) { alert('Solo puede seleccionar hasta 5 facturas'); return prev; }
+
+      // ✅ Normalizar campos al momento de agregar
+      const facturaNomalizada = {
+        ...factura,
+        numfactura: factura.numfactura || factura.num_factura || 'Sin número',
+        periodo: factura.periodo || factura.periodo_factura || 'Sin periodo',
+        // Usar el campo correcto para el monto
+        totalconmora: parseFloat(factura.totalconmora || factura.total_con_mora || factura.saldopendiente || factura.saldo_pendiente || factura.totalfactura || 0),
+        saldopendiente: parseFloat(factura.saldopendiente || factura.saldo_pendiente || factura.total || 0),
+      };
+      return [...prev, facturaNomalizada];
     });
   };
 
@@ -156,13 +158,14 @@ const PaymentsSection = () => {
   // ============================================================
   const calcularTotalFacturasSeleccionadas = () => {
     return facturasSeleccionadasPago.reduce((sum, factura) => {
+      // Asegurarse de usar el campo correcto para el total, con fallback a 0
       const total = parseFloat(
-        factura.totalconmora ||           // normalizado en el modal
-        factura.total_con_mora ||         // snake_case del back
-        factura.saldopendiente ||         // normalizado
-        factura.saldo_pendiente || 0
+        factura.totalconmora
+        || factura.saldopendiente
+        || factura.totalfactura
+        || 0
       );
-      return sum + total;
+      return sum + (isNaN(total) ? 0 : total);   
     }, 0);
   };
 
@@ -929,9 +932,13 @@ const closePagoMultipleModal = () => {
 
     try {
       const currentUser = authService.getCurrentUser();
-      if (!currentUser?.id_usuario_sistema) {
-        throw new Error('No se pudo identificar al usuario actual');
-      }
+          // ✅ Después — acepta cualquiera de los dos formatos
+    const idCajero = parseInt(
+      currentUser?.id_usuario_sistema ?? currentUser?.idusuariosistema ?? 0, 10
+    );
+    if (!idCajero || isNaN(idCajero)) {
+      throw new Error('No se pudo identificar al usuario actual');
+    }
 
       // PREPARAR DATOS DEL PAGO
       const pagoData = {
@@ -1229,8 +1236,13 @@ const closePagoMultipleModal = () => {
     // Confirmación
     let mensaje = `¿Confirma el pago múltiple de ${formatCurrency(totalAPagar)}?\n\n`;
     mensaje += `Facturas a pagar:\n`;
+
+    // Listar facturas seleccionadas
     facturasSeleccionadasPago.forEach((f, idx) => {
-      mensaje += `${idx + 1}. ${f.num_factura} (${f.periodo}) - ${formatCurrency(f.saldo_pendiente || f.total_con_mora)}\n`;
+      const numFact = f.numfactura || f.num_factura || 'Sin número';
+      const periodo = f.periodo || f.periodo_factura || 'Sin periodo';
+      const monto = parseFloat(f.totalconmora || f.saldopendiente || f.totalfactura || 0);
+      mensaje += `\n${idx + 1}. ${numFact} (${periodo}) - ${formatCurrency(monto)}`;
     });
     mensaje += `\nMétodo de pago: ${nuevoPago.metodo_pago}`;
 
@@ -1242,25 +1254,55 @@ const closePagoMultipleModal = () => {
 
     try {
       const currentUser = authService.getCurrentUser();
+      console.log('👤 currentUser completo:', JSON.stringify(currentUser));
       if (!currentUser?.id_usuario_sistema) {
         throw new Error('No se pudo identificar al usuario actual');
       }
 
-      // ========== PREPARAR DATOS ==========
-      const pagoMultipleData = {
-        facturas: facturasSeleccionadasPago.map(f => ({
-          id_factura: f.id_factura,
-          monto_a_pagar: f.saldo_pendiente || f.total_con_mora,
-          incluir_multas: true,
-          incluir_mora: true,
-          incluir_consumos: true
-        })),
-        metodo_pago: nuevoPago.metodo_pago || 'EFECTIVO',
-        id_usuario_afi: selectedAfiliadoAdeudos.id_usuario_afi,
-        id_cajero: currentUser.id_usuario_sistema,
-        observaciones: nuevoPago.observaciones || `Pago múltiple de ${facturasSeleccionadasPago.length} facturas`
-      };
+      // PREPARAR DATOS PARA PAGO MÚLTIPLE
+// ✅ FIX COMPLETO — nombres de campos corregidos
+const pagoMultipleData = {
+  facturas: facturasSeleccionadasPago.map(f => {
+    const monto = parseFloat(
+      f.totalconmora ?? f.saldopendiente ?? f.totalfactura ?? f.total ?? 0
+    );
+    return {
+      id_factura:       parseInt(f.idfactura, 10),
+      monto_a_pagar:    isNaN(monto) || monto <= 0 ? 0.01 : parseFloat(monto.toFixed(2)),
+      incluir_multas:   true,
+      incluir_mora:     true,
+      incluir_consumos: true,
+    };
+  }),
 
+  metodo_pago: (
+    nuevoPago.metodo_pago ||    // ✅ nombre correcto del estado
+    nuevoPago.metodopago ||     // fallback por si acaso
+    'EFECTIVO'
+  ).toUpperCase(),
+
+  id_usuario_afi: selectedAfiliadoAdeudos
+    ? parseInt(
+        selectedAfiliadoAdeudos.idusuarioafi ??     // nombre del estado local
+        selectedAfiliadoAdeudos.id_usuario_afi ??   // fallback
+        0,
+        10
+      ) || null
+    : null,
+
+  // ✅ FIX PRINCIPAL — usar el campo correcto de currentUser
+  id_cajero: parseInt(
+    currentUser?.id_usuario_sistema ??   // ← campo que SÍ existe (lo ves en el JSON del usuario)
+    currentUser?.idusuariosistema ??     // fallback legacy
+    0,
+    10
+  ) || null,
+
+  observaciones: nuevoPago.observaciones || null,
+};
+
+// 🔍 Log para verificar (puedes quitarlo después)
+console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, null, 2));
       console.log('💰 Procesando pago múltiple...', pagoMultipleData);
 
       // 🚀 PASO 1: CREAR EL PAGO (operación crítica)
@@ -3331,49 +3373,50 @@ const closePagoMultipleModal = () => {
                     </div>
 
                     {/* ── LISTA DE FACTURAS ── */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                      <h4 className="section-title">
+                    <div className="payment-period-list-header">
+                      <h4 className="payment-period-list-title">
                         <FileText className="w-4 h-4" />
-                        Detalles por Periodos ({todasLasFacturas.length})
+                        Detalles por Periodos
+                        <span className="payment-period-count-badge">{todasLasFacturas.length}</span>
                       </h4>
 
-                      {todasLasFacturas.length <= 5 ? (
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <button
-                            className="btn-secondary"
-                            style={{ padding: '6px 12px', fontSize: '12px' }}
-                            onClick={() => {
-                              if (facturasSeleccionadasPago.length === todasLasFacturas.length) {
-                                setFacturasSeleccionadasPago([]);
-                              } else {
-                                setFacturasSeleccionadasPago(todasLasFacturas);
-                              }
-                            }}
-                          >
-                            {facturasSeleccionadasPago.length === todasLasFacturas.length
-                              ? '☑️ Deseleccionar Todas'
-                              : '☐ Seleccionar Todas'}
-                          </button>
-                          {facturasSeleccionadasPago.length > 0 && (
-                            <span style={{
-                              padding: '6px 12px', backgroundColor: '#eff6ff',
-                              color: '#2563eb', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold'
-                            }}>
-                              {facturasSeleccionadasPago.length} seleccionadas
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <div style={{
-                          backgroundColor: '#fef3c7', padding: '6px 12px',
-                          borderRadius: '6px', fontSize: '12px', color: '#92400e'
-                        }}>
-                          ⚠️ Más de 5 facturas. Pago múltiple no disponible.
-                        </div>
-                      )}
+                      <div className="payment-period-controls">
+                        {todasLasFacturas.length <= 5 ? (
+                          <>
+                            <button
+                              className="payment-period-btn-select-all"
+                              onClick={() => {
+                                if (facturasSeleccionadasPago.length === todasLasFacturas.length) {
+                                  setFacturasSeleccionadasPago([]);
+                                } else {
+                                  setFacturasSeleccionadasPago(todasLasFacturas);
+                                }
+                              }}
+                            >
+                              {facturasSeleccionadasPago.length === todasLasFacturas.length
+                                ? <CheckSquare className="w-3 h-3" />
+                                : <Square className="w-3 h-3" />}
+                              {facturasSeleccionadasPago.length === todasLasFacturas.length
+                                ? 'Deseleccionar todas'
+                                : 'Seleccionar todas'}
+                            </button>
+
+                            {facturasSeleccionadasPago.length > 0 && (
+                              <span className="payment-period-selected-pill">
+                                {facturasSeleccionadasPago.length} seleccionada{facturasSeleccionadasPago.length > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="payment-period-warn-pill">
+                            <AlertTriangle className="w-3 h-3" />
+                            Pago múltiple no disponible
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="adeudos-desglose-list">
+                    <div className="payment-period-list">
                       {todasLasFacturas.map((factura, index) => {
                         const esActual         = factura.esactual === true;
                         const estaSeleccionada = facturasSeleccionadasPago.some(f => f.idfactura === factura.idfactura);
@@ -3383,143 +3426,132 @@ const closePagoMultipleModal = () => {
                         const serviciosTotal   = parseFloat(desglose.servicios?.total || 0);
                         const multasTotal      = parseFloat(desglose.multas?.total || 0);
                         const moraTotal        = parseFloat(factura.mora?.monto || 0);
+                        const diasColor        = factura.dias_transcurridos > 30 ? 'dias-alto'
+                                              : factura.dias_transcurridos > 15 ? 'dias-med' : '';
+
+                        const cardClasses = [
+                          'payment-period-card',
+                          puedeSeleccionar ? 'is-selectable' : '',
+                          esActual         ? 'is-actual'     : '',
+                          estaSeleccionada ? 'is-selected'   : '',
+                        ].filter(Boolean).join(' ');
 
                         return (
                           <div
                             key={factura.idfactura ?? index}
-                            className={`adeudo-periodo-card ${esActual ? 'periodo-actual' : ''} ${estaSeleccionada ? 'factura-seleccionada' : ''}`}
-                            style={{
-                              border: estaSeleccionada ? '2px solid #10b981' : esActual ? '2px solid #3b82f6' : '1px solid #e5e7eb',
-                              backgroundColor: estaSeleccionada ? '#f0fdf4' : esActual ? '#eff6ff' : 'white',
-                              padding: '16px', borderRadius: '8px', marginBottom: '12px',
-                              position: 'relative', cursor: puedeSeleccionar ? 'pointer' : 'default',
-                            }}
+                            className={cardClasses}
                             onClick={() => puedeSeleccionar && toggleFacturaParaPago(factura)}
                           >
-                            {/* Checkbox */}
-                            {puedeSeleccionar && (
-                              <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
+                            {/* ── Header ── */}
+                            <div className="payment-period-card-header">
+                              <span className={`payment-period-tag${esActual ? ' is-actual' : ''}`}>
+                                {esActual ? 'Periodo actual' : `Periodo ${index + 1}`}
+                              </span>
+
+                              <span className="payment-period-num">{factura.numfactura}</span>
+
+                              <span className={`payment-period-estado-tag ${factura.estadofactura === 'vencida' ? 'vencida' : 'pendiente'}`}>
+                                {factura.estadofactura}
+                              </span>
+
+                              <span className="payment-period-periodo-label">{factura.periodo}</span>
+
+                              {puedeSeleccionar && (
                                 <input
                                   type="checkbox"
+                                  className="payment-period-checkbox"
                                   checked={estaSeleccionada}
                                   onChange={e => { e.stopPropagation(); toggleFacturaParaPago(factura); }}
-                                  style={{ width: '20px', height: '20px', cursor: 'pointer' }}
                                 />
-                              </div>
-                            )}
-
-                            {/* Header */}
-                            <div style={{
-                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                              marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb',
-                              paddingRight: puedeSeleccionar ? '40px' : '0',
-                            }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <span style={{
-                                  backgroundColor: esActual ? '#3b82f6' : '#6b7280',
-                                  color: 'white', padding: '4px 12px', borderRadius: '4px',
-                                  fontSize: '12px', fontWeight: 'bold',
-                                }}>
-                                  {esActual ? 'PERIODO ACTUAL' : `PERIODO ${index + 1}`}
-                                </span>
-                                <span style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: 'bold' }}>
-                                  {factura.numfactura}
-                                </span>
-                                <span style={{
-                                  backgroundColor: factura.estadofactura === 'vencida' ? '#fef3c7' : '#e5e7eb',
-                                  color: factura.estadofactura === 'vencida' ? '#d97706' : '#6b7280',
-                                  padding: '2px 8px', borderRadius: '4px', fontSize: '11px',
-                                  fontWeight: '600', textTransform: 'uppercase',
-                                }}>
-                                  {factura.estadofactura}
-                                </span>
-                              </div>
-                              <span style={{ fontSize: '16px', fontWeight: 'bold', color: esActual ? '#3b82f6' : '#1f2937' }}>
-                                {factura.periodo}
-                              </span>
+                              )}
                             </div>
 
-                            {/* Desglose conceptos */}
-                            <div style={{ backgroundColor: '#f9fafb', borderRadius: '6px', padding: '12px', marginBottom: '12px' }}>
-                              <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '8px' }}>
-                                Desglose de Conceptos:
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                            {/* ── Body ── */}
+                            <div className="payment-period-card-body">
+
+                              {/* Columna conceptos */}
+                              <div className="payment-period-conceptos">
+                                <span className="payment-period-conceptos-label">Desglose</span>
+
                                 {consumoTotal > 0 && (
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                                    <span style={{ color: '#10b981' }}>💧 Consumo ({factura.consumom3 || 0} m³):</span>
-                                    <span style={{ fontWeight: 'bold', color: '#10b981' }}>{formatCurrency(consumoTotal)}</span>
-                                  </div>
-                                )}
-                                {serviciosTotal > 0 && (
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                                    <span style={{ color: '#3b82f6' }}>🔧 Servicios:</span>
-                                    <span style={{ fontWeight: 'bold', color: '#3b82f6' }}>{formatCurrency(serviciosTotal)}</span>
-                                  </div>
-                                )}
-                                {multasTotal > 0 && (
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                                    <span style={{ color: '#ef4444' }}>🚨 Multas ({desglose.multas?.cantidad || 0}):</span>
-                                    <span style={{ fontWeight: 'bold', color: '#ef4444' }}>{formatCurrency(multasTotal)}</span>
-                                  </div>
-                                )}
-                                {moraTotal > 0 && (
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                                    <span style={{ color: '#f59e0b' }}>
-                                      ⏰ Mora ({factura.mora?.diasmoraefectivos || 0} días):
+                                  <div className="payment-period-concepto-row">
+                                    <span className="payment-period-concepto-name">
+                                      <Droplets className="w-3 h-3" style={{ color: '#059669' }} />
+                                      Consumo ({factura.consumom3 || 0} m³)
                                     </span>
-                                    <span style={{ fontWeight: 'bold', color: '#f59e0b' }}>{formatCurrency(moraTotal)}</span>
+                                    <span className="payment-period-concepto-val consumo">{formatCurrency(consumoTotal)}</span>
                                   </div>
                                 )}
+
+                                {serviciosTotal > 0 && (
+                                  <div className="payment-period-concepto-row">
+                                    <span className="payment-period-concepto-name">
+                                      <Wrench className="w-3 h-3" style={{ color: '#2563eb' }} />
+                                      Servicios
+                                    </span>
+                                    <span className="payment-period-concepto-val servicios">{formatCurrency(serviciosTotal)}</span>
+                                  </div>
+                                )}
+
+                                {multasTotal > 0 && (
+                                  <div className="payment-period-concepto-row">
+                                    <span className="payment-period-concepto-name">
+                                      <AlertCircle className="w-3 h-3" style={{ color: '#dc2626' }} />
+                                      Multas ({desglose.multas?.cantidad || 0})
+                                    </span>
+                                    <span className="payment-period-concepto-val multas">{formatCurrency(multasTotal)}</span>
+                                  </div>
+                                )}
+
+                                {moraTotal > 0 && (
+                                  <div className="payment-period-concepto-row">
+                                    <span className="payment-period-concepto-name">
+                                      <Clock className="w-3 h-3" style={{ color: '#d97706' }} />
+                                      Mora ({factura.mora?.diasmoraefectivos || 0} días)
+                                    </span>
+                                    <span className="payment-period-concepto-val mora">{formatCurrency(moraTotal)}</span>
+                                  </div>
+                                )}
+
                                 {consumoTotal === 0 && serviciosTotal === 0 && multasTotal === 0 && moraTotal === 0 && (
-                                  <div style={{ fontSize: '12px', color: '#9ca3af', gridColumn: 'span 2' }}>
-                                    Sin desglose disponible
-                                  </div>
+                                  <span className="payment-period-sin-desglose">Sin desglose disponible</span>
                                 )}
                               </div>
+
+                              {/* Columna meta */}
+                              <div className="payment-period-meta">
+                                <div className="payment-period-meta-item">
+                                  <span className="payment-period-meta-label">
+                                    <Calendar className="w-3 h-3" /> Emisión
+                                  </span>
+                                  <span className="payment-period-meta-val">{formatDateShort(factura.fechaemision)}</span>
+                                </div>
+
+                                <div className="payment-period-meta-item">
+                                  <span className="payment-period-meta-label">
+                                    <Clock className="w-3 h-3" /> Días transcurridos
+                                  </span>
+                                  <span className={`payment-period-meta-val ${diasColor}`}>
+                                    {factura.dias_transcurridos} días
+                                  </span>
+                                </div>
+
+                                <div className="payment-period-meta-item">
+                                  <span className="payment-period-meta-label">IVA</span>
+                                  <span className="payment-period-meta-val">
+                                    {factura.iva?.porcentaje > 0 ? `${factura.iva.porcentaje}%` : 'Exento'}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
 
-                            {/* Info básica */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '12px' }}>
-                              <div>
-                                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
-                                  <Calendar className="w-3 h-3 inline mr-1" /> Fecha Emisión
-                                </div>
-                                <div style={{ fontSize: '13px', fontWeight: '500' }}>
-                                  {formatDateShort(factura.fechaemision)}
-                                </div>
-                              </div>
-                              <div>
-                                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
-                                  <Clock className="w-3 h-3 inline mr-1" /> Días Transcurridos
-                                </div>
-                                <div style={{ fontSize: '13px', fontWeight: 'bold', color: factura.dias_transcurridos > 30 ? '#ef4444' : '#f59e0b' }}>
-                                  {factura.dias_transcurridos} días
-                                </div>
-                              </div>
-                              <div>
-                                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
-                                  IVA ({factura.iva?.porcentaje || 0}%)
-                                </div>
-                                <div style={{ fontSize: '13px', color: '#374151' }}>
-                                  {factura.iva?.porcentaje > 0 ? `${factura.iva.porcentaje}%` : 'Exento'}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Total con mora */}
-                            <div style={{
-                              backgroundColor: estaSeleccionada ? '#d1fae5' : esActual ? '#dbeafe' : '#f3f4f6',
-                              padding: '10px', borderRadius: '6px',
-                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            }}>
-                              <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>
-                                Total a Pagar (con mora)
+                            {/* ── Footer total ── */}
+                            <div className="payment-period-card-footer">
+                              <span className="payment-period-footer-label">
+                                <DollarSign className="w-3 h-3" />
+                                Total con mora
                               </span>
-                              <span style={{
-                                fontSize: '16px', fontWeight: 'bold',
-                                color: estaSeleccionada ? '#059669' : esActual ? '#2563eb' : '#1f2937',
-                              }}>
+                              <span className="payment-period-footer-total">
                                 {formatCurrency(factura.totalconmora)}
                               </span>
                             </div>

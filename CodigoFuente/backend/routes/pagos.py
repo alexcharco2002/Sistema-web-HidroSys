@@ -2677,7 +2677,7 @@ def crear_pago_multiple(
             )
             
             # Calcular monto total para esta factura
-            monto_total_factura = item.monto_a_pagar + monto_mora
+            monto_total_factura = Decimal(str(monto_sin_multas)) + monto_mora
             total_general += monto_total_factura
             total_mora += monto_mora
             

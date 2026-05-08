@@ -136,6 +136,39 @@ def export_to_csv(data: List[dict], filename: str) -> StreamingResponse:
         }
     )
 
+# ===========================================================================
+# Helper para filtro de período flexible (mes/año o rango)
+# ===========================================================================
+
+def _filtro_periodo_flexible(query, columna_fecha, mes=None, anio=None,
+                              mesdesde=None, aniodesde=None,
+                              meshasta=None, aniohasta=None):
+    """
+    Aplica filtro de período según el modo:
+      - Mes exacto   : mes + anio
+      - Rango        : mesdesde/aniodesde → meshasta/aniohasta (cruza años)
+      - Año completo : solo anio
+    """
+    from sqlalchemy import cast, Integer as SAInt
+    if mes and anio:
+        query = query.filter(
+            extract("month", columna_fecha) == mes,
+            extract("year",  columna_fecha) == anio,
+        )
+    elif mesdesde and aniodesde and meshasta and aniohasta:
+        # Comparar como entero AAAAMM para soportar rango que cruza año
+        valor_periodo = (
+            cast(extract("year",  columna_fecha), SAInt) * 100 +
+            cast(extract("month", columna_fecha), SAInt)
+        )
+        query = query.filter(
+            valor_periodo >= (aniodesde * 100 + mesdesde),
+            valor_periodo <= (aniohasta * 100 + meshasta),
+        )
+    elif anio:
+        query = query.filter(extract("year", columna_fecha) == anio)
+    return query
+
 # ============================================================================
 # 1. REPORTE DE USUARIOS
 # ============================================================================
@@ -605,7 +638,8 @@ def get_reporte_lecturas(
     activo: Optional[bool] = None,
     es_estimada: Optional[bool] = None,
     payload: dict = Depends(verify_token),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    sector: Optional[str] = Query(None, description="Filtrar por nombre del sector")
 ):
     """📊 Reporte completo de lecturas con información de afiliado y medidor"""
     current_user = get_current_user(payload, db)
@@ -621,7 +655,10 @@ def get_reporte_lecturas(
     # ============================================================
     # FILTRO DE BÚSQUEDA - CORREGIDO
     # ============================================================
-    if search:
+
+    # Por:
+    if search and search.strip():
+        search = search.strip()  # ← limpiar espacios
         search_pattern = f"%{search}%"
         query = query.join(Lectura.medidor).outerjoin(Medidor.usuario_afiliado).outerjoin(UsuarioAfiliado.usuario_sistema).filter(
             or_(
@@ -649,6 +686,10 @@ def get_reporte_lecturas(
     if es_estimada is not None:
         query = query.filter(Lectura.es_estimada == es_estimada)
     
+    # NUEVO: Filtro por nombre del sector
+    if sector:
+        query = query.join(Lectura.medidor).join(Medidor.sector).filter(Sector.nombre_sector == sector)
+
     query = query.order_by(Lectura.fecha_lectura.desc())
     lecturas = query.offset(skip).limit(limit).all()
     
@@ -1724,6 +1765,7 @@ def get_reporte_tarifas(
     activo: Optional[bool] = None,
     vigente: Optional[bool] = None,
     tipo_tarifa: Optional[str] = None,
+    search: Optional[str] = None,
     payload: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
@@ -1733,6 +1775,15 @@ def get_reporte_tarifas(
     
     query = db.query(Tarifa)
     
+    if search:
+        like = f"%{search}%"
+        query = query.filter(or_(
+            Tarifa.nombre.ilike(like),
+            Tarifa.detalle.ilike(like),
+            Tarifa.tipo_tarifa.ilike(like)
+        ))
+    
+
     if activo is not None:
         query = query.filter(Tarifa.activo == activo)
     
@@ -1741,6 +1792,7 @@ def get_reporte_tarifas(
     
     if tipo_tarifa:
         query = query.filter(Tarifa.tipo_tarifa.ilike(f"%{tipo_tarifa}%"))
+
     
     query = query.order_by(
         Tarifa.es_vigente.desc(),
@@ -2455,4 +2507,339 @@ def get_anios_disponibles(
         "success": True,
         "anios": todos,                        # lista de años  (igual que antes)
         "meses_por_anio": meses_por_anio_sorted  # { 2024: [1,3,5], 2025: [1,2] }
+    }
+
+@router.get("/individual/lecturas")
+def reporte_individual_lecturas(
+    codusuarioafi: str          = Query(..., description="Código del afiliado, ej: '10'"),
+    mes:       Optional[int]    = Query(None, ge=1, le=12),
+    anio:      Optional[int]    = Query(None, ge=2020),
+    mesdesde:  Optional[int]    = Query(None, ge=1, le=12),
+    aniodesde: Optional[int]    = Query(None, ge=2020),
+    meshasta:  Optional[int]    = Query(None, ge=1, le=12),
+    aniohasta: Optional[int]    = Query(None, ge=2020),
+    skip:  int = Query(0,    ge=0),
+    limit: int = Query(1000, ge=1, le=5000),
+    payload: dict    = Depends(verify_token),
+    db:      Session = Depends(get_db),
+):
+    currentuser = get_current_user(payload, db)
+    require_permission(currentuser, db, "reportes", "lectura")
+
+    # Base query con JOINs explícitos (sin cast, cod_usuario_afi ya es String)
+    query = (
+        db.query(Lectura)
+        .options(
+            joinedload(Lectura.medidor)
+                .joinedload(Medidor.usuario_afiliado)
+                .joinedload(UsuarioAfiliado.usuario_sistema),
+            joinedload(Lectura.medidor).joinedload(Medidor.sector),
+            joinedload(Lectura.lector),
+        )
+        .join(Lectura.medidor)
+        .join(Medidor.usuario_afiliado)
+        .filter(UsuarioAfiliado.cod_usuario_afi == codusuarioafi)  # ✅ sin cast
+    )
+
+    # Filtro de período flexible
+    query = _filtro_periodo_flexible(
+        query, Lectura.fecha_lectura,
+        mes=mes, anio=anio,
+        mesdesde=mesdesde, aniodesde=aniodesde,
+        meshasta=meshasta, aniohasta=aniohasta,
+    )
+
+    # ✅ count() ANTES de paginar para total real
+    total = query.count()
+
+    lecturas = (
+        query
+        .order_by(Lectura.fecha_lectura.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    def _nombre_afiliado(l: Lectura) -> str:
+        try:
+            us = l.medidor.usuario_afiliado.usuario_sistema
+            return f"{us.nombres} {us.apellidos}"
+        except AttributeError:
+            return "Sin afiliado"
+
+    def _serializar(l: Lectura) -> dict:
+        m   = l.medidor
+        afi = m.usuario_afiliado if m else None
+        sec = m.sector            if m else None
+
+        return {
+            # Afiliado
+            "cod_usuario_afi": afi.cod_usuario_afi if afi else None,
+            "nombres":         _nombre_afiliado(l),
+            # Medidor
+            "num_medidor":     m.num_medidor  if m   else None,   # ✅ num_medidor (con _)
+            "sector":          sec.nombre_sector if sec else "Sin sector",  # ✅ nombre_sector
+            # Lectura
+            "id_lectura":      l.id_lectura,
+            "lectura_anterior": l.lectura_anterior,               # ✅ con _
+            "lectura_actual":   l.lectura_actual,                 # ✅ con _
+            "consumo_m3":       l.consumo_m3,                     # ✅ con _
+            "fecha_lectura":    l.fecha_lectura.strftime("%d/%m/%Y") if l.fecha_lectura else None,
+            "tipo_lectura":     "Estimada" if l.es_estimada else "Real",  # ✅ es_estimada
+            "lector":           (
+                f"{l.lector.nombres} {l.lector.apellidos}"
+                if l.lector else "Sin lector"
+            ),
+            "observacion":     l.observacion,
+            "activo":          l.activo,
+        }
+
+    return {
+        "success": True,
+        "total":   total,          # ✅ total real con paginación
+        "data":    [_serializar(l) for l in lecturas],
+    }
+
+
+@router.get("/individual/facturas")
+def reporte_individual_facturas(
+    codusuarioafi: str         = Query(..., description="Código del afiliado"),
+    mes:       Optional[int]   = Query(None, ge=1, le=12),
+    anio:      Optional[int]   = Query(None, ge=2020),
+    mesdesde:  Optional[int]   = Query(None, ge=1, le=12),
+    aniodesde: Optional[int]   = Query(None, ge=2020),
+    meshasta:  Optional[int]   = Query(None, ge=1, le=12),
+    aniohasta: Optional[int]   = Query(None, ge=2020),
+    estado:    Optional[str]   = Query(None),
+    skip:  int = Query(0, ge=0),
+    limit: int = Query(1000, ge=1, le=5000),
+    payload: dict    = Depends(verify_token),
+    db:      Session = Depends(get_db),
+):
+    currentuser = get_current_user(payload, db)
+    require_permission(currentuser, db, "reportes", "lectura")
+
+    morasubquery = (
+        db.query(
+            MoraFactura.id_factura,
+            func.count(MoraFactura.idmora).label("meses_adeudo"),
+            func.sum(MoraFactura.valormora).label("total_mora"),
+        )
+        .filter(MoraFactura.activo == True)
+        .group_by(MoraFactura.id_factura)
+        .subquery()
+    )
+
+    query = (
+        db.query(
+            Factura,
+            morasubquery.c.meses_adeudo,
+            morasubquery.c.total_mora,
+        )
+        .join(Lectura,         Factura.idlectura         == Lectura.idlectura)
+        .join(Medidor,         Lectura.idmedidor          == Medidor.idmedidor)
+        .join(UsuarioAfiliado, Medidor.idusuarioafi       == UsuarioAfiliado.idusuarioafi)
+        .join(UsuarioSistema,  UsuarioAfiliado.idusuariosistema == UsuarioSistema.idusuariosistema)
+        .outerjoin(Sector,     UsuarioAfiliado.idsector   == Sector.idsector)
+        .outerjoin(morasubquery, Factura.id_factura        == morasubquery.c.id_factura)
+        .filter(UsuarioAfiliado.codusuarioafi == codusuarioafi)
+    )
+
+    query = _filtro_periodo_flexible(
+        query, Factura.fechaemision,
+        mes=mes, anio=anio,
+        mesdesde=mesdesde, aniodesde=aniodesde,
+        meshasta=meshasta, aniohasta=aniohasta,
+    )
+
+    if estado and estado.lower() not in ("todos", "all"):
+        query = query.filter(Factura.estadofactura == estado.lower())
+
+    total   = query.count()
+    filas   = query.order_by(Factura.fechaemision.desc()).offset(skip).limit(limit).all()
+
+    return {
+        "success": True,
+        "total":   total,
+        "data": [
+            {
+                "numfactura":    f.numfactura,
+                "codusuarioafi": codusuarioafi,
+                "periodo":       f.periodo,
+                "fechaemision":  f.fechaemision.strftime("%d/%m/%Y") if f.fechaemision else None,
+                "consumom3":     f.consumom3,
+                "excesom3":      f.excesom3 or 0,
+                "valorconsumo":  float(f.valorconsumo) if f.valorconsumo else 0.0,
+                "valorexceso":   float(f.valorexceso)  if f.valorexceso  else 0.0,
+                "descuento":     float(f.descuento)    if f.descuento    else 0.0,
+                "subtotal":      float(f.subtotal)     if f.subtotal     else 0.0,
+                "impuesto":      float(f.impuesto)     if f.impuesto     else 0.0,
+                "total":         float(f.total)        if f.total        else 0.0,
+                "estadofactura": f.estadofactura,
+                "tienemora":     meses_adeudo is not None and meses_adeudo > 0,
+                "mesesadeudo":   int(meses_adeudo) if meses_adeudo else 0,
+                "valormora":     float(total_mora) if total_mora else 0.0,
+                "totalconmora":  float(f.total or 0) + float(total_mora or 0),
+            }
+            for f, meses_adeudo, total_mora in filas
+        ],
+    }
+
+@router.get("/individual/pagos")
+def reporte_individual_pagos(
+    codusuarioafi: str         = Query(..., description="Código del afiliado"),
+    mes:       Optional[int]   = Query(None, ge=1, le=12),
+    anio:      Optional[int]   = Query(None, ge=2020),
+    mesdesde:  Optional[int]   = Query(None, ge=1, le=12),
+    aniodesde: Optional[int]   = Query(None, ge=2020),
+    meshasta:  Optional[int]   = Query(None, ge=1, le=12),
+    aniohasta: Optional[int]   = Query(None, ge=2020),
+    metodopago: Optional[str]  = Query(None),
+    skip:  int = Query(0, ge=0),
+    limit: int = Query(1000, ge=1, le=5000),
+    payload: dict    = Depends(verify_token),
+    db:      Session = Depends(get_db),
+):
+    currentuser = get_current_user(payload, db)
+    require_permission(currentuser, db, "reportes", "lectura")
+
+    morasubquery = (
+        db.query(
+            MoraFactura.idfactura,
+            func.count(MoraFactura.idmora).label("meses_adeudo"),
+            func.sum(MoraFactura.valormora).label("total_mora"),
+        )
+        .filter(MoraFactura.activo == True)
+        .group_by(MoraFactura.idfactura)
+        .subquery()
+    )
+
+    Cajero = aliased(UsuarioSistema)
+
+    query = (
+        db.query(Pago, morasubquery.c.meses_adeudo, morasubquery.c.total_mora)
+        .join(Factura,         Pago.idfactura              == Factura.idfactura)
+        .join(Lectura,         Factura.idlectura            == Lectura.idlectura)
+        .join(Medidor,         Lectura.idmedidor            == Medidor.idmedidor)
+        .join(UsuarioAfiliado, Medidor.idusuarioafi         == UsuarioAfiliado.idusuarioafi)
+        .join(UsuarioSistema,  UsuarioAfiliado.idusuariosistema == UsuarioSistema.idusuariosistema)
+        .outerjoin(Cajero,     Pago.idcajero                == Cajero.idusuariosistema)
+        .outerjoin(morasubquery, Factura.idfactura          == morasubquery.c.idfactura)
+        .filter(
+            UsuarioAfiliado.codusuarioafi == codusuarioafi,
+            Pago.activo == True,
+        )
+    )
+
+    query = _filtro_periodo_flexible(
+        query, Pago.fechapago,
+        mes=mes, anio=anio,
+        mesdesde=mesdesde, aniodesde=aniodesde,
+        meshasta=meshasta, aniohasta=aniohasta,
+    )
+
+    if metodopago:
+        query = query.filter(Pago.metodopago.ilike(f"%{metodopago}%"))
+
+    total = query.count()
+    filas = query.order_by(Pago.fechapago.desc()).offset(skip).limit(limit).all()
+
+    return {
+        "success": True,
+        "total": total,
+        "data": [
+            {
+                "numfactura":    p.factura.numfactura if p.factura else None,
+                "periodo":       p.factura.periodo    if p.factura else None,
+                "codusuarioafi": codusuarioafi,
+                "fechapago":     p.fechapago.strftime("%d/%m/%Y %H:%M") if p.fechapago else None,
+                "montopagado":   float(p.montopago)   if p.montopago  else 0.0,
+                "totalfactura":  float(p.factura.total) if p.factura and p.factura.total else 0.0,
+                "saldo":         round(float(p.factura.total or 0) - float(p.montopago or 0), 2),
+                "pagocompleto":  float(p.montopago or 0) >= float(p.factura.total or 0) if p.factura else False,
+                "metodopago":    p.metodopago,
+                "estadopago":    p.estadopago,
+                "tienecomprobante": bool(p.comprobantepdf),
+                "cajero":        f"{cajero.nombres} {cajero.apellidos}" if cajero else "Sin cajero",
+                "observaciones": p.observaciones,
+                "tienemora":     meses_adeudo is not None and meses_adeudo > 0,
+                "mesesadeudo":   int(meses_adeudo) if meses_adeudo else 0,
+                "valormora":     float(total_mora) if total_mora else 0.0,
+                "totalconmora":  round(float(p.factura.total or 0) + float(total_mora or 0), 2),
+            }
+            for p, meses_adeudo, total_mora, cajero in [
+                (pago, ma, tm, db.query(UsuarioSistema).filter(
+                    UsuarioSistema.idusuariosistema == pago.idcajero
+                ).first() if pago.idcajero else None)
+                for pago, ma, tm in filas
+            ]
+        ],
+    }
+
+@router.get("/individual/multas-afiliados")
+def reporte_individual_multas_afiliados(
+    codusuarioafi: str         = Query(..., description="Código del afiliado"),
+    mes:       Optional[int]   = Query(None, ge=1, le=12),
+    anio:      Optional[int]   = Query(None, ge=2020),
+    mesdesde:  Optional[int]   = Query(None, ge=1, le=12),
+    aniodesde: Optional[int]   = Query(None, ge=2020),
+    meshasta:  Optional[int]   = Query(None, ge=1, le=12),
+    aniohasta: Optional[int]   = Query(None, ge=2020),
+    estado:    Optional[str]   = Query(None),
+    facturado: Optional[bool]  = Query(None),
+    skip:  int = Query(0, ge=0),
+    limit: int = Query(1000, ge=1, le=5000),
+    payload: dict    = Depends(verify_token),
+    db:      Session = Depends(get_db),
+):
+    currentuser = get_current_user(payload, db)
+    require_permission(currentuser, db, "reportes", "lectura")
+
+    query = (
+        db.query(MultaAfiliado)
+        .options(
+            joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.usuariosistema),
+            joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.sector),
+            joinedload(MultaAfiliado.tipomulta),
+        )
+        .join(UsuarioAfiliado, MultaAfiliado.idusuarioafi == UsuarioAfiliado.idusuarioafi)
+        .filter(UsuarioAfiliado.codusuarioafi == codusuarioafi)
+    )
+
+    query = _filtro_periodo_flexible(
+        query, MultaAfiliado.fechamulta,
+        mes=mes, anio=anio,
+        mesdesde=mesdesde, aniodesde=aniodesde,
+        meshasta=meshasta, aniohasta=aniohasta,
+    )
+
+    if estado:
+        query = query.filter(MultaAfiliado.estado == estado)
+    if facturado is not None:
+        query = query.filter(MultaAfiliado.facturado == facturado)
+
+    total  = query.count()
+    multas = query.order_by(MultaAfiliado.fechamulta.desc()).offset(skip).limit(limit).all()
+
+    return {
+        "success": True,
+        "total": total,
+        "data": [
+            {
+                "codusuarioafi": m.usuario.codusuarioafi if m.usuario else None,
+                "nombres":   f"{m.usuario.usuariosistema.nombres} {m.usuario.usuariosistema.apellidos}"
+                             if m.usuario and m.usuario.usuariosistema else "N/A",
+                "cedula":    m.usuario.usuariosistema.cedula if m.usuario and m.usuario.usuariosistema else None,
+                "sector":    m.usuario.sector.nombresector   if m.usuario and m.usuario.sector else None,
+                "nombremulta": m.tipomulta.nombremulta if m.tipomulta else "N/A",
+                "monto":     float(m.monto) if m.monto else 0.0,
+                "fechamulta": m.fechamulta.isoformat() if m.fechamulta else None,
+                "fechapago":  m.fechapago.isoformat()  if m.fechapago  else None,
+                "observaciones": m.observaciones,
+                "estado":    m.estado,
+                "facturado": m.facturado,
+                "activo":    m.activo,
+            }
+            for m in multas
+        ],
     }

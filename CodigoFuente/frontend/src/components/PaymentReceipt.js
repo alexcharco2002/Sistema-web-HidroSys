@@ -67,8 +67,8 @@ const PaymentReceipt = ({ pago, factura, onClose, onSave }) => {
 // ============================================================
 
 const extraerDatos = () => {
-  const usuario = factura?.usuario_afiliado?.usuario_sistema;
-  const afiliado = factura?.usuario_afiliado;
+ // const usuario = factura?.usuario_afiliado?.usuario_sistema;
+ // const afiliado = factura?.usuario_afiliado;
 
   // 👉 PAGO REAL (primer pago)
   const pagoActual = factura?.pagos?.[0];
@@ -1333,8 +1333,8 @@ export const generatePaymentPDF = async (pago, factura) => {
   };
 
   // Extraer datos
-  const usuario = factura?.usuario_afiliado?.usuario_sistema;
-  const afiliado = factura?.usuario_afiliado;
+ // const usuario = factura?.usuario_afiliado?.usuario_sistema;
+  //const afiliado = factura?.usuario_afiliado;
   const pagoActual = factura?.pagos?.[0];
 
   // ✅ CONVERTIR TODOS LOS VALORES A STRING
@@ -1746,7 +1746,6 @@ doc.text(toString(formatCurrency(factura?.total || 0)), pageWidth - margin, y, {
 // GENERAR PDF PARA PAGO MÚLTIPLE
 // ============================================================
 export const generateMultiplePaymentPDF = async (pagoMultiple, facturas, afiliado) => {
-  const { jsPDF } = window.jspdf || require('jspdf');
   
   // Funciones auxiliares
   const formatCurrency = (value) => {
@@ -1915,8 +1914,29 @@ export const generateMultiplePaymentPDF = async (pagoMultiple, facturas, afiliad
     doc.setTextColor(31, 41, 55);
 
     facturas.forEach((factura, idx) => {
-      const totalFactura = parseFloat(factura.saldo_pendiente || factura.total_con_mora || 0);
-      const moraFactura = parseFloat(factura.mora_monto || 0);
+      // ✅ Normalizar campos — pueden venir con distintos nombres
+      const numFactura = String(
+        factura.num_factura ?? factura.numfactura ?? 'S/N'
+      );
+      const periodo = String(
+        factura.periodo ?? factura.periodo_factura ?? 'S/P'
+      );
+      const fechaEmision =
+        factura.fecha_emision ?? factura.fechaemision ?? null;
+      const consumoM3 =
+        factura.consumo_m3 ?? factura.consumom3 ?? factura.consumo ?? 0;
+      const totalFactura = parseFloat(
+        factura.totalconmora ??
+        factura.total_con_mora ??
+        factura.saldo_pendiente ??
+        factura.saldopendiente ??
+        factura.total ??
+        0
+      );
+      const moraFactura = parseFloat(
+        factura.mora_monto ?? factura.moramonto ?? factura.mora ?? 0
+      );
+
       totalGeneral += totalFactura;
       totalMoraGeneral += moraFactura;
 
@@ -1926,17 +1946,25 @@ export const generateMultiplePaymentPDF = async (pagoMultiple, facturas, afiliad
         doc.rect(margin, y - 4, pageWidth - margin * 2, 6, 'F');
       }
 
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(31, 41, 55);
       doc.text(String(idx + 1), margin + 3, y);
-      doc.text(toString(factura.num_factura), margin + 10, y);
-      doc.text(toString(factura.periodo), margin + 35, y);
-      doc.text(formatDateShort(factura.fecha_emision), margin + 60, y);
-      doc.text(`${factura.consumo_m3 || 0} m³`, margin + 85, y);
-      doc.text(moraFactura > 0 ? formatCurrency(moraFactura) : '-', margin + 105, y);
-      doc.text(formatCurrency(totalFactura), pageWidth - margin - 3, y, { align: 'right' });
+      doc.text(numFactura, margin + 10, y);
+      doc.text(periodo, margin + 35, y);
+      doc.text(formatDateShort(fechaEmision), margin + 60, y);
+      doc.text(`${consumoM3} m3`, margin + 85, y);
+      doc.text(
+        moraFactura > 0 ? formatCurrency(moraFactura) : '-',
+        margin + 105, y
+      );
+      doc.text(
+        formatCurrency(totalFactura),
+        pageWidth - margin - 3, y,
+        { align: 'right' }
+      );
 
       y += 6;
 
-      // Nueva página si es necesario
       if (y > pageHeight - 60) {
         doc.addPage();
         y = 20;

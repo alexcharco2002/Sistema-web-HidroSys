@@ -3670,3 +3670,367 @@ textarea.form-input {
   color: #16a34a;
   flex-shrink: 0;
 }
+
+/* ==========================================
+   LISTA DE PERIODOS / FACTURAS — MODAL PAGO
+   Clases: payment-period-*
+========================================== */
+
+/* ── Cabecera de la sección ── */
+.payment-period-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.payment-period-list-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.payment-period-list-title svg {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.payment-period-count-badge {
+  font-size: 12px;
+  font-weight: 500;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+  border-radius: 99px;
+  padding: 2px 10px;
+}
+
+/* ── Controles: seleccionar todas / warning ── */
+.payment-period-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.payment-period-btn-select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.payment-period-btn-select-all:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #1e293b;
+}
+
+.payment-period-selected-pill {
+  font-size: 12px;
+  font-weight: 600;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+  border-radius: 99px;
+  padding: 4px 12px;
+}
+
+.payment-period-warn-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 5px 12px;
+}
+
+/* ── Lista de tarjetas ── */
+.payment-period-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Tarjeta individual ── */
+.payment-period-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  cursor: default;
+}
+
+.payment-period-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.payment-period-card.is-selectable {
+  cursor: pointer;
+}
+
+.payment-period-card.is-actual {
+  border-left: 3px solid #3b82f6;
+}
+
+.payment-period-card.is-selected {
+  border: 1.5px solid #10b981;
+  background: #f0fdf4;
+}
+
+.payment-period-card.is-selected.is-actual {
+  border-left-width: 3px;
+  border-left-color: #10b981;
+}
+
+/* ── Header de tarjeta ── */
+.payment-period-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.payment-period-card.is-selected .payment-period-card-header {
+  background: #dcfce7;
+  border-bottom-color: #bbf7d0;
+}
+
+.payment-period-tag {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 9px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #475569;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.payment-period-tag.is-actual {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.payment-period-num {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payment-period-estado-tag {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.payment-period-estado-tag.vencida {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.payment-period-estado-tag.pendiente {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.payment-period-periodo-label {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.payment-period-card.is-actual .payment-period-periodo-label {
+  color: #2563eb;
+}
+
+.payment-period-checkbox {
+  width: 17px;
+  height: 17px;
+  accent-color: #10b981;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+/* ── Body: dos columnas ── */
+.payment-period-card-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+/* ── Columna conceptos ── */
+.payment-period-conceptos {
+  padding: 12px 14px;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.payment-period-conceptos-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #94a3b8;
+  margin-bottom: 2px;
+}
+
+.payment-period-concepto-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  gap: 6px;
+}
+
+.payment-period-concepto-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #64748b;
+}
+
+.payment-period-concepto-name svg {
+  flex-shrink: 0;
+}
+
+.payment-period-concepto-val {
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.payment-period-concepto-val.consumo  { color: #059669; }
+.payment-period-concepto-val.servicios { color: #2563eb; }
+.payment-period-concepto-val.multas   { color: #dc2626; }
+.payment-period-concepto-val.mora     { color: #d97706; }
+
+.payment-period-sin-desglose {
+  font-size: 12px;
+  color: #cbd5e1;
+  font-style: italic;
+}
+
+/* ── Columna meta ── */
+.payment-period-meta {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.payment-period-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.payment-period-meta-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #94a3b8;
+}
+
+.payment-period-meta-label svg {
+  flex-shrink: 0;
+}
+
+.payment-period-meta-val {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.payment-period-meta-val.dias-alto { color: #dc2626; }
+.payment-period-meta-val.dias-med  { color: #d97706; }
+
+/* ── Footer: total ── */
+.payment-period-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.payment-period-card.is-selected .payment-period-card-footer {
+  background: #dcfce7;
+  border-top-color: #bbf7d0;
+}
+
+.payment-period-footer-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.payment-period-footer-label svg { flex-shrink: 0; }
+
+.payment-period-footer-total {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: 'Monaco', 'Consolas', monospace;
+  color: #1e293b;
+}
+
+.payment-period-card.is-selected .payment-period-footer-total { color: #059669; }
+.payment-period-card.is-actual   .payment-period-footer-total { color: #2563eb; }
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .payment-period-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-period-conceptos {
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .payment-period-list-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}

@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 from datetime import date
 from typing import List  # Para listas en los schemas
+import re
 
 
 class LecturaBase(BaseModel):
@@ -13,6 +14,12 @@ class LecturaBase(BaseModel):
     lectura_anterior: int = Field(..., ge=0, description="Lectura anterior en m³")
     consumo_m3: int = Field(..., ge=0, description="Consumo en m³")
     fecha_lectura: date = Field(..., description="Fecha de la lectura")
+    periodo_consumo: Optional[str] = Field(
+        None,
+        min_length=7,
+        max_length=7,
+        description="Periodo al que corresponde el consumo en formato YYYY-MM"
+    )
     observacion: Optional[str] = Field(None, max_length=500, description="Observaciones")
     activo: bool = Field(default=True, description="Estado de la lectura")
     es_estimada: bool = Field(default=False, description="Si es una lectura estimada/sugerida")  # ✅ NUEVO
@@ -24,6 +31,20 @@ class LecturaBase(BaseModel):
         if v is None or not v.strip():
             return None
         return v.strip()
+
+    @field_validator('periodo_consumo')
+    @classmethod
+    def validar_periodo_consumo(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if not re.match(r'^\d{4}-\d{2}$', v):
+            raise ValueError('El periodo de consumo debe tener formato YYYY-MM')
+        anio, mes = v.split('-')
+        if not (1 <= int(mes) <= 12):
+            raise ValueError('El mes del periodo debe estar entre 01 y 12')
+        if not (2000 <= int(anio) <= 2100):
+            raise ValueError('El anio del periodo debe estar entre 2000 y 2100')
+        return v
     
     @model_validator(mode='after')
     def validar_lecturas(self):
@@ -40,6 +61,9 @@ class LecturaBase(BaseModel):
                 f'El consumo ({self.consumo_m3}) no coincide con la diferencia de lecturas ({consumo_calculado})'
             )
         
+        if self.periodo_consumo is None:
+            self.periodo_consumo = f"{self.fecha_lectura.year}-{self.fecha_lectura.month:02d}"
+
         return self
 
 
@@ -55,6 +79,7 @@ class LecturaUpdate(BaseModel):
     lectura_anterior: Optional[int] = Field(None, ge=0)
     consumo_m3: Optional[int] = Field(None, ge=0)
     fecha_lectura: Optional[date] = None
+    periodo_consumo: Optional[str] = Field(None, min_length=7, max_length=7)
     observacion: Optional[str] = Field(None, max_length=500)
     activo: Optional[bool] = None
     es_estimada: Optional[bool] = None  # ✅ NUEVO
@@ -66,6 +91,20 @@ class LecturaUpdate(BaseModel):
             if not v.strip():
                 return None
             return v.strip()
+        return v
+
+    @field_validator('periodo_consumo')
+    @classmethod
+    def validar_periodo_consumo_update(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if not re.match(r'^\d{4}-\d{2}$', v):
+            raise ValueError('El periodo de consumo debe tener formato YYYY-MM')
+        anio, mes = v.split('-')
+        if not (1 <= int(mes) <= 12):
+            raise ValueError('El mes del periodo debe estar entre 01 y 12')
+        if not (2000 <= int(anio) <= 2100):
+            raise ValueError('El anio del periodo debe estar entre 2000 y 2100')
         return v
 
 
@@ -105,6 +144,7 @@ class LecturaResponse(LecturaBase):
                 "lectura_anterior": 100,
                 "consumo_m3": 20,
                 "fecha_lectura": "2025-01-15",
+                "periodo_consumo": "2025-01",
                 "id_lector": 3,
                 "observacion": "Lectura normal",
                 "activo": True,

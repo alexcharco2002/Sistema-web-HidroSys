@@ -36,7 +36,7 @@ const FinesAffiliatesSection = () => {
   const [modalType, setModalType]             = useState('create');
   const [selectedMulta, setSelectedMulta]     = useState(null);
   const [affiliateSearchTerm, setAffiliateSearchTerm] = useState('');
-  const [, setSelectedAffiliateInfo] = useState(null);
+  const [selectedAffiliateInfo, setSelectedAffiliateInfo] = useState(null);
 
   const [formData, setFormData] = useState({
     id_usuario_afi: null, id_tipo_multa: null,
@@ -422,7 +422,7 @@ const FinesAffiliatesSection = () => {
               <Receipt className="w-7 h-7 text-blue-600" />
               <div>
                 <h2>Gestión de Multas a Afiliados</h2>
-                <p className="section-subtitle">Selecciona un período para gestionar las multas</p>
+                <p className="section-subtitle">Gestiona las multas asignadas a los afiliados</p>
               </div>
             </div>
           </div>
@@ -432,7 +432,7 @@ const FinesAffiliatesSection = () => {
             <div className="periodo-selector-header">
               <div>
                 <h3><CalendarDays className="w-5 h-5 text-blue-600 mr-2" />Períodos Recientes</h3>
-                <p className="periodo-selector-subtitle">Mes actual ± 2 meses</p>
+                <p className="periodo-selector-subtitle">Selecciona el período para gestionar las multas</p>
               </div>
             </div>
 
@@ -463,6 +463,13 @@ const FinesAffiliatesSection = () => {
                   return recientes.map(p => {
                     const esActual = p.mes === mesActual && p.anio === anioActual;
                     const res      = getResumen(p.anio, p.mes);
+                    
+                    // Cálculos para la barra de progreso
+                    const totalMultas = res?.total || 0;
+                    const pagadas = res?.pagadas || 0;
+                    const pctCobrado = totalMultas > 0 ? Math.round((pagadas / totalMultas) * 100) : 0;
+                    const todoCobrado = pctCobrado >= 100;
+
                     return (
                       <button
                         key={`${p.mes}-${p.anio}`}
@@ -474,33 +481,27 @@ const FinesAffiliatesSection = () => {
                           {esActual && <span className="periodo-badge-actual">Actual</span>}
                         </div>
 
-                        {/* Resumen de multas dentro de la card */}
-                        {res ? (
-                          <div className="periodo-card-resumen">
-                            <span className="resumen-item total">
-                              <FileText style={{ width: 12, height: 12 }} />
-                              {res.total} multas
-                            </span>
-                            {res.pendientes > 0 && (
-                              <span className="resumen-item pendiente">
-                                <Clock style={{ width: 12, height: 12 }} />
-                                {res.pendientes} pend.
-                              </span>
-                            )}
-                            {res.pagadas > 0 && (
-                              <span className="resumen-item pagada">
-                                <CheckCircle style={{ width: 12, height: 12 }} />
-                                {res.pagadas} pag.
-                              </span>
-                            )}
+                        {/* INFO PRINCIPAL / BARRA DE PROGRESO ÚNICA — Estilo Lectura/Facturas */}
+                        <div className="periodo-progress-container">
+                          <div className="periodo-card-info">
+                            {pagadas} / {totalMultas} multas pagadas
                           </div>
-                        ) : (
-                          <div className="periodo-card-resumen">
-                            <span className="resumen-item total">Sin multas</span>
+                          <div className="periodo-progress-bar">
+                            <div
+                              className={`periodo-progress-fill ${todoCobrado ? 'complete' : ''}`}
+                              style={{ width: `${pctCobrado}%` }}
+                            />
                           </div>
-                        )}
+                          <div className={`periodo-percentage ${todoCobrado ? 'complete' : ''}`}>
+                            {pctCobrado}% recaudado
+                          </div>
+                        </div>
 
-                        <div className="periodo-card-action"><span>Ver multas</span></div>
+                        <div className="periodo-card-action">
+                          <span>
+                            {totalMultas === 0 ? 'Periodo vacío' : 'Ver multas'}
+                          </span>
+                        </div>
                       </button>
                     );
                   });
@@ -565,18 +566,17 @@ const FinesAffiliatesSection = () => {
                           <div className="historial-meses-grid">
                             {meses.map(p => {
                               const res = getResumen(p.anio, p.mes);
+                              const pct = res && res.total > 0 ? Math.round((res.pagadas / res.total) * 100) : 0;
                               return (
                                 <button
                                   key={`${p.mes}-${p.anio}`}
                                   className="historial-mes-chip completo"
                                   onClick={() => handlePeriodoChange(p.mes, p.anio)}
-                                  title={res ? `${res.total} multas · ${res.pendientes} pend.` : `${p.mes_nombre} ${p.anio}`}
+                                  title={res ? `${pct}% recaudado (${res.total} multas)` : `${p.mes_nombre} ${p.anio}`}
                                 >
                                   <span className="historial-mes-dot completo" />
                                   <span className="historial-mes-nombre">{getMesCorto(p.mes)}</span>
-                                  {res && res.total > 0 && (
-                                    <span className="historial-mes-pct">{res.total}</span>
-                                  )}
+                                  <span className="historial-mes-pct">{pct}%</span>
                                 </button>
                               );
                             })}
@@ -896,27 +896,81 @@ const FinesAffiliatesSection = () => {
                 <form onSubmit={handleSubmit} className="user-form">
                   <div className="form-grid">
                     <div className="form-group form-group-full">
-                      <label>Afiliado: *</label>
-                      <div className="meter-search-container">
+                      <label className="flex items-center gap-2 mb-2">
+                        <User className="w-4 h-4 text-blue-600" />
+                        Seleccionar Afiliado *
+                      </label>
+
+                      {/* Búsqueda moderna */}
+                      <div className="meter-search-container mb-3">
                         <div className="meter-search-input-wrapper">
                           <Search className="w-4 h-4 text-gray-400" />
-                          <input type="text" placeholder="Buscar por código, nombre o cédula..."
-                            value={affiliateSearchTerm} onChange={e => setAffiliateSearchTerm(e.target.value)} />
+                          <input 
+                            type="text" 
+                            placeholder="Buscar por código, nombre o cédula..."
+                            value={affiliateSearchTerm} 
+                            onChange={e => setAffiliateSearchTerm(e.target.value)} 
+                          />
                           {affiliateSearchTerm && (
-                            <button type="button" onClick={() => setAffiliateSearchTerm('')} className="meter-search-clear-btn">
+                            <button 
+                              type="button" 
+                              onClick={() => setAffiliateSearchTerm('')} 
+                              className="meter-search-clear-btn"
+                            >
                               <X className="w-4 h-4 text-gray-400" />
                             </button>
                           )}
                         </div>
                       </div>
-                      <select value={formData.id_usuario_afi || ''} onChange={e => handleAffiliateChange(e.target.value)} required>
-                        <option value="">Seleccionar afiliado</option>
+
+                      {/* Lista moderna de afiliados con scroll interno */}
+                      <div className="affiliates-modal-list" style={{ maxHeight: '200px' }}>
                         {filteredAffiliates.map(a => (
-                          <option key={a.id_usuario_afi} value={a.id_usuario_afi}>
-                            {a.cod_usuario_afi} — {a.nombres} {a.apellidos} · CI: {a.cedula}
-                          </option>
+                          <div 
+                            key={a.id_usuario_afi}
+                            className={`affiliate-modal-item ${formData.id_usuario_afi === a.id_usuario_afi ? 'selected' : ''}`}
+                            onClick={() => handleAffiliateChange(a.id_usuario_afi)}
+                          >
+                            <div className="avatar-circle">
+                              {(a.nombres?.[0] || '') + (a.apellidos?.[0] || '')}
+                            </div>
+                            <div className="affiliate-info">
+                              <p className="affiliate-name">{a.nombres} {a.apellidos}</p>
+                              <p className="affiliate-meta">
+                                Cód: {a.cod_usuario_afi} | CI: {a.cedula || 'N/A'}
+                              </p>
+                            </div>
+                          </div>
                         ))}
-                      </select>
+
+                        {filteredAffiliates.length === 0 && affiliateSearchTerm && (
+                          <div className="p-6 text-center text-gray-500">
+                            <Search className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                            <p className="text-sm">No se encontraron afiliados</p>
+                          </div>
+                        )}
+                        
+                        {!affiliateSearchTerm && filteredAffiliates.length === 0 && (
+                          <div className="p-4 text-center text-gray-400 text-xs italic">
+                            Cargando afiliados...
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Info del seleccionado */}
+                      {selectedAffiliateInfo && (
+                        <div className="selected-affiliate-card mt-3 py-2 px-3 animate-fadeIn border-blue-200 bg-blue-50">
+                          <div className="avatar-circle" style={{ width: '28px', height: '28px', fontSize: '10px' }}>✓</div>
+                          <div className="affiliate-info">
+                            <p className="affiliate-name" style={{ fontSize: '13px' }}>
+                              Seleccionado: {selectedAffiliateInfo.nombres} {selectedAffiliateInfo.apellidos}
+                            </p>
+                            <p className="affiliate-meta" style={{ fontSize: '11px' }}>
+                              Código: {selectedAffiliateInfo.cod_usuario_afi} | CI: {selectedAffiliateInfo.cedula}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="form-group">

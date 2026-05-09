@@ -113,6 +113,51 @@ def normalize_text(text: str) -> str:
     )
     text = re.sub(r"\s+", " ", text)
     return text
+
+
+def construir_poligono_geojson(norte, sur, este, oeste) -> dict:
+    """Construye un poligono GeoJSON rectangular desde los limites cardinales."""
+    norte = float(norte)
+    sur = float(sur)
+    este = float(este)
+    oeste = float(oeste)
+
+    return {
+        "type": "Polygon",
+        "coordinates": [[
+            [oeste, norte],
+            [este, norte],
+            [este, sur],
+            [oeste, sur],
+            [oeste, norte],
+        ]]
+    }
+
+
+def validar_limites_cardinales(norte, sur, este, oeste):
+    if norte <= sur:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El limite norte debe ser mayor que el limite sur"
+        )
+
+    if este <= oeste:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El limite este debe ser mayor que el limite oeste"
+        )
+
+
+def validar_rango_altitud(altitud_min, altitud_max):
+    if (
+        altitud_min is not None and
+        altitud_max is not None and
+        altitud_max <= altitud_min
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La altitud maxima debe ser mayor que la altitud minima"
+        )
 # ============================================================================
 # ENDPOINTS
 # ============================================================================
@@ -211,6 +256,14 @@ def crear_limite(
         
         # Crear el nuevo límite
         datos_limite = limite_data.model_dump()
+
+        if datos_limite.get('poligono_geojson') is None:
+            datos_limite['poligono_geojson'] = construir_poligono_geojson(
+                datos_limite['norte'],
+                datos_limite['sur'],
+                datos_limite['este'],
+                datos_limite['oeste']
+            )
         
         # Limpiar espacios del nombre original (mantener capitalización)
         datos_limite['nombre'] = limite_data.nombre.strip()
@@ -263,6 +316,7 @@ def actualizar_limite(
     
     # Obtener los datos a actualizar
     datos_actualizacion = limite_data.model_dump(exclude_unset=True)
+    campos_limite = {'norte', 'sur', 'este', 'oeste'}
     
     # Verificar nombre duplicado si se está actualizando el nombre
     if 'nombre' in datos_actualizacion:
@@ -290,6 +344,24 @@ def actualizar_limite(
         db.query(LimiteGeografico).filter(
             LimiteGeografico.id != limite_id
         ).update({LimiteGeografico.activo: False})
+
+    norte_final = datos_actualizacion.get('norte', limite.norte)
+    sur_final = datos_actualizacion.get('sur', limite.sur)
+    este_final = datos_actualizacion.get('este', limite.este)
+    oeste_final = datos_actualizacion.get('oeste', limite.oeste)
+    altitud_min_final = datos_actualizacion.get('altitud_min', limite.altitud_min)
+    altitud_max_final = datos_actualizacion.get('altitud_max', limite.altitud_max)
+
+    validar_limites_cardinales(norte_final, sur_final, este_final, oeste_final)
+    validar_rango_altitud(altitud_min_final, altitud_max_final)
+
+    if campos_limite.intersection(datos_actualizacion):
+        datos_actualizacion['poligono_geojson'] = construir_poligono_geojson(
+            norte_final,
+            sur_final,
+            este_final,
+            oeste_final
+        )
     
     # Actualizar los campos del límite
     for campo, valor in datos_actualizacion.items():

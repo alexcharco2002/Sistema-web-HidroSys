@@ -1,6 +1,6 @@
 # models/lectura.py
 
-from sqlalchemy import Column, Integer, Date, Text, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Date, Text, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from db.session import Base
 
@@ -21,6 +21,7 @@ class Lectura(Base):
     lectura_anterior = Column(Integer, nullable=False)
     consumo_m3 = Column(Integer, nullable=False)
     fecha_lectura = Column(Date, nullable=False, index=True)
+    periodo_consumo = Column(String(7), nullable=False, index=True)
     id_lector = Column(Integer, ForeignKey("usuarios.t_usuario_sistema.id_usuario_sistema"), nullable=True)
     observacion = Column(Text, nullable=True)
     activo = Column(Boolean, default=True, nullable=False, index=True)
@@ -52,6 +53,7 @@ class Lectura(Base):
             'lectura_anterior': self.lectura_anterior,
             'consumo_m3': self.consumo_m3,
             'fecha_lectura': self.fecha_lectura.isoformat() if self.fecha_lectura else None,
+            'periodo_consumo': self.periodo_consumo,
             'id_lector': self.id_lector,
             'observacion': self.observacion,
             'activo': self.activo,

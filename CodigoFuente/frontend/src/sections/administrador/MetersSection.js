@@ -8,7 +8,7 @@ import './MetersSection.css';
 import { 
   Gauge, Search, CheckCircle, XCircle, MapPin, X, Save, RefreshCw, 
   AlertCircle, Map, Navigation, Mountain, UserCheck, IdCard, UserX, 
-  User, Eye, Edit, Trash2, ArrowRightLeft, Info, Users
+  User, Eye, Edit, Trash2, ArrowRightLeft
 } from 'lucide-react';
 
 const MetersSection = () => {
@@ -80,8 +80,6 @@ const MetersSection = () => {
       a.cedula?.toLowerCase().includes(term)
     );
   });
-
-
 
   // ============================================================================
   // EFECTOS Y CARGA INICIAL
@@ -932,24 +930,29 @@ const MetersSection = () => {
 
                     <div className="form-group form-group-full">
                       <label>Número de Medidor</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.num_medidor}
-                        onChange={(e) => setFormData({ ...formData, num_medidor: e.target.value })}
-                        placeholder="Ej: MED-001"
-                      />
+                      <div className="relative">
+                        <Gauge className="w-4 h-4 mr-2" />
+                        <input
+                          type="text"
+                          required
+                          value={formData.num_medidor}
+                          onChange={(e) => setFormData({ ...formData, num_medidor: e.target.value })}
+                          placeholder="Ej: MED-001"
+                          className="pl-10"
+                        />
+                      </div>
                     </div>
 
-                    {/* ✅ SELECTOR DE AFILIADO CON BÚSQUEDA — solo en crear */}
+                    {/* ✅ SELECTOR DE AFILIADO MODERNO — Estilo Reportes */}
                     {modalType === 'create' && (
                       <div className="form-group form-group-full">
-                        <label>
-                          Asignar a Afiliado <small>(opcional)</small>
+                        <label className="flex items-center gap-2 mb-2">
+                          <User className="w-4 h-4 text-blue-600" />
+                          Asignar a Afiliado <small className="text-gray-500">(opcional)</small>
                         </label>
 
-                        {/* Input de búsqueda */}
-                        <div className="meter-search-container">
+                        {/* Búsqueda moderna */}
+                        <div className="meter-search-container mb-3">
                           <div className="meter-search-input-wrapper">
                             <Search className="w-4 h-4 text-gray-400" />
                             <input
@@ -970,74 +973,64 @@ const MetersSection = () => {
                           </div>
                         </div>
 
-                        {/* Select filtrado */}
-                        <select
-                          value={formData.id_usuario_afi || ''}
-                          onChange={(e) => {
-                            const id = e.target.value ? parseInt(e.target.value) : null;
-                            const aff = availableAffiliates.find(a => a.id_usuario_afi === id) || null;
-                            setFormData({ ...formData, id_usuario_afi: id });
-                            setSelectedAffiliateInfo(aff);
-                          }}
-                          className="mt-2"
-                        >
-                         <option value="">🚫 Sin asignar</option>
-
-                        {filteredAffiliates.map((affiliate) => (
-                          <option key={affiliate.id_usuario_afi} value={affiliate.id_usuario_afi}>
-                            👤 {affiliate.cod_usuario_afi} — {affiliate.nombre_afiliado}
-                            {affiliate.cedula ? ` | 🪪 ${affiliate.cedula}` : ''}
-                          </option>
-                        ))}
-                        </select>
-
-                        {/* Contador */}
-                        {filteredAffiliates.length > 0 ? (
-                          <small className="text-gray-500 mt-1 flex items-center gap-1">
-                            <Info className="w-3 h-3" />
-                            {filteredAffiliates.length} afiliado{filteredAffiliates.length !== 1 ? 's' : ''}
-                            {affiliateSearchTerm && ` para "${affiliateSearchTerm}"`}
-                          </small>
-                        ) : affiliateSearchTerm ? (
-                          <small className="text-yellow-600 mt-1 flex items-center gap-1">
-                            <AlertCircle className="w-3 h-3" />
-                            Sin resultados para "{affiliateSearchTerm}"
-                          </small>
-                        ) : null}
-                      </div>
-                    )}
-
-                    {/* ✅ TARJETA DE INFORMACIÓN AL SELECCIONAR */}
-                    {selectedAffiliateInfo && (
-                      <div className="meter-info-card mt-3">
-                        <h4 className="meter-info-title">
-                          <Users className="w-4 h-4 mr-2" />
-                          Información del Afiliado
-                        </h4>
-                        <div className="meter-info-content">
-                          <div className="grid grid-cols-2 gap-2">
-                            <p><strong>Código:</strong> {selectedAffiliateInfo.cod_usuario_afi || '—'}</p>
-                            <p><strong>Nombre:</strong> {selectedAffiliateInfo.nombre_afiliado || '—'}</p>
-                            <p><strong>Cédula:</strong> {selectedAffiliateInfo.cedula || '—'}</p>
-                            <p><strong>Sector:</strong> {selectedAffiliateInfo.nombre_sector || '—'}</p>
-                            <p><strong>Fecha afiliación:</strong> {selectedAffiliateInfo.fecha_afiliacion || '—'}</p>
-                            <p><strong>Estado:</strong>{' '}
-                              <span className={selectedAffiliateInfo.activo ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'}>
-                                {selectedAffiliateInfo.activo ? 'Activo' : 'Inactivo'}
-                              </span>
-                            </p>
-                            <p>
-                              <strong>Medidores:</strong>{' '}
-                              {selectedAffiliateInfo.total_medidores}{' '}
-                              <span className="text-gray-500 text-xs">
-                                ({selectedAffiliateInfo.medidores_activos} activo{selectedAffiliateInfo.medidores_activos !== 1 ? 's' : ''})
-                              </span>
-                            </p>
+                        {/* Lista moderna de afiliados con scroll interno */}
+                        <div className="affiliates-modal-list" style={{ maxHeight: '200px' }}>
+                          <div 
+                            className={`affiliate-modal-item ${!formData.id_usuario_afi ? 'selected' : ''}`}
+                            onClick={() => {
+                              setFormData({ ...formData, id_usuario_afi: null });
+                              setSelectedAffiliateInfo(null);
+                            }}
+                          >
+                            <div className="avatar-circle" style={{ background: '#f3f4f6', color: '#6b7280' }}>
+                              🚫
+                            </div>
+                            <div className="affiliate-info">
+                              <p className="affiliate-name">Sin asignar</p>
+                              <p className="affiliate-meta">El medidor se creará sin dueño inicial</p>
+                            </div>
                           </div>
+
+                          {filteredAffiliates.map((affiliate) => (
+                            <div 
+                              key={affiliate.id_usuario_afi}
+                              className={`affiliate-modal-item ${formData.id_usuario_afi === affiliate.id_usuario_afi ? 'selected' : ''}`}
+                              onClick={() => {
+                                setFormData({ ...formData, id_usuario_afi: affiliate.id_usuario_afi });
+                                setSelectedAffiliateInfo(affiliate);
+                              }}
+                            >
+                              <div className="avatar-circle">
+                                {affiliate.nombre_afiliado.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                              </div>
+                              <div className="affiliate-info">
+                                <p className="affiliate-name">{affiliate.nombre_afiliado}</p>
+                                <p className="affiliate-meta">
+                                  Cód: {affiliate.cod_usuario_afi} {affiliate.cedula ? `| CI: ${affiliate.cedula}` : ''}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+
+                          {filteredAffiliates.length === 0 && affiliateSearchTerm && (
+                            <div className="p-4 text-center text-gray-500">
+                              <p className="text-xs">No se encontraron afiliados para "{affiliateSearchTerm}"</p>
+                            </div>
+                          )}
                         </div>
+
+                        {/* Badge de seleccionado */}
+                        {selectedAffiliateInfo && (
+                          <div className="selected-affiliate-card mt-3 py-2 px-3 animate-fadeIn">
+                            <div className="avatar-circle" style={{ width: '28px', height: '28px', fontSize: '10px' }}>✓</div>
+                            <div className="affiliate-info">
+                              <p className="affiliate-name" style={{ fontSize: '13px' }}>{selectedAffiliateInfo.nombre_afiliado}</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
-                    {/* Sector, coordenadas y estado — sin cambios */}
+
                     <div className="form-group form-group-full">
                       <label>Sector</label>
                       <select
@@ -1102,7 +1095,7 @@ const MetersSection = () => {
                     )}
                   </div>
 
-                  <div className="form-actions">
+                  <div className="form-actions mt-4">
                     <button type="button" className="btn-secondary" onClick={closeModal}>
                       <X className="w-4 h-4 mr-2" />
                       Cancelar

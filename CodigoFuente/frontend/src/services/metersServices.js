@@ -287,151 +287,128 @@ class MetersService {
       };
     }
   }
+/**
+ * Crear un nuevo medidor
+ */
+async createMeter(meterData) {
+  try {
+    this.validateMeterData(meterData);
 
-  /**
-   * Crear un nuevo medidor
-   */
-  async createMeter(meterData) {
-    try {
-      this.validateMeterData(meterData);
-
-      const data = await this.makeRequest(API_CONFIG.endpoints.meters, {
-        method: 'POST',
-        body: {
-          num_medidor: meterData.num_medidor,
-          latitud: meterData.latitud,
-          longitud: meterData.longitud,
-          altitud: meterData.altitud,
-          id_usuario_afi: meterData.id_usuario_afi,
-          id_sector: meterData.id_sector,
-          activo: meterData.activo !== undefined ? meterData.activo : true
-        }
-      });
-
-      return {
-        success: true,
-        data,
-        message: '✅ Medidor creado exitosamente'
-      };
-
-    } catch (error) {
-      console.error("❌ Error creando medidor:", error);
-      console.log("🔍 Backend completo:", error.backend);
-      console.log("🔍 Backend detail:", error.backendDetail);
-
-      // Intentar obtener el detalle del error desde múltiples fuentes
-      const backendDetail = error.backendDetail || error.backend?.detail || error.backend || null;
-
-      // Verificar si es un error geográfico
-      if (backendDetail && typeof backendDetail === 'object') {
-        // Verificar si tiene la estructura de error geográfico
-        if (backendDetail.error === "Coordenadas fuera del límite geográfico permitido" ||
-            backendDetail.limite || 
-            (backendDetail.mensaje && backendDetail.mensaje.includes('límite geográfico'))) {
-          
-          return {
-            success: false,
-            isGeoError: true,
-            backend: backendDetail,
-            message: this.formatGeoError(backendDetail),
-            limite: backendDetail.limite,
-            coordenadas: {
-              latitud: backendDetail.latitud,
-              longitud: backendDetail.longitud
-            }
-          };
-        }
-      }
-
-      // Otros errores
-      return {
-        success: false,
-        isGeoError: false,
-        backend: error.backend,
-        message: error.message || "Error al crear medidor"
-      };
-    }
-  }
-
-  /**
-   * Actualizar un medidor existente
-   */
-  async updateMeter(meterId, meterData) {
-    if (!meterId || isNaN(meterId)) {
-      throw new Error('ID de medidor inválido o no definido');
-    }
-
-    try {
-      const updateData = {
+    const data = await this.makeRequest(API_CONFIG.endpoints.meters, {
+      method: 'POST',
+      body: {
         num_medidor: meterData.num_medidor,
         latitud: meterData.latitud,
         longitud: meterData.longitud,
         altitud: meterData.altitud,
         id_usuario_afi: meterData.id_usuario_afi,
         id_sector: meterData.id_sector,
-        activo: meterData.activo,
-        // 🆕 Campos del cambio de medidor (opcionales)
-        costo_cambio: meterData.costo_cambio,
-        motivo_cambio: meterData.motivo_cambio,
-        observaciones_cambio: meterData.observaciones_cambio
-      };
-
-      // Limpiar campos undefined/null para no enviarlos
-      Object.keys(updateData).forEach(key => {
-        if (updateData[key] === undefined || updateData[key] === null) {
-          delete updateData[key];
-        }
-      });
-
-      const data = await this.makeRequest(`${API_CONFIG.endpoints.meters}/${meterId}`, {
-        method: 'PUT',
-        body: updateData
-      });
-
-      return {
-        success: true,
-        data,
-        message: '✅ Medidor actualizado exitosamente'
-      };
-
-    } catch (error) {
-      console.error("❌ Error actualizando medidor:", error);
-      console.log("🔍 Backend completo:", error.backend);
-      console.log("🔍 Backend detail:", error.backendDetail);
-
-      // Intentar obtener el detalle del error desde múltiples fuentes
-      const backendDetail = error.backendDetail || error.backend?.detail || error.backend || null;
-
-      // Verificar si es un error geográfico
-      if (backendDetail && typeof backendDetail === 'object') {
-        // Verificar si tiene la estructura de error geográfico
-        if (backendDetail.error === "Coordenadas fuera del límite geográfico permitido" ||
-            backendDetail.limite || 
-            (backendDetail.mensaje && backendDetail.mensaje.includes('límite geográfico'))) {
-          
-          return {
-            success: false,
-            isGeoError: true,
-            backend: backendDetail,
-            message: this.formatGeoError(backendDetail),
-            limite: backendDetail.limite,
-            coordenadas: {
-              latitud: backendDetail.latitud,
-              longitud: backendDetail.longitud
-            }
-          };
-        }
+        activo: meterData.activo !== undefined ? meterData.activo : true
       }
+    });
 
-      // Otros errores
+    // Limpia la caché para forzar la actualización de los datos
+    this.clearStatsCache();
+    return {
+      success: true,
+      data,
+      message: '✅ Medidor creado exitosamente'
+    };
+
+  } catch (error) {
+    console.error("❌ Error creando medidor:", error);
+    console.log("🔍 Backend completo:", error.backend);
+    console.log("🔍 Backend detail:", error.backendDetail);
+    // Manejo de errores geográficos
+    return this.handleGeoError(error);
+  }
+}
+
+/**
+ * Actualizar un medidor existente
+ */
+async updateMeter(meterId, meterData) {
+  if (!meterId || isNaN(meterId)) {
+    throw new Error('ID de medidor inválido o no definido');
+  }
+
+  try {
+    const updateData = {
+      num_medidor: meterData.num_medidor,
+      latitud: meterData.latitud,
+      longitud: meterData.longitud,
+      altitud: meterData.altitud,
+      id_usuario_afi: meterData.id_usuario_afi,
+      id_sector: meterData.id_sector,
+      activo: meterData.activo,
+      costo_cambio: meterData.costo_cambio,
+      motivo_cambio: meterData.motivo_cambio,
+      observaciones_cambio: meterData.observaciones_cambio
+    };
+
+    // Limpiar campos undefined/null
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined || updateData[key] === null) {
+        delete updateData[key];
+      }
+    });
+
+    const data = await this.makeRequest(`${API_CONFIG.endpoints.meters}/${meterId}`, {
+      method: 'PUT',
+      body: updateData
+    });
+
+    // Limpia la caché para forzar la actualización de los datos
+    this.clearStatsCache();
+
+    return {
+      success: true,
+      data,
+      message: '✅ Medidor actualizado exitosamente'
+    };
+
+  } catch (error) {
+    console.error("❌ Error actualizando medidor:", error);
+    console.log("🔍 Backend completo:", error.backend);
+    console.log("🔍 Backend detail:", error.backendDetail);
+    // Manejo de errores geográficos
+    return this.handleGeoError(error);
+  }
+}
+
+/**
+ * Manejo de errores geográficos
+ */
+handleGeoError(error) {
+  const backendDetail = error.backendDetail || error.backend?.detail || error.backend || null;
+
+  if (backendDetail && typeof backendDetail === 'object') {
+    if (backendDetail.error === "Coordenadas fuera del límite geográfico permitido" ||
+        backendDetail.limite || 
+        (backendDetail.mensaje && backendDetail.mensaje.includes('límite geográfico'))) {
+      
       return {
         success: false,
-        isGeoError: false,
-        backend: error.backend,
-        message: error.message || "Error al actualizar medidor"
+        isGeoError: true,
+        backend: backendDetail,
+        message: this.formatGeoError(backendDetail),
+        limite: backendDetail.limite,
+        coordenadas: {
+          latitud: backendDetail.latitud,
+          longitud: backendDetail.longitud
+        }
       };
     }
   }
+
+  // Otros errores
+  return {
+    success: false,
+    isGeoError: false,
+    backend: error.backend,
+    message: error.message || "Error al crear o actualizar medidor"
+  };
+}
 
   /**
    * Eliminar un medidor

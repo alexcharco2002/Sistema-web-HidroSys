@@ -73,6 +73,10 @@ const InvoicesSection = () => {
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('view');
   const [selectedFactura, setSelectedFactura] = useState(null);
+  const [shouldScrollToDetails, setShouldScrollToDetails] = useState(false);
+
+  // Ref para hacer scroll a la sección de detalles
+  const detallesRef = React.useRef(null);
 
   // ============================================================
   // ESTADOS DE PERMISOS
@@ -309,6 +313,26 @@ const InvoicesSection = () => {
   // ============================================================
   // FUNCIONES DE FILTRADO Y ORDENAMIENTO
   // ============================================================
+  const getFacturaNombre = (factura) =>
+    factura.nombre_completo ||
+    factura.usuario_afiliado?.usuario_sistema?.nombre_completo ||
+    '';
+
+  const getFacturaCodigo = (factura) =>
+    factura.cod_usuario_afi ??
+    factura.usuario_afiliado?.cod_usuario_afi ??
+    '';
+
+  const getFacturaMedidor = (factura) =>
+    factura.num_medidor ??
+    factura.usuario_afiliado?.num_medidor ??
+    '';
+
+  const getFacturaCedula = (factura) =>
+    factura.cedula ||
+    factura.usuario_afiliado?.usuario_sistema?.cedula ||
+    '';
+
   const filteredFacturas = facturas.filter(factura => {
     const searchLower = searchTerm.toLowerCase();
     
@@ -325,16 +349,16 @@ const InvoicesSection = () => {
       toString(factura.id_factura).includes(searchTerm) ||
       
       // 🔥 Código de afiliado (convertido a string)
-      toString(factura.usuario_afiliado?.cod_usuario_afi).includes(searchLower) ||
+      toString(getFacturaCodigo(factura)).includes(searchLower) ||
       
       // 🔥 Número de medidor
-      toString(factura.usuario_afiliado?.num_medidor).includes(searchLower) ||
+      toString(getFacturaMedidor(factura)).includes(searchLower) ||
       
       // 🔹 CAMBIO: Buscar en nombre completo
-      toString(factura.usuario_afiliado?.usuario_sistema?.nombre_completo).includes(searchLower) ||
+      toString(getFacturaNombre(factura)).includes(searchLower) ||
       
       // Cédula
-      toString(factura.usuario_afiliado?.usuario_sistema?.cedula).includes(searchTerm);
+      toString(getFacturaCedula(factura)).includes(searchTerm);
     
     const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
     
@@ -375,9 +399,15 @@ const InvoicesSection = () => {
         comparison = a.estado_factura.localeCompare(b.estado_factura);
       } else if (sortOption === 'codigo') {
         // Ordenar por código de afiliado - CONVERTIR A STRING
-        const codigoA = String(a.usuario_afiliado?.cod_usuario_afi || '');
-        const codigoB = String(b.usuario_afiliado?.cod_usuario_afi || '');
+        const codigoA = String(getFacturaCodigo(a) || '');
+        const codigoB = String(getFacturaCodigo(b) || '');
         comparison = codigoA.localeCompare(codigoB, undefined, { numeric: true });
+      } else if (sortOption === 'medidor') {
+        const medidorA = String(getFacturaMedidor(a) || '');
+        const medidorB = String(getFacturaMedidor(b) || '');
+        comparison = medidorA.localeCompare(medidorB, undefined, { numeric: true });
+      } else if (sortOption === 'nombre') {
+        comparison = getFacturaNombre(a).localeCompare(getFacturaNombre(b));
       }
 
       return sortOrder === 'asc' ? comparison : -comparison;
@@ -392,7 +422,7 @@ const InvoicesSection = () => {
  // ============================================================
   // FUNCIONES DE MODAL
   // ============================================================
-  const openModal = async (type, factura = null) => {
+  const openModal = async (type, factura = null, scrollDetails = false) => {
     if (type === 'view' && !factura) return;
     
     if (type === 'edit' && !permissions.canUpdate) {
@@ -403,9 +433,22 @@ const InvoicesSection = () => {
     setModalType(type);
     setError(null);
     setSelectedFactura(factura);
+    setShouldScrollToDetails(scrollDetails);
     setShowModal(true);
     
   };
+
+  // Efecto para hacer scroll a los detalles cuando se abre el modal
+  useEffect(() => {
+    if (showModal && modalType === 'view' && shouldScrollToDetails && detallesRef.current) {
+      // Un pequeño delay para asegurar que el modal se haya renderizado
+      const timer = setTimeout(() => {
+        detallesRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setShouldScrollToDetails(false); // Resetear el estado
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [showModal, modalType, shouldScrollToDetails]);
 
   // Agregar junto a las otras funciones de modal
   const openServiciosModal = (factura) => {
@@ -625,7 +668,7 @@ const handleConfirmarAnulacion = async (e) => {
     });
     
     // Construir mensaje de confirmación
-    let mensaje = `¿Aplicar ${serviciosSeleccionados.length} servicio(s) a TODAS las facturas pendientes del período ${formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}?\n\n`;
+    let mensaje = `¿Aplicar ${serviciosSeleccionados.length} servicio(s) a TODAS las facturas pendientes del periodo de consumo ${formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}?\n\n`;
     mensaje += `📋 Total facturas pendientes/vencidas: ${facturasPendientesYVencidas.length}\n`;
     
     if (facturasConServiciosYaAplicados > 0) {
@@ -860,6 +903,7 @@ const agruparDetallesPorTipo = (detalles) => {
   
   const grupos = {
     consumo: [],
+    exceso: [],
     multas: [],
     servicios: [],
     otros: []
@@ -868,7 +912,11 @@ const agruparDetallesPorTipo = (detalles) => {
   detalles.forEach(detalle => {
     const tipo = detalle.tipo_detalle?.toLowerCase() || 'otros';
     
-    if (tipo === 'consumo') {
+    const descripcion = detalle.descripcion?.toLowerCase() || '';
+
+    if (tipo === 'consumo' && descripcion.includes('exceso')) {
+      grupos.exceso.push(detalle);
+    } else if (tipo === 'consumo') {
       grupos.consumo.push(detalle);
     } else if (tipo === 'multa') {
       grupos.multas.push(detalle);
@@ -968,6 +1016,12 @@ const agruparDetallesPorTipo = (detalles) => {
                 return periodosRecientes.map(periodo => {
                   const tieneFacturas  = periodo.tiene_facturas;
                   const esMesActual    = periodo.mes === mesActual && periodo.anio === anioActual;
+                  
+                  // Cálculos para la barra de progreso
+                  const totalFacturas = periodo.total_facturas || 0;
+                  const pagadas = periodo.total_pagadas || 0;
+                  const pctCobrado = totalFacturas > 0 ? (pagadas / totalFacturas) * 100 : 0;
+                  const todoCobrado = pctCobrado >= 100;
                   const pendientesTotal = (periodo.total_pendientes ?? 0) + (periodo.total_vencidas ?? 0);
 
                   return (
@@ -986,41 +1040,21 @@ const agruparDetallesPorTipo = (detalles) => {
                         )}
                       </div>
 
-                      {/* INFO PRINCIPAL: total facturas */}
-                      <div className="periodo-card-info">
-                        {tieneFacturas
-                          ? `${periodo.total_facturas} facturas`
-                          : 'Sin facturas aún'}
-                      </div>
-
-                      {/* ESTADÍSTICAS DE ESTADOS — solo si tiene facturas */}
-                      {tieneFacturas && (
-                        <div className="periodo-factura-stats">
-
-                          {/* Pagadas */}
-                          <div className="periodo-factura-stat pagadas">
-                            <CheckCircle className="w-3 h-3" />
-                            <span>{periodo.total_pagadas} pagadas</span>
-                          </div>
-
-                          {/* Pendientes + vencidas */}
-                          {pendientesTotal > 0 && (
-                            <div className="periodo-factura-stat pendientes">
-                              <Clock className="w-3 h-3" />
-                              <span>{pendientesTotal} pendientes</span>
-                            </div>
-                          )}
-
-                          {/* Anuladas — solo si hay */}
-                          {(periodo.total_anuladas ?? 0) > 0 && (
-                            <div className="periodo-factura-stat anuladas">
-                              <XCircle className="w-3 h-3" />
-                              <span>{periodo.total_anuladas} anuladas</span>
-                            </div>
-                          )}
-
+                      {/* INFO PRINCIPAL / BARRA DE PROGRESO ÚNICA — Estilo Lectura */}
+                      <div className="periodo-progress-container">
+                        <div className="periodo-card-info">
+                          {pagadas} / {totalFacturas} facturas pagadas
                         </div>
-                      )}
+                        <div className="periodo-progress-bar">
+                          <div
+                            className={`periodo-progress-fill ${todoCobrado ? 'complete' : ''}`}
+                            style={{ width: `${pctCobrado}%` }}
+                          />
+                        </div>
+                        <div className={`periodo-percentage ${todoCobrado ? 'complete' : ''}`}>
+                          {Math.round(pctCobrado)}% recaudado
+                        </div>
+                      </div>
 
                       {/* ACCIÓN */}
                       <div className="periodo-card-action">
@@ -1122,22 +1156,27 @@ const agruparDetallesPorTipo = (detalles) => {
                         {/* CHIPS DE MESES */}
                         {estaExpandido && (
                           <div className="historial-meses-grid">
-                            {mesesDelAnio.map(periodo => (
-                              <button
-                                key={`${periodo.mes}-${periodo.anio}`}
-                                className="historial-mes-chip completo"
-                                onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
-                                title={`${periodo.total_facturas} facturas`}
-                              >
-                                <span className="historial-mes-dot completo" />
-                                <span className="historial-mes-nombre">
-                                  {nombresMeses[periodo.mes]}
-                                </span>
-                                <span className="historial-mes-pct">
-                                  {periodo.total_facturas}
-                                </span>
-                              </button>
-                            ))}
+                            {mesesDelAnio.map(periodo => {
+                              const pct = periodo.total_facturas > 0 
+                                ? Math.round((periodo.total_pagadas / periodo.total_facturas) * 100) 
+                                : 0;
+                              return (
+                                <button
+                                  key={`${periodo.mes}-${periodo.anio}`}
+                                  className="historial-mes-chip completo"
+                                  onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
+                                  title={`${pct}% recaudado (${periodo.total_facturas} facturas)`}
+                                >
+                                  <span className="historial-mes-dot completo" />
+                                  <span className="historial-mes-nombre">
+                                    {nombresMeses[periodo.mes]}
+                                  </span>
+                                  <span className="historial-mes-pct">
+                                    {pct}%
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
           
@@ -1172,7 +1211,7 @@ const agruparDetallesPorTipo = (detalles) => {
                 <div>
                   <h2>Facturas de {formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}</h2>
                   <p className="section-subtitle">
-                    Gestiona las facturas de este periodo
+                    Gestiona las facturas de este periodo de consumo
                   </p>
                 </div>
               </div>
@@ -1183,7 +1222,7 @@ const agruparDetallesPorTipo = (detalles) => {
           <div className="periodo-stats-container">
             <div className="periodo-stats-header">
               <TrendingUp className="w-5 h-5 text-blue-600 mr-2" />
-              <h3>Resumen del Periodo</h3>
+              <h3>Resumen del Periodo de Consumo</h3>
             </div>
 
             <div className="users-stats">
@@ -1239,7 +1278,7 @@ const agruparDetallesPorTipo = (detalles) => {
               <Search className="search-icon" />
               <input
                 type="text"
-                placeholder="Buscar por número de factura..."
+                placeholder="Buscar por factura, medidor, codigo, afiliado o cedula..."
                 className="search-input"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -1264,8 +1303,11 @@ const agruparDetallesPorTipo = (detalles) => {
                 value={sortOption}
                 onChange={(e) => setSortOption(e.target.value)}
               >
-                <option value="fecha">Ordenar por Fecha</option>
+                <option value="fecha">Ordenar por Fecha de emision</option>
                 <option value="numero">Ordenar por Número</option>
+                <option value="codigo">Ordenar por Codigo afiliado</option>
+                <option value="medidor">Ordenar por Medidor</option>
+                <option value="nombre">Ordenar por Nombre afiliado</option>
                 <option value="total">Ordenar por Monto</option>
                 <option value="estado">Ordenar por Estado</option>
               </select>
@@ -1443,7 +1485,7 @@ const agruparDetallesPorTipo = (detalles) => {
               <div className="invoices-list-header">
                 <span>#</span>
                 <span><FileText className="w-4 h-4" /> Número</span>
-                <span><Calendar className="w-4 h-4" /> Fecha</span>
+                <span><Calendar className="w-4 h-4" /> Fecha Emisión</span>
                 <span><Gauge className="w-4 h-4" /> Medidor</span>
                 <span><IdCard  className="w-4 h-4" /> Código Afi</span>
                 <span><User className="w-4 h-4" /> Nombre Afi</span>
@@ -1478,7 +1520,7 @@ const agruparDetallesPorTipo = (detalles) => {
                           </span>
                         </div>
 
-                        {/* Columna 3: Fecha */}
+                        {/* Columna 3: Fecha de emisión */}
                         <div className="inv-col-fecha">
                           <Calendar className="w-3 h-3" />
                           <span>{formatDateShort(factura.fecha_emision)}</span>
@@ -1509,7 +1551,9 @@ const agruparDetallesPorTipo = (detalles) => {
 
                         {/* Columna 7: Consumo */}
                         <div className="inv-col-consumo">
-                          <span className="inv-consumo-badge">{factura.consumo_m3 || 0} m³</span>
+                          <span className={`inv-consumo-badge ${parseFloat(factura.exceso_m3 || 0) > 0 ? 'has-exceso' : ''}`}>
+                            {factura.consumo_m3 || 0} m³
+                          </span>
                         </div>
 
                       {/* Columna 8: Detalles — sin cambios en lógica */}
@@ -1523,40 +1567,63 @@ const agruparDetallesPorTipo = (detalles) => {
                                 return (
                                   <>
                                     {grupos.consumo.length > 0 && (
-                                      <span
+                                      <button
+                                        type="button"
                                         className="inv-badge inv-badge-consumo"
                                         title={grupos.consumo.map(d => d.descripcion).join('\n')}
+                                        onClick={() => openModal('view', factura, true)}
                                       >
                                         💧 {grupos.consumo.length}
-                                      </span>
+                                      </button>
+                                    )}
+                                    {grupos.exceso.length > 0 && (
+                                      <button
+                                        type="button"
+                                        className="inv-badge inv-badge-exceso"
+                                        title={grupos.exceso.map(d => d.descripcion).join('\n')}
+                                        onClick={() => openModal('view', factura, true)}
+                                      >
+                                        Exceso {grupos.exceso.length}
+                                      </button>
                                     )}
                                     {grupos.multas.length > 0 && (
-                                      <span
+                                      <button
+                                        type="button"
                                         className="inv-badge inv-badge-multa"
                                         title={grupos.multas.map(d => d.descripcion).join('\n')}
+                                        onClick={() => openModal('view', factura, true)}
                                       >
                                         ⚠️ {grupos.multas.length}
-                                      </span>
+                                      </button>
                                     )}
                                     {grupos.servicios.length > 0 && (
-                                      <span
+                                      <button
+                                        type="button"
                                         className="inv-badge inv-badge-servicio"
                                         title={grupos.servicios.map(d => d.descripcion).join('\n')}
+                                        onClick={() => openModal('view', factura, true)}
                                       >
                                         🔧 {grupos.servicios.length}
-                                      </span>
+                                      </button>
                                     )}
                                     {grupos.otros.length > 0 && (
-                                      <span
+                                      <button
+                                        type="button"
                                         className="inv-badge inv-badge-otro"
                                         title={grupos.otros.map(d => d.descripcion).join('\n')}
+                                        onClick={() => openModal('view', factura, true)}
                                       >
                                         📄 {grupos.otros.length}
-                                      </span>
+                                      </button>
                                     )}
-                                    <span className="inv-detalles-count">
+                                    <button
+                                      type="button"
+                                      className="inv-detalles-count"
+                                      onClick={() => openModal('view', factura, true)}
+                                      title="Ver detalle completo"
+                                    >
                                       ({totalDetalles})
-                                    </span>
+                                    </button>
                                   </>
                                 );
                               })()}
@@ -1627,7 +1694,7 @@ const agruparDetallesPorTipo = (detalles) => {
                 ) : (
                   <div className="invoices-list-empty">
                     <FileText className="inv-empty-icon" />
-                    <h3>No hay facturas en este periodo</h3>
+                    <h3>No hay facturas en este periodo de consumo</h3>
                     <p>
                       {searchTerm || filterStatus !== 'all'
                         ? 'No se encontraron facturas con los criterios de búsqueda.'
@@ -1742,7 +1809,7 @@ const agruparDetallesPorTipo = (detalles) => {
                   </div>
 
                   <div className="detail-group">
-                    <label>Periodo:</label>
+                    <label>Periodo de consumo:</label>
                     <p>{invoicesServices.formatearPeriodo(selectedFactura.periodo)}</p>
                   </div>
 
@@ -1831,7 +1898,7 @@ const agruparDetallesPorTipo = (detalles) => {
 
               {/* DETALLES ADICIONALES */}
               {selectedFactura.detalles && selectedFactura.detalles.length > 0 && (
-                <div className="factura-section">
+                <div className="factura-section" ref={detallesRef}>
                   <br />
                   <h4 className="section-title">
                     <FileText className="w-4 h-4" />
@@ -1855,6 +1922,24 @@ const agruparDetallesPorTipo = (detalles) => {
                                 <div key={idx} className="detalle-item">
                                   <span className="detalle-desc">{detalle.descripcion}</span>
                                   <span className="detalle-precio">{formatCurrency(detalle.subtotal_detalle)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* EXCESO DE CONSUMO */}
+                        {grupos.exceso.length > 0 && (
+                          <div className="detalle-grupo detalle-grupo-exceso">
+                            <div className="detalle-grupo-header exceso">
+                              <TrendingUp className="w-4 h-4" />
+                              <h5>Exceso de Consumo ({grupos.exceso.length})</h5>
+                            </div>
+                            <div className="detalles-lista">
+                              {grupos.exceso.map((detalle, idx) => (
+                                <div key={idx} className="detalle-item detalle-item-exceso">
+                                  <span className="detalle-desc">{detalle.descripcion}</span>
+                                  <span className="detalle-precio text-orange-600">{formatCurrency(detalle.subtotal_detalle)}</span>
                                 </div>
                               ))}
                             </div>
@@ -1952,12 +2037,12 @@ const agruparDetallesPorTipo = (detalles) => {
                     <div>
                       <p className="client-name">
                         <strong>Nombre Afiliado:</strong>{' '}
-                        {paymentData.factura.usuario_afiliado?.usuario_sistema?.nombre_completo}
+                        {getFacturaNombre(paymentData.factura) || 'N/A'}
                       </p>
 
                       <p className="client-code">
                         <strong>Código:</strong>{' '}
-                        {paymentData.factura.usuario_afiliado?.cod_usuario_afi}
+                        {getFacturaCodigo(paymentData.factura) || 'N/A'}
                       </p>
                     </div>
 
@@ -2212,7 +2297,7 @@ const agruparDetallesPorTipo = (detalles) => {
 
                     <p className="client-name">
                       <strong>Nombre Afiliado:</strong>{' '}
-                      {facturaSeleccionadaServicios.usuario_afiliado?.usuario_sistema?.nombre_completo}
+                      {getFacturaNombre(facturaSeleccionadaServicios) || 'N/A'}
                     </p>
 
                     <p className="client-code">
@@ -2355,25 +2440,23 @@ const agruparDetallesPorTipo = (detalles) => {
               <div>
                 <p className="client-name">
                   <strong>Afiliado:</strong>{' '}
-                  {selectedFactura.usuario_afiliado?.usuario_sistema
-                    ? `${selectedFactura.usuario_afiliado.usuario_sistema.nombre_completo} `
-                    : 'No registrado'}
+                  {getFacturaNombre(selectedFactura) || 'No registrado'}
                 </p>
 
                 <p className="client-code">
                   <strong>Código:</strong>{' '}
-                  {selectedFactura.usuario_afiliado?.cod_usuario_afi || 'N/A'}
+                  {getFacturaCodigo(selectedFactura) || 'N/A'}
                 </p>
 
                 <p className="client-code">
                   <strong>Medidor:</strong>{' '}
-                  {selectedFactura.usuario_afiliado?.num_medidor || 'N/A'}
+                  {getFacturaMedidor(selectedFactura) || 'N/A'}
                 </p>
               </div>
 
               <div>
                 <p className="client-code">
-                  <strong>Periodo:</strong>{' '}
+                  <strong>Periodo de consumo:</strong>{' '}
                   <span className="text-blue-600 font-semibold">
                     {selectedFactura.periodo 
                       ? (() => {

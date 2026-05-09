@@ -1,6 +1,6 @@
 // src/sections/general/GeolocationSection.js
 // MÓDULO DE GEOLOCALIZACIÓN - Visualización de medidores en mapa (Google Maps)
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import './GeolocationSection.css';
 import geolocalizacionService from '../../services/geolocationsServices';
 import authService from '../../services/authServices';
@@ -13,8 +13,9 @@ import {
   MapPin, Search, CheckCircle,
   RefreshCw, AlertCircle, Layers, Navigation,
   X, User, Navigation2, ChevronDown, ChevronUp,
-  LocateFixed, Crosshair, Check, Loader2, Move, Map
+  LocateFixed, Crosshair, Check, Loader2, Move, Map, Plus, Save
 } from 'lucide-react';
+import metersService from '../../services/metersServices';
 
 // ─── Constantes del mapa ────────────────────────────────────────────────────
 const MAP_CENTER  = { lat: -1.5524640784867034, lng: -78.76020826859998 };
@@ -97,6 +98,7 @@ const mapOptions = {
 const GeolocationSection = () => {
   const mapRef             = useRef(null);
   const shouldFitBoundsRef = useRef(true);
+  const medidorItemRefs    = useRef({});
 
   const [medidores,        setMedidores]        = useState([]);
   const [sectores,         setSectores]         = useState([]);
@@ -129,21 +131,46 @@ const GeolocationSection = () => {
   const [showLimites, setShowLimites] = useState(true);
   const [selectedLimite, setSelectedLimite] = useState(null);
 
+  // estados para crear medidor
+  const [modoCrearMedidor,   setModoCrearMedidor]   = useState(false);   // modo selección punto
+  const [coordNuevoMedidor,  setCoordNuevoMedidor]  = useState(null);    // {lat, lng} del clic
+  const [showCreateModal,    setShowCreateModal]    = useState(false);   // modal crear medidor
+  const [availableAffiliates,setAvailableAffiliates]= useState([]);      // lista afiliados
+  const [affiliateSearchTerm,setAffiliateSearchTerm]= useState('');      // buscador afiliado
+  const [selectedAffiliateInfo, setSelectedAffiliateInfo] = useState(null);
+  const [createForm,         setCreateForm]         = useState({         // datos del form
+    num_medidor: '',
+    id_usuario_afi: null,
+    id_sector: null,
+    altitud: '',
+  });
+  const [createError,  setCreateError]  = useState(null);
+  const [createSaving, setCreateSaving] = useState(false);
+
+
   const { isLoaded, loadError } = useGoogleMaps();
+
+  const permissionsRef = useRef({ canRead: false, canUpdate: false });
+
+  const scrollToMedidorInList = useCallback((medidorId) => {
+    const item = medidorItemRefs.current[medidorId];
+    if (!item) return;
+    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
 
   // ── Permisos ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const canRead   = authService.hasPermission('geolocalizacion', 'lectura') ||
                       authService.hasPermission('geolocalizacion', 'operaciones crud');
-    const canUpdate = authService.hasPermission('geolocalizacion', 'actualizar') ||
-                      authService.hasPermission('geolocalizacion', 'operaciones crud');
+    const canUpdate = authService.hasPermission('geolocalizacion', 'actualizar') ;
+                      permissionsRef.current = { canRead, canUpdate };
     setPermissions({ canRead, canUpdate });
     setCurrentUser(authService.getCurrentUser());
   }, []);
 
-  // ── Carga de datos ────────────────────────────────────────────────────────
-  const fetchData = useCallback(async () => {
-    if (!permissions.canRead) {
+  // no dependen entre sí.
+  const fetchData = useCallback(async (force = false) => {
+    if (!permissionsRef.current.canRead) {
       setError('No tienes permiso para ver la geolocalización');
       setLoading(false);
       return;
@@ -151,22 +178,23 @@ const GeolocationSection = () => {
     setLoading(true);
     setError(null);
     try {
+      // ── 1. Medidores primero cuando force=true (evita race con estadísticas) ──
+      const medidoresResult = await geolocalizacionService.getMedidoresGeo(force);
+
+      // ── 2. El resto en paralelo — estadísticas reutiliza el cache recién cargado ──
       const [
-        medidoresResult,
         sectoresResult,
         statsResult,
         misMedidoresResult,
-        limitesResult
+        limitesResult,
       ] = await Promise.all([
-        geolocalizacionService.getMedidoresGeo(),
         geolocalizacionService.getSectores(),
-        geolocalizacionService.getEstadisticasGeo(),
-        geolocalizacionService.getMisMedidores(),
+        geolocalizacionService.getEstadisticasGeo(force, medidoresResult.success ? medidoresResult.data : null),
+        geolocalizacionService.getMisMedidores(force),    // ✅ pasa force
         geolocalizacionService.getLimitesGeograficos(),
       ]);
-      if (limitesResult.success) {
-        setLimitesGeo(limitesResult.data || []);
-      }
+
+      if (limitesResult.success) setLimitesGeo(limitesResult.data || []);
 
       const idsSet = new Set(
         misMedidoresResult.success && Array.isArray(misMedidoresResult.data)
@@ -200,12 +228,8 @@ const GeolocationSection = () => {
     } finally {
       setLoading(false);
     }
-  }, [permissions.canRead]);
-
-  useEffect(() => {
-    if (permissions.canRead) fetchData();
-  }, [fetchData, permissions.canRead]);
-
+  }, []);
+  
   // ── Ubicación del dispositivo ─────────────────────────────────────────────
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -227,7 +251,8 @@ const GeolocationSection = () => {
   }, []);
 
   // ── Filtros ───────────────────────────────────────────────────────────────
-  const filteredMedidores = medidores
+const filteredMedidores = useMemo(() => {
+  return medidores
     .filter(m => {
       const matchesSearch =
         m.num_medidor.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -250,6 +275,15 @@ const GeolocationSection = () => {
       if (isAssA && isAssB)  return (a.cod_usuario_afi || 0) - (b.cod_usuario_afi || 0);
       return (a.num_medidor || '').localeCompare(b.num_medidor || '');
     });
+}, [medidores, searchTerm, filterSector, filterStatus, filterAsignacion, misMedidoresIds]);
+
+  useEffect(() => {
+    if (!selectedMedidor || !showSidebar) return undefined;
+    const timer = setTimeout(() => {
+      scrollToMedidorInList(selectedMedidor.id_medidor);
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [selectedMedidor, showSidebar, scrollToMedidorInList]);
 
   // ── Ajustar bounds ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -276,14 +310,21 @@ const GeolocationSection = () => {
     setSelectedMedidor(medidor);
   };
 
+  const ubicarMedidorEnLista = (medidor) => {
+    if (!medidor) return;
+    setShowSidebar(true);
+    setTimeout(() => {
+      scrollToMedidorInList(medidor.id_medidor);
+    }, 120);
+  };
+
   const handleReload = () => {
     geolocalizacionService.clearCache();
     shouldFitBoundsRef.current = true;
-    fetchData();
+    fetchData(true);
   };
 
   // ── MODO ACTUALIZAR COORDENADAS ───────────────────────────────────────────
-
   const iniciarModoUbicacion = (medidor, e) => {
     e.stopPropagation();
     setModoUbicacion(medidor);
@@ -308,44 +349,137 @@ const GeolocationSection = () => {
 
   // Clic en el mapa: solo actúa si hay modo activo; si no, cierra InfoWindow
   const handleMapClick = (event) => {
-    if (!modoUbicacion) {
-      setSelectedMedidor(null);
+    // — Modo actualizar coordenadas  —
+    if (modoUbicacion) {
+      setCoordPreview({ lat: event.latLng.lat(), lng: event.latLng.lng() });
+      setConfirmDialog(true);
       return;
     }
-    setCoordPreview({ lat: event.latLng.lat(), lng: event.latLng.lng() });
-    setConfirmDialog(true);
-  };
 
-  const confirmarActualizacion = async () => {
-    if (!modoUbicacion || !coordPreview) return;
-    setSavingCoords(true);
-    try {
-      const result = await geolocalizacionService.actualizarCoordenadas(
-        modoUbicacion.id_medidor,
-        { latitud: coordPreview.lat, longitud: coordPreview.lng }
-      );
-      if (result.success) {
-        setMedidores(prev =>
-          prev.map(m =>
-            m.id_medidor === modoUbicacion.id_medidor
-              ? { ...m, latitud: coordPreview.lat, longitud: coordPreview.lng }
-              : m
-          )
-        );
-        setToastGeo({ tipo: 'exito', msg: `Medidor ${modoUbicacion.num_medidor} actualizado` });
-        cancelarModoUbicacion();
-      } else {
-        setToastGeo({ tipo: 'error', msg: result.message || 'Error al actualizar' });
-      }
-    } catch {
-      setToastGeo({ tipo: 'error', msg: 'Error de conexión' });
-    } finally {
-      setSavingCoords(false);
-      setConfirmDialog(false);
-      setTimeout(() => setToastGeo(null), 4000);
+    // — Modo crear nuevo medidor —
+    if (modoCrearMedidor) {
+      const coord = { lat: event.latLng.lat(), lng: event.latLng.lng() };
+      setCoordNuevoMedidor(coord);
+      setCreateForm(f => ({ ...f, latitud: coord.lat, longitud: coord.lng }));
+      setModoCrearMedidor(false);    
+      fetchAffiliates();           
+      setShowCreateModal(true);      
+      return;
     }
+
+    // — Caso base: cerrar InfoWindow —
+    setSelectedMedidor(null);
   };
 
+  // ── CREAR MEDIDOR ─────────────────────────────────────────────────────────
+const handleCreateMedidor = async (e) => {
+  e.preventDefault();
+  if (!createForm.num_medidor.trim()) {
+    setCreateError('El número de medidor es obligatorio.');
+    return;
+  }
+  setCreateSaving(true);
+  setCreateError(null);
+  try {
+    const payload = {
+      num_medidor:    createForm.num_medidor.trim(),
+      id_usuario_afi: createForm.id_usuario_afi || null,
+      id_sector:      createForm.id_sector || null,
+      latitud:        coordNuevoMedidor.lat,
+      longitud:       coordNuevoMedidor.lng,
+      altitud:        createForm.altitud !== '' ? parseFloat(createForm.altitud) : null,
+    };
+    const result = await metersService.createMeter(payload);
+    if (result.success) {
+      // Limpia caché y fuerza la recarga de los datos
+      geolocalizacionService.clearCacheAndInflight('medidores_geo', '/geo/medidores');
+      geolocalizacionService.clearCacheAndInflight('mis_medidores', '/geo/medidores/mis-medidores');
+      setToastGeo({ tipo: 'exito', msg: `Medidor ${payload.num_medidor} creado correctamente` });
+      cancelarModoCrearMedidor();
+      shouldFitBoundsRef.current = true;
+      await fetchData(true); // Forzar actualización
+    } else {
+      setCreateError(result.message || 'Error al crear el medidor');
+    }
+  } catch (err) {
+    console.error('Error completo:', err);
+    setCreateError('Error de conexión al crear el medidor');
+  } finally {
+    setCreateSaving(false);
+    setTimeout(() => setToastGeo(null), 4000);
+  }
+};
+
+
+// ── CONFIRMAR ACTUALIZACIÓN ───────────────────────────────────────────────
+const confirmarActualizacion = async () => {
+  if (!modoUbicacion || !coordPreview) return;
+  setSavingCoords(true);
+  try {
+    const result = await geolocalizacionService.actualizarCoordenadas(
+      modoUbicacion.id_medidor,
+      { latitud: coordPreview.lat, longitud: coordPreview.lng }
+    );
+    if (result.success) {
+ 
+      cancelarModoUbicacion();
+      shouldFitBoundsRef.current = true;
+      setToastGeo({ tipo: 'exito', msg: `Ubicación de ${modoUbicacion.num_medidor} actualizada` });
+      await fetchData(true);  
+    } else {
+      setToastGeo({ tipo: 'error', msg: result.message || 'Error al actualizar' });
+    }
+  } catch {
+    setToastGeo({ tipo: 'error', msg: 'Error de conexión' });
+  } finally {
+    setSavingCoords(false);
+    setConfirmDialog(false);
+    setTimeout(() => setToastGeo(null), 4000);
+  }
+};
+
+
+
+
+  const fetchAffiliates = useCallback(async () => {
+    try {
+      const res = await metersService.getAvailableAffiliates();    
+      if (res?.success) setAvailableAffiliates(res.data || []);
+    } catch { /* silencioso */ }
+  }, []);
+
+  // Afiliados filtrados por buscador
+  const filteredAffiliates = availableAffiliates.filter(a => {
+    const q = affiliateSearchTerm.toLowerCase();
+    return (
+      (a.nombre_afiliado || '').toLowerCase().includes(q) ||
+      (a.cod_usuario_afi || '').toString().includes(q) ||
+      (a.cedula           || '').includes(q)
+    );
+  });
+
+  const iniciarModoCrearMedidor = () => {
+    // Cancela cualquier otro modo activo
+    cancelarModoUbicacion();
+    setModoCrearMedidor(true);
+    setCoordNuevoMedidor(null);
+  };
+
+  const cancelarModoCrearMedidor = () => {
+    setModoCrearMedidor(false);
+    setCoordNuevoMedidor(null);
+    setShowCreateModal(false);
+    setCreateForm({ num_medidor: '', id_usuario_afi: null, id_sector: null, altitud: '' });
+    setCreateError(null);
+    setSelectedAffiliateInfo(null);
+    setAffiliateSearchTerm('');
+  };
+  // ✅ Correcto — solo corre cuando permissions.canRead cambia a true
+useEffect(() => {
+  if (permissions.canRead) {
+    fetchData();
+  }
+}, [permissions.canRead, fetchData]); // no incluir fetchData aquí
   // ─────────────────────────────────────────────────────────────────────────
   if (!permissions.canRead) {
     return (
@@ -437,19 +571,12 @@ const limiteStyleHover = {
         </div>
         <div className="flex gap-2">
           <button
-            className="btn-secondary"
-            onClick={() => setShowSidebar(!showSidebar)}
-            title="Mostrar/Ocultar lista"
+            className={`btn-secondary ${showLimites ? 'geo-limites-toggle active' : 'geo-limites-toggle'}`}
+            onClick={() => setShowLimites(prev => !prev)}
+            title={showLimites ? 'Ocultar límites geográficos' : 'Mostrar límites geográficos'}
           >
-            <Layers className="w-4 h-4" />
+            <Map className="w-4 h-4" />
           </button>
-          <button
-  className={`btn-secondary ${showLimites ? 'geo-limites-toggle active' : 'geo-limites-toggle'}`}
-  onClick={() => setShowLimites(prev => !prev)}
-  title={showLimites ? 'Ocultar límites geográficos' : 'Mostrar límites geográficos'}
->
-  <Map className="w-4 h-4" />
-</button>
 
           <button className="btn-secondary" onClick={handleReload} title="Recargar">
             <RefreshCw className="w-4 h-4" />
@@ -468,6 +595,18 @@ const limiteStyleHover = {
               <Navigation className="w-4 h-4" />
             </button>
           )}
+
+          {permissions.canUpdate && (
+            <button
+              className="btn-primary"
+              onClick={iniciarModoCrearMedidor}
+              title="Registrar nuevo medidor en el mapa"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Nuevo Medidor
+            </button>
+          )}
+
         </div>
       </div>
 
@@ -538,7 +677,7 @@ const limiteStyleHover = {
               onChange={(e) => setFilterSector(e.target.value)}
             >
               <option value="all">Todos los sectores</option>
-              {sectores.filter(s => s.activo).map(s => (
+              {sectores.map(s => (                              // ← sin .filter(s => s.activo)
                 <option key={s.id_sector} value={s.id_sector}>{s.nombre_sector}</option>
               ))}
             </select>
@@ -591,8 +730,10 @@ const limiteStyleHover = {
         {showSidebar && (
           <div className="geo-sidebar">
             <h3 className="sidebar-title">
-              <MapPin className="w-5 h-5" />
-              Medidores ({filteredMedidores.length})
+              <span className="sidebar-title-text">
+                <MapPin className="w-5 h-5" />
+                Medidores ({filteredMedidores.length})
+              </span>
             </h3>
 
             <div className="sidebar-list">
@@ -603,6 +744,10 @@ const limiteStyleHover = {
                 return (
                   <div
                     key={medidor.id_medidor}
+                    ref={(el) => {
+                      if (el) medidorItemRefs.current[medidor.id_medidor] = el;
+                      else delete medidorItemRefs.current[medidor.id_medidor];
+                    }}
                     className={[
                       'sidebar-item',
                       selectedMedidor?.id_medidor === medidor.id_medidor ? 'selected'     : '',
@@ -685,9 +830,18 @@ const limiteStyleHover = {
           className="geo-map-container"
           style={{
             position: 'relative',
-            cursor: modoUbicacion ? 'crosshair' : 'default',
+            cursor: (modoUbicacion || modoCrearMedidor) ? 'crosshair' : 'default',
           }}
         >
+          <button
+            type="button"
+            className="geo-map-sidebar-toggle"
+            onClick={() => setShowSidebar(prev => !prev)}
+            title={showSidebar ? 'Ocultar lista' : 'Mostrar lista'}
+          >
+            <Layers className="w-4 h-4" />
+          </button>
+
           {loadError && (
             <div className="loading-map">
               <AlertCircle className="w-10 h-10 text-red-400 mb-2" />
@@ -720,82 +874,96 @@ const limiteStyleHover = {
               
             >
               {selectedLimite?.position && (
-  <InfoWindow
-    position={selectedLimite.position}
-    onCloseClick={() => setSelectedLimite(null)}
-  >
-    <div className="marker-popup" style={{ minWidth: 240 }}>
-      <h4 style={{ margin: '0 0 8px', fontWeight: 700, color: '#1d4ed8' }}>
-        🗺️ {selectedLimite.nombre}
-      </h4>
+                <InfoWindow
+                  position={selectedLimite.position}
+                  onCloseClick={() => setSelectedLimite(null)}
+                >
+                  <div className="marker-popup" style={{ minWidth: 240 }}>
+                    <h4 style={{ margin: '0 0 8px', fontWeight: 700, color: '#1d4ed8' }}>
+                      🗺️ {selectedLimite.nombre}
+                    </h4>
 
-      <p style={{ margin: '4px 0' }}>
-        <strong>Norte:</strong> {parseFloat(selectedLimite.norte).toFixed(7)}
-      </p>
-      <p style={{ margin: '4px 0' }}>
-        <strong>Sur:</strong> {parseFloat(selectedLimite.sur).toFixed(7)}
-      </p>
-      <p style={{ margin: '4px 0' }}>
-        <strong>Este:</strong> {parseFloat(selectedLimite.este).toFixed(7)}
-      </p>
-      <p style={{ margin: '4px 0' }}>
-        <strong>Oeste:</strong> {parseFloat(selectedLimite.oeste).toFixed(7)}
-      </p>
+                    <p style={{ margin: '4px 0' }}>
+                      <strong>Norte:</strong> {parseFloat(selectedLimite.norte).toFixed(7)}
+                    </p>
+                    <p style={{ margin: '4px 0' }}>
+                      <strong>Sur:</strong> {parseFloat(selectedLimite.sur).toFixed(7)}
+                    </p>
+                    <p style={{ margin: '4px 0' }}>
+                      <strong>Este:</strong> {parseFloat(selectedLimite.este).toFixed(7)}
+                    </p>
+                    <p style={{ margin: '4px 0' }}>
+                      <strong>Oeste:</strong> {parseFloat(selectedLimite.oeste).toFixed(7)}
+                    </p>
 
-      {selectedLimite.altitud_min != null && selectedLimite.altitud_max != null && (
-        <p style={{ margin: '6px 0', color: '#6b7280' }}>
-          <strong>Altitud:</strong> {selectedLimite.altitud_min} m - {selectedLimite.altitud_max} m
-        </p>
-      )}
+                    {selectedLimite.altitud_min != null && selectedLimite.altitud_max != null && (
+                      <p style={{ margin: '6px 0', color: '#6b7280' }}>
+                        <strong>Altitud:</strong> {selectedLimite.altitud_min} m - {selectedLimite.altitud_max} m
+                      </p>
+                    )}
 
-      <p style={{ margin: '6px 0 0', fontSize: 12, color: '#6b7280' }}>
-        {selectedLimite.poligono_geojson ? 'Límite por polígono GeoJSON' : 'Límite rectangular'}
-      </p>
-    </div>
-  </InfoWindow>
-)}
+                    <p style={{ margin: '6px 0 0', fontSize: 12, color: '#6b7280' }}>
+                      {selectedLimite.poligono_geojson ? 'Límite por polígono GeoJSON' : 'Límite rectangular'}
+                    </p>
+                  </div>
+                </InfoWindow>
+              )}
+              {
+                modoCrearMedidor && coordNuevoMedidor && (
+                  <AdvancedMarker
+                    map={mapInstance}
+                    position={coordNuevoMedidor}
+                    icon={{
+                      url: svgToDataUrl(buildPreviewPinSvg()),
+                      scaledSize: { width: 36, height: 36 },
+                    }}
+                    zIndex={1000}
+                    title="Nuevo medidor — punto seleccionado"
+                  />
+                )
+              }
 
               {showLimites && limitesGeo.map((limite) => {
-  const hasPolygon =
-    limite.poligono_geojson &&
-    (
-      limite.poligono_geojson.type === 'Polygon' ||
-      limite.poligono_geojson.type === 'MultiPolygon'
-    );
+                const hasPolygon =
+                  limite.poligono_geojson &&
+                  (
+                    limite.poligono_geojson.type === 'Polygon' ||
+                    limite.poligono_geojson.type === 'MultiPolygon'
+                  );
 
-  if (hasPolygon) {
-    return (
-      <Polygon
-        key={`limite-poly-${limite.id}`}
-        paths={geoJsonToPaths(limite.poligono_geojson)}
-        options={selectedLimite?.id === limite.id ? limiteStyleHover : limiteStyle}
-        onClick={(e) => {
-          setSelectedLimite({
-            ...limite,
-            position: {
-              lat: e.latLng.lat(),
-              lng: e.latLng.lng(),
-            },
-          });
-        }}
-      />
-    );
-  }
+                if (hasPolygon) {
+                  return (
+                    <Polygon
+                      key={`limite-poly-${limite.id}`}
+                      paths={geoJsonToPaths(limite.poligono_geojson)}
+                      options={selectedLimite?.id === limite.id ? limiteStyleHover : limiteStyle}
+                      onClick={(e) => {
+                        setSelectedLimite({
+                          ...limite,
+                          position: {
+                            lat: e.latLng.lat(),
+                            lng: e.latLng.lng(),
+                          },
+                        });
+                      }}
+                    />
+                  );
+                }
 
-  return (
-    <Rectangle
-      key={`limite-rect-${limite.id}`}
-      bounds={getRectangleBounds(limite)}
-      options={selectedLimite?.id === limite.id ? limiteStyleHover : limiteStyle}
-      onClick={() => {
-        setSelectedLimite({
-          ...limite,
-          position: getRectangleCenter(limite),
-        });
-      }}
-    />
-  );
-})}
+                return (
+                  <Rectangle
+                    key={`limite-rect-${limite.id}`}
+                    bounds={getRectangleBounds(limite)}
+                    options={selectedLimite?.id === limite.id ? limiteStyleHover : limiteStyle}
+                    onClick={() => {
+                      setSelectedLimite({
+                        ...limite,
+                        position: getRectangleCenter(limite),
+                      });
+                    }}
+                  />
+                );
+              })}
 
               {/* ── Markers de medidores ─────────────────────────── */}
               {filteredMedidores.map((medidor) => {
@@ -865,7 +1033,12 @@ const limiteStyleHover = {
                   }}
                   onCloseClick={() => setSelectedMedidor(null)}
                 >
-                  <div className="marker-popup" style={{ minWidth: 200 }}>
+                  <div
+                    className="marker-popup"
+                    style={{ minWidth: 200, cursor: 'pointer' }}
+                    onClick={() => ubicarMedidorEnLista(selectedMedidor)}
+                    title="Ubicar en la lista de medidores"
+                  >
                     <h4 style={{ margin: '0 0 6px', fontWeight: 700 }}>
                       {misMedidoresIds.has(selectedMedidor.id_medidor) ? '🏠' : '📍'}{' '}
                       {selectedMedidor.num_medidor}
@@ -936,7 +1109,19 @@ const limiteStyleHover = {
               </button>
             </div>
           )}
-
+{
+  modoCrearMedidor && (
+  <div className="geo-modo-ubicacion-banner" style={{ background: '#065f46' }}>
+    <span className="geo-modo-ubicacion-icon">
+      <Plus size={15} />
+    </span>
+    <span>Haz clic en el mapa para colocar el <strong>nuevo medidor</strong></span>
+    <button className="geo-modo-cancel-btn" onClick={cancelarModoCrearMedidor}>
+      <X size={13} /> Cancelar
+    </button>
+  </div>
+)
+}
           {/* ── Toast de resultado ───────────────────────────────── */}
           {toastGeo && (
             <div className={`geo-toast ${toastGeo.tipo}`}>
@@ -1053,7 +1238,200 @@ const limiteStyleHover = {
         </div>
       )}
 
+  {showCreateModal && coordNuevoMedidor && (
+  <div className="geo-confirm-overlay" onClick={cancelarModoCrearMedidor}>
+    <div
+      className="geo-confirm-dialog"
+      style={{ maxWidth: 480, width: '95%' }}
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Cabecera */}
+      <div className="geo-confirm-header">
+        <div className="geo-confirm-icon" style={{ background: '#d1fae5', color: '#065f46' }}>
+          <Plus size={22} />
+        </div>
+        <div>
+          <h3>Nuevo Medidor</h3>
+          <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>
+            📍 {coordNuevoMedidor.lat.toFixed(6)}, {coordNuevoMedidor.lng.toFixed(6)}
+          </p>
+        </div>
+        <button
+          style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer' }}
+          onClick={cancelarModoCrearMedidor}
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      {createError && (
+        <div className="alert alert-error" style={{ margin: '8px 0' }}>
+          <AlertCircle className="w-4 h-4 mr-2" />
+          {createError}
+        </div>
+      )}
+
+      <form onSubmit={handleCreateMedidor} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+        {/* Número de medidor */}
+        <div className="form-group" style={{ margin: 0 }}>
+          <label>Número de Medidor <span style={{ color: '#ef4444' }}>*</span></label>
+          <input
+            type="text"
+            required
+            placeholder="Ej: MED-001"
+            value={createForm.num_medidor}
+            onChange={e => setCreateForm(f => ({ ...f, num_medidor: e.target.value }))}
+          />
+        </div>
+
+        {/* Sector */}
+        <div className="form-group" style={{ margin: 0 }}>
+          <label>Sector</label>
+          <select
+  className="filter-select"
+  value={createForm.id_sector ?? ''}
+  onChange={e => setCreateForm(f => ({
+    ...f,
+    id_sector: e.target.value !== '' ? parseInt(e.target.value) : null,
+  }))}
+>
+  <option value="">— Sin sector —</option>
+  {sectores.map(s => (                              // ← sin .filter(s => s.activo)
+    <option key={s.id_sector} value={s.id_sector}>{s.nombre_sector}</option>
+  ))}
+</select>
+        </div>
+
+        {/* Altitud */}
+        <div className="form-group" style={{ margin: 0 }}>
+          <label>Altitud (m) <small style={{ color: '#9ca3af' }}>opcional</small></label>
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Ej: 2850"
+            value={createForm.altitud}
+            onChange={e => setCreateForm(f => ({ ...f, altitud: e.target.value }))}
+          />
+        </div>
+
+        {/* Asignar afiliado */}
+        <div className="form-group" style={{ margin: 0 }}>
+          <label>Asignar a Afiliado <small style={{ color: '#9ca3af' }}>opcional</small></label>
+
+          {/* Buscador */}
+          <div className="meter-search-container">
+            <div className="meter-search-input-wrapper">
+              <Search className="w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar por nombre, código o cédula..."
+                value={affiliateSearchTerm}
+                onChange={e => setAffiliateSearchTerm(e.target.value)}
+              />
+              {affiliateSearchTerm && (
+                <button type="button" onClick={() => setAffiliateSearchTerm('')} className="meter-search-clear-btn">
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <select
+            style={{ marginTop: 6 }}
+            value={createForm.id_usuario_afi || ''}
+            onChange={e => {
+              const id  = e.target.value ? parseInt(e.target.value) : null;
+              const aff = availableAffiliates.find(a => a.id_usuario_afi === id) || null;
+              setCreateForm(f => ({ ...f, id_usuario_afi: id }));
+              setSelectedAffiliateInfo(aff);
+            }}
+          >
+            <option value="">🚫 Sin asignar</option>
+            {filteredAffiliates.map(a => (
+              <option key={a.id_usuario_afi} value={a.id_usuario_afi}>
+                👤 {a.cod_usuario_afi} — {a.nombre_afiliado}
+                {a.cedula ? ` | 🪪 ${a.cedula}` : ''}
+              </option>
+            ))}
+          </select>
+
+          {filteredAffiliates.length > 0 && (
+            <small style={{ color: '#6b7280' }}>
+              {filteredAffiliates.length} afiliado{filteredAffiliates.length !== 1 ? 's' : ''}
+              {affiliateSearchTerm && ` para "${affiliateSearchTerm}"`}
+            </small>
+          )}
+        </div>
+
+        {/* Tarjeta info afiliado seleccionado */}
+        {selectedAffiliateInfo && (
+          <div className="meter-info-card">
+            <h4 className="meter-info-title">
+              <User className="w-4 h-4 mr-2" />
+              Información del Afiliado
+            </h4>
+            <div className="meter-info-content">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, fontSize: 13 }}>
+                <p><strong>Código:</strong> {selectedAffiliateInfo.cod_usuario_afi || '—'}</p>
+                <p><strong>Nombre:</strong> {selectedAffiliateInfo.nombre_afiliado || '—'}</p>
+                <p><strong>Cédula:</strong> {selectedAffiliateInfo.cedula || '—'}</p>
+                <p><strong>Sector:</strong> {selectedAffiliateInfo.nombre_sector || '—'}</p>
+                <p>
+                  <strong>Estado:</strong>{' '}
+                  <span style={{ color: selectedAffiliateInfo.activo ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                    {selectedAffiliateInfo.activo ? 'Activo' : 'Inactivo'}
+                  </span>
+                </p>
+                <p>
+                  <strong>Medidores:</strong> {selectedAffiliateInfo.total_medidores}{' '}
+                  <span style={{ color: '#6b7280', fontSize: 11 }}>
+                    ({selectedAffiliateInfo.medidores_activos} activo{selectedAffiliateInfo.medidores_activos !== 1 ? 's' : ''})
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Coordenadas — solo lectura */}
+        <div className="geo-confirm-coords">
+          <div className="geo-confirm-coord-row">
+            <span className="geo-confirm-label">Latitud</span>
+            <span className="geo-confirm-value">{coordNuevoMedidor.lat.toFixed(7)}</span>
+          </div>
+          <div className="geo-confirm-coord-row">
+            <span className="geo-confirm-label">Longitud</span>
+            <span className="geo-confirm-value">{coordNuevoMedidor.lng.toFixed(7)}</span>
+          </div>
+        </div>
+
+        {/* Botones */}
+        <div className="geo-confirm-actions geo-create-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={cancelarModoCrearMedidor}
+            disabled={createSaving}
+          >
+            <X className="w-4 h-4 mr-2" /> Cancelar
+          </button>
+          <button type="submit" className="btn-primary" disabled={createSaving}>
+            {createSaving ? (
+              <><Loader2 size={14} className="spin" /> Guardando…</>
+            ) : (
+              <><Save size={14} className="mr-1" /> Crear Medidor</>
+            )}
+          </button>
+        </div>
+      </form>
     </div>
+  </div>
+)}
+
+    </div>
+
+
   );
 };
 

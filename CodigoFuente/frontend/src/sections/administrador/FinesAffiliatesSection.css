@@ -421,37 +421,114 @@
   color: #6b7280;
 }
 
-/* ==================== RESUMEN DE PERÍODO ==================== */
-.periodo-card-resumen {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin: 8px 0 4px;
+/* ==================== RESUMEN DE PERÍODO (MODERNIZADO) ==================== */
+.periodos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 15px;
 }
 
-.resumen-item {
-  display: inline-flex;
+.periodo-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: left;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.periodo-card:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
+}
+
+.periodo-card.mes-actual {
+  border: 2px solid #3b82f6;
+  background-color: #f8faff;
+}
+
+.periodo-card-header {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 4px;
-  font-size: 0.70rem;
+}
+
+.periodo-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.periodo-badge-actual {
+  background: #3b82f6;
+  color: white;
+  font-size: 10px;
   font-weight: 600;
   padding: 2px 8px;
-  border-radius: 99px;
+  border-radius: 4px;
 }
 
-.resumen-item.total {
-  background: #eff6ff;
-  color: #1d4ed8;
+.periodo-card-info {
+  color: #64748b;
+  font-size: 0.8125rem;
+  margin-bottom: 6px;
+  font-weight: 500;
 }
 
-.resumen-item.pendiente {
-  background: #fef3c7;
-  color: #92400e;
+/* ============================================================
+   BARRA DE PROGRESO ÚNICA (ESTILO LECTURA)
+   ============================================================ */
+.periodo-progress-container {
+  width: 100%;
+  margin-bottom: 4px;
 }
 
-.resumen-item.pagada {
-  background: #d1fae5;
-  color: #065f46;
+.periodo-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.periodo-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 4px;
+}
+
+.periodo-progress-fill.complete {
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+}
+
+.periodo-percentage {
+  font-size: 10px;
+  font-weight: 700;
+  color: #3b82f6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.periodo-percentage.complete {
+  color: #059669;
+}
+
+.periodo-card-action {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3b82f6;
+  text-align: center;
 }
 
 /* ==================== HISTORIAL VACÍO ==================== */
@@ -504,4 +581,141 @@
     flex-direction: column;
     gap: 0.5rem;
   }
+}
+
+/* ============================================================
+   MODERN AFFILIATE LIST - ESTILO REPORTES
+   ============================================================ */
+.affiliates-modal-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: white;
+}
+
+.affiliate-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  transition: all 0.2s ease;
+}
+
+.affiliate-modal-item:last-child {
+  border-bottom: none;
+}
+
+.affiliate-modal-item:hover {
+  background: #f8fafc;
+}
+
+.affiliate-modal-item.selected {
+  background: #eff6ff;
+  border-left: 4px solid #2563eb;
+}
+
+.avatar-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.affiliate-modal-item.selected .avatar-circle {
+  background: #2563eb;
+  color: white;
+}
+
+.affiliate-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.affiliate-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.affiliate-meta {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin: 1px 0 0 0;
+}
+
+.selected-affiliate-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+}
+
+.selected-affiliate-card .avatar-circle {
+  background: #10b981;
+  color: white;
+}
+
+/* ============================================================
+   ANIMACIONES Y MEJORAS FORM
+   ============================================================ */
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.meter-search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0 12px;
+  transition: all 0.2s ease;
+}
+
+.meter-search-input-wrapper:focus-within {
+  border-color: #3b82f6;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.meter-search-input-wrapper input {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 8px 8px !important;
+  font-size: 0.875rem !important;
+}
+
+.meter-search-clear-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.meter-search-clear-btn:hover {
+  background: #e2e8f0;
 }

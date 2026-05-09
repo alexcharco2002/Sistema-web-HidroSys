@@ -297,6 +297,7 @@ async getMedidoresParaLecturas(mes = null, anio = null, incluirConLectura = fals
     let endpoint = API_CONFIG.endpoints.medidoresCompletos;
     
     const params = new URLSearchParams();
+
     if (mes) params.append('mes', mes);
     if (anio) params.append('anio', anio);
     if (incluirConLectura) params.append('incluir_con_lectura', 'true');
@@ -369,6 +370,13 @@ async getMedidoresParaLecturas(mes = null, anio = null, incluirConLectura = fals
 async getLecturas(filters = {}) {
   try {
     const params = new URLSearchParams();
+    if (filters.periodo_consumo && !filters.mes && !filters.anio) {
+      const [anioPeriodo, mesPeriodo] = filters.periodo_consumo.split('-');
+      if (mesPeriodo && anioPeriodo) {
+        params.append('mes', mesPeriodo);
+        params.append('anio', anioPeriodo);
+      }
+    }
     
     // 🔥 Agregar filtros de periodo
     if (filters.mes) {
@@ -447,6 +455,7 @@ async getLecturas(filters = {}) {
           lectura_anterior: parseInt(lecturaData.lectura_anterior),
           consumo_m3: parseInt(lecturaData.consumo_m3),
           fecha_lectura: lecturaData.fecha_lectura,
+          periodo_consumo: lecturaData.periodo_consumo,
           observacion: lecturaData.observacion?.trim() || null,
           activo: lecturaData.activo !== undefined ? lecturaData.activo : true
         }
@@ -485,8 +494,10 @@ async getLecturas(filters = {}) {
       if (lecturaData.lectura_anterior !== undefined) updateData.lectura_anterior = parseInt(lecturaData.lectura_anterior);
       if (lecturaData.consumo_m3 !== undefined) updateData.consumo_m3 = parseInt(lecturaData.consumo_m3);
       if (lecturaData.fecha_lectura) updateData.fecha_lectura = lecturaData.fecha_lectura;
+      if (lecturaData.periodo_consumo) updateData.periodo_consumo = lecturaData.periodo_consumo;
       if (lecturaData.observacion !== undefined) updateData.observacion = lecturaData.observacion?.trim() || null;
       if (lecturaData.activo !== undefined) updateData.activo = lecturaData.activo;
+      if (lecturaData.es_estimada !== undefined) updateData.es_estimada = lecturaData.es_estimada;
 
       const response = await this.makeRequest(`${API_CONFIG.endpoints.lecturas}/${lecturaId}`, {
         method: 'PUT',

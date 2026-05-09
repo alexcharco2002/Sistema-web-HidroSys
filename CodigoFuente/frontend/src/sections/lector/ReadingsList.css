@@ -257,11 +257,12 @@
 /* Contenedor de badges - ahora apilados verticalmente */
 .status-wrapper {
   display: flex;
-  flex-direction: column;     /* ⬅ apilar ACT + ESTI */
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 4px;
   width: 100%;
-  overflow: hidden;           /* ⬅ evita que se salga */
+  overflow: hidden;
 }
 
 
@@ -277,18 +278,26 @@
   align-items: center;
   justify-content: center;
   
-  width: 28px;           /* ⬅ Tamaño fijo pequeño */
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 6px;
-  border-radius: 50%;    /* ⬅ Circular */
+  border-radius: 50%;
   
-  font-size: 0;          /* ⬅ Oculta cualquier texto */
+  font-size: 0;
 }
 .list-status-badge.combined {
-  gap: 2px;
-  padding: 4px 6px;
+  width: 56px;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #fed7aa 0%, #dcfce7 100%);
   border: 1px solid #f59e0b;
+}
+
+.list-status-badge svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.4;
 }
 
 
@@ -896,6 +905,82 @@
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background-color: #fff;
+}
+
+.excel-preview-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  padding: 6px 2px 10px;
+  margin-top: 10px;
+  margin-bottom: 8px;
+  scrollbar-width: thin;
+}
+
+.excel-preview-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.excel-preview-tabs::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.excel-preview-tab {
+  flex: 0 0 auto;
+  min-width: 116px;
+  scroll-snap-align: start;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid #dbe3ef;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.excel-preview-tab:hover {
+  background: #f8fafc;
+  border-color: #93c5fd;
+}
+
+.excel-preview-tab.active {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+}
+
+.excel-preview-tab-title {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.excel-preview-tab-meta {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.1;
+}
+
+.excel-preview-tab.active .excel-preview-tab-meta {
+  color: #1d4ed8;
+}
+
+.excel-preview-range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 8px;
 }
 
 .excel-preview-table {
@@ -1685,6 +1770,17 @@
   color: #3B82F6;
 }
 
+/* Alert Warning */
+.alert-warning {
+  background-color: #FEF3C7;
+  border-color: #F59E0B;
+  color: #92400E;
+}
+
+.alert-warning .alert-icon {
+  color: #D97706;
+}
+
 /* Select deshabilitado */
 select.disabled {
   background-color: #F3F4F6;
@@ -1957,4 +2053,141 @@ select.disabled {
   .historial-anio-label {
     font-size: 14px;
   }
+}
+
+/* ============================================================
+   MODERN AFFILIATE LIST - ESTILO REPORTES
+   ============================================================ */
+.affiliates-modal-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: white;
+}
+
+.affiliate-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  transition: all 0.2s ease;
+}
+
+.affiliate-modal-item:last-child {
+  border-bottom: none;
+}
+
+.affiliate-modal-item:hover {
+  background: #f8fafc;
+}
+
+.affiliate-modal-item.selected {
+  background: #eff6ff;
+  border-left: 4px solid #2563eb;
+}
+
+.avatar-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.affiliate-modal-item.selected .avatar-circle {
+  background: #2563eb;
+  color: white;
+}
+
+.affiliate-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.affiliate-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.affiliate-meta {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin: 1px 0 0 0;
+}
+
+.selected-affiliate-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+}
+
+.selected-affiliate-card .avatar-circle {
+  background: #10b981;
+  color: white;
+}
+
+/* ============================================================
+   ANIMACIONES Y MEJORAS FORM
+   ============================================================ */
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.meter-search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0 12px;
+  transition: all 0.2s ease;
+}
+
+.meter-search-input-wrapper:focus-within {
+  border-color: #3b82f6;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.meter-search-input-wrapper input {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 8px 8px !important;
+  font-size: 0.875rem !important;
+}
+
+.meter-search-clear-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.meter-search-clear-btn:hover {
+  background: #e2e8f0;
 }

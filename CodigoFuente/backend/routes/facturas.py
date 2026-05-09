@@ -32,6 +32,7 @@ from utils.facturacion import (
     agregar_servicios_a_factura,
     calcular_descuento,
     generar_numero_factura,
+    obtener_periodo_consumo,
     validar_periodo_factura,
     calcular_tarifa_consumo,
     validar_unicidad_factura,
@@ -550,6 +551,36 @@ def crear_factura(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=mensaje
         )
+
+    if factura.id_lectura:
+        lectura = db.query(Lectura).filter(Lectura.id_lectura == factura.id_lectura).first()
+        if not lectura:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Lectura no encontrada"
+            )
+
+        if lectura.es_estimada:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La lectura es estimada. Debe confirmarla antes de generar la factura"
+            )
+
+        periodo_lectura = obtener_periodo_consumo(lectura)
+        if factura.periodo != periodo_lectura:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"El periodo de la factura ({factura.periodo}) no coincide "
+                    f"con el periodo de consumo de la lectura ({periodo_lectura})"
+                )
+            )
+
+        if lectura.medidor and lectura.medidor.id_usuario_afi != factura.id_usuario_afi:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La lectura no pertenece al afiliado indicado"
+            )
     
     # Validar unicidad (usuario + periodo)
     es_valido, mensaje = validar_unicidad_factura(

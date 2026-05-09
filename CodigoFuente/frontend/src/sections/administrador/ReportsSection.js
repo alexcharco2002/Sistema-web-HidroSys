@@ -9,7 +9,7 @@ import './ReportsSection.css';
 import { FileText, Calendar, Search, BarChart3, Users, Droplet, 
   DollarSign, AlertCircle, CheckCircle, RefreshCw, Loader, Settings, 
   Database, MapPin, CreditCard, Shield, Activity, Clock, ArrowLeft, 
-  Eraser, XCircle, User, TrendingUp, FileSpreadsheet, Printer, FileDown, ChevronDown, Wallet
+  Eraser, XCircle, User, TrendingUp, FileSpreadsheet, Printer, FileDown, ChevronDown, Wallet, X
 } from 'lucide-react'
 
 
@@ -63,25 +63,21 @@ const ReportsSection = () => {
   const [afiliadosModal, setAfiliadosModal] = useState([]);
   const [searchAfiliado, setSearchAfiliado] = useState('');
   const [afiliadoSeleccionado, setAfiliadoSeleccionado] = useState(null);
-  const [tipoPeriodoIndividual, setTipoPeriodoIndividual] = useState('mes');
-  const [periodoIndMes, setPeriodoIndMes] = useState(new Date().getMonth() + 1);
-  const [periodoIndAnio, setPeriodoIndAnio] = useState(new Date().getFullYear());
-  const [rangoDesde, setRangoDesde] = useState({ mes: 1, anio: new Date().getFullYear() });
-  const [rangoHasta, setRangoHasta] = useState({ mes: new Date().getMonth() + 1, anio: new Date().getFullYear() });
-  const [anioIndividual, setAnioIndividual] = useState(new Date().getFullYear());
   const [loadingReporteIndividual, setLoadingReporteIndividual] = useState(false);
   const [periodosIndividuales, setPeriodosIndividuales] = useState({});
-  // { Lecturas: [{mes, anio},...], Facturas: [...], Pagos: [...], MultasAfiliados: [...] }
+  // estado para controlar selección de periodo individual (mes, rango, año) y sus valores
   const [periodoIndividualSeleccionado, setPeriodoIndividualSeleccionado] = useState(null);
-// ELIMINA: tipoPeriodoIndividual, periodoIndMes, periodoIndAnio, rangoDesde, rangoHasta, anioIndividual
-// AGREGA estos:
-const [modoSeleccion, setModoSeleccion] = useState('mes'); // 'mes' | 'rango' | 'anio'
+  const [modoSeleccion, setModoSeleccion] = useState('mes'); 
+  const [rangoDesdeInd, setRangoDesdeInd] = useState(null);   
+  const [rangoHastaInd, setRangoHastaInd] = useState(null);    
+  const [anioSeleccionado, setAnioSeleccionado] = useState(null);  
 
-const [rangoDesdeInd, setRangoDesdeInd] = useState(null);   // "mes-anio"
-const [rangoHastaInd, setRangoHastaInd] = useState(null);   // "mes-anio"
-const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
+  // estados para filtros dinámicos de módulos con relaciones (lecturas por sector, medidores por sector, etc)
+  const [medidoresDisponibles, setMedidoresDisponibles] = useState([])  // lista única
+  const [filterMedidor, setFilterMedidor] = useState('todos')           // medidor seleccionado
 
-
+  const [esReporteIndividual, setEsReporteIndividual] = useState(false);
+  
   // ============================================================
   // ESTADOS DE DATOS
   // ============================================================
@@ -873,6 +869,8 @@ const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
     }
   }, [selectedModulo]);
 
+
+
   // Cargar sectores cuando se selecciona Medidores
   useEffect(() => {
     const cargarSectores = async () => {
@@ -916,6 +914,24 @@ const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
     };
     cargarAniosCaja();
   }, [selectedModulo, cajaAnioFiltro]);
+
+  useEffect(() => {
+  if (!['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo)) {
+    setMedidoresDisponibles([]);
+    setFilterMedidor('todos');
+    return;
+  }
+  if (reporteData.length === 0) return;
+
+  const unicos = [...new Set(
+    reporteData
+      .map(r => r.num_medidor)
+      .filter(Boolean)
+  )].sort();
+
+  setMedidoresDisponibles(unicos);
+  setFilterMedidor('todos'); // reset al recargar datos
+}, [reporteData, selectedModulo]);
 
 
   // ============================================================
@@ -1135,6 +1151,7 @@ const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
       }
       if (result.success) {
             setReporteData(result.data);
+            setEsReporteIndividual(false);  
             setStats({
               total_registros: result.total || result.data.length,
               periodo: periodoSeleccionado
@@ -1218,7 +1235,6 @@ const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
     if (!afiliadoSeleccionado || pasoModal !== 2) return;
 
     const cargar = async () => {
-      const codusuarioafi = afiliadoSeleccionado.cod_usuario_afi;
       let result;
       switch (selectedModulo) {
         case 'Lecturas':
@@ -1240,6 +1256,7 @@ const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
         setPeriodosIndividuales(prev => ({
           ...prev,
           [selectedModulo]: result.data
+
         }));
       }
     };
@@ -1285,11 +1302,16 @@ const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
 
   // Función de ordenamiento genérica
   const sortedData = useMemo(() => {
-    if (!sortBy || !reporteData.length) return reporteData;
-    return [...reporteData].sort((a, b) => {
+    // Primero filtrar por medidor
+    let datos = reporteData;
+    if (filterMedidor !== 'todos' && ['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo)) {
+      datos = datos.filter(r => String(r.num_medidor) === String(filterMedidor));
+    }
+
+    if (!sortBy || !datos.length) return datos;
+    return [...datos].sort((a, b) => {
       let aVal = a[sortBy] ?? '';
       let bVal = b[sortBy] ?? '';
-      // Fechas
       if (sortBy.includes('fecha')) {
         aVal = aVal ? new Date(aVal) : new Date(0);
         bVal = bVal ? new Date(bVal) : new Date(0);
@@ -1301,7 +1323,7 @@ const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
       if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [reporteData, sortBy, sortOrder]);
+  }, [reporteData, sortBy, sortOrder, filterMedidor, selectedModulo]);
 
 
   // Exportar a Excel con columnas seleccionadas
@@ -1365,6 +1387,8 @@ const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
     setSortBy('');
     setSortOrder('asc');
     setAniosExpandidos({});
+    setFilterMedidor('todos');
+    
   }, []);
 
   // Helper: colapsar/expandir año en el historial
@@ -1379,7 +1403,7 @@ const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
   const limpiarFiltros = useCallback(() => {
     setSelectedModulo('');
     setReporteData([]);
-
+    setEsReporteIndividual(false);
     setFilterEstado('todos');
     setSearchTerm('');
     setError(null);
@@ -1393,6 +1417,7 @@ const [anioSeleccionado, setAnioSeleccionado] = useState(null); // number
   const handleModuloSelect = (moduloValue) => {
     setSelectedModulo(moduloValue);
     setReporteData([]);
+    setEsReporteIndividual(false);
     setError(null);
     // limpiar estados de caja
     setCajaMensualData(null);
@@ -1555,91 +1580,90 @@ const toggleTodasColumnas = (seleccionar) => {
   };
 
   // Abrir modal de reporte individual (para Afiliados)
-const abrirModalIndividual = async () => {
-  // ✅ Solo abrir en módulos con reporte individual
-  const modulosIndividuales = ['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'];
-  if (!modulosIndividuales.includes(selectedModulo)) return;
+  const abrirModalIndividual = async () => {
+    const modulosIndividuales = ['Lecturas', 'Facturas', 'Pagos', 'MultasAfiliados'];
+    if (!modulosIndividuales.includes(selectedModulo)) return;
 
-  setModalIndividual(true);
-  setPasoModal(1);
-  setAfiliadoSeleccionado(null);
-  setSearchAfiliado('');
-  setLoadingReporteIndividual(false);
-
-  const result = await reportsServices.getReporteAfiliados({ limit: 1000 });
-  if (result.success) setAfiliadosModal(result.data);
-};
-
-const generarReporteIndividual = async () => {
-  if (!afiliadoSeleccionado) return;
-  setLoadingReporteIndividual(true);
-
-  let filtrosPeriodo = { limit: 1000 };
-
-  // ✅ Usa las variables del modo nuevo
-  if (modoSeleccion === 'mes' && periodoIndividualSeleccionado) {
-    const [mes, anio] = periodoIndividualSeleccionado.split('-').map(Number);
-    filtrosPeriodo.mes  = mes;
-    filtrosPeriodo.anio = anio;
-  } else if (modoSeleccion === 'rango' && rangoDesdeInd && rangoHastaInd) {
-    const [mesdesde, aniodesde] = rangoDesdeInd.split('-').map(Number);
-    const [meshasta, aniohasta] = rangoHastaInd.split('-').map(Number);
-    filtrosPeriodo.mesdesde  = mesdesde;
-    filtrosPeriodo.aniodesde = aniodesde;
-    filtrosPeriodo.meshasta  = meshasta;
-    filtrosPeriodo.aniohasta = aniohasta;
-  } else if (modoSeleccion === 'anio' && anioSeleccionado) {
-    filtrosPeriodo.anio = anioSeleccionado;
-  } else {
-    setError('Selecciona un período válido');
+    setModalIndividual(true);
+    setPasoModal(1);
+    setAfiliadoSeleccionado(null);
+    setSearchAfiliado('');
     setLoadingReporteIndividual(false);
-    return;
-  }
 
-  const codusuarioafi = afiliadoSeleccionado.cod_usuario_afi;
+    const result = await reportsServices.getReporteAfiliados({ limit: 1000 });
+    if (result.success) setAfiliadosModal(result.data);
+  };
 
-  if (!codusuarioafi) {
-    setError('No se pudo obtener el código del afiliado');
-    setLoadingReporteIndividual(false);
-    return;
-  }
+  const generarReporteIndividual = async () => {
+    if (!afiliadoSeleccionado) return;
+    setLoadingReporteIndividual(true);
 
-  try {
-    let result = { success: false, data: [], total: 0 };
+    let filtrosPeriodo = { limit: 1000 };
 
-    if (selectedModulo === 'Lecturas') {
-      result = await reportsServices.getReporteIndividualLecturas(codusuarioafi, filtrosPeriodo);
-    } else if (selectedModulo === 'Facturas') {
-      result = await reportsServices.getReporteIndividualFacturas(codusuarioafi, filtrosPeriodo);
-    } else if (selectedModulo === 'Pagos') {
-      result = await reportsServices.getReporteIndividualPagos(codusuarioafi, filtrosPeriodo);
-    } else if (selectedModulo === 'MultasAfiliados') {
-      result = await reportsServices.getReporteIndividualMultasAfiliados(codusuarioafi, filtrosPeriodo);
+    if (modoSeleccion === 'mes' && periodoIndividualSeleccionado) {
+      const [mes, anio] = periodoIndividualSeleccionado.split('-').map(Number);
+      filtrosPeriodo.mes  = mes;
+      filtrosPeriodo.anio = anio;
+    } else if (modoSeleccion === 'rango' && rangoDesdeInd && rangoHastaInd) {
+      const [mesdesde, aniodesde] = rangoDesdeInd.split('-').map(Number);
+      const [meshasta, aniohasta] = rangoHastaInd.split('-').map(Number);
+      filtrosPeriodo.mesdesde  = mesdesde;
+      filtrosPeriodo.aniodesde = aniodesde;
+      filtrosPeriodo.meshasta  = meshasta;
+      filtrosPeriodo.aniohasta = aniohasta;
+    } else if (modoSeleccion === 'anio' && anioSeleccionado) {
+      filtrosPeriodo.anio = anioSeleccionado;
+    } else {
+      setError('Selecciona un período válido');
+      setLoadingReporteIndividual(false);
+      return;
     }
+
+    const codusuarioafi = afiliadoSeleccionado.cod_usuario_afi;
+
+    if (!codusuarioafi) {
+      setError('No se pudo obtener el código del afiliado');
+      setLoadingReporteIndividual(false);
+      return;
+    }
+
+    try {
+      let result = { success: false, data: [], total: 0 };
+
+      if (selectedModulo === 'Lecturas') {
+        result = await reportsServices.getReporteIndividualLecturas(codusuarioafi, filtrosPeriodo);
+      } else if (selectedModulo === 'Facturas') {
+        result = await reportsServices.getReporteIndividualFacturas(codusuarioafi, filtrosPeriodo);
+      } else if (selectedModulo === 'Pagos') {
+        result = await reportsServices.getReporteIndividualPagos(codusuarioafi, filtrosPeriodo);
+      } else if (selectedModulo === 'MultasAfiliados') {
+        result = await reportsServices.getReporteIndividualMultasAfiliados(codusuarioafi, filtrosPeriodo);
+      }
 
       console.log('📊 Resultado individual:', result);
-  console.log('📊 Total:', result?.total);
-  console.log('📊 Data[0]:', result?.data?.[0]);
+      console.log('📊 Total:', result?.total);
+      console.log('📊 Data[0]:', result?.data?.[0]);
 
-    if (result.success) {
-      setReporteData(result.data);
-      setStats({
-        totalregistros: result.total ?? result.data.length,
-        periodo: `${afiliadoSeleccionado.nombres} ${afiliadoSeleccionado.apellidos}`,
-        modulo: `Reporte Individual · ${selectedModulo}`,
-      });
-      setModalIndividual(false);
-    } else {
-      setError(result.message || 'Error al generar el reporte individual');
+      if (result.success) {
+        setReporteData(result.data);
+        setEsReporteIndividual(true); 
+        setStats({
+          totalregistros: result.total ?? result.data.length,
+          periodo: `${afiliadoSeleccionado.nombres} ${afiliadoSeleccionado.apellidos}`,
+          modulo: `Reporte Individual · ${selectedModulo}`,
+        });
+        setModalIndividual(false);
+      } else {
+        setError(result.message || 'Error al generar el reporte individual');
+      }
+    } catch (err) {
+      console.error('Error generando reporte individual:', err);
+      setError('Error inesperado al generar el reporte individual');
+    } finally {
+      setLoadingReporteIndividual(false);
     }
-  } catch (err) {
-    console.error('Error generando reporte individual:', err);
-    setError('Error inesperado al generar el reporte individual');
-  } finally {
-    setLoadingReporteIndividual(false);
-  }
-  
-};
+    
+  };
 
 
   // ============================================================
@@ -2311,6 +2335,22 @@ const generarReporteIndividual = async () => {
           <div className="filters-section">
             {reporteData.length > 0 && (
               <div className="filters-actions-container2">
+                {/* ── FILTRO POR MEDIDOR (Lecturas / Facturas / Pagos) ── */}
+                {['Lecturas', 'Facturas', 'Pagos'].includes(selectedModulo) && esReporteIndividual &&
+                  medidoresDisponibles.length > 1 && (
+                    <select
+                      className="filter-select"
+                      value={filterMedidor}
+                      onChange={e => setFilterMedidor(e.target.value)}
+                      title="Filtrar por medidor"
+                    >
+                      <option value="todos">Todos los medidores</option>
+                      {medidoresDisponibles.map(m => (
+                        <option key={m} value={m}>Medidor {m}</option>
+                      ))}
+                    </select>
+                )}
+
                 {/* Botón selector de columnas */}
                 <button
                   onClick={() => setMostrarSelectorColumnas(!mostrarSelectorColumnas)}
@@ -2549,7 +2589,7 @@ const generarReporteIndividual = async () => {
 
         </div>
       )}
-
+      {/* MODAL DE REPORTE INDIVIDUAL */ }
       {modalIndividual && (
         <div className="modal-overlay" onClick={() => setModalIndividual(false)}>
           <div className="modal-container" onClick={e => e.stopPropagation()}>
@@ -2557,14 +2597,15 @@ const generarReporteIndividual = async () => {
             {/* HEADER */}
             <div className="modal-header">
               <div className="modal-title-row">
-                <FileText className="w-5 h-5 text-blue-600" />
                 <div>
-                  <h2>Reporte individual</h2>
+                  <h2> 
+                    <FileText className="w-5 h-5 text-blue-600" /> Reporte individual
+                  </h2>
                   <p>Genera un reporte por afiliado y periodo</p>
                 </div>
               </div>
-              <button onClick={() => setModalIndividual(false)}>
-                <XCircle className="w-5 h-5" />
+              <button className='modal-close' onClick={() => setModalIndividual(false)}>
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -2594,6 +2635,7 @@ const generarReporteIndividual = async () => {
                     value={searchAfiliado}
                     onChange={e => setSearchAfiliado(e.target.value)}
                     className="search-input"
+                    autoFocus
                   />
                 </div>
 
@@ -2620,13 +2662,33 @@ const generarReporteIndividual = async () => {
                           </div>
                           <div className="affiliate-info">
                             <p className="affiliate-name">{a.nombres} {a.apellidos}</p>
-                            <p className="affiliate-meta">{afiliadoSeleccionado?.cod_usuario_afi} · {afiliadoSeleccionado?.cedula} · {afiliadoSeleccionado?.sector}</p>
+                            {/* ✅ Usar `a` no `afiliadoSeleccionado` */}
+                            <p className="affiliate-meta">
+                              {a.cod_usuario_afi} · {a.cedula} · {a.sector}
+                            </p>
                           </div>
                           {isSelected && <CheckCircle className="w-4 h-4 text-blue-600" />}
                         </div>
                       );
                     })
                   }
+
+                  {/* Empty state si no hay resultados */}
+                  {afiliadosModal.filter(a => {
+                    const q = searchAfiliado.toLowerCase();
+                    return (
+                      `${a.nombres} ${a.apellidos}`.toLowerCase().includes(q) ||
+                      String(a.cod_usuario_afi).includes(q) ||
+                      String(a.cedula).includes(q)
+                    );
+                  }).length === 0 && (
+                    <div className="empty-state" style={{ padding: '24px 0' }}>
+                      <Users className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--color-text-faint)' }} />
+                      <p style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
+                        No se encontraron afiliados con "{searchAfiliado}"
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

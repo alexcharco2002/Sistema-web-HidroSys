@@ -1650,7 +1650,7 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                   const tieneFacturas  = periodo.tiene_facturas;
                   const esMesActual    = periodo.mes === mesActual && periodo.anio === anioActual;
                   const pctCobrado     = periodo.porcentaje_cobrado   ?? 0;
-                  const pctPendiente   = periodo.porcentaje_pendiente ?? 0;
+                  //const pctPendiente   = periodo.porcentaje_pendiente ?? 0;
                   const todoCobrado    = pctCobrado >= 100;
 
                   return (
@@ -1669,49 +1669,21 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                         )}
                       </div>
 
-                      {/* INFO: facturas pagadas / total */}
-                      <div className="periodo-card-info">
-                        {tieneFacturas
-                          ? `${periodo.total_pagadas} / ${periodo.total_facturas} facturas cobradas`
-                          : 'Sin facturas aún'}
-                      </div>
-
-                      {/* BARRAS DE PROGRESO — solo si tiene facturas */}
-                      {tieneFacturas && (
-                        <>
-                          {/* Barra cobrado */}
-                          <div className="periodo-progress-section">
-                            <div className="periodo-progress-label">
-                              <CheckCircle className="w-3 h-3 text-green-600" />
-                              <span>Cobrado</span>
-                              <span className="periodo-progress-value">{pctCobrado}%</span>
-                            </div>
-                            <div className="periodo-progress-bar">
-                              <div
-                                className={`periodo-progress-fill cobrado ${todoCobrado ? 'complete' : ''}`}
-                                style={{ width: `${pctCobrado}%` }}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Barra pendiente */}
-                          <div className="periodo-progress-section">
-                            <div className="periodo-progress-label">
-                              <Clock className="w-3 h-3 text-yellow-600" />
-                              <span>Pendiente</span>
-                              <span className="periodo-progress-value">{pctPendiente}%</span>
-                            </div>
-                            <div className="periodo-progress-bar">
-                              <div
-                                className="periodo-progress-fill pendiente"
-                                style={{ width: `${pctPendiente}%` }}
-                              />
-                            </div>
-                          </div>
-                        </>
-                      )}
-
-                      {/* ACCIÓN */}
+                      {/* INFO PRINCIPAL / BARRA DE PROGRESO ÚNICA — Estilo Lectura */}
+                      <div className="periodo-progress-container">
+                        <div className="periodo-card-info">
+                          {periodo.total_pagadas || 0} / {periodo.total_facturas || 0} facturas cobradas
+                        </div>
+                        <div className="periodo-progress-bar">
+                          <div
+                            className={`periodo-progress-fill ${todoCobrado ? 'complete' : ''}`}
+                            style={{ width: `${pctCobrado}%` }}
+                          />
+                        </div>
+                        <div className={`periodo-percentage ${todoCobrado ? 'complete' : ''}`}>
+                          {Math.round(pctCobrado)}% recaudado
+                        </div>
+                      </div>                      {/* ACCIÓN */}
                       <div className="periodo-card-action">
                         <span>
                           {!tieneFacturas
@@ -1816,14 +1788,14 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                                 key={`${periodo.mes}-${periodo.anio}`}
                                 className="historial-mes-chip completo"
                                 onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
-                                title={`${periodo.total_pagos} pagos`}
+                                title={`${Math.round(periodo.porcentaje_cobrado ?? 0)}% recaudado (${periodo.total_pagos} pagos)`}
                               >
                                 <span className="historial-mes-dot completo" />
                                 <span className="historial-mes-nombre">
                                   {nombresMeses[periodo.mes]}
                                 </span>
                                 <span className="historial-mes-pct">
-                                  {periodo.total_pagos}
+                                  {Math.round(periodo.porcentaje_cobrado ?? 0)}%
                                 </span>
                               </button>
                             ))}

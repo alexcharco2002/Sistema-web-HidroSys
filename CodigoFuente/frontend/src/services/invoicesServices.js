@@ -123,6 +123,7 @@ class InvoicesServices {
       if (filters.estado_factura) params.append('estado_factura', filters.estado_factura);
       if (filters.fecha_desde) params.append('fecha_desde', filters.fecha_desde);
       if (filters.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta);
+      if (filters.incluir_detalles !== undefined) params.append('incluir_detalles', filters.incluir_detalles);
       if (filters.skip) params.append('skip', filters.skip);
       if (filters.limit) params.append('limit', filters.limit);
 

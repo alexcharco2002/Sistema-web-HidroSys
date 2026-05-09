@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from fastapi import UploadFile, File
 from calendar import month_name
 import locale
+from collections import defaultdict
 
 from openpyxl.styles import Protection  # Importar Protection para proteger/desproteger celdas
 from models.lectura import Lectura
@@ -143,6 +144,20 @@ def require_any_permission(
     )
 
 
+def construir_periodo_consumo(anio: int, mes: int) -> str:
+    return f"{anio}-{mes:02d}"
+
+
+def periodo_desde_fecha(fecha: date) -> str:
+    return construir_periodo_consumo(fecha.year, fecha.month)
+
+
+def periodo_desde_mes_anio(periodo: str) -> tuple[int, int]:
+    """Convierte un periodo YYYY-MM a (anio, mes)."""
+    anio, mes = periodo.split("-")
+    return int(anio), int(mes)
+
+
 # ============================================================================
 # HELPER: Convertir lectura a respuesta con información completa
 # ============================================================================
@@ -159,6 +174,7 @@ def lectura_to_response(lectura: Lectura) -> dict:
         "lectura_anterior": lectura.lectura_anterior,
         "consumo_m3": lectura.consumo_m3,
         "fecha_lectura": lectura.fecha_lectura.isoformat() if lectura.fecha_lectura else None,
+        "periodo_consumo": lectura.periodo_consumo,
         "id_lector": lectura.id_lector,
         "observacion": lectura.observacion,
         "activo": lectura.activo,
@@ -207,9 +223,9 @@ def listar_afiliados_con_medidores(
         medidores_con_lectura_ids = set()
         
         if mes and anio and not incluir_con_lectura:
+            periodo = construir_periodo_consumo(anio, mes)
             lecturas_periodo = db.query(Lectura.id_medidor).filter(
-                func.extract('month', Lectura.fecha_lectura) == mes,
-                func.extract('year', Lectura.fecha_lectura) == anio
+                Lectura.periodo_consumo == periodo
             ).distinct().all()
             
             medidores_con_lectura_ids = {lectura[0] for lectura in lecturas_periodo}
@@ -222,8 +238,9 @@ def listar_afiliados_con_medidores(
         subq_ultima_lectura = (
             db.query(
                 Lectura.id_medidor,
-                func.max(Lectura.fecha_lectura).label("max_fecha")
+                func.max(Lectura.periodo_consumo).label("max_periodo")
             )
+            .filter(Lectura.activo == True)
             .group_by(Lectura.id_medidor)
             .subquery()
         )
@@ -243,7 +260,8 @@ def listar_afiliados_con_medidores(
                 UsuarioSistema.cedula,
                 Sector.nombre_sector,
                 Lectura.lectura_actual.label("lectura_anterior"),
-                Lectura.fecha_lectura.label("fecha_ultima_lectura")
+                Lectura.fecha_lectura.label("fecha_ultima_lectura"),
+                Lectura.periodo_consumo.label("periodo_ultima_lectura")
             )
             .join(
                 UsuarioAfiliado,
@@ -265,7 +283,8 @@ def listar_afiliados_con_medidores(
                 Lectura,
                 and_(
                     Lectura.id_medidor == Medidor.id_medidor,
-                    Lectura.fecha_lectura == subq_ultima_lectura.c.max_fecha
+                    Lectura.periodo_consumo == subq_ultima_lectura.c.max_periodo,
+                    Lectura.activo == True
                 )
             )
             .filter(
@@ -319,6 +338,7 @@ def listar_afiliados_con_medidores(
                 "sector": r.nombre_sector or "Sin sector",
                 "lectura_anterior": float(r.lectura_anterior) if r.lectura_anterior else 0,
                 "fecha_ultima_lectura": r.fecha_ultima_lectura.strftime('%Y-%m-%d') if r.fecha_ultima_lectura else None,
+                "periodo_ultima_lectura": r.periodo_ultima_lectura,
                 "tiene_lectura_anterior": r.lectura_anterior is not None
             }
             afiliados.append(afiliado)
@@ -374,6 +394,7 @@ def listar_lecturas_optimizado(
                 Lectura.id_lectura,
                 Lectura.id_medidor,  # 🔥 AGREGADO: id_medidor
                 Lectura.fecha_lectura,
+                Lectura.periodo_consumo,
                 Lectura.lectura_actual,
                 Lectura.lectura_anterior,
                 Lectura.consumo_m3,
@@ -420,13 +441,16 @@ def listar_lecturas_optimizado(
 
         # 🔥 Filtrar por periodo si se proporciona
         if mes is not None and anio is not None:
+            periodo = construir_periodo_consumo(anio, mes)
             query = query.filter(
-                extract('month', Lectura.fecha_lectura) == mes,
-                extract('year', Lectura.fecha_lectura) == anio
+                Lectura.periodo_consumo == periodo
             )
         
-        # Ordenar y limitar
-        lecturas = query.order_by(Lectura.fecha_lectura.desc()).limit(500).all()
+        # Ordenar por periodo de consumo; fecha_lectura queda como desempate.
+        lecturas = query.order_by(
+            Lectura.periodo_consumo.desc(),
+            Lectura.fecha_lectura.desc()
+        ).limit(500).all()
 
         print(f"✅ Total lecturas encontradas: {len(lecturas)}")
 
@@ -435,6 +459,7 @@ def listar_lecturas_optimizado(
                 "id_lectura": l.id_lectura,
                 "id_medidor": l.id_medidor,  # 🔥 AGREGADO en la respuesta
                 "fecha_lectura": l.fecha_lectura,
+                "periodo_consumo": l.periodo_consumo,
                 "lectura_actual": l.lectura_actual,
                 "lectura_anterior": l.lectura_anterior,
                 "consumo_m3": l.consumo_m3,
@@ -551,10 +576,11 @@ def crear_lectura(
         )
     
     # Validación: evitar doble lectura en el mismo mes
+    periodo_consumo = lectura_data.periodo_consumo or periodo_desde_fecha(lectura_data.fecha_lectura)
+
     lectura_mes_existente = db.query(Lectura).filter(
         Lectura.id_medidor == lectura_data.id_medidor,
-        func.extract('month', Lectura.fecha_lectura) == lectura_data.fecha_lectura.month,
-        func.extract('year', Lectura.fecha_lectura) == lectura_data.fecha_lectura.year,
+        Lectura.periodo_consumo == periodo_consumo,
         Lectura.activo == True
     ).first()
 
@@ -563,7 +589,7 @@ def crear_lectura(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"Ya existe una lectura registrada para este medidor "
-                f"en {lectura_data.fecha_lectura.month}/{lectura_data.fecha_lectura.year}."
+                f"en el periodo de consumo {periodo_consumo}."
             )
         )
     
@@ -585,9 +611,11 @@ def crear_lectura(
         lectura_anterior=lectura_data.lectura_anterior,
         consumo_m3=lectura_data.consumo_m3,
         fecha_lectura=lectura_data.fecha_lectura,
+        periodo_consumo=periodo_consumo,
         id_lector=current_user.id_usuario_sistema,
         observacion=lectura_data.observacion,
-        activo=lectura_data.activo
+        activo=lectura_data.activo,
+        es_estimada=lectura_data.es_estimada
     )
     
     try:
@@ -734,14 +762,13 @@ def actualizar_lectura(
     update_data = lectura_data.model_dump(exclude_unset=True)
     
     # Validar duplicados
-    if "fecha_lectura" in update_data or "id_medidor" in update_data:
-        nueva_fecha = update_data.get("fecha_lectura", lectura.fecha_lectura)
+    if "periodo_consumo" in update_data or "id_medidor" in update_data:
+        nuevo_periodo = update_data.get("periodo_consumo", lectura.periodo_consumo)
         nuevo_medidor = update_data.get("id_medidor", lectura.id_medidor)
 
         duplicado = db.query(Lectura).filter(
             Lectura.id_medidor == nuevo_medidor,
-            func.extract('month', Lectura.fecha_lectura) == nueva_fecha.month,
-            func.extract('year', Lectura.fecha_lectura) == nueva_fecha.year,
+            Lectura.periodo_consumo == nuevo_periodo,
             Lectura.id_lectura != id_lectura,
             Lectura.activo == True
         ).first()
@@ -753,8 +780,7 @@ def actualizar_lectura(
                 "message": "⚠️ Ya existe otra lectura para ese medidor en ese mes.",
                 "info": {
                     "id_lectura_existente": duplicado.id_lectura,
-                    "mes": nueva_fecha.month,
-                    "año": nueva_fecha.year
+                    "periodo_consumo": nuevo_periodo
                 }
             }
     
@@ -1021,10 +1047,10 @@ def exportar_plantilla(
         total_medidores_activos = 0
         
         if mes and anio:
+            periodo = construir_periodo_consumo(anio, mes)
             # Medidores con lectura en el periodo
             lecturas_periodo = db.query(Lectura.id_medidor).filter(
-                func.extract('month', Lectura.fecha_lectura) == mes,
-                func.extract('year', Lectura.fecha_lectura) == anio
+                Lectura.periodo_consumo == periodo
             ).distinct().all()
             
             medidores_con_lectura_ids = {lectura[0] for lectura in lecturas_periodo}
@@ -1493,6 +1519,7 @@ async def importar_lecturas_excel(
         print(f"{'='*60}\n")
         
         fecha_lectura = date.today()
+        periodo_consumo = periodo_desde_fecha(fecha_lectura)
         
         # Procesar cada fila (empezar desde la 2 para saltar encabezados)
         for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
@@ -1527,6 +1554,15 @@ async def importar_lecturas_excel(
                 
                 if not medidor:
                     raise ValueError(f"Medidor '{num_medidor}' no encontrado en el sistema")
+
+                lectura_existente = db.query(Lectura).filter(
+                    Lectura.id_medidor == medidor.id_medidor,
+                    Lectura.periodo_consumo == periodo_consumo,
+                    Lectura.activo == True
+                ).first()
+
+                if lectura_existente:
+                    raise ValueError(f"Ya existe lectura para el periodo de consumo {periodo_consumo}")
                 
                 # Crear lectura
                 nueva_lectura = Lectura(
@@ -1535,6 +1571,7 @@ async def importar_lecturas_excel(
                     lectura_anterior=lectura_anterior,
                     consumo_m3=consumo_m3,
                     fecha_lectura=fecha_lectura,
+                    periodo_consumo=periodo_consumo,
                     id_lector=current_user.id_usuario_sistema,
                     observacion=observacion.strip() if observacion else None,
                     activo=True
@@ -1617,6 +1654,8 @@ async def importar_lecturas_excel(
 
 @router.get("/export/excel")
 def exportar_lecturas_excel(
+    mes: Optional[int] = Query(None, ge=1, le=12),
+    anio: Optional[int] = Query(None, ge=2020),
     fecha_desde: Optional[date] = Query(None),
     fecha_hasta: Optional[date] = Query(None),
     payload: dict = Depends(verify_token),
@@ -1632,12 +1671,17 @@ def exportar_lecturas_excel(
         # Consultar lecturas
         query = db.query(Lectura).filter(Lectura.activo == True)
         
+        if mes is not None and anio is not None:
+            query = query.filter(Lectura.periodo_consumo == construir_periodo_consumo(anio, mes))
         if fecha_desde:
             query = query.filter(Lectura.fecha_lectura >= fecha_desde)
         if fecha_hasta:
             query = query.filter(Lectura.fecha_lectura <= fecha_hasta)
         
-        lecturas = query.order_by(Lectura.fecha_lectura.desc()).all()
+        lecturas = query.order_by(
+            Lectura.periodo_consumo.desc(),
+            Lectura.fecha_lectura.desc()
+        ).all()
         
         # Crear Excel
         wb = Workbook()
@@ -1651,7 +1695,8 @@ def exportar_lecturas_excel(
             "Lectura Anterior",
             "Lectura Actual",
             "Consumo (m³)",
-            "Fecha",
+            "Periodo Consumo",
+            "Fecha Lectura",
             "Lector",
             "Observación"
         ]
@@ -1681,12 +1726,13 @@ def exportar_lecturas_excel(
             ws.cell(row=row_num, column=3, value=lectura.lectura_anterior)
             ws.cell(row=row_num, column=4, value=lectura.lectura_actual)
             ws.cell(row=row_num, column=5, value=lectura.consumo_m3)
-            ws.cell(row=row_num, column=6, value=lectura.fecha_lectura.strftime('%Y-%m-%d'))
-            ws.cell(row=row_num, column=7, value=nombre_lector)
-            ws.cell(row=row_num, column=8, value=lectura.observacion or "")
+            ws.cell(row=row_num, column=6, value=lectura.periodo_consumo)
+            ws.cell(row=row_num, column=7, value=lectura.fecha_lectura.strftime('%Y-%m-%d'))
+            ws.cell(row=row_num, column=8, value=nombre_lector)
+            ws.cell(row=row_num, column=9, value=lectura.observacion or "")
         
         # Ajustar anchos
-        for col in ["A", "B", "C", "D", "E", "F", "G", "H"]:
+        for col in ["A", "B", "C", "D", "E", "F", "G", "H", "I"]:
             ws.column_dimensions[col].width = 20
         
         # Guardar
@@ -1790,9 +1836,9 @@ def obtener_periodos_disponibles(
                 anio_temp -= 1
             
             # Contar lecturas del periodo
+            periodo_temp = construir_periodo_consumo(anio_temp, mes_temp)
             total_lecturas_periodo = db.query(func.count(Lectura.id_lectura)).filter(
-                func.extract('month', Lectura.fecha_lectura) == mes_temp,
-                func.extract('year', Lectura.fecha_lectura) == anio_temp,
+                Lectura.periodo_consumo == periodo_temp,
                 Lectura.activo == True
             ).scalar() or 0
             
@@ -1863,7 +1909,8 @@ async def importar_lecturas_excel_con_periodo(
     
     try:
         # Crear fecha del periodo (primer día del mes)
-        fecha_lectura = date(anio, mes, 1)
+        fecha_lectura = date.today()
+        periodo_consumo = construir_periodo_consumo(anio, mes)
         
         print(f"\n{'='*60}")
         print(f"🚀 IMPORTACIÓN PARA PERIODO: {MESES_ES.get(mes, mes)}/{anio}")
@@ -1904,8 +1951,7 @@ async def importar_lecturas_excel_con_periodo(
                 # Validar duplicado
                 lectura_existente = db.query(Lectura).filter(
                     Lectura.id_medidor == medidor.id_medidor,
-                    func.extract('month', Lectura.fecha_lectura) == mes,
-                    func.extract('year', Lectura.fecha_lectura) == anio,
+                    Lectura.periodo_consumo == periodo_consumo,
                     Lectura.activo == True
                 ).first()
                 
@@ -1919,6 +1965,7 @@ async def importar_lecturas_excel_con_periodo(
                     lectura_anterior=lectura_anterior,
                     consumo_m3=consumo_m3,
                     fecha_lectura=fecha_lectura,
+                    periodo_consumo=periodo_consumo,
                     id_lector=current_user.id_usuario_sistema,
                     observacion=observacion.strip() if observacion else None,
                     activo=True
@@ -2030,6 +2077,7 @@ def generar_lecturas_estimadas(
     require_permission(current_user, db, "lecturas", "crear")
     
     try:
+        periodo_consumo = construir_periodo_consumo(anio, mes)
         # 1. Obtener todos los medidores activos con usuarios
         medidores_con_usuario = db.query(Medidor).filter(
             Medidor.activo == True,
@@ -2044,8 +2092,7 @@ def generar_lecturas_estimadas(
         
         # 2. Obtener medidores que YA tienen lectura en el período
         medidores_con_lectura = db.query(Lectura.id_medidor).filter(
-            func.extract('month', Lectura.fecha_lectura) == mes,
-            func.extract('year', Lectura.fecha_lectura) == anio,
+            Lectura.periodo_consumo == periodo_consumo,
             Lectura.activo == True
         ).distinct().all()
         
@@ -2075,21 +2122,49 @@ def generar_lecturas_estimadas(
         ).scalar() or consumo_default
         
         consumo_promedio_sistema = round(consumo_promedio_sistema)
+
+        ids_sin_lectura = [m.id_medidor for m in medidores_sin_lectura]
+
+        historial_rows = db.query(Lectura).filter(
+            Lectura.id_medidor.in_(ids_sin_lectura),
+            Lectura.activo == True,
+            Lectura.es_estimada == False
+        ).order_by(
+            Lectura.id_medidor.asc(),
+            Lectura.periodo_consumo.desc(),
+            Lectura.fecha_lectura.desc(),
+            Lectura.id_lectura.desc()
+        ).all()
+
+        historial_por_medidor = defaultdict(list)
+        for lectura_hist in historial_rows:
+            lecturas_medidor = historial_por_medidor[lectura_hist.id_medidor]
+            if len(lecturas_medidor) < meses_promedio:
+                lecturas_medidor.append(lectura_hist)
+
+        ultima_rows = db.query(Lectura).filter(
+            Lectura.id_medidor.in_(ids_sin_lectura),
+            Lectura.activo == True
+        ).order_by(
+            Lectura.id_medidor.asc(),
+            Lectura.periodo_consumo.desc(),
+            Lectura.fecha_lectura.desc(),
+            Lectura.id_lectura.desc()
+        ).all()
+
+        ultima_por_medidor = {}
+        for lectura_hist in ultima_rows:
+            ultima_por_medidor.setdefault(lectura_hist.id_medidor, lectura_hist)
         
         # 5. Generar lecturas estimadas
         lecturas_generadas = []
         lecturas_fallidas = []
+        lecturas_pendientes = []
         
         for medidor in medidores_sin_lectura:
             try:
                 # 🔹 CASO 1: Buscar historial de lecturas del medidor
-                ultimas_lecturas = db.query(Lectura).filter(
-                    Lectura.id_medidor == medidor.id_medidor,
-                    Lectura.activo == True,
-                    Lectura.es_estimada == False
-                ).order_by(
-                    Lectura.fecha_lectura.desc()
-                ).limit(meses_promedio).all()
+                ultimas_lecturas = historial_por_medidor.get(medidor.id_medidor, [])
                 
                 # Variables para la lectura estimada
                 lectura_anterior = 0
@@ -2106,9 +2181,7 @@ def generar_lecturas_estimadas(
                 else:
                     # 🔹 CASO 2: MEDIDOR SIN HISTORIAL
                     # Obtener última lectura conocida del endpoint /medidores/lista/completa
-                    ultima_lectura_conocida = db.query(Lectura).filter(
-                        Lectura.id_medidor == medidor.id_medidor
-                    ).order_by(Lectura.fecha_lectura.desc()).first()
+                    ultima_lectura_conocida = ultima_por_medidor.get(medidor.id_medidor)
                     
                     if ultima_lectura_conocida:
                         # ✅ Tiene una lectura previa (aunque sea antigua)
@@ -2130,15 +2203,14 @@ def generar_lecturas_estimadas(
                     lectura_actual=lectura_estimada,
                     lectura_anterior=lectura_anterior,
                     consumo_m3=consumo_estimado,
-                    fecha_lectura=date(anio, mes, 1),
+                    fecha_lectura=date.today(),
+                    periodo_consumo=periodo_consumo,
                     id_lector=current_user.id_usuario_sistema,
                     observacion=f"⚡ Lectura estimada - {metodo_calculo}",
                     activo=True,
                     es_estimada=True
                 )
                 
-                db.add(nueva_lectura)
-                db.flush()
                 
                 # Obtener información del afiliado
                 afiliado = medidor.usuario_afiliado
@@ -2151,7 +2223,7 @@ def generar_lecturas_estimadas(
                         nombre_afiliado = f"{us.nombres} {us.apellidos}"
                 
                 lecturas_generadas.append({
-                    "id_lectura": nueva_lectura.id_lectura,
+                    "id_lectura": None,
                     "medidor": medidor.num_medidor,
                     "codigo_afiliado": codigo_afiliado,
                     "nombre_afiliado": nombre_afiliado,
@@ -2161,6 +2233,7 @@ def generar_lecturas_estimadas(
                     "metodo_calculo": metodo_calculo,
                     "tiene_historial": len(ultimas_lecturas) > 0
                 })
+                lecturas_pendientes.append(nueva_lectura)
                 
             except Exception as e:
                 lecturas_fallidas.append({
@@ -2170,6 +2243,12 @@ def generar_lecturas_estimadas(
                 continue
         
         # 6. Confirmar transacción
+        if lecturas_pendientes:
+            db.add_all(lecturas_pendientes)
+            db.flush()
+            for detalle, lectura_creada in zip(lecturas_generadas, lecturas_pendientes):
+                detalle["id_lectura"] = lectura_creada.id_lectura
+
         if lecturas_generadas:
             db.commit()
             
@@ -2397,6 +2476,7 @@ def confirmar_todas_lecturas_estimadas(
         import calendar
         
         # Calcular rango de fechas del periodo
+        periodo_consumo = construir_periodo_consumo(anio, mes)
         fecha_inicio = date(anio, mes, 1)
         ultimo_dia = calendar.monthrange(anio, mes)[1]
         fecha_fin = date(anio, mes, ultimo_dia)
@@ -2405,8 +2485,7 @@ def confirmar_todas_lecturas_estimadas(
         
         # Obtener todas las lecturas estimadas del periodo
         lecturas_estimadas = db.query(Lectura).filter(
-            Lectura.fecha_lectura >= fecha_inicio,
-            Lectura.fecha_lectura <= fecha_fin,
+            Lectura.periodo_consumo == periodo_consumo,
             Lectura.es_estimada == True,
             Lectura.activo == True
         ).all()

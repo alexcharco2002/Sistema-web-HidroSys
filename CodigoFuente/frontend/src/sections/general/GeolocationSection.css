@@ -28,6 +28,7 @@
 .sidebar-title {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
   padding: 1rem;
   font-size: 1rem;
@@ -35,6 +36,59 @@
   color: #1f2937;
   border-bottom: 1px solid #e5e7eb;
   background: #f9fafb;
+}
+
+.sidebar-title-text {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.sidebar-toggle-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #374151;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-toggle-btn:hover {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+}
+
+.geo-map-sidebar-toggle {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #374151;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.geo-map-sidebar-toggle:hover {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1d4ed8;
 }
 
 .sidebar-list {
@@ -753,6 +807,17 @@
   display: flex;
   gap: 8px;
 }
+
+.geo-create-actions {
+  justify-content: flex-end;
+}
+
+.geo-create-actions .btn-secondary,
+.geo-create-actions .btn-primary {
+  width: auto;
+  flex: 0 0 auto;
+}
+
 .geo-confirm-btn-cancel,
 .geo-confirm-btn-ok {
   flex: 1;

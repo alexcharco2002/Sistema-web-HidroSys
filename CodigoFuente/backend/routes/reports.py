@@ -671,12 +671,9 @@ def get_reporte_lecturas(
     
     # Filtro por mes y año
     if mes and anio:
-        query = query.filter(
-            extract('month', Lectura.fecha_lectura) == mes,
-            extract('year', Lectura.fecha_lectura) == anio
-        )
+        query = query.filter(Lectura.periodo_consumo == f"{anio}-{mes:02d}")
     elif anio:
-        query = query.filter(extract('year', Lectura.fecha_lectura) == anio)
+        query = query.filter(Lectura.periodo_consumo.like(f"{anio}-%"))
     
     # Filtro por estado activo
     if activo is not None:
@@ -703,6 +700,7 @@ def get_reporte_lecturas(
             "lectura_actual": l.lectura_actual,
             "consumo_m3": l.consumo_m3,
             "fecha_lectura": l.fecha_lectura.strftime('%d/%m/%Y') if l.fecha_lectura else None,
+            "periodo_consumo": l.periodo_consumo,
             "tipo_lectura": "Estimada" if l.es_estimada else "Real",
             "lector": f"{l.lector.nombres} {l.lector.apellidos}" if l.lector else "Sin lector",
             "observacion": l.observacion,
@@ -726,13 +724,11 @@ def get_periodos_lecturas(
     
     # Consulta optimizada para obtener periodos únicos
     periodos = db.query(
-        extract('year', Lectura.fecha_lectura).label('anio'),
-        extract('month', Lectura.fecha_lectura).label('mes')
+        Lectura.periodo_consumo
     ).filter(
-        Lectura.fecha_lectura.isnot(None)  # ← Filtra nulls
+        Lectura.periodo_consumo.isnot(None)
     ).distinct().order_by(
-        desc(extract('year', Lectura.fecha_lectura)),  # ← Corregido
-        desc(extract('month', Lectura.fecha_lectura))  # ← Corregido
+        desc(Lectura.periodo_consumo)
     ).all()
     
     meses_nombres = {
@@ -741,15 +737,24 @@ def get_periodos_lecturas(
         9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
     }
     
-    return [
-        {
-            "anio": int(p.anio),
-            "mes": int(p.mes),
-            "mes_nombre": meses_nombres.get(int(p.mes), 'Desconocido'),
-            "periodo": f"{meses_nombres.get(int(p.mes), 'Mes')} {int(p.anio)}"
-        }
-        for p in periodos if p.anio and p.mes
-    ]
+    resultado = []
+    for (periodo_consumo,) in periodos:
+        try:
+            anio_str, mes_str = periodo_consumo.split("-")
+            anio = int(anio_str)
+            mes = int(mes_str)
+        except (ValueError, AttributeError):
+            continue
+
+        resultado.append({
+            "anio": anio,
+            "mes": mes,
+            "mes_nombre": meses_nombres.get(mes, 'Desconocido'),
+            "periodo": f"{meses_nombres.get(mes, 'Mes')} {anio}",
+            "periodo_consumo": periodo_consumo
+        })
+
+    return resultado
 
 
 # ============================================================================
@@ -1926,12 +1931,12 @@ def exportar_reporte(
 
 
 # ============================================================================
-# 9. REPORTE DE CAJA GENERAL
+# 13. REPORTE DE CAJA GENERAL
 # Incluye: cobros de agua, multas cobradas, resumen mensual, anual y diario
 # ============================================================================
 
 # ============================================================================
-# 9.1 RESUMEN MENSUAL DE CAJA
+# 13.1 RESUMEN MENSUAL DE CAJA
 # ============================================================================
 @router.get("/caja/mensual")
 def get_caja_mensual(
@@ -2145,7 +2150,7 @@ def get_caja_mensual(
 
 
 # ============================================================================
-# 9.2 RESUMEN ANUAL DE CAJA
+# 13.2 RESUMEN ANUAL DE CAJA
 # ============================================================================
 @router.get("/caja/anual")
 def get_caja_anual(
@@ -2341,7 +2346,7 @@ def get_caja_anual(
 
 
 # ============================================================================
-# 9.3 DETALLE DIARIO DE CAJA
+# 13.3 DETALLE DIARIO DE CAJA
 # ============================================================================
 @router.get("/caja/detalle-diario")
 def get_caja_detalle_diario(
@@ -2439,7 +2444,7 @@ def get_caja_detalle_diario(
 
 
 # ============================================================================
-# 9.4 AÑOS DISPONIBLES EN CAJA
+# 13.4 AÑOS DISPONIBLES EN CAJA
 # ============================================================================
 @router.get("/caja/anios-disponibles")
 def get_anios_disponibles(
@@ -2509,6 +2514,9 @@ def get_anios_disponibles(
         "meses_por_anio": meses_por_anio_sorted  # { 2024: [1,3,5], 2025: [1,2] }
     }
 
+# ============================================================================
+# 14. REPORTES INDIVIDUALES POR AFILIADO
+# ============================================================================
 @router.get("/individual/lecturas")
 def reporte_individual_lecturas(
     codusuarioafi: str          = Query(..., description="Código del afiliado, ej: '10'"),
@@ -2542,12 +2550,18 @@ def reporte_individual_lecturas(
     )
 
     # Filtro de período flexible
-    query = _filtro_periodo_flexible(
-        query, Lectura.fecha_lectura,
-        mes=mes, anio=anio,
-        mesdesde=mesdesde, aniodesde=aniodesde,
-        meshasta=meshasta, aniohasta=aniohasta,
-    )
+    if mes and anio:
+        query = query.filter(Lectura.periodo_consumo == f"{anio}-{mes:02d}")
+    elif anio:
+        query = query.filter(Lectura.periodo_consumo.like(f"{anio}-%"))
+
+    if mesdesde and aniodesde and meshasta and aniohasta:
+        periodo_desde = f"{aniodesde}-{mesdesde:02d}"
+        periodo_hasta = f"{aniohasta}-{meshasta:02d}"
+        query = query.filter(
+            Lectura.periodo_consumo >= periodo_desde,
+            Lectura.periodo_consumo <= periodo_hasta,
+        )
 
     # ✅ count() ANTES de paginar para total real
     total = query.count()
@@ -2580,11 +2594,11 @@ def reporte_individual_lecturas(
             "num_medidor":     m.num_medidor  if m   else None,   # ✅ num_medidor (con _)
             "sector":          sec.nombre_sector if sec else "Sin sector",  # ✅ nombre_sector
             # Lectura
-            "id_lectura":      l.id_lectura,
             "lectura_anterior": l.lectura_anterior,               # ✅ con _
             "lectura_actual":   l.lectura_actual,                 # ✅ con _
             "consumo_m3":       l.consumo_m3,                     # ✅ con _
             "fecha_lectura":    l.fecha_lectura.strftime("%d/%m/%Y") if l.fecha_lectura else None,
+            "periodo_consumo":  l.periodo_consumo,
             "tipo_lectura":     "Estimada" if l.es_estimada else "Real",  # ✅ es_estimada
             "lector":           (
                 f"{l.lector.nombres} {l.lector.apellidos}"
@@ -2599,7 +2613,6 @@ def reporte_individual_lecturas(
         "total":   total,          # ✅ total real con paginación
         "data":    [_serializar(l) for l in lecturas],
     }
-
 
 @router.get("/individual/facturas")
 def reporte_individual_facturas(
@@ -2621,11 +2634,11 @@ def reporte_individual_facturas(
 
     morasubquery = (
         db.query(
-            MoraFactura.id_factura,
-            func.count(MoraFactura.idmora).label("meses_adeudo"),
-            func.sum(MoraFactura.valormora).label("total_mora"),
+            MoraFactura.id_factura,                                      
+            func.count(MoraFactura.id_mora).label("meses_adeudo"),       
+            func.sum(MoraFactura.monto_mora).label("total_mora"),       
         )
-        .filter(MoraFactura.activo == True)
+        .filter(MoraFactura.aplicada == True)                            
         .group_by(MoraFactura.id_factura)
         .subquery()
     )
@@ -2636,54 +2649,56 @@ def reporte_individual_facturas(
             morasubquery.c.meses_adeudo,
             morasubquery.c.total_mora,
         )
-        .join(Lectura,         Factura.idlectura         == Lectura.idlectura)
-        .join(Medidor,         Lectura.idmedidor          == Medidor.idmedidor)
-        .join(UsuarioAfiliado, Medidor.idusuarioafi       == UsuarioAfiliado.idusuarioafi)
-        .join(UsuarioSistema,  UsuarioAfiliado.idusuariosistema == UsuarioSistema.idusuariosistema)
-        .outerjoin(Sector,     UsuarioAfiliado.idsector   == Sector.idsector)
-        .outerjoin(morasubquery, Factura.id_factura        == morasubquery.c.id_factura)
-        .filter(UsuarioAfiliado.codusuarioafi == codusuarioafi)
+        .join(Lectura,         Factura.id_lectura              == Lectura.id_lectura)        
+        .join(Medidor,         Lectura.id_medidor              == Medidor.id_medidor)        
+        .join(UsuarioAfiliado, Medidor.id_usuario_afi          == UsuarioAfiliado.id_usuario_afi)   
+        .join(UsuarioSistema,  UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)   
+        .outerjoin(Sector,     UsuarioAfiliado.id_sector        == Sector.id_sector)          
+        .outerjoin(morasubquery, Factura.id_factura             == morasubquery.c.id_factura) 
+        .filter(UsuarioAfiliado.cod_usuario_afi == codusuarioafi)  
     )
 
+    # Filtro de período
     query = _filtro_periodo_flexible(
-        query, Factura.fechaemision,
+        query, Factura.fecha_emision,           
         mes=mes, anio=anio,
         mesdesde=mesdesde, aniodesde=aniodesde,
         meshasta=meshasta, aniohasta=aniohasta,
     )
 
     if estado and estado.lower() not in ("todos", "all"):
-        query = query.filter(Factura.estadofactura == estado.lower())
+        query = query.filter(Factura.estado_factura == estado.lower())   
 
-    total   = query.count()
-    filas   = query.order_by(Factura.fechaemision.desc()).offset(skip).limit(limit).all()
+    total = query.count()
+    filas = query.order_by(Factura.fecha_emision.desc()).offset(skip).limit(limit).all()   
 
     return {
         "success": True,
         "total":   total,
         "data": [
             {
-                "numfactura":    f.numfactura,
-                "codusuarioafi": codusuarioafi,
-                "periodo":       f.periodo,
-                "fechaemision":  f.fechaemision.strftime("%d/%m/%Y") if f.fechaemision else None,
-                "consumom3":     f.consumom3,
-                "excesom3":      f.excesom3 or 0,
-                "valorconsumo":  float(f.valorconsumo) if f.valorconsumo else 0.0,
-                "valorexceso":   float(f.valorexceso)  if f.valorexceso  else 0.0,
-                "descuento":     float(f.descuento)    if f.descuento    else 0.0,
-                "subtotal":      float(f.subtotal)     if f.subtotal     else 0.0,
-                "impuesto":      float(f.impuesto)     if f.impuesto     else 0.0,
-                "total":         float(f.total)        if f.total        else 0.0,
-                "estadofactura": f.estadofactura,
-                "tienemora":     meses_adeudo is not None and meses_adeudo > 0,
-                "mesesadeudo":   int(meses_adeudo) if meses_adeudo else 0,
-                "valormora":     float(total_mora) if total_mora else 0.0,
-                "totalconmora":  float(f.total or 0) + float(total_mora or 0),
+                "num_factura":    f.num_factura,                                              
+                "cod_usuario_afi": codusuarioafi,
+                "periodo":        f.periodo,
+                "fecha_emision":  f.fecha_emision.strftime("%d/%m/%Y") if f.fecha_emision else None,   
+                "consumo_m3":     f.consumo_m3,                                               
+                "exceso_m3":      f.exceso_m3 or 0,                                          
+                "valor_consumo":  float(f.valor_consumo) if f.valor_consumo else 0.0,        
+                "valor_exceso":   float(f.valor_exceso)  if f.valor_exceso  else 0.0,         
+                "descuento":      float(f.descuento)     if f.descuento     else 0.0,
+                "subtotal":       float(f.subtotal)      if f.subtotal      else 0.0,
+                "impuesto":       float(f.impuesto)      if f.impuesto      else 0.0,
+                "total":          float(f.total)         if f.total         else 0.0,
+                "estado_factura": f.estado_factura,                                          
+                "tiene_mora":     meses_adeudo is not None and meses_adeudo > 0,
+                "meses_adeudo":   int(meses_adeudo) if meses_adeudo else 0,
+                "valor_mora":     float(total_mora) if total_mora else 0.0,
+                "total_con_mora": round(float(f.total or 0) + float(total_mora or 0), 2),    
             }
             for f, meses_adeudo, total_mora in filas
         ],
     }
+
 
 @router.get("/individual/pagos")
 def reporte_individual_pagos(
@@ -2703,78 +2718,95 @@ def reporte_individual_pagos(
     currentuser = get_current_user(payload, db)
     require_permission(currentuser, db, "reportes", "lectura")
 
+    # ✅ Misma subquery mora que el endpoint global
     morasubquery = (
         db.query(
-            MoraFactura.idfactura,
-            func.count(MoraFactura.idmora).label("meses_adeudo"),
-            func.sum(MoraFactura.valormora).label("total_mora"),
+            MoraFactura.id_factura,
+            func.sum(MoraFactura.monto_mora).label("total_mora"),
+            func.max(MoraFactura.dias_mora).label("max_dias_mora"),
+            func.count(MoraFactura.id_mora).label("meses_adeudo"),
         )
-        .filter(MoraFactura.activo == True)
-        .group_by(MoraFactura.idfactura)
+        .filter(MoraFactura.aplicada == True)
+        .group_by(MoraFactura.id_factura)
         .subquery()
     )
 
     Cajero = aliased(UsuarioSistema)
 
+    # ✅ Solo columnas necesarias — igual que /pagos global
     query = (
-        db.query(Pago, morasubquery.c.meses_adeudo, morasubquery.c.total_mora)
-        .join(Factura,         Pago.idfactura              == Factura.idfactura)
-        .join(Lectura,         Factura.idlectura            == Lectura.idlectura)
-        .join(Medidor,         Lectura.idmedidor            == Medidor.idmedidor)
-        .join(UsuarioAfiliado, Medidor.idusuarioafi         == UsuarioAfiliado.idusuarioafi)
-        .join(UsuarioSistema,  UsuarioAfiliado.idusuariosistema == UsuarioSistema.idusuariosistema)
-        .outerjoin(Cajero,     Pago.idcajero                == Cajero.idusuariosistema)
-        .outerjoin(morasubquery, Factura.idfactura          == morasubquery.c.idfactura)
+        db.query(
+            Pago.id_pago,
+            Pago.fecha_pago,
+            Pago.monto_pago,
+            Pago.metodo_pago,
+            Pago.estado_pago,
+            Pago.observaciones,
+            Pago.comprobante_pdf,
+            Factura.num_factura,
+            Factura.periodo,
+            Factura.total.label("total_factura"),
+            Cajero.nombres.label("cajero_nombres"),
+            Cajero.apellidos.label("cajero_apellidos"),
+            morasubquery.c.meses_adeudo,
+            morasubquery.c.total_mora,
+            morasubquery.c.max_dias_mora,
+        )
+        # ✅ Cadena idéntica al endpoint global que ya funciona rápido
+        .join(Factura,         Pago.id_factura              == Factura.id_factura)
+        .join(Lectura,         Factura.id_lectura            == Lectura.id_lectura)
+        .join(Medidor,         Lectura.id_medidor            == Medidor.id_medidor)
+        .join(UsuarioAfiliado, Medidor.id_usuario_afi        == UsuarioAfiliado.id_usuario_afi)
+        .join(UsuarioSistema,  UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
+        .outerjoin(Cajero,     Pago.id_cajero                == Cajero.id_usuario_sistema)
+        .outerjoin(morasubquery, Factura.id_factura          == morasubquery.c.id_factura)
         .filter(
-            UsuarioAfiliado.codusuarioafi == codusuarioafi,
+            UsuarioAfiliado.cod_usuario_afi == codusuarioafi,
             Pago.activo == True,
         )
     )
 
     query = _filtro_periodo_flexible(
-        query, Pago.fechapago,
+        query, Pago.fecha_pago,
         mes=mes, anio=anio,
         mesdesde=mesdesde, aniodesde=aniodesde,
         meshasta=meshasta, aniohasta=aniohasta,
     )
 
     if metodopago:
-        query = query.filter(Pago.metodopago.ilike(f"%{metodopago}%"))
+        query = query.filter(Pago.metodo_pago.ilike(f"%{metodopago}%"))
 
     total = query.count()
-    filas = query.order_by(Pago.fechapago.desc()).offset(skip).limit(limit).all()
+    filas = query.order_by(Pago.fecha_pago.desc()).offset(skip).limit(limit).all()
 
     return {
         "success": True,
         "total": total,
         "data": [
             {
-                "numfactura":    p.factura.numfactura if p.factura else None,
-                "periodo":       p.factura.periodo    if p.factura else None,
-                "codusuarioafi": codusuarioafi,
-                "fechapago":     p.fechapago.strftime("%d/%m/%Y %H:%M") if p.fechapago else None,
-                "montopagado":   float(p.montopago)   if p.montopago  else 0.0,
-                "totalfactura":  float(p.factura.total) if p.factura and p.factura.total else 0.0,
-                "saldo":         round(float(p.factura.total or 0) - float(p.montopago or 0), 2),
-                "pagocompleto":  float(p.montopago or 0) >= float(p.factura.total or 0) if p.factura else False,
-                "metodopago":    p.metodopago,
-                "estadopago":    p.estadopago,
-                "tienecomprobante": bool(p.comprobantepdf),
-                "cajero":        f"{cajero.nombres} {cajero.apellidos}" if cajero else "Sin cajero",
-                "observaciones": p.observaciones,
-                "tienemora":     meses_adeudo is not None and meses_adeudo > 0,
-                "mesesadeudo":   int(meses_adeudo) if meses_adeudo else 0,
-                "valormora":     float(total_mora) if total_mora else 0.0,
-                "totalconmora":  round(float(p.factura.total or 0) + float(total_mora or 0), 2),
+                "num_factura":       row.num_factura,
+                "periodo":           row.periodo,
+                "cod_usuario_afi":   codusuarioafi,
+                "fecha_pago":        row.fecha_pago.strftime("%d/%m/%Y %H:%M") if row.fecha_pago else None,
+                "monto_pagado":      float(row.monto_pago)    if row.monto_pago    else 0.0,
+                "total_factura":     float(row.total_factura) if row.total_factura else 0.0,
+                "saldo":             round(float(row.total_factura or 0) - float(row.monto_pago or 0), 2),
+                "pago_completo":     float(row.monto_pago or 0) >= float(row.total_factura or 0),
+                "metodo_pago":       row.metodo_pago,
+                "estado_pago":       row.estado_pago,
+                "tiene_comprobante": bool(row.comprobante_pdf),
+                "cajero":            f"{row.cajero_nombres} {row.cajero_apellidos}"
+                                     if row.cajero_nombres else "Sin cajero",
+                "observaciones":     row.observaciones,
+                "tiene_mora":        row.meses_adeudo is not None and row.meses_adeudo > 0,
+                "meses_adeudo":      int(row.meses_adeudo) if row.meses_adeudo else 0,
+                "valor_mora":        float(row.total_mora) if row.total_mora else 0.0,
+                "total_con_mora":    round(float(row.total_factura or 0) + float(row.total_mora or 0), 2),
             }
-            for p, meses_adeudo, total_mora, cajero in [
-                (pago, ma, tm, db.query(UsuarioSistema).filter(
-                    UsuarioSistema.idusuariosistema == pago.idcajero
-                ).first() if pago.idcajero else None)
-                for pago, ma, tm in filas
-            ]
+            for row in filas
         ],
     }
+
 
 @router.get("/individual/multas-afiliados")
 def reporte_individual_multas_afiliados(
@@ -2798,16 +2830,16 @@ def reporte_individual_multas_afiliados(
     query = (
         db.query(MultaAfiliado)
         .options(
-            joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.usuariosistema),
+            joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.usuario_sistema),
             joinedload(MultaAfiliado.usuario).joinedload(UsuarioAfiliado.sector),
-            joinedload(MultaAfiliado.tipomulta),
+            joinedload(MultaAfiliado.tipo_multa),
         )
-        .join(UsuarioAfiliado, MultaAfiliado.idusuarioafi == UsuarioAfiliado.idusuarioafi)
-        .filter(UsuarioAfiliado.codusuarioafi == codusuarioafi)
+        .join(UsuarioAfiliado, MultaAfiliado.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+        .filter(UsuarioAfiliado.cod_usuario_afi == codusuarioafi)
     )
 
     query = _filtro_periodo_flexible(
-        query, MultaAfiliado.fechamulta,
+        query, MultaAfiliado.fecha_multa,
         mes=mes, anio=anio,
         mesdesde=mesdesde, aniodesde=aniodesde,
         meshasta=meshasta, aniohasta=aniohasta,
@@ -2819,26 +2851,30 @@ def reporte_individual_multas_afiliados(
         query = query.filter(MultaAfiliado.facturado == facturado)
 
     total  = query.count()
-    multas = query.order_by(MultaAfiliado.fechamulta.desc()).offset(skip).limit(limit).all()
+    multas = query.order_by(MultaAfiliado.fecha_multa.desc()).offset(skip).limit(limit).all()
 
     return {
         "success": True,
         "total": total,
         "data": [
             {
-                "codusuarioafi": m.usuario.codusuarioafi if m.usuario else None,
-                "nombres":   f"{m.usuario.usuariosistema.nombres} {m.usuario.usuariosistema.apellidos}"
-                             if m.usuario and m.usuario.usuariosistema else "N/A",
-                "cedula":    m.usuario.usuariosistema.cedula if m.usuario and m.usuario.usuariosistema else None,
-                "sector":    m.usuario.sector.nombresector   if m.usuario and m.usuario.sector else None,
-                "nombremulta": m.tipomulta.nombremulta if m.tipomulta else "N/A",
-                "monto":     float(m.monto) if m.monto else 0.0,
-                "fechamulta": m.fechamulta.isoformat() if m.fechamulta else None,
-                "fechapago":  m.fechapago.isoformat()  if m.fechapago  else None,
+                # Afiliado
+                "cod_usuario_afi": m.usuario.cod_usuario_afi if m.usuario else None,          
+                "nombres":   (
+                    f"{m.usuario.usuario_sistema.nombres} {m.usuario.usuario_sistema.apellidos}"   
+                    if m.usuario and m.usuario.usuario_sistema else "N/A"
+                ),
+                "cedula":    m.usuario.usuario_sistema.cedula if m.usuario and m.usuario.usuario_sistema else None,   
+                "sector":    m.usuario.sector.nombre_sector   if m.usuario and m.usuario.sector else None,            
+                # Multa
+                "nombre_multa":  m.tipo_multa.nombre_multa if m.tipo_multa else "N/A",     
+                "monto":         float(m.monto) if m.monto else 0.0,
+                "fecha_multa":   m.fecha_multa.isoformat() if m.fecha_multa else None,       
+                "fecha_pago":    m.fecha_pago.isoformat()  if m.fecha_pago  else None,      
                 "observaciones": m.observaciones,
-                "estado":    m.estado,
-                "facturado": m.facturado,
-                "activo":    m.activo,
+                "estado":        m.estado,
+                "facturado":     m.facturado,
+                "activo":        m.activo,
             }
             for m in multas
         ],

@@ -136,8 +136,9 @@ class AffiliateBillingServices {
         params.append('estado_pago', filtrosAdicionales.estado_pago);
       }
 
-      if (filtrosAdicionales.estado_factura && filtrosAdicionales.estado_factura !== 'todos') {
-        params.append('estado_factura', filtrosAdicionales.estado_factura);
+      const estadoFactura = filtrosAdicionales.estado_factura || filtrosAdicionales.estadofactura;
+      if (estadoFactura && estadoFactura !== 'todos') {
+        params.append('estado_factura', estadoFactura);
       }
 
       if (filtrosAdicionales.monto_min) {

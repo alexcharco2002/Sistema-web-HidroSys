@@ -23,6 +23,10 @@ from models.HistorialMedidor import HistorialMedidor
 
 dias_vencimientos: int = 30  # Días por defecto para vencimiento de facturas
 
+def obtener_periodo_consumo(lectura: Lectura) -> str:
+    return lectura.periodo_consumo or f"{lectura.fecha_lectura.year}-{lectura.fecha_lectura.month:02d}"
+
+
 # ============================================
 # 1. VALIDACIONES
 # ============================================
@@ -40,8 +44,11 @@ def validar_datos_facturacion(
     
     if not medidor or not medidor.id_usuario_afi:
         return False, "Medidor sin afiliado asociado", None
+
+    if lectura.es_estimada:
+        return False, "La lectura es estimada. Debe confirmarla antes de generar la factura", None
     
-    periodo = f"{lectura.fecha_lectura.year}-{str(lectura.fecha_lectura.month).zfill(2)}"
+    periodo = obtener_periodo_consumo(lectura)
     
     # Verificar si ya existe factura activa para esta lectura
     factura_existente = db.query(Factura).filter(
@@ -553,7 +560,7 @@ def generar_facturas_masivo_optimizado(
     # ============================================
     servicios_cache = {}
     if aplicar_servicios_permanentes and lecturas:
-        periodo = f"{lecturas[0].fecha_lectura.year}-{str(lecturas[0].fecha_lectura.month).zfill(2)}"
+        periodo = obtener_periodo_consumo(lecturas[0])
         servicios_cache = precargar_servicios_permanentes_masivo(
             db=db,
             ids_usuarios_afi=ids_usuarios_afi,
@@ -588,7 +595,7 @@ def generar_facturas_masivo_optimizado(
             # Aplicar servicios permanentes con CACHE
             if aplicar_servicios_permanentes and factura:
                 id_usuario_afi = medidores_map.get(lectura.id_medidor)
-                periodo = f"{lectura.fecha_lectura.year}-{str(lectura.fecha_lectura.month).zfill(2)}"
+                periodo = obtener_periodo_consumo(lectura)
                 
                 servicios_agregados = agregar_servicios_permanentes_a_factura(
                     db=db,
@@ -1600,6 +1607,7 @@ def recalcular_factura(
         factura.valor_consumo = consumo_basico['valor']
         factura.valor_exceso = consumo_exceso['valor_exceso']
         factura.id_tarifa = consumo_basico['tarifa_id']
+        factura.periodo = obtener_periodo_consumo(lectura)
         
         db.flush()
         

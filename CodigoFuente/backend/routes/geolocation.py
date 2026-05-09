@@ -656,6 +656,7 @@ def actualizar_coordenadas(
         )
     
 # funcion para obtener los limites configurados de la comunidad 
+@router.get("/limites")
 def obtener_limites_geograficos(db: Session = Depends(get_db)):
     try:
         limites = (

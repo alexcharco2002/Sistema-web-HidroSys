@@ -22,7 +22,7 @@ class Factura(Base):
             name='chk_factura_consumo_positivo'
         ),
         CheckConstraint(
-            "estado_factura IN ('pendiente', 'pagada', 'anulada', 'vencida', 'facturado')",
+            "estado_factura IN ('pendiente', 'pagada', 'anulada', 'vencida', 'facturado', 'parcial')",
             name='chk_estado_valido'
         ),
         {'schema': 'facturacion'}

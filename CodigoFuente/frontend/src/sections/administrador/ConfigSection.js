@@ -95,6 +95,16 @@ const ConfigSection = () => {
   });
   const [aplicarMora, setAplicarMora] = useState(false); // Toggle para activar/desactivar mora
 
+  const formatPeriodoMora = (mora) => {
+    if (!mora) return '-';
+    if (mora.tipo_periodo === 'meses') {
+      const meses = Number(mora.meses_gracia || 0);
+      return `${meses} ${meses === 1 ? 'mes' : 'meses'}`;
+    }
+    const dias = Number(mora.dias_gracia || 0);
+    return `${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+  };
+
   // ====================================== 
   // ESTADOS PARA SERVICIOS PERMANENTES
   // ======================================
@@ -768,7 +778,7 @@ const asignacionesFiltradas = useMemo(() => {
           const confirmar = window.confirm(
               `¿Deseas ACTIVAR la aplicación de IVA en facturación?\n\n` +
               `IVA a activar: ${ivaParaActivar.codigo} (${ivaParaActivar.porcentaje}%)\n\n` +
-              `Las nuevas facturas incluirán este IVA automáticamente.`
+              `Se aplicará solo a servicios externos/adicionales. No aplica al consumo de agua, multas, mora, aportes comunitarios ni convenios de pago.`
           );
           
           if (!confirmar) return;
@@ -1246,7 +1256,7 @@ const asignacionesFiltradas = useMemo(() => {
         `Configuración a activar: ${moraParaActivar.nombre}\n` +
         `Tipo: ${moraService.formatTipoCalculo(moraParaActivar.tipo_calculo)}\n` +
         `Valor: ${moraService.formatValorMora(moraParaActivar)}\n` +
-        `Días de gracia: ${moraParaActivar.dias_gracia}\n\n` +
+        `Periodo de gracia: ${formatPeriodoMora(moraParaActivar)}\n\n` +
         `Las facturas vencidas empezarán a acumular mora automáticamente.`
       );
 
@@ -1375,7 +1385,9 @@ const asignacionesFiltradas = useMemo(() => {
     setMoraFormData({
       nombre: '',
       descripcion: '',
+      tipo_periodo: 'dias',
       dias_gracia: 0,
+      meses_gracia: 0,
       tipo_calculo: 'porcentaje',
       porcentaje_mora: '',
       valor_fijo: '',
@@ -1421,10 +1433,10 @@ const asignacionesFiltradas = useMemo(() => {
       // ✅ Incluir días o meses según el tipo_periodo
       if (moraFormData.tipo_periodo === 'dias') {
         dataToSend.dias_gracia = parseInt(moraFormData.dias_gracia) || 0;
-        dataToSend.meses_gracia = null; // Limpiar meses
+        dataToSend.meses_gracia = 0; // Limpiar meses sin enviar null
       } else {
         dataToSend.meses_gracia = parseInt(moraFormData.meses_gracia) || 0;
-        dataToSend.dias_gracia = null; // Limpiar días
+        dataToSend.dias_gracia = 0; // Limpiar dias sin enviar null
       }
 
       // Agregar valores según tipo de cálculo
@@ -2834,6 +2846,39 @@ const afiliadosFiltrados = useMemo(() => {
                     </div>
                   </div>
 
+                  <div className="alert alert-info" style={{marginBottom: '1.5rem'}}>
+                    <AlertCircle size={18} />
+                    <div>
+                      <strong>Aviso de aplicación de IVA:</strong>
+                      <p style={{margin: '0.35rem 0 0.5rem'}}>
+                        Al activar IVA se aplicará únicamente a servicios externos/adicionales, no al consumo de agua ni a valores que no forman parte directa del servicio básico.
+                      </p>
+                      <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.75rem'}}>
+                        <div>
+                          <strong>Normalmente llevan IVA:</strong>
+                          <ul style={{marginTop: '0.35rem', paddingLeft: '1.25rem'}}>
+                            <li>Reconexión</li>
+                            <li>Instalación nueva</li>
+                            <li>Venta o cambio de medidor</li>
+                            <li>Servicios técnicos adicionales</li>
+                            <li>Venta de accesorios/materiales</li>
+                            <li>Otros trabajos solicitados por el usuario</li>
+                          </ul>
+                        </div>
+                        <div>
+                          <strong>No llevan IVA:</strong>
+                          <ul style={{marginTop: '0.35rem', paddingLeft: '1.25rem'}}>
+                            <li>Consumo de agua</li>
+                            <li>Multas por mora</li>
+                            <li>Intereses por mora</li>
+                            <li>Aportes comunitarios</li>
+                            <li>Convenios de pago</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* ⚠️ CONTENIDO DINÁMICO: Solo se muestra si aplicarIVA está activado */}
                   {aplicarIVA ? (
                     <>
@@ -3241,7 +3286,7 @@ const afiliadosFiltrados = useMemo(() => {
                           <span style={{color: '#999'}}>
                             Tipo: {moraService.formatTipoCalculo(moraActiva.tipo_calculo)} | 
                             Valor: {moraService.formatValorMora(moraActiva)} | 
-                            Días de gracia: {moraActiva.dias_gracia}
+                            Periodo de gracia: {formatPeriodoMora(moraActiva)}
                           </span>
                         </div>
                       )}
@@ -3303,8 +3348,8 @@ const afiliadosFiltrados = useMemo(() => {
                                 <th>Nombre</th>
                                 <th>Tipo Cálculo</th>
                                 <th>Valor/Tasa</th>
-                                <th>Días Gracia</th>
-                                <th>Meses Gracia</th>
+                                <th>Periodo Gracia</th>
+                                <th>Tipo Periodo</th>
                                 <th>Aplicar Sobre</th>
                                 <th>Vigencia</th>
                                 <th>Estado</th>
@@ -3343,18 +3388,18 @@ const afiliadosFiltrados = useMemo(() => {
                                   </td>
                                   <td className="text-center">
                                     <span className="badge badge-warning">
-                                      {mora.dias_gracia} {mora.dias_gracia === 1 ? 'día' : 'días'}
+                                      {formatPeriodoMora(mora)}
                                     </span>
                                   </td>
 
                                                       <td>
                 {mora.tipo_periodo === 'meses' ? (
                   <span className="badge badge-info">
-                    {mora.meses_gracia || 0} {mora.meses_gracia === 1 ? 'mes' : 'meses'}
+                    Meses
                   </span>
                 ) : (
                   <span className="badge badge-secondary">
-                    {mora.dias_gracia || 0} {mora.dias_gracia === 1 ? 'día' : 'días'}
+                    Dias
                   </span>
                 )}
               </td>
@@ -3562,13 +3607,13 @@ const afiliadosFiltrados = useMemo(() => {
                         dias_gracia: 0
                       })}
                     />
-                    <span>Por Meses (Cambio de mes)</span>
+                    <span>Por Meses</span>
                   </label>
                 </div>
                 <small className="form-help">
                   {moraFormData.tipo_periodo === 'dias' 
-                    ? 'La mora se calculará después de X días de vencida la factura'
-                    : 'La mora se aplicará cuando la factura vencida pase al siguiente mes calendario'}
+                    ? 'La mora se calculara despues de X dias desde la emision de la factura'
+                    : 'La mora se calculara despues de X meses desde la emision de la factura'}
                 </small>
               </div>
 
@@ -3613,7 +3658,7 @@ const afiliadosFiltrados = useMemo(() => {
                     placeholder="0"
                   />
                   <small className="form-help">
-                    Meses de tolerancia. Ejemplo: si vence el 15/Enero y meses_gracia=0, la mora aplica el 1/Febrero. Si meses_gracia=1, aplica el 1/Marzo.
+                    Meses de tolerancia desde la fecha de emision. Ejemplo: emitida el 15/Enero y meses_gracia=1, la mora aplica desde el 16/Febrero.
                   </small>
                 </div>
               )}
@@ -3696,24 +3741,23 @@ const afiliadosFiltrados = useMemo(() => {
                                     min="0.0001"
                                     required
                                   />
-                                  <small className="form-help">Tasa anualizada dividida entre 365</small>
+                                  <small className="form-help">Porcentaje diario aplicado por cada dia efectivo de mora</small>
                                 </div>
                               )}
 
                               {/* Días de Gracia */}
                               <div className="form-group">
-                                <label>Días de Gracia *</label>
+                                <label>Periodo de Gracia</label>
                                 <input
                                   type="number"
                                   className="form-input"
-                                  value={moraFormData.dias_gracia}
-                                  onChange={(e) => setMoraFormData({ ...moraFormData, dias_gracia: e.target.value })}
+                                  value={moraFormData.tipo_periodo === 'dias' ? moraFormData.dias_gracia : moraFormData.meses_gracia}
+                                  readOnly
                                   placeholder="0"
                                   min="0"
                                   max="365"
-                                  required
                                 />
-                                <small className="form-help">Días después del vencimiento sin aplicar mora</small>
+                                <small className="form-help">Valor tomado del periodo configurado arriba</small>
                               </div>
                             </div>
 

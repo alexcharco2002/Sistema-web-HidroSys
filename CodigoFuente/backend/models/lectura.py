@@ -57,5 +57,5 @@ class Lectura(Base):
             'id_lector': self.id_lector,
             'observacion': self.observacion,
             'activo': self.activo,
-            'es_estimada': self.es_estimada  # ✅ AGREGADO
+            'es_estimada': self.es_estimada  
         }

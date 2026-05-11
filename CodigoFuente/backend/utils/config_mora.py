@@ -9,9 +9,16 @@ from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 from typing import Tuple, Optional
+import sys
 from models.mora import ConfiguracionMora, MoraFactura
 from models.factura import Factura
 from models.detalle_factura import DetalleFactura
+
+for stream in (sys.stdout, sys.stderr):
+    try:
+        stream.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 
 # ========================================
@@ -110,23 +117,14 @@ def calcular_fecha_inicio_mora(
         print(f"   Mora aplica desde: {fecha_inicio}")
         
     else:  # tipo_periodo == 'meses'
-        # ✅ MODO MESES: Avanzar al primer día del siguiente mes + meses de gracia
+        # MODO MESES: sumar meses de gracia desde la fecha de emision.
         meses_gracia = config_mora.meses_gracia or 0
         
-        # Primer día del mes siguiente a la emisión
-        if fecha_base.month == 12:
-            # Diciembre → Enero del año siguiente
-            primer_dia_siguiente = date(fecha_base.year + 1, 1, 1)
-        else:
-            # Cualquier otro mes
-            primer_dia_siguiente = date(fecha_base.year, fecha_base.month + 1, 1)
-        
-        # Agregar meses de gracia
-        fecha_inicio = primer_dia_siguiente + relativedelta(months=meses_gracia)
+        fecha_inicio = fecha_base + relativedelta(months=meses_gracia)
         
         print(f"📅 Tipo: MESES")
         print(f"   Fecha emisión: {fecha_base}")
-        print(f"   Primer día del mes siguiente: {primer_dia_siguiente}")
+        print(f"   Fecha base: {fecha_base}")
         print(f"   Meses de gracia: {meses_gracia}")
         print(f"   Mora aplica desde: {fecha_inicio}")
     
@@ -161,7 +159,7 @@ def calcular_dias_mora(
     fecha_inicio_mora = calcular_fecha_inicio_mora(factura, config_mora)
     
     # Verificar si aplica mora
-    if fecha_pago_date < fecha_inicio_mora:
+    if fecha_pago_date <= fecha_inicio_mora:
         # Pago realizado antes de que empiece la mora
         print(f"✅ Pago dentro del periodo de gracia")
         print(f"   Fecha pago: {fecha_pago_date}")
@@ -193,7 +191,7 @@ def obtener_monto_base_mora(factura: Factura, config_mora: ConfiguracionMora, db
         db: Sesión de base de datos
         
     Returns:
-        Monto base según configuración (SIEMPRE CON IVA INCLUIDO)
+        Monto base según configuración. La mora/interés no genera IVA adicional.
     """
     if config_mora.aplicar_sobre == 'total':
         # Total de la factura (incluye todo: consumo, servicios, multas, IVA)
@@ -201,27 +199,20 @@ def obtener_monto_base_mora(factura: Factura, config_mora: ConfiguracionMora, db
         tipo = "total factura"
         
     elif config_mora.aplicar_sobre == 'consumo':
-        # Solo el total de consumo CON IVA (sin multas, sin servicios adicionales)
+        # Solo el total de consumo sin IVA (agua no grava IVA)
         detalles = db.query(DetalleFactura).filter(
             DetalleFactura.id_factura == factura.id_factura,
             DetalleFactura.tipo_detalle == 'consumo'
         ).all()
         
-        subtotal_consumo = sum(d.subtotal_detalle for d in detalles)
-        
-        # Aplicar IVA al consumo
-        from utils.facturacion import obtener_configuracion_iva
-        tasa_impuesto, _ = obtener_configuracion_iva(db)
-        monto_base = subtotal_consumo * (1 + tasa_impuesto)
-        tipo = "consumo con IVA"
+        monto_base = sum((d.subtotal_detalle for d in detalles), Decimal('0.00'))
+        tipo = "consumo sin IVA"
         
     elif config_mora.aplicar_sobre == 'base':
-        # Tarifa base o precio base CON IVA
-        base = factura.precio_base if factura.precio_base else factura.total
-        from utils.facturacion import obtener_configuracion_iva
-        tasa_impuesto, _ = obtener_configuracion_iva(db)
-        monto_base = base * (1 + tasa_impuesto)
-        tipo = "tarifa base con IVA"
+        # Base de la factura sin agregar IVA a la mora.
+        base = (factura.subtotal or factura.total or Decimal('0.00')) - (factura.descuento or Decimal('0.00'))
+        monto_base = base
+        tipo = "base sin IVA adicional"
         
     else:
         monto_base = factura.total
@@ -277,8 +268,7 @@ def calcular_monto_mora(
         # dias_mora ya viene con el periodo de gracia aplicado
         if dias_mora > 0:
             # Fórmula: Deuda × (días_mora/365) × tasa_interes_anual
-            factor_dias = Decimal(str(dias_mora)) / Decimal('365')
-            monto_mora = monto_base * factor_dias * (tasa_diaria / Decimal('100'))
+            monto_mora = monto_base * Decimal(str(dias_mora)) * (tasa_diaria / Decimal('100'))
             detalle = f"Interés diario {config_mora.interes_diario}% × {dias_mora} días sobre ${monto_base}"
             print(f"📊 Cálculo interés diario: ${monto_base} × ({dias_mora}/365) × {config_mora.interes_diario}% = ${monto_mora}")
         else:

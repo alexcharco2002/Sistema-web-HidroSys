@@ -34,6 +34,7 @@ const NotificationsSection = () => {
   const [filterType, setFilterType] = useState('all');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [selectedNotificationIds, setSelectedNotificationIds] = useState([]);
 
   // Modal
   const [showModal, setShowModal] = useState(false);
@@ -138,6 +139,7 @@ const loadNotifications = useCallback(async () => {
       const transformed = notificationsService.transformNotifications(result.data);
       console.log('✅ Notificaciones transformadas:', transformed);
       setNotifications(transformed);
+      setSelectedNotificationIds([]);
     } else {
       console.error('❌ Error del servicio:', result.message);
       setError(result.message);
@@ -214,6 +216,18 @@ useEffect(() => {
       return matchesSearch && matchesStatus && matchesType;
     });
   }, [notifications, searchTerm, filterStatus, filterType]);
+
+  const filteredNotificationIds = useMemo(
+    () => filteredNotifications.map(notification => notification.id),
+    [filteredNotifications]
+  );
+
+  const selectedVisibleCount = selectedNotificationIds.filter(id =>
+    filteredNotificationIds.includes(id)
+  ).length;
+
+  const allVisibleSelected = filteredNotificationIds.length > 0 &&
+    selectedVisibleCount === filteredNotificationIds.length;
 
   const filteredUsers = useMemo(() => {
     if (!userSearchTerm) return users;
@@ -450,6 +464,66 @@ const handleSubmit = async (e) => {
     }
   };
 
+  const handleMarkAsRead = async (notificationId) => {
+    const result = await notificationsService.markAsRead(notificationId);
+    if (result.success) {
+      setNotifications(prev =>
+        prev.map(notification =>
+          notification.id === notificationId
+            ? { ...notification, read: true, estado: 'leido' }
+            : notification
+        )
+      );
+    }
+  };
+
+  const toggleNotificationSelection = (notificationId) => {
+    setSelectedNotificationIds(prev =>
+      prev.includes(notificationId)
+        ? prev.filter(id => id !== notificationId)
+        : [...prev, notificationId]
+    );
+  };
+
+  const toggleVisibleSelection = () => {
+    setSelectedNotificationIds(prev => {
+      if (allVisibleSelected) {
+        return prev.filter(id => !filteredNotificationIds.includes(id));
+      }
+
+      return Array.from(new Set([...prev, ...filteredNotificationIds]));
+    });
+  };
+
+  const handleBulkDelete = async (deleteAll = false) => {
+    if (!permissions.canDelete) {
+      setError('No tienes permisos para eliminar notificaciones');
+      return;
+    }
+
+    const idsToDelete = deleteAll ? [] : selectedNotificationIds;
+    if (!deleteAll && idsToDelete.length === 0) {
+      setError('Selecciona al menos una notificación para eliminar');
+      return;
+    }
+
+    const message = deleteAll
+      ? '¿Estás seguro de que quieres eliminar todas tus notificaciones? Esta acción no se puede deshacer.'
+      : `¿Eliminar ${idsToDelete.length} notificación(es) seleccionada(s)?`;
+
+    if (!window.confirm(message)) return;
+
+    const result = await notificationsService.deleteNotificationsBulk(idsToDelete, deleteAll);
+    if (result.success) {
+      setSelectedNotificationIds([]);
+      setSuccessMessage(result.message);
+      loadNotifications();
+      setTimeout(() => setSuccessMessage(''), 2500);
+    } else {
+      setError(result.message);
+    }
+  };
+
   const handleDelete = async (notificationId) => {
     if (!permissions.canDelete) {
       setError('No tienes permisos para eliminar notificaciones');
@@ -617,6 +691,12 @@ return (
             Marcar todas como leídas
           </button>
         )}
+        {permissions.canDelete && notifications.length > 0 && (
+          <button className="btn-danger" onClick={() => handleBulkDelete(true)}>
+            <Trash2 className="w-4 h-4 mr-2" />
+            Borrar todas
+          </button>
+        )}
         
       </div>
     </div>
@@ -738,6 +818,34 @@ return (
       </div>
     </div>
 
+    {permissions.canDelete && filteredNotifications.length > 0 && (
+      <div className="notifications-bulk-bar">
+        <label className="notifications-select-all">
+          <input
+            type="checkbox"
+            checked={allVisibleSelected}
+            onChange={toggleVisibleSelection}
+          />
+          <span>
+            {allVisibleSelected ? 'Deseleccionar visibles' : 'Seleccionar visibles'}
+          </span>
+        </label>
+
+        <span className="notifications-selection-count">
+          {selectedNotificationIds.length} seleccionada(s)
+        </span>
+
+        <button
+          className="btn-danger"
+          onClick={() => handleBulkDelete(false)}
+          disabled={selectedNotificationIds.length === 0}
+        >
+          <Trash2 className="w-4 h-4 mr-2" />
+          Borrar seleccionadas
+        </button>
+      </div>
+    )}
+
     {/* ==================== GRID DE NOTIFICACIONES ==================== */}
     <div className="notifications-grid">
       {loading ? (
@@ -766,6 +874,17 @@ return (
               key={notification.id}
               className={`notification-card ${!notification.read ? 'notification-unread' : 'notification-read'}`}
             >
+              {permissions.canDelete && (
+                <label className="notification-select">
+                  <input
+                    type="checkbox"
+                    checked={selectedNotificationIds.includes(notification.id)}
+                    onChange={() => toggleNotificationSelection(notification.id)}
+                  />
+                  <span>Seleccionar</span>
+                </label>
+              )}
+
               {/* Header de la tarjeta */}
               <div className="notification-card-header">
                 <div className="notification-header-content"> 
@@ -798,7 +917,7 @@ return (
                   {!notification.read && (
                     <button 
                       className="notification-action-btn btn-mark-read"
-                      onClick={() => handleMarkAllAsRead(notification.id)}
+                      onClick={() => handleMarkAsRead(notification.id)}
                       title="Marcar como leída"
                     >
                       <Check className="w-4 h-4" />
@@ -1359,7 +1478,7 @@ return (
                 <button 
                   className="btn-primary"
                   onClick={() => {
-                    handleMarkAllAsRead(selectedNotification.id);
+                    handleMarkAsRead(selectedNotification.id);
                     closeViewModal();
                   }}
                 >

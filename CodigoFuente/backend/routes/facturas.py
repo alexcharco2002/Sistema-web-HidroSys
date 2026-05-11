@@ -39,7 +39,10 @@ from utils.facturacion import (
     validar_cambio_estado_factura,
     validar_coherencia_totales_factura,
     obtener_estadisticas_facturacion,
-    marcar_facturas_vencidas
+    marcar_facturas_vencidas,
+    recalcular_totales_factura,
+    calcular_iva_sobre_detalles,
+    obtener_configuracion_iva
 )
 from utils.notifications import registrar_notificacion
 from utils.audit_logger import registrar_auditoria
@@ -1120,14 +1123,14 @@ def aplicar_descuento_factura(
         # ============================================
         # 3. ✅ CALCULAR IVA DINÁMICAMENTE DESDE T_IVA
         # ============================================
-        iva_config = db.query(IVA).filter(
-            IVA.activo == True,
-            IVA.es_aplicable == True
-        ).first()
+        porcentaje_iva, iva_config = obtener_configuracion_iva(db)
         
         if iva_config:
-            porcentaje_iva = Decimal(str(iva_config.porcentaje)) / Decimal('100')
-            nuevo_impuesto = subtotal_con_descuento * porcentaje_iva
+            base_iva, nuevo_impuesto = calcular_iva_sobre_detalles(
+                detalles,
+                porcentaje_iva,
+                nuevo_descuento
+            )
             print(f"💰 IVA ({iva_config.porcentaje}%): ${nuevo_impuesto}")
         else:
             nuevo_impuesto = Decimal('0.00')
@@ -1391,16 +1394,6 @@ def aplicar_servicios_a_usuarios(
         
         print(f"📋 Facturas a procesar: {len(facturas)}")
         
-        # Obtener IVA config
-        iva_config = db.query(IVA).filter(
-            IVA.activo == True,
-            IVA.es_aplicable == True
-        ).first()
-        
-        porcentaje_iva = Decimal('0.00')
-        if iva_config:
-            porcentaje_iva = Decimal(str(iva_config.porcentaje)) / Decimal('100')
-        
         detalles_creados = 0
         facturas_afectadas = 0
         
@@ -1432,24 +1425,8 @@ def aplicar_servicios_a_usuarios(
             
             # RECALCULAR TOTALES SI SE AGREGARON SERVICIOS
             if detalles_nuevos:
-                # Obtener detalles existentes
-                detalles_existentes = db.query(DetalleFactura).filter(
-                    DetalleFactura.id_factura == factura.id_factura
-                ).all()
-                
-                # Sumar existentes + nuevos
-                nuevo_subtotal = sum(d.subtotal_detalle for d in detalles_existentes) + \
-                                sum(d.subtotal_detalle for d in detalles_nuevos)
-                
-                subtotal_con_descuento = nuevo_subtotal - (factura.descuento or Decimal('0.00'))
-                nuevo_impuesto = subtotal_con_descuento * porcentaje_iva
-                nuevo_total = subtotal_con_descuento + nuevo_impuesto
-                
-                # Actualizar factura
-                factura.subtotal = nuevo_subtotal
-                factura.impuesto = nuevo_impuesto
-                factura.total = nuevo_total
-                
+                db.flush()
+                recalcular_totales_factura(db, factura)
                 facturas_afectadas += 1
         
         db.commit()
@@ -1534,34 +1511,7 @@ def aplicar_servicios_a_factura_individual(
                 "servicios_agregados": 0
             }
         
-        # RECALCULAR TOTALES DE LA FACTURA
-        detalles = db.query(DetalleFactura).filter(
-            DetalleFactura.id_factura == id_factura
-        ).all()
-        
-        nuevo_subtotal = sum(d.subtotal_detalle for d in detalles)
-        
-        # Aplicar descuento si existe
-        subtotal_con_descuento = nuevo_subtotal - (factura.descuento or Decimal('0.00'))
-        
-        # Calcular IVA
-        iva_config = db.query(IVA).filter(
-            IVA.activo == True,
-            IVA.es_aplicable == True
-        ).first()
-        
-        if iva_config:
-            porcentaje_iva = Decimal(str(iva_config.porcentaje)) / Decimal('100')
-            nuevo_impuesto = subtotal_con_descuento * porcentaje_iva
-        else:
-            nuevo_impuesto = Decimal('0.00')
-        
-        nuevo_total = subtotal_con_descuento + nuevo_impuesto
-        
-        # Actualizar factura
-        factura.subtotal = nuevo_subtotal
-        factura.impuesto = nuevo_impuesto
-        factura.total = nuevo_total
+        recalcular_totales_factura(db, factura)
         
         db.commit()
         db.refresh(factura)

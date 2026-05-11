@@ -1,6 +1,6 @@
 # routes/notifications.py
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -650,6 +650,50 @@ def marcar_todas_leidas(
 # ========================================
 # ELIMINAR NOTIFICACIÓN
 # ========================================
+@router.delete("/bulk")
+def eliminar_notificaciones_masivo(
+    ids: Optional[List[int]] = Body(None, embed=True),
+    eliminar_todas: bool = Body(False, embed=True),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """Elimina varias notificaciones del usuario autenticado."""
+    try:
+        id_usuario = get_current_user_id(payload, db)
+
+        query = db.query(Notificacion).filter(
+            Notificacion.id_usuario_sistema == id_usuario
+        )
+
+        if not eliminar_todas:
+            ids_limpios = sorted({int(item) for item in (ids or []) if item})
+            if not ids_limpios:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Debe enviar al menos una notificacion para eliminar"
+                )
+            query = query.filter(Notificacion.id_notificacion.in_(ids_limpios))
+
+        count = query.delete(synchronize_session=False)
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"{count} notificaciones eliminadas",
+            "count": count
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"âŒ Error eliminando notificaciones masivamente: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al eliminar notificaciones: {str(e)}"
+        )
+
+
 @router.delete("/{id_notificacion}", status_code=status.HTTP_204_NO_CONTENT)
 def eliminar_notificacion(
     id_notificacion: int,

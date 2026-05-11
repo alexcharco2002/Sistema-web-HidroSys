@@ -314,9 +314,9 @@ def crear_configuracion(
         
         #  Limpiar campos no usados según tipo_periodo
         if config_data.tipo_periodo == 'dias':
-            datos_config['meses_gracia'] = None
+            datos_config['meses_gracia'] = 0
         else:  # tipo_periodo == 'meses'
-            datos_config['dias_gracia'] = None
+            datos_config['dias_gracia'] = 0
         
         # FORZAR que se cree inactiva
         datos_config["activo"] = False
@@ -381,9 +381,9 @@ def actualizar_configuracion(
         
         # Limpiar campos no usados según tipo_periodo
         if tipo_nuevo == 'dias':
-            datos_actualizacion['meses_gracia'] = None
+            datos_actualizacion['meses_gracia'] = 0
         else:  # tipo_periodo == 'meses'
-            datos_actualizacion['dias_gracia'] = None
+            datos_actualizacion['dias_gracia'] = 0
 
     # Validar tipo_calculo si se está cambiando
     if "tipo_calculo" in datos_actualizacion:
@@ -446,10 +446,23 @@ def activar_configuracion(
             detail="Configuración de mora no encontrada"
         )
     
+    validar_tipo_periodo(config.tipo_periodo, config.dias_gracia, config.meses_gracia)
+    validar_valores_tipo_calculo(
+        config.tipo_calculo,
+        config.porcentaje_mora,
+        config.valor_fijo,
+        config.interes_diario
+    )
+    if config.vigencia_hasta and config.vigencia_hasta < config.vigencia_desde:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La fecha vigencia_hasta debe ser posterior a vigencia_desde"
+        )
+
     if config.activo and config.aplicar_mora:
         return {
             "mensaje": "La configuración ya está activa",
-            "configuracion": ConfiguracionMoraResponse.model_validate(config.model_dump()),
+            "configuracion": ConfiguracionMoraResponse.model_validate(config),
             "configs_desactivadas": 0
         }
     

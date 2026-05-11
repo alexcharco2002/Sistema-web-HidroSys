@@ -344,6 +344,27 @@ class PaymentsServices {
   }
 
   /**
+   * Obtener una factura completa con conceptos y pagos
+   */
+  async getFacturaDetalle(idFactura) {
+    try {
+      const data = await this.makeRequest(`${API_CONFIG.endpoints.pagos}/facturas/${idFactura}`);
+      
+      return {
+        success: true,
+        data: data
+      };
+      
+    } catch (error) {
+      console.error('Error obteniendo detalle de factura:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener detalle de factura'
+      };
+    }
+  }
+
+  /**
    * Obtener pagos de un afiliado
    */
   async getPagosByAfiliado(idAfiliado, filters = {}) {
@@ -458,24 +479,29 @@ class PaymentsServices {
    */
   async createPago(pagoData) {
     try {
+      const montoPago = Number.parseFloat(Number(pagoData.monto_pago || 0).toFixed(2));
       const data = await this.makeRequest(API_CONFIG.endpoints.pagos, {
         method: 'POST',
         body: {
           id_factura: pagoData.id_factura ? parseInt(pagoData.id_factura) : null,
-          monto_pago: parseFloat(pagoData.monto_pago),
+          monto_pago: montoPago,
           fecha_pago: pagoData.fecha_pago || new Date().toISOString(),
           metodo_pago: pagoData.metodo_pago || 'EFECTIVO',
           id_usuario_afi: pagoData.id_usuario_afi ? parseInt(pagoData.id_usuario_afi) : null,
           id_cajero: pagoData.id_cajero ? parseInt(pagoData.id_cajero) : null,
           observaciones: pagoData.observaciones || null,
           estado_pago: pagoData.estado_pago || 'REGISTRADO',
-          incluir_multas: pagoData.incluir_multas !== undefined ? pagoData.incluir_multas : true  
+          incluir_multas: pagoData.incluir_multas !== undefined ? pagoData.incluir_multas : true,
+          incluir_mora: pagoData.incluir_mora !== undefined ? pagoData.incluir_mora : true,
+          incluir_consumos: pagoData.incluir_consumos !== undefined ? pagoData.incluir_consumos : true
         }
       });
 
       console.log('📤 Datos enviados al backend:', {
-        monto_pago: parseFloat(pagoData.monto_pago),
+        monto_pago: montoPago,
         incluir_multas: pagoData.incluir_multas,
+        incluir_mora: pagoData.incluir_mora,
+        incluir_consumos: pagoData.incluir_consumos,
         id_factura: pagoData.id_factura
       });
 
@@ -756,7 +782,10 @@ async downloadComprobante(idPago) {
     
   } catch (error) {
     console.error('❌ Error descargando comprobante:', error);
-    throw error;
+    return {
+      success: false,
+      message: error.message || 'No se pudo descargar el comprobante'
+    };
   }
 }
 // services/paymentsServices.js
@@ -783,6 +812,11 @@ async createPagoMultiple(pagoMultipleData) {
                         : null,
       observaciones:  pagoMultipleData.observaciones  || null,
     };
+
+    body.facturas = body.facturas.map(f => ({
+      ...f,
+      monto_a_pagar: Number.parseFloat(Number(f.monto_a_pagar || 0.01).toFixed(2)),
+    }));
 
     // 🔍 Verificar antes de enviar
     console.log('📤 Body enviado al backend:', JSON.stringify(body, null, 2));

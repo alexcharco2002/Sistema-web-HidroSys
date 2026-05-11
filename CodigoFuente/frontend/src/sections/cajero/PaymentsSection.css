@@ -13,7 +13,7 @@
   border: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
-  max-height: 750px;
+  max-height: 720px;
 }
 
 /* ==================== CONTENEDOR DE SCROLL UNIFICADO ==================== */
@@ -45,7 +45,7 @@
 
 /* ==================== CONTENEDOR INTERNO ==================== */
 .payments-invoices-inner {
-  min-width: max-content; 
+  width: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -54,18 +54,18 @@
 .payments-invoices-header {
   display: grid;
   grid-template-columns: 
-    55px       /* # */
-    150px      /* Factura */
-    110px      /* Emisión */
-    100px       /* Medidor*/
-    100px       /* Código */
-    minmax(130px, 130px)  /* Afiliado */
-    100px      /* Meses Adeudo */
-    100px      /* Total */
-    110px      /* Saldo */
-    100px      /* Estado */
-    120px      /* Comprobante */
-    140px;     /* Acciones */
+    40px       /* # */
+    100px      /* Factura */
+    90px       /* Emisión */
+    90px       /* Medidor*/
+    70px       /* Código */
+    minmax(120px, 1fr)  /* Afiliado */
+    90px       /* Meses Adeudo */
+    85px       /* Total */
+    85px       /* Saldo */
+    95px       /* Estado */
+    105px      /* Comprobante */
+    125px;     /* Acciones */
   
   gap: 8px;
   padding: 16px 20px;
@@ -96,7 +96,7 @@
 /* ==================== BODY CON SCROLL VERTICAL ==================== */
 .payments-invoices-body {
   max-height: 600px;
-  overflow-y: auto; /* ✅ SOLO SCROLL VERTICAL */
+  overflow-y: auto; 
   overflow-x: hidden;
   background: #fafbfc;
 }
@@ -129,18 +129,18 @@
 .payments-invoices-item {
   display: grid;
   grid-template-columns:
-    55px                  /* # */
-    120px                 /* Factura */
-    100px                 /* Emisión */
-    100px                 /* Medidor ✅ nuevo */
-    80px                  /* Código */
-    minmax(130px, 150px)  /* Afiliado */
-    100px                 /* Meses Adeudo */
-    80px                 /* Total */
-    80px                 /* Saldo */
-    120px                 /* Estado */
-    120px                 /* Comprobante */
-    130px;                /* Acciones */
+    40px                   /* # */
+    100px                  /* Factura */
+    90px                   /* Emisión */
+    90px                   /* Medidor */
+    70px                   /* Código */
+    minmax(120px, 1fr)     /* Afiliado */
+    90px                   /* Meses Adeudo */
+    85px                   /* Total */
+    85px                   /* Saldo */
+    95px                   /* Estado */
+    105px                  /* Comprobante */
+    125px;                 /* Acciones */
   gap: 8px;
   padding: 14px 20px;
   align-items: center;
@@ -549,6 +549,51 @@
   font-weight: 600;
 }
 
+/* Alineado visual con la tabla de facturacion */
+.payments-invoices-header,
+.payments-invoices-item {
+  grid-template-columns:
+    40px                   /* # */
+    100px                  /* Factura */
+    90px                   /* Emisión */
+    90px                   /* Medidor */
+    70px                   /* Código */
+    minmax(120px, 1fr)     /* Afiliado */
+    90px                   /* Meses Adeudo */
+    85px                   /* Total */
+    85px                   /* Saldo */
+    95px                   /* Estado */
+    105px                  /* Comprobante */
+    125px;                 /* Acciones */
+}
+
+.payments-invoices-header {
+  z-index: 10;
+  border-bottom: none;
+}
+
+.payments-invoices-body {
+  background: #ffffff;
+}
+
+.payments-invoices-item {
+  border-bottom: 1px solid #f1f5f9;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.pmt-comprobantes-container {
+  flex-direction: row;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.pmt-inv-btn {
+  display: inline-flex;
+  min-width: 32px;
+  min-height: 32px;
+}
+
 /* ================================================
    RESPONSIVE - ADAPTACIÓN PROGRESIVA
 ================================================ */
@@ -557,11 +602,8 @@
 @media (max-width: 1400px) {
   .payments-invoices-header,
   .payments-invoices-item {
-    grid-template-columns: 
-      50px 140px 105px 85px minmax(180px, 220px) 
-      110px 120px 105px 105px 105px 115px 125px 190px;
-    gap: 6px;
-    padding: 14px 18px;
+    gap: 4px;
+    padding: 12px 14px;
     font-size: 11px;
   }
 }
@@ -570,16 +612,16 @@
   .payments-invoices-header,
   .payments-invoices-item {
     grid-template-columns: 
-      45px 130px 100px 80px minmax(170px, 200px) 
-      105px 115px 100px 100px 100px 110px 120px 180px;
-    gap: 6px;
-    padding: 12px 16px;
-    font-size: 11px;
+      35px 90px 80px 80px 65px minmax(100px, 1fr)
+      85px 75px 75px 90px 100px 115px;
+    gap: 4px;
+    padding: 10px 12px;
+    font-size: 10.5px;
   }
   
   .pmt-inv-index-badge {
-    padding: 5px 10px;
-    font-size: 12px;
+    padding: 4px 8px;
+    font-size: 11px;
   }
 }
 
@@ -2912,8 +2954,82 @@ textarea.form-input {
   }
 }
 
-.modal-payment {
-  animation: payment-fadeIn 0.3s ease;
+.modal-payment .modal-body {
+  flex: 1;
+  min-height: 0;
+  max-height: calc(95vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.payment-items-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.affiliates-section .modal.modal-factura,
+.modal-factura {
+  width: min(600px, calc(100vw - 32px));
+  max-width: 600px;
+  max-height: min(90vh, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overflow-y: hidden;
+}
+
+.affiliates-section .modal.modal-factura .modal-body,
+.modal-factura .modal-body {
+  flex: 1;
+  min-height: 0;
+  max-height: calc(90vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 24px;
+}
+
+.affiliates-section .modal.modal-factura .conceptos-section,
+.modal-factura .conceptos-section {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  visibility: visible;
+  opacity: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.affiliates-section .modal.modal-factura .pmt-detalles-agrupados,
+.affiliates-section .modal.modal-factura .pmt-detalle-grupo,
+.affiliates-section .modal.modal-factura .pmt-detalles-lista-visible,
+.affiliates-section .modal.modal-factura .pmt-detalle-visible-item,
+.modal-factura .pmt-detalles-agrupados,
+.modal-factura .pmt-detalle-grupo,
+.modal-factura .pmt-detalles-lista-visible,
+.modal-factura .pmt-detalle-visible-item {
+  display: block;
+  visibility: visible;
+  opacity: 1;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.affiliates-section .modal.modal-factura .pmt-detalle-visible-item,
+.modal-factura .pmt-detalle-visible-item {
+  display: grid;
+  min-width: 0;
+}
+
+.affiliates-section .modal.modal-factura .pmt-detalle-visible-desc,
+.modal-factura .pmt-detalle-visible-desc {
+  white-space: normal;
 }
 
 /* Responsive */
@@ -3238,6 +3354,133 @@ textarea.form-input {
 .concepto-subtotal-value {
   font-size: 16px;
   font-weight: 700;
+}
+
+.pmt-conceptos-detalle-list {
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.pmt-concepto-detalle-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  width: 100%;
+  min-height: 68px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  background: #ffffff;
+  border: 1px solid #dbe3ee;
+  border-left: 4px solid #3b82f6;
+  border-radius: 8px;
+}
+
+.pmt-concepto-detalle-main {
+  min-width: 0;
+}
+
+.pmt-concepto-detalle-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pmt-concepto-detalle-desc {
+  margin: 0;
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.pmt-concepto-detalle-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.pmt-concepto-detalle-index {
+  color: #64748b;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pmt-detalles-agrupados {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: #f8fafc;
+}
+
+.pmt-detalle-grupo {
+  display: block;
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #dbe3ee;
+  border-top: 4px solid #2563eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pmt-detalle-grupo-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  color: #ffffff;
+}
+
+.pmt-detalle-grupo-header h5 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pmt-detalles-lista-visible {
+  display: block;
+  padding: 8px 14px;
+}
+
+.pmt-detalle-visible-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  min-height: 42px;
+  padding: 10px 0;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.pmt-detalle-visible-item:last-child {
+  border-bottom: none;
+}
+
+.pmt-detalle-visible-desc {
+  display: block;
+  min-width: 0;
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.pmt-detalle-visible-precio {
+  color: #111827;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 /* ==================== TOTALES DE LA FACTURA ==================== */
@@ -4107,4 +4350,154 @@ textarea.form-input {
     align-items: flex-start;
     gap: 10px;
   }
+}
+
+
+/* ============================================================
+   MODAL DE PAGO — clases nuevas mínimas
+   Solo lo que no existe en el sistema.
+   Agrega al final de PaymentsSection.css
+   ============================================================ */
+
+/* ── Ancho del modal de pago ── */
+.modal.modal-payment {
+  max-width: 620px;
+}
+
+/* ── Items a pagar ── */
+.pmt-items-wrap {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.pmt-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background 0.15s;
+  background: #ffffff;
+}
+
+.pmt-item:last-child {
+  border-bottom: none;
+}
+
+.pmt-item:hover {
+  background: #f9fafb;
+}
+
+.pmt-item.pmt-item-checked {
+  background: #f0fdf4;
+}
+
+.pmt-item-cb {
+  width: 17px;
+  height: 17px;
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: #3b82f6;
+  cursor: pointer;
+}
+
+.pmt-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.pmt-item-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.pmt-item-ico {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.pmt-item-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1f2937;
+  flex: 1;
+}
+
+.pmt-item-amt {
+  font-size: 1rem;
+  font-weight: 800;
+  font-family: 'Monaco', 'Consolas', monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pmt-item-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 2px;
+}
+
+.pmt-item-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.pmt-item-row-val {
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+  margin-left: 8px;
+}
+
+/* ── Método de pago ── */
+.pmt-metodo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.pmt-metodo-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  background: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.pmt-metodo-btn:hover {
+  border-color: #93c5fd;
+  background: #f0f7ff;
+  color: #1e40af;
+}
+
+.pmt-metodo-btn.pmt-metodo-btn-active {
+  border-color: #3b82f6;
+  border-width: 2px;
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+/* ── Footer del modal de pago (flexbox ajustado) ── */
+.modal.modal-payment .modal-footer {
+  align-items: center;
 }

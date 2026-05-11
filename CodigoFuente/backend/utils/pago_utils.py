@@ -29,7 +29,7 @@ def validar_factura_para_pago(factura_id: int, db: Session) -> Factura:
             detail="Factura no encontrada"
         )
     
-    if factura.estado_factura not in ['pendiente', 'vencida', 'emitida']:
+    if factura.estado_factura not in ['pendiente', 'vencida', 'emitida', 'parcial']:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"No se puede registrar pago para factura en estado '{factura.estado_factura}'"
@@ -85,10 +85,12 @@ def calcular_montos_con_multas(
     detalles = db.query(DetalleFactura).filter(
         DetalleFactura.id_factura == factura.id_factura
     ).all()
+    from utils.facturacion import calcular_iva_sobre_detalles
     
     monto_multas_subtotal = Decimal('0.00')
     subtotal_sin_multas = Decimal('0.00')
     multas_en_factura = []
+    detalles_sin_multas = []
     
     for detalle in detalles:
         if detalle.tipo_detalle == 'multa':
@@ -96,6 +98,7 @@ def calcular_montos_con_multas(
             monto_multas_subtotal += detalle.subtotal_detalle
         else:
             subtotal_sin_multas += detalle.subtotal_detalle
+            detalles_sin_multas.append(detalle)
     
     # Calcular descuento proporcional
     descuento_sin_multas = Decimal('0.00')
@@ -105,12 +108,15 @@ def calcular_montos_con_multas(
     
     # Calcular total sin multas con IVA dinámico
     base_sin_multas = subtotal_sin_multas - descuento_sin_multas
-    impuesto_sin_multas = base_sin_multas * tasa_impuesto
+    _, impuesto_sin_multas = calcular_iva_sobre_detalles(
+        detalles_sin_multas,
+        tasa_impuesto,
+        descuento_sin_multas
+    )
     monto_sin_multas = base_sin_multas + impuesto_sin_multas
     
     # Calcular total de multas con IVA
-    impuesto_multas = monto_multas_subtotal * tasa_impuesto
-    total_multas = monto_multas_subtotal + impuesto_multas
+    total_multas = monto_multas_subtotal
     
     print(f"\n📊 ANÁLISIS DE FACTURA {factura.num_factura}")
     print(f"   IVA: {float(tasa_impuesto * 100):.2f}%")

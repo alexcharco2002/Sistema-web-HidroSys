@@ -171,6 +171,66 @@ def obtener_configuracion_iva(db: Session) -> Tuple[Decimal, Optional[IVA]]:
     return Decimal('0.00'), None
 
 
+SERVICIO_EXENTO_IVA_KEYWORDS = (
+    "aporte",
+    "comunitario",
+    "convenio",
+    "mora",
+    "interes",
+    "interés",
+)
+
+
+def detalle_grava_iva(detalle: DetalleFactura) -> bool:
+    """
+    El IVA solo grava servicios externos/adicionales.
+    No grava consumo de agua, multas, mora/intereses, aportes ni convenios.
+    """
+    tipo_detalle = (detalle.tipo_detalle or "").strip().lower()
+    if tipo_detalle != "servicio":
+        return False
+
+    descripcion = (detalle.descripcion or "").strip().lower()
+    return not any(keyword in descripcion for keyword in SERVICIO_EXENTO_IVA_KEYWORDS)
+
+
+def calcular_base_iva_detalles(detalles: List[DetalleFactura]) -> Decimal:
+    return sum(
+        (Decimal(str(detalle.subtotal_detalle or 0)) for detalle in detalles if detalle_grava_iva(detalle)),
+        Decimal("0.00")
+    )
+
+
+def aplicar_descuento_proporcional_base(
+    base_gravada: Decimal,
+    subtotal: Decimal,
+    descuento: Decimal
+) -> Decimal:
+    if base_gravada <= 0 or subtotal <= 0 or descuento <= 0:
+        return base_gravada
+
+    descuento_gravado = descuento * (base_gravada / subtotal)
+    return max(Decimal("0.00"), base_gravada - descuento_gravado)
+
+
+def calcular_iva_sobre_detalles(
+    detalles: List[DetalleFactura],
+    porcentaje_iva: Decimal,
+    descuento: Decimal = Decimal("0.00")
+) -> Tuple[Decimal, Decimal]:
+    subtotal = sum(
+        (Decimal(str(detalle.subtotal_detalle or 0)) for detalle in detalles),
+        Decimal("0.00")
+    )
+    base_gravada = calcular_base_iva_detalles(detalles)
+    base_gravada = aplicar_descuento_proporcional_base(
+        base_gravada=base_gravada,
+        subtotal=subtotal,
+        descuento=Decimal(str(descuento or 0))
+    )
+    return base_gravada, base_gravada * porcentaje_iva
+
+
 # ============================================
 # 5. CALCULAR TOTALES
 # ============================================
@@ -194,8 +254,9 @@ def calcular_totales_factura(
         valor_descuento=valor_descuento_decimal
     )
     
-    # Calcular IVA
-    impuesto = subtotal_con_descuento * porcentaje_iva
+    # El consumo de agua no grava IVA. El impuesto se recalcula cuando se agregan
+    # servicios externos/adicionales a la factura.
+    impuesto = Decimal('0.00')
     
     # Total final
     total_final = subtotal_con_descuento + impuesto
@@ -1117,22 +1178,22 @@ def recalcular_totales_factura(db: Session, factura: Factura):
         
         subtotal_nuevo = Decimal('0.00')
         for detalle in detalles:
-            subtotal_nuevo += detalle.subtotal_detalle
+            subtotal_nuevo += Decimal(str(detalle.subtotal_detalle or 0))
             print(f"   + {detalle.tipo_detalle}: ${detalle.subtotal_detalle}")
         
         # Aplicar descuento
-        subtotal_final = subtotal_nuevo - factura.descuento
+        descuento = Decimal(str(factura.descuento or 0))
+        subtotal_final = subtotal_nuevo - descuento
         
-        # ✅ CALCULAR IVA DINÁMICAMENTE DESDE T_IVA
-        iva_config = db.query(IVA).filter(
-            IVA.activo == True,
-            IVA.es_aplicable == True  # ✅ CORREGIDO
-        ).first()
+        porcentaje_iva, iva_config = obtener_configuracion_iva(db)
         
         if iva_config:
-            porcentaje_iva = Decimal(str(iva_config.porcentaje)) / Decimal('100')
-            impuesto_nuevo = subtotal_final * porcentaje_iva
-            print(f"\n   💰 IVA aplicado: {iva_config.porcentaje}%")
+            base_iva, impuesto_nuevo = calcular_iva_sobre_detalles(
+                detalles=detalles,
+                porcentaje_iva=porcentaje_iva,
+                descuento=descuento
+            )
+            print(f"\n   💰 IVA aplicado: {iva_config.porcentaje}% sobre servicios gravados (${base_iva})")
         else:
             impuesto_nuevo = Decimal('0.00')
             print(f"\n   💰 IVA: 0% (no hay config activa y aplicable)")

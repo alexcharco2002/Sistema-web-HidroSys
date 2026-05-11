@@ -56,12 +56,29 @@ class ConfigLoader:
         """Retorna configuración por defecto si no hay en BD"""
         config = ConfiguracionBackup()
         config.nombre = "Configuración por Defecto"
+        config.backup_diario_habilitado = True
         config.backup_hour = 2
         config.backup_minute = 0
+        config.backup_12h_habilitado = False
+        config.backup_semanal_habilitado = False
+        config.backup_semanal_dia = "sun"
+        config.backup_semanal_hora = 3
         config.retention_days = 30
         config.max_backups = 50
         config.limpieza_habilitada = True
+        config.limpieza_dia = "sun"
+        config.limpieza_hora = 3
         config.verificacion_salud_habilitada = True
+        config.verificacion_salud_hora = 8
+        config.notificar_exito = False
+        config.notificar_error = True
+        config.notificar_espacio_bajo = True
+        config.umbral_espacio_gb = 5
+        config.backup_local_habilitado = True
+        config.backup_nube_habilitado = False
+        config.backup_nube_provider = None
+        config.cifrado_habilitado = False
+        config.cifrado_algoritmo = "aes-256-cbc"
         return config
     
     def reload_config(self):

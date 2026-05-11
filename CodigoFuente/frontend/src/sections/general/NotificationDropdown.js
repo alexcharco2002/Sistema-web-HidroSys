@@ -254,6 +254,21 @@ const NotificationDropdown = ({ onViewAll }) => {
     }
   };
 
+  const handleDeleteAllNotifications = async () => {
+    const confirmed = window.confirm('¿Estás seguro de que quieres eliminar todas tus notificaciones? Esta acción no se puede deshacer.');
+    if (!confirmed) return;
+
+    try {
+      const result = await notificationsService.deleteAllNotifications();
+      if (result.success) {
+        setNotifications([]);
+        setUnreadCount(0);
+      }
+    } catch (error) {
+      console.error('Error al eliminar todas las notificaciones:', error);
+    }
+  };
+
   // ======================================== 
   // 🔥 VER TODAS LAS NOTIFICACIONES
   // ========================================
@@ -366,6 +381,7 @@ const NotificationDropdown = ({ onViewAll }) => {
                 )}
               </div>
 
+              <div className="notification-header-actions">
               {unreadNotifications.length > 0 && (
                 <button
                   className="btn-mark-all-read"
@@ -375,6 +391,16 @@ const NotificationDropdown = ({ onViewAll }) => {
                   <Check className="w-4 h-4" />
                 </button>
               )}
+              {notifications.length > 0 && (
+                <button
+                  className="btn-delete-all-notifications"
+                  onClick={handleDeleteAllNotifications}
+                  title="Eliminar todas"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+              </div>
             </div>
           </div>
 

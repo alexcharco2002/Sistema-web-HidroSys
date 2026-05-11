@@ -828,6 +828,18 @@ const HorizontalBarChart = ({ data }) => {
 const calculateCajaCharts = (data) => {
   const esMeses = data.length > 0 && data[0].mes !== undefined && data[0].dia === undefined;
   const esDias  = data.length > 0 && data[0].dia !== undefined;
+  const num = (row, ...keys) => {
+    for (const key of keys) {
+      if (row?.[key] !== undefined && row?.[key] !== null) {
+        return parseFloat(row[key]) || 0;
+      }
+    }
+    return 0;
+  };
+  const totalPeriodo = (row) => {
+    const total = num(row, 'total_general', 'totalgeneral');
+    return total || num(row, 'total_agua', 'totalagua') + num(row, 'total_multas', 'totalmultas') + num(row, 'total_mora', 'totalmora');
+  };
 
   const MESES = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const mesLabel = (m) => MESES[parseInt(m)] || `M${m}`;
@@ -836,7 +848,6 @@ const calculateCajaCharts = (data) => {
   const totalAgua    = data.reduce((s, r) => s + parseFloat(r.total_agua    || 0), 0);
   const totalMultas  = data.reduce((s, r) => s + parseFloat(r.total_multas  || 0), 0);
   const totalMora    = data.reduce((s, r) => s + parseFloat(r.total_mora    || 0), 0);
-  const totalGeneral = totalAgua + totalMultas + totalMora;
   const totalFacturado = data.reduce((s, r) => s + parseFloat(r.total_facturado || 0), 0);
   const totalPendiente = totalFacturado > 0
     ? data.reduce((s, r) => s + parseFloat(r.total_pendiente || 0), 0)
@@ -854,12 +865,12 @@ const calculateCajaCharts = (data) => {
   if (esMeses) {
     areaData = data.map(m => ({
       label: mesLabel(m.mes),
-      value: parseFloat(parseFloat(m.total_general || 0).toFixed(2)),
+      value: parseFloat(totalPeriodo(m).toFixed(2)),
     }));
   } else if (esDias) {
     areaData = data.map(d => ({
       label: String(d.dia).slice(-2),
-      value: parseFloat(parseFloat(d.total_general || 0).toFixed(2)),
+      value: parseFloat(totalPeriodo(d).toFixed(2)),
     }));
   }
 
@@ -889,12 +900,12 @@ const calculateCajaCharts = (data) => {
   let facturacionData = [];
   if (esMeses) {
     facturacionData = data
-      .filter(m => parseFloat(m.totalfacturado || 0) > 0)
+      .filter(m => num(m, 'total_facturado', 'totalfacturado') > 0)
       .map(m => ({
         label:    mesLabel(m.mes),
-        value:    Math.round(parseFloat(m.total_facturado || 0)),
+        value:    Math.round(num(m, 'total_facturado', 'totalfacturado')),
         color:    '#6366f1',
-        subtitle: `Cobrado: $${parseFloat(m.total_agua || 0).toFixed(2)}`,
+        subtitle: `Cobrado: $${num(m, 'total_agua', 'totalagua').toFixed(2)}`,
       }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 10);
@@ -904,9 +915,9 @@ const calculateCajaCharts = (data) => {
   let porcentajeData = [];
   if (esMeses) {
     porcentajeData = data
-      .filter(m => parseFloat(m.porcentajecobrado || 0) > 0)
+      .filter(m => num(m, 'porcentaje_cobrado', 'porcentajecobrado') > 0)
       .map(m => {
-        const pct = parseFloat(m.porcentajecobrado || 0);
+        const pct = num(m, 'porcentaje_cobrado', 'porcentajecobrado');
         return {
           label: mesLabel(m.mes),
           value: pct,
@@ -937,9 +948,7 @@ const generateCajaTable = (data) => {
   if (!data || data.length === 0) return tables;
 
   const esMeses = data[0].mes !== undefined && data[0].dia === undefined;
-  const MESES_CORTOS = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const MESES_LARGOS = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const mesLabel = (m) => MESES_CORTOS[parseInt(m)] || `M${m}`;
 
   // ── Totales generales ──────────────────────────────────────────────────────
   const totalAgua      = data.reduce((s, r) => s + parseFloat(r.total_agua      || 0), 0);

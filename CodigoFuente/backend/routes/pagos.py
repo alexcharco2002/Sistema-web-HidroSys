@@ -35,11 +35,18 @@ from schemas.pago import (
 from utils.audit_logger import registrar_auditoria
 from utils.config_mora import calcular_dias_mora, calcular_monto_mora, calcular_mora_factura, evaluar_y_aplicar_mora, obtener_configuracion_mora_activa, obtener_monto_base_mora, registrar_mora_en_bd
 from utils.pago_utils import calcular_montos_con_multas, liberar_multas_no_pagadas, procesar_multas_pagadas, validar_afiliado, validar_factura_para_pago, validar_monto_pago
+from utils.facturacion import calcular_iva_sobre_detalles, detalle_grava_iva, obtener_configuracion_iva
 from utils.notifications import registrar_notificacion
 from db.session import SessionLocal
 from security.jwt import verify_token
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
+
+CENTAVOS = Decimal("0.01")
+
+
+def redondear_dinero(valor) -> Decimal:
+    return Decimal(str(valor or "0")).quantize(CENTAVOS)
 
 
 def get_db():
@@ -1161,7 +1168,7 @@ def obtener_factura_por_id(
     Obtiene una factura específica con sus pagos, detalles y saldo actualizado
     """
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "facturas", "lectura")
+    require_permission(current_user, db, "pagos", "lectura")
     
     try:
         # 🔹 OBTENER LA FACTURA
@@ -1198,40 +1205,86 @@ def obtener_factura_por_id(
             estado_final = 'pagada'
         elif total_pagado > 0 and saldo_pendiente > 0:
             estado_final = 'parcial'
-        elif factura.fecha_vencimiento and factura.fecha_vencimiento < date.today():
+        elif getattr(factura, "fecha_vencimiento", None) and factura.fecha_vencimiento < date.today():
             estado_final = 'vencida'
         else:
             estado_final = 'pendiente'
         
         # 🔹 CONSTRUIR RESPUESTA
-        usuario_sistema = factura.usuario_afiliado.usuario_sistema if factura.usuario_afiliado else None
+        usuario_afiliado = factura.usuario_afiliado
+        usuario_sistema = usuario_afiliado.usuario_sistema if usuario_afiliado else None
+        sector = usuario_afiliado.sector if usuario_afiliado and usuario_afiliado.sector else None
+        medidor = None
+        if factura.id_lectura:
+            medidor = (
+                db.query(Medidor)
+                .join(Lectura, Medidor.id_medidor == Lectura.id_medidor)
+                .filter(Lectura.id_lectura == factura.id_lectura)
+                .first()
+            )
+
+        tasa_iva, iva_config = obtener_configuracion_iva(db)
+        base_iva_detalles, iva_calculado_detalles = calcular_iva_sobre_detalles(
+            factura.detalles or [],
+            tasa_iva,
+            factura.descuento or Decimal("0.00")
+        )
+        detalles_gravados_iva = [
+            detalle for detalle in (factura.detalles or [])
+            if detalle_grava_iva(detalle)
+        ]
         
         resultado = {
             "id_factura": factura.id_factura,
             "num_factura": factura.num_factura,
             "fecha_emision": factura.fecha_emision.isoformat() if factura.fecha_emision else None,
-            "fecha_vencimiento": factura.fecha_vencimiento.isoformat() if factura.fecha_vencimiento else None,
+            "fecha_vencimiento": getattr(factura, "fecha_vencimiento", None).isoformat() if getattr(factura, "fecha_vencimiento", None) else None,
             "periodo": factura.periodo,
-            "mes_facturado": factura.mes_facturado,
-            "anio_facturado": factura.anio_facturado,
+            "mes_facturado": getattr(factura, "mes_facturado", None),
+            "anio_facturado": getattr(factura, "anio_facturado", None),
             "consumo_m3": float(factura.consumo_m3) if factura.consumo_m3 else 0,
-            "subtotal": float(factura.subtotal),
+            "subtotal": float(factura.subtotal) if factura.subtotal else 0.0,
             "descuento": float(factura.descuento) if factura.descuento else 0,
             "impuesto": float(factura.impuesto) if factura.impuesto else 0,
             "total": float(factura.total),
             "estado_factura": estado_final,  # ✅ Estado calculado dinámicamente
-            "observaciones": factura.observaciones,
+            "observaciones": getattr(factura, "observaciones", None),
             "saldo_pendiente": saldo_pendiente,  # ✅ Saldo real calculado
             "monto_pagado": total_pagado,
             "esta_totalmente_pagada": saldo_pendiente <= 0.01,
+            "id_usuario_afi": usuario_afiliado.id_usuario_afi if usuario_afiliado else None,
+            "cod_usuario_afi": usuario_afiliado.cod_usuario_afi if usuario_afiliado else None,
+            "nombre_completo": f"{usuario_sistema.nombres or ''} {usuario_sistema.apellidos or ''}".strip() if usuario_sistema else None,
+            "cedula": usuario_sistema.cedula if usuario_sistema else None,
+            "direccion": usuario_sistema.direccion if usuario_sistema else None,
+            "telefono": usuario_sistema.telefono if usuario_sistema else None,
+            "email": usuario_sistema.email if usuario_sistema else None,
+            "id_medidor": medidor.id_medidor if medidor else None,
+            "num_medidor": medidor.num_medidor if medidor else None,
+            "nombre_sector": sector.nombre_sector if sector else None,
+            "iva_info": {
+                "id_iva": iva_config.id_iva if iva_config else None,
+                "codigo": iva_config.codigo if iva_config else "N/A",
+                "descripcion": iva_config.descripcion if iva_config else "Sin IVA activo",
+                "porcentaje": float(iva_config.porcentaje) if iva_config else 0.0,
+                "tasa": float(tasa_iva),
+                "activo": bool(iva_config.activo) if iva_config else False,
+                "es_aplicable": bool(iva_config.es_aplicable) if iva_config else False,
+                "base_imponible": float(base_iva_detalles),
+                "monto_calculado": float(iva_calculado_detalles),
+                "valor": float(factura.impuesto) if factura.impuesto else 0.0,
+                "monto_factura": float(factura.impuesto) if factura.impuesto else 0.0,
+                "conceptos_gravados": len(detalles_gravados_iva),
+                "regla": "Solo servicios externos/adicionales; no consumo de agua, multas, mora, aportes ni convenios"
+            },
             
             # Usuario afiliado
             "usuario_afiliado": {
-                "id_usuario_afi": factura.usuario_afiliado.id_usuario_afi,
-                "cod_usuario_afi": factura.usuario_afiliado.cod_usuario_afi,
-                "num_medidor": factura.usuario_afiliado.num_medidor,
+                "id_usuario_afi": usuario_afiliado.id_usuario_afi,
+                "cod_usuario_afi": usuario_afiliado.cod_usuario_afi,
+                "num_medidor": medidor.num_medidor if medidor else None,
                 "usuario_sistema": {
-                    "nombre_completo": f"{usuario_sistema.nombres} {usuario_sistema.apellidos}".strip() if usuario_sistema else None,
+                    "nombre_completo": f"{usuario_sistema.nombres or ''} {usuario_sistema.apellidos or ''}".strip() if usuario_sistema else None,
                     "nombres": usuario_sistema.nombres if usuario_sistema else None,
                     "apellidos": usuario_sistema.apellidos if usuario_sistema else None,
                     "cedula": usuario_sistema.cedula if usuario_sistema else None,
@@ -1240,20 +1293,20 @@ def obtener_factura_por_id(
                     "email": usuario_sistema.email if usuario_sistema else None,
                 } if usuario_sistema else None,
                 "sector": {
-                    "nombre_sector": factura.usuario_afiliado.sector.nombre_sector if factura.usuario_afiliado.sector else None
-                } if factura.usuario_afiliado.sector else None
-            } if factura.usuario_afiliado else None,
+                    "nombre_sector": sector.nombre_sector if sector else None
+                } if sector else None
+            } if usuario_afiliado else None,
             
             # Detalles de la factura
             "detalles": [
                 {
-                    "id_detalle_factura": detalle.id_detalle_factura,
+                    "id_detalle": detalle.id_detalle,
                     "tipo_detalle": detalle.tipo_detalle,
                     "descripcion": detalle.descripcion,
-                    "cantidad": float(detalle.cantidad) if detalle.cantidad else 1,
-                    "precio_unitario": float(detalle.precio_unitario) if detalle.precio_unitario else 0,
                     "subtotal_detalle": float(detalle.subtotal_detalle) if detalle.subtotal_detalle else 0,
-                    "id_multa_afi": detalle.id_multa_afi
+                    "grava_iva": detalle_grava_iva(detalle),
+                    "id_servicio": detalle.id_servicio,
+                    "id_multa_afiliados": detalle.id_multa_afiliados
                 }
                 for detalle in factura.detalles
             ] if factura.detalles else [],
@@ -1267,13 +1320,12 @@ def obtener_factura_por_id(
                     "fecha_pago": pago.fecha_pago.isoformat() if pago.fecha_pago else None,
                     "estado_pago": pago.estado_pago,
                     "observaciones": pago.observaciones,
-                    "tiene_comprobante": pago.ruta_comprobante is not None,
+                    "tiene_comprobante": pago.comprobante_pdf is not None,
                     "nombre_archivo": pago.nombre_archivo,
-                    "mora_aplicada": float(pago.mora_aplicada) if pago.mora_aplicada else 0,
                     "usuario_cajero": {
                         "nombres": pago.cajero.nombres if pago.cajero else None,
                         "apellidos": pago.cajero.apellidos if pago.cajero else None,
-                        "nombre_completo": f"{pago.cajero.nombres} {pago.cajero.apellidos}".strip() if pago.cajero else None
+                        "nombre_completo": f"{pago.cajero.nombres or ''} {pago.cajero.apellidos or ''}".strip() if pago.cajero else None
                     } if pago.cajero else None
                 }
                 for pago in pagos
@@ -1379,13 +1431,8 @@ def calcular_resumen_pago(
         print(f"   Subtotal factura: ${factura.subtotal}")
         print(f"   Impuesto factura: ${factura.impuesto}")
         
-        # 🆕 CALCULAR TASA DE IVA DESDE LA FACTURA
-        tasa_impuesto = Decimal('0.00')
-        if factura.impuesto and factura.impuesto > 0 and factura.subtotal and factura.subtotal > 0:
-            tasa_impuesto = factura.impuesto / factura.subtotal
-            print(f"   IVA calculado: {float(tasa_impuesto * 100):.2f}%")
-        else:
-            print(f"   IVA: Sin impuesto (0%)")
+        tasa_impuesto, _ = obtener_configuracion_iva(db)
+        print(f"   IVA configurado: {float(tasa_impuesto * 100):.2f}% (solo servicios gravados)")
         
         # ========================================
         # PASO 2: OBTENER DETALLES DE LA FACTURA
@@ -1407,6 +1454,7 @@ def calcular_resumen_pago(
         # 🔹 SEPARAR DETALLES POR TIPO Y ESTADO DE PAGO
         subtotal_consumo = Decimal('0.00')
         subtotal_servicios = Decimal('0.00')
+        subtotal_servicios_gravados = Decimal('0.00')
         subtotal_multas_pendientes = Decimal('0.00')
         subtotal_multas_pagadas = Decimal('0.00')
         detalles_multas_pendientes = []
@@ -1421,6 +1469,8 @@ def calcular_resumen_pago(
                 
             elif detalle.tipo_detalle == 'servicio':
                 subtotal_servicios += detalle.subtotal_detalle
+                if detalle_grava_iva(detalle):
+                    subtotal_servicios_gravados += detalle.subtotal_detalle
                 
             elif detalle.tipo_detalle == 'multa':
                 if estado_multa and estado_multa in ('pagada', 'liberada'):
@@ -1444,7 +1494,7 @@ def calcular_resumen_pago(
         
         print(f"\n📋 DETALLES:")
         print(f"   Consumo: ${subtotal_consumo}")
-        print(f"   Servicios: ${subtotal_servicios}")
+        print(f"   Servicios: ${subtotal_servicios} (gravados IVA: ${subtotal_servicios_gravados})")
         print(f"   Multas pendientes: ${subtotal_multas_pendientes} ({len(detalles_multas_pendientes)} items)")
         print(f"   Multas pagadas/liberadas: ${subtotal_multas_pagadas} ({len(detalles_multas_pagadas)} items)")
         
@@ -1466,7 +1516,12 @@ def calcular_resumen_pago(
         
         # 🆕 Calcular con IVA usando la tasa de la factura
         base_sin_multas = subtotal_sin_multas - descuento_sin_multas
-        iva_sin_multas = base_sin_multas * tasa_impuesto
+        detalles_sin_multas = [r.DetalleFactura for r in detalles_query if r.DetalleFactura.tipo_detalle != 'multa']
+        _, iva_sin_multas = calcular_iva_sobre_detalles(
+            detalles_sin_multas,
+            tasa_impuesto,
+            descuento_sin_multas
+        )
         total_sin_multas = base_sin_multas + iva_sin_multas
         
         # 🔹 CON MULTAS PENDIENTES: Consumo + servicios + multas pendientes
@@ -1477,11 +1532,15 @@ def calcular_resumen_pago(
         base_con_multas = subtotal_con_multas_pendientes - descuento_aplicable
         
         # 🆕 Calcular IVA sobre la base con multas
-        iva_con_multas = base_con_multas * tasa_impuesto
+        _, iva_con_multas = calcular_iva_sobre_detalles(
+            [r.DetalleFactura for r in detalles_query],
+            tasa_impuesto,
+            descuento_aplicable
+        )
         total_con_multas_pendientes = base_con_multas + iva_con_multas
         
-        # 🔹 SOLO MULTAS PENDIENTES con IVA
-        iva_multas_pendientes = subtotal_multas_pendientes * tasa_impuesto
+        # 🔹 SOLO MULTAS PENDIENTES sin IVA
+        iva_multas_pendientes = Decimal('0.00')
         total_solo_multas_pendientes = subtotal_multas_pendientes + iva_multas_pendientes
         
         # ========================================
@@ -1489,7 +1548,7 @@ def calcular_resumen_pago(
         # ========================================
         
         # Calcular cuánto se pagó de MULTAS y cuánto de CONSUMOS
-        total_multas_con_iva = subtotal_multas_pagadas * (Decimal('1') + tasa_impuesto)
+        total_multas_con_iva = subtotal_multas_pagadas
         
         # Si ya pagaste las multas, ese dinero NO cuenta para consumos
         if total_pagado_anterior >= total_multas_con_iva:
@@ -1532,6 +1591,7 @@ def calcular_resumen_pago(
         from utils.config_mora import (
             obtener_configuracion_mora_activa,
             calcular_dias_mora,  # ✅ FIRMA ACTUALIZADA
+            calcular_fecha_inicio_mora,
             calcular_monto_mora,
             factura_tiene_mora_aplicada
         )
@@ -1544,6 +1604,7 @@ def calcular_resumen_pago(
         config_mora_nombre = None
         tipo_periodo_mora = None  
         periodo_gracia = None  
+        fecha_inicio_mora = None
 
         # Solo calcular mora si hay saldo pendiente
         saldo_para_mora = saldo_sin_multas if subtotal_multas_pendientes == 0 else saldo_con_multas_pendientes
@@ -1564,6 +1625,11 @@ def calcular_resumen_pago(
                         periodo_gracia = f"{config_mora.meses_gracia} meses"
                     
                     #  Ahora recibe 3 parámetros y retorna tupla
+                    fecha_inicio_mora = calcular_fecha_inicio_mora(factura, config_mora)
+                    fecha_emision_date = factura.fecha_emision.date() if isinstance(factura.fecha_emision, datetime) else factura.fecha_emision
+                    if fecha_emision_date:
+                        dias_transcurridos = max(0, (date.today() - fecha_emision_date).days)
+
                     dias_mora_efectivos, aplica_mora = calcular_dias_mora(
                         factura, 
                         datetime.now(),
@@ -1645,9 +1711,11 @@ def calcular_resumen_pago(
                 "tiene_mora_aplicada": factura_tiene_mora_aplicada(factura_id, db),
                 "monto": float(monto_mora),
                 "dias_mora_efectivos": dias_mora_efectivos,
+                "dias_transcurridos": dias_transcurridos,
                 "detalle": detalle_mora,
                 "aplica": float(monto_mora) > 0,
                 "fecha_emision": factura.fecha_emision.isoformat() if factura.fecha_emision else None,
+                "fecha_inicio_mora": fecha_inicio_mora.isoformat() if fecha_inicio_mora else None,
                 "fecha_base_calculo": "fecha_emision"  
             },
             
@@ -1871,12 +1939,7 @@ def obtener_facturas_pendientes_afiliado(
             
             print(f"\n--- Procesando Factura {factura.num_factura} ---")
             
-            # ========================================
-            # CALCULAR TASA DE IVA DESDE LA FACTURA
-            # ========================================
-            tasa_impuesto = Decimal('0.00')
-            if factura.impuesto and factura.impuesto > 0 and factura.subtotal and factura.subtotal > 0:
-                tasa_impuesto = factura.impuesto / factura.subtotal
+            tasa_impuesto, _ = obtener_configuracion_iva(db)
             
             # ========================================
             # OBTENER Y CLASIFICAR DETALLES
@@ -1894,6 +1957,7 @@ def obtener_facturas_pendientes_afiliado(
             # Clasificar detalles por tipo
             subtotal_consumo = Decimal('0.00')
             subtotal_servicios = Decimal('0.00')
+            subtotal_servicios_gravados = Decimal('0.00')
             subtotal_multas_pendientes = Decimal('0.00')
             subtotal_multas_pagadas = Decimal('0.00')
             cantidad_multas_pendientes = 0
@@ -1908,6 +1972,8 @@ def obtener_facturas_pendientes_afiliado(
                     
                 elif detalle.tipo_detalle == 'servicio':
                     subtotal_servicios += detalle.subtotal_detalle
+                    if detalle_grava_iva(detalle):
+                        subtotal_servicios_gravados += detalle.subtotal_detalle
                     cantidad_servicios += 1
                     
                 elif detalle.tipo_detalle == 'multa':
@@ -1942,20 +2008,29 @@ def obtener_facturas_pendientes_afiliado(
                     descuento_sin_multas = factura.descuento * proporcion
             
             base_sin_multas = subtotal_sin_multas - descuento_sin_multas
-            iva_sin_multas = base_sin_multas * tasa_impuesto
+            detalles_sin_multas = [r.DetalleFactura for r in detalles_query if r.DetalleFactura.tipo_detalle != 'multa']
+            _, iva_sin_multas = calcular_iva_sobre_detalles(
+                detalles_sin_multas,
+                tasa_impuesto,
+                descuento_sin_multas
+            )
             total_sin_multas = base_sin_multas + iva_sin_multas
             
             # CON MULTAS PENDIENTES
             subtotal_con_multas = subtotal_sin_multas + subtotal_multas_pendientes
             descuento_aplicable = factura.descuento if factura.descuento else Decimal('0.00')
             base_con_multas = subtotal_con_multas - descuento_aplicable
-            iva_con_multas = base_con_multas * tasa_impuesto
+            _, iva_con_multas = calcular_iva_sobre_detalles(
+                [r.DetalleFactura for r in detalles_query],
+                tasa_impuesto,
+                descuento_aplicable
+            )
             total_con_multas = base_con_multas + iva_con_multas
             
             # ========================================
             # CALCULAR DISTRIBUCIÓN DE PAGOS
             # ========================================
-            total_multas_con_iva = subtotal_multas_pagadas * (Decimal('1') + tasa_impuesto)
+            total_multas_con_iva = subtotal_multas_pagadas
             
             if total_pagado_anterior >= total_multas_con_iva:
                 monto_pagado_consumos = total_pagado_anterior - total_multas_con_iva
@@ -2006,13 +2081,13 @@ def obtener_facturas_pendientes_afiliado(
             # ========================================
             # CALCULAR TOTALES CON IVA
             # ========================================
-            iva_consumo = subtotal_consumo * tasa_impuesto
+            iva_consumo = Decimal('0.00')
             total_consumo_con_iva = subtotal_consumo + iva_consumo
             
-            iva_servicios = subtotal_servicios * tasa_impuesto
+            iva_servicios = subtotal_servicios_gravados * tasa_impuesto
             total_servicios_con_iva = subtotal_servicios + iva_servicios
             
-            iva_multas = subtotal_multas_pendientes * tasa_impuesto
+            iva_multas = Decimal('0.00')
             total_multas_con_iva_pendientes = subtotal_multas_pendientes + iva_multas
             
             # Total con mora
@@ -2207,7 +2282,7 @@ def crear_pago(
         )
         
         # Validar monto del pago
-        if not pago.incluir_multas:
+        if not pago.incluir_multas and not pago.incluir_mora:
             validar_monto_pago(pago.monto_pago, monto_sin_multas, pago.incluir_multas)
     
     if pago.id_usuario_afi:
@@ -2216,7 +2291,7 @@ def crear_pago(
     # ========================================
     # PASO 3: EVALUAR Y CALCULAR MORA
     # ========================================
-    if pago.id_factura and factura:
+    if pago.id_factura and factura and pago.incluir_mora:
         # ✅ Primero obtener la configuración para mostrar info
         from utils.config_mora import obtener_configuracion_mora_activa
         config_mora = obtener_configuracion_mora_activa(db)
@@ -2234,6 +2309,13 @@ def crear_pago(
             fecha_pago=datetime.now(),
             db=db
         )
+        monto_mora = redondear_dinero(monto_mora)
+        if not mora_aplicada:
+            from utils.config_mora import obtener_mora_de_factura
+            mora_existente = obtener_mora_de_factura(factura.id_factura, db)
+            if mora_existente:
+                monto_mora = redondear_dinero(mora_existente.monto_mora)
+                detalle_mora = "Mora aplicada previamente"
         
         if mora_aplicada:
             print(f"💰 MORA APLICADA: ${monto_mora}")
@@ -2242,18 +2324,26 @@ def crear_pago(
             print(f"✅ Sin mora: {detalle_mora}")
 
     
+    if factura and not pago.incluir_multas and pago.incluir_mora:
+        validar_monto_pago(
+            pago.monto_pago,
+            redondear_dinero(monto_sin_multas + monto_mora),
+            pago.incluir_multas
+        )
+
     # ========================================
     # PASO 4: CALCULAR MONTO TOTAL A COBRAR
     # ========================================
-    monto_total_cobrar = pago.monto_pago + monto_mora
+    monto_total_cobrar = redondear_dinero(pago.monto_pago)
     
     print(f"\n{'='*60}")
     print(f"💰 RESUMEN DE COBRO")
     print(f"{'='*60}")
     print(f"   Monto a pagar: ${pago.monto_pago}")
     print(f"   Incluye multas: {pago.incluir_multas}")
+    print(f"   Incluye mora: {pago.incluir_mora}")
     if mora_aplicada:
-        print(f"   + Mora aplicada: ${monto_mora}")
+        print(f"   Mora incluida en el monto: ${monto_mora}")
     print(f"   = TOTAL A COBRAR: ${monto_total_cobrar}")
     print(f"{'='*60}\n")
     
@@ -2406,6 +2496,13 @@ def crear_pago(
 
         
         # Notificación
+        registrar_auditoria(
+            db=db,
+            accion="CREATE",
+            descripcion=desc_auditoria,
+            id_usuario=current_user.id_usuario_sistema
+        )
+
         mensaje_notif = f"Pago de ${monto_total_cobrar} registrado"
         if mora_aplicada:
             mensaje_notif += f" (incluye mora de ${monto_mora})"
@@ -2479,7 +2576,7 @@ def validar_pago_multiple(
     require_permission(current_user, db, "pagos", "crear")
     
     from utils.facturacion import obtener_configuracion_iva
-    from utils.config_mora import evaluar_y_aplicar_mora
+    from utils.config_mora import calcular_mora_factura, obtener_configuracion_mora_activa
     
     facturas_validacion = []
     errores = []
@@ -2547,12 +2644,16 @@ def validar_pago_multiple(
                     ))
                     continue
                 
-                # Evaluar mora
-                monto_mora, mora_aplicada, _ = evaluar_y_aplicar_mora(
-                    factura=factura,
-                    fecha_pago=datetime.now(),
-                    db=db
-                )
+                # Calcular mora para la validacion sin registrarla en BD.
+                monto_mora = Decimal('0.00')
+                config_mora = obtener_configuracion_mora_activa(db)
+                if config_mora:
+                    monto_mora, _, _ = calcular_mora_factura(
+                        factura=factura,
+                        fecha_pago=datetime.now(),
+                        config_mora=config_mora,
+                        db=db
+                    )
                 
                 # Detectar multas
                 multas = db.query(DetalleFactura).filter(
@@ -2669,15 +2770,26 @@ def crear_pago_multiple(
                 factura, item.incluir_multas, tasa_impuesto, db
             )
             
-            # Evaluar mora
-            monto_mora, mora_aplicada, detalle_mora = evaluar_y_aplicar_mora(
-                factura=factura,
-                fecha_pago=datetime.now(),
-                db=db
-            )
+            # Evaluar mora solo si fue seleccionada en el pago
+            monto_mora = Decimal('0.00')
+            mora_aplicada = False
+            detalle_mora = "Mora no incluida en este pago"
+            if item.incluir_mora:
+                monto_mora, mora_aplicada, detalle_mora = evaluar_y_aplicar_mora(
+                    factura=factura,
+                    fecha_pago=datetime.now(),
+                    db=db
+                )
+                monto_mora = redondear_dinero(monto_mora)
+                if not mora_aplicada:
+                    from utils.config_mora import obtener_mora_de_factura
+                    mora_existente = obtener_mora_de_factura(factura.id_factura, db)
+                    if mora_existente:
+                        monto_mora = redondear_dinero(mora_existente.monto_mora)
+                        detalle_mora = "Mora aplicada previamente"
             
-            # Calcular monto total para esta factura
-            monto_total_factura = Decimal(str(monto_sin_multas)) + monto_mora
+            # El frontend envia el monto final seleccionado para esta factura.
+            monto_total_factura = redondear_dinero(item.monto_a_pagar)
             total_general += monto_total_factura
             total_mora += monto_mora
             
@@ -2854,8 +2966,6 @@ def obtener_montos_factura(
         )
     
     #  OBTENER IVA DINÁMICO
-    from utils.facturacion import obtener_configuracion_iva
-    
     tasa_impuesto, iva_config = obtener_configuracion_iva(db)
     
     if not iva_config:
@@ -2874,6 +2984,7 @@ def obtener_montos_factura(
     subtotal_sin_multas = Decimal('0.00')
     detalles_multas = []
     detalles_consumo = []
+    detalles_sin_multas = []
     
     for detalle in detalles:
         if detalle.tipo_detalle == 'multa':
@@ -2887,6 +2998,7 @@ def obtener_montos_factura(
         else:
             # Consumo, servicios, etc.
             subtotal_sin_multas += detalle.subtotal_detalle
+            detalles_sin_multas.append(detalle)
             detalles_consumo.append({
                 'id_detalle': detalle.id_detalle,
                 'tipo': detalle.tipo_detalle,
@@ -2902,12 +3014,16 @@ def obtener_montos_factura(
     
     #  CALCULAR MONTOS SIN MULTAS
     base_imponible_sin_multas = subtotal_sin_multas - descuento_sin_multas
-    impuesto_sin_multas = base_imponible_sin_multas * tasa_impuesto
+    _, impuesto_sin_multas = calcular_iva_sobre_detalles(
+        detalles_sin_multas,
+        tasa_impuesto,
+        descuento_sin_multas
+    )
     total_sin_multas = base_imponible_sin_multas + impuesto_sin_multas
     
     #  CALCULAR MONTOS SOLO MULTAS
     base_imponible_multas = monto_multas
-    impuesto_multas = base_imponible_multas * tasa_impuesto
+    impuesto_multas = Decimal('0.00')
     total_multas_con_iva = monto_multas + impuesto_multas
     
     #  INFORMACIÓN DE IVA
@@ -3099,6 +3215,10 @@ def regenerar_factura_desde_factura_anulada(
             nuevo_numero = 1
         
         nuevo_num_factura = f"FACT-{periodo}-{str(nuevo_numero).zfill(4)}"
+        id_lectura_original = factura_original.id_lectura
+        factura_original.estado_factura = 'anulada'
+        factura_original.id_lectura = None
+        db.flush()
         
         print(f"📝 Nuevo número de factura: {nuevo_num_factura}")
         
@@ -3109,7 +3229,7 @@ def regenerar_factura_desde_factura_anulada(
             num_factura=nuevo_num_factura,
             id_usuario_afi=id_usuario_afi,
             id_tarifa=factura_original.id_tarifa,
-            id_lectura=factura_original.id_lectura,
+            id_lectura=id_lectura_original,
             periodo=periodo,
             fecha_emision=datetime.now().date(),
             consumo_m3=factura_original.consumo_m3,
@@ -3186,9 +3306,9 @@ def regenerar_factura_desde_factura_anulada(
         print(f"✅ Factura original {factura_original.num_factura} marcada como ANULADA")
         
         # ============================================
-        # PASO 6: COMMIT
+        # PASO 6: DEJAR CAMBIOS LISTOS PARA EL COMMIT DEL ENDPOINT
         # ============================================
-        db.commit()
+        db.flush()
         db.refresh(nueva_factura)
         
         print(f"\n{'='*60}")

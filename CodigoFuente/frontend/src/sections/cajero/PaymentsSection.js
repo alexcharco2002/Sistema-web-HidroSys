@@ -117,7 +117,7 @@ const PaymentsSection = () => {
       total += getSafeValue(resumenPago.mora.monto, 0);
     }
 
-    return total;
+    return Number(total.toFixed(2));
   };
 
   // ============================================================
@@ -606,6 +606,84 @@ const PaymentsSection = () => {
     return parseFloat(value);
   };
 
+  const roundMoney = (value) => {
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue)) return 0;
+    return Number(numberValue.toFixed(2));
+  };
+
+  const agruparDetallesPago = (detalles = []) => {
+    return detalles.reduce((grupos, detalle) => {
+      const tipo = (detalle?.tipo_detalle || 'otros').toLowerCase();
+      const descripcion = (detalle?.descripcion || '').toLowerCase();
+
+      if (tipo === 'consumo' && descripcion.includes('exceso')) {
+        grupos.exceso.push(detalle);
+      } else if (tipo === 'consumo') {
+        grupos.consumo.push(detalle);
+      } else if (tipo === 'multa') {
+        grupos.multas.push(detalle);
+      } else if (tipo === 'servicio' || tipo === 'cambio medidor') {
+        grupos.servicios.push(detalle);
+      } else {
+        grupos.otros.push(detalle);
+      }
+
+      return grupos;
+    }, {
+      consumo: [],
+      exceso: [],
+      multas: [],
+      servicios: [],
+      otros: []
+    });
+  };
+
+  const normalizarDetallesFactura = (detalles = []) => {
+    if (!Array.isArray(detalles)) return [];
+
+    return detalles.map((detalle, index) => ({
+      id_detalle: detalle?.id_detalle ?? detalle?.id_detalle_factura ?? detalle?.iddetalle ?? `detalle-${index}`,
+      tipo_detalle: detalle?.tipo_detalle ?? detalle?.tipo ?? detalle?.tipodetalle ?? 'otros',
+      descripcion: detalle?.descripcion ?? detalle?.concepto ?? detalle?.detalle ?? 'Concepto sin descripcion',
+      subtotal_detalle: detalle?.subtotal_detalle ?? detalle?.subtotal ?? detalle?.monto ?? detalle?.valor ?? 0,
+      id_servicio: detalle?.id_servicio ?? detalle?.idservicio ?? null,
+      id_multa_afiliados: detalle?.id_multa_afiliados ?? detalle?.id_multa_afi ?? detalle?.idmultaafiliados ?? null,
+    }));
+  };
+
+  const normalizarFacturaDetalle = (facturaDetalle, fallback = {}) => {
+    const detalles = normalizarDetallesFactura(
+      facturaDetalle?.detalles || facturaDetalle?.detalles_factura || facturaDetalle?.conceptos || fallback?.detalles || []
+    );
+    const pagos = Array.isArray(facturaDetalle?.pagos)
+      ? facturaDetalle.pagos
+      : (Array.isArray(fallback?.pagos) ? fallback.pagos : []);
+
+    return {
+      ...fallback,
+      ...facturaDetalle,
+      id_factura: facturaDetalle?.id_factura ?? fallback?.id_factura ?? fallback?.idfactura,
+      num_factura: facturaDetalle?.num_factura ?? fallback?.num_factura ?? fallback?.numfactura,
+      detalles,
+      pagos: pagos.map((pago) => ({
+        ...pago,
+        monto_pago: pago?.monto_pago ?? pago?.monto_pagado ?? 0,
+        observaciones: pago?.observaciones ?? pago?.observacion ?? '',
+        cajero: pago?.cajero
+          || pago?.nombre_cajero
+          || pago?.usuario_cajero?.nombre_completo
+          || [pago?.usuario_cajero?.nombres, pago?.usuario_cajero?.apellidos].filter(Boolean).join(' ')
+          || '',
+      })),
+      iva_info: facturaDetalle?.iva_info || fallback?.iva_info,
+      nombre_completo: facturaDetalle?.nombre_completo || fallback?.nombre_completo,
+      cod_usuario_afi: facturaDetalle?.cod_usuario_afi || fallback?.cod_usuario_afi,
+      num_medidor: facturaDetalle?.num_medidor || fallback?.num_medidor,
+      nombre_sector: facturaDetalle?.nombre_sector || fallback?.nombre_sector,
+    };
+  };
+
   /**
    * Formatea un valor como moneda de forma segura
    */
@@ -628,8 +706,26 @@ const PaymentsSection = () => {
 
     setModalType(type);
     setError(null);
-    setSelectedPago(pago);
+    setSelectedPago(type === 'view-factura' ? normalizarFacturaDetalle(pago, pago) : pago);
     setShowModal(true);
+
+    const idFacturaDetalle = pago?.id_factura ?? pago?.idfactura;
+    if (type === 'view-factura' && idFacturaDetalle) {
+      try {
+        const result = await paymentsServices.getFacturaDetalle(idFacturaDetalle);
+        if (result.success && result.data) {
+          console.log('Detalle factura cargado para modal de pagos:', {
+            idFactura: idFacturaDetalle,
+            detalles_backend: result.data?.detalles?.length || 0,
+            detalles_lista: pago?.detalles?.length || 0,
+            data: result.data
+          });
+          setSelectedPago(prev => normalizarFacturaDetalle(result.data, prev || pago));
+        }
+      } catch (error) {
+        console.error('Error cargando detalle completo de factura:', error);
+      }
+    }
   };
 
   const closeModal = () => {
@@ -747,7 +843,15 @@ const closePagoMultipleModal = () => {
       const facturasPendientes = await cargarFacturasPendientesAfiliado(idAfiliado, idMedidor);
       
       //  2. Calcular resumen con mora de la factura seleccionada
-      const resultado = await paymentsServices.calcularResumenPago(factura.id_factura);
+      const [resultado, resultDetalle] = await Promise.all([
+        paymentsServices.calcularResumenPago(factura.id_factura),
+        paymentsServices.getFacturaDetalle(factura.id_factura)
+      ]);
+      
+      let facturaConDetalles = normalizarFacturaDetalle(
+        resultDetalle.success ? resultDetalle.data : {}, 
+        factura
+      );
       
       // Variables para las facturas a pagar
       let facturasOrdenadas = [];
@@ -794,26 +898,12 @@ const closePagoMultipleModal = () => {
       //  4. Validar y guardar resumen de pago
       if (resultado.success) {
         console.log(' Resumen de pago cargado:', resultado.data);
-        
-        // 🔍 VALIDAR ESTRUCTURA
-        if (!resultado.data.totales) {
-          console.error('❌ Falta propiedad "totales" en el resumen');
-        }
-        if (!resultado.data.totales?.opcion_completa) {
-          console.error('❌ Falta propiedad "opcion_completa" en totales');
-        }
-        if (!resultado.data.totales?.opcion_sin_multas) {
-          console.error('❌ Falta propiedad "opcion_sin_multas" en totales');
-        }
-        
         setResumenPago(resultado.data);
       } else {
         console.error('❌ Error al cargar resumen:', resultado.message);
-        console.warn('⚠️ Continuando sin resumen de pago detallado');
         setResumenPago(null);
       }
 
-      
       setNuevoPago({
         id_factura: factura.id_factura,                  
         id_usuario_afi: idAfiliado,                        
@@ -825,7 +915,7 @@ const closePagoMultipleModal = () => {
         observaciones: ''
       });
 
-      setSelectedFactura(factura);
+      setSelectedFactura(facturaConDetalles);
       setShowCreateModal(true);
 
     } catch (error) {
@@ -899,7 +989,7 @@ const closePagoMultipleModal = () => {
   // ============================================================
   const handleCreatePago = async () => {
     // VALIDACIONES INICIALES
-    const montoAPagar = calcularTotalAPagar();
+    const montoAPagar = roundMoney(calcularTotalAPagar());
     if (montoAPagar <= 0) {
       alert('Debe seleccionar al menos un item para pagar');
       return;
@@ -946,7 +1036,7 @@ const closePagoMultipleModal = () => {
         monto_pago: montoAPagar,
         metodo_pago: nuevoPago.metodo_pago || 'EFECTIVO',
         id_usuario_afi: nuevoPago.id_usuario_afi ? parseInt(nuevoPago.id_usuario_afi) : null,
-        id_cajero: currentUser.id_usuario_sistema,
+        id_cajero: idCajero,
         observaciones: nuevoPago.observaciones || null,
         incluir_multas: itemsAPagar.multas,
         incluir_mora: itemsAPagar.mora,
@@ -1255,7 +1345,11 @@ const closePagoMultipleModal = () => {
     try {
       const currentUser = authService.getCurrentUser();
       console.log('👤 currentUser completo:', JSON.stringify(currentUser));
-      if (!currentUser?.id_usuario_sistema) {
+      const idCajero = parseInt(
+        currentUser?.id_usuario_sistema ?? currentUser?.idusuariosistema ?? 0,
+        10
+      );
+      if (!idCajero || isNaN(idCajero)) {
         throw new Error('No se pudo identificar al usuario actual');
       }
 
@@ -1267,7 +1361,7 @@ const pagoMultipleData = {
       f.totalconmora ?? f.saldopendiente ?? f.totalfactura ?? f.total ?? 0
     );
     return {
-      id_factura:       parseInt(f.idfactura, 10),
+      id_factura:       parseInt(f.idfactura ?? f.id_factura, 10),
       monto_a_pagar:    isNaN(monto) || monto <= 0 ? 0.01 : parseFloat(monto.toFixed(2)),
       incluir_multas:   true,
       incluir_mora:     true,
@@ -1291,7 +1385,8 @@ const pagoMultipleData = {
     : null,
 
   // ✅ FIX PRINCIPAL — usar el campo correcto de currentUser
-  id_cajero: parseInt(
+  id_cajero: idCajero,
+  id_cajero_legacy: parseInt(
     currentUser?.id_usuario_sistema ??   // ← campo que SÍ existe (lo ves en el JSON del usuario)
     currentUser?.idusuariosistema ??     // fallback legacy
     0,
@@ -1316,7 +1411,7 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
       console.log('✅ Pago múltiple registrado:', response.pagos_creados);
 
       // ✅ ACTUALIZACIÓN OPTIMISTA - Actualizar facturas inmediatamente
-      const facturasIds = facturasSeleccionadasPago.map(f => f.id_factura);
+      const facturasIds = facturasSeleccionadasPago.map(f => f.id_factura ?? f.idfactura);
       setFacturas(prev => prev.map(factura => {
         if (facturasIds.includes(factura.id_factura)) {
           // Marcar como pagada
@@ -2121,9 +2216,6 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                                   <span className="pmt-inv-usuario-nombre">
                                     {factura.nombre_completo}
                                   </span>
-                                  <span className="pmt-inv-usuario-sector">
-                                    {factura.nombre_sector}
-                                  </span>
                                 </div>
                               ) : (
                                 <span className="pmt-inv-sin-dato">-</span>
@@ -2410,71 +2502,339 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
               )}
 
               {/* Sección de CONCEPTOS DE FACTURACIÓN */}
-              {selectedPago.detalles && selectedPago.detalles.length > 0 && (
+              {normalizarDetallesFactura(selectedPago.detalles).length > 0 && (
+                <div
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginTop: 18,
+                    marginBottom: 18,
+                    padding: 18,
+                    background: '#ffffff',
+                    border: '2px solid #2563eb',
+                    borderRadius: 10,
+                    overflow: 'visible',
+                    visibility: 'visible',
+                    opacity: 1,
+                    color: '#111827'
+                  }}
+                >
+                  <h4 style={{margin: '0 0 14px', fontSize: 16, fontWeight: 800, color: '#111827'}}>
+                    Conceptos de Facturacion ({normalizarDetallesFactura(selectedPago.detalles).length})
+                  </h4>
+                  <div style={{display: 'flex', flexDirection: 'column', gap: 10}}>
+                    {normalizarDetallesFactura(selectedPago.detalles).map((detalle, index) => {
+                      const tipo = (detalle.tipo_detalle || 'otros').toLowerCase();
+                      const descripcion = (detalle.descripcion || '').toLowerCase();
+                      
+                      // Diferenciar entre consumo normal y exceso
+                      let color = '#64748b'; // default otros
+                      
+                      if (tipo === 'multa') {
+                        color = '#dc2626';
+                      } else if (tipo === 'servicio' || tipo === 'cambio medidor') {
+                        color = '#2563eb';
+                      } else if (tipo === 'consumo') {
+                        if (descripcion.includes('exceso')) {
+                          color = '#ea580c'; // Naranja para exceso
+                        } else {
+                          color = '#059669'; // Verde para consumo normal
+                        }
+                      }
+
+                      return (
+                        <div
+                          key={detalle.id_detalle || `concepto-visible-${index}`}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'minmax(0, 1fr) auto',
+                            gap: 14,
+                            alignItems: 'center',
+                            padding: '12px 14px',
+                            background: '#f8fafc',
+                            border: '1px solid #e5e7eb',
+                            borderLeft: `4px solid ${color}`,
+                            borderRadius: 8,
+                            minHeight: 54,
+                            color: '#111827'
+                          }}
+                        >
+                          <div style={{minWidth: 0}}>
+                            <div style={{fontSize: 12, fontWeight: 800, textTransform: 'uppercase', color, marginBottom: 4}}>
+                              {detalle.tipo_detalle || 'concepto'} #{index + 1}
+                            </div>
+                            <div style={{fontSize: 14, lineHeight: 1.4, overflowWrap: 'anywhere'}}>
+                              {detalle.descripcion || 'Concepto sin descripcion'}
+                            </div>
+                          </div>
+                          <strong style={{fontSize: 15, color, whiteSpace: 'nowrap'}}>
+                            {formatCurrency(getSafeValue(detalle.subtotal_detalle, 0))}
+                          </strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {(() => {
+                const ivaInfo = selectedPago.iva_info || selectedPago.iva_config || {};
+                const pagosFactura = Array.isArray(selectedPago.pagos) ? selectedPago.pagos : [];
+                const subtotal = getSafeValue(selectedPago.subtotal, 0);
+                const descuento = getSafeValue(selectedPago.descuento, 0);
+                const impuesto = getSafeValue(selectedPago.impuesto ?? ivaInfo.valor ?? ivaInfo.monto_factura, 0);
+                const total = getSafeValue(selectedPago.total, 0);
+                const montoPagado = getSafeValue(selectedPago.monto_pagado, 0);
+                const saldoPendiente = getSafeValue(selectedPago.saldo_pendiente, Math.max(0, total - montoPagado));
+                const porcentajeIVA = getSafeValue(ivaInfo.porcentaje ?? (getSafeValue(ivaInfo.tasa, 0) * 100), 0);
+                const baseIVA = getSafeValue(ivaInfo.base_imponible, 0);
+                const progresoPago = total > 0 ? Math.min(100, (montoPagado / total) * 100) : 0;
+                const pagosRegistrados = pagosFactura.filter((pago) => (pago.estado_pago || '').toUpperCase() === 'REGISTRADO');
+
+                return (
+                  <div style={{display: 'flex', flexDirection: 'column', gap: 16, marginTop: 18, marginBottom: 18}}>
+                    <div
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: 18,
+                        background: '#ffffff',
+                        border: '2px solid #7c3aed',
+                        borderRadius: 10,
+                        overflow: 'visible',
+                        visibility: 'visible',
+                        opacity: 1,
+                        color: '#111827'
+                      }}
+                    >
+                      <h4 style={{margin: '0 0 14px', fontSize: 16, fontWeight: 800, color: '#111827'}}>
+                        IVA y Totales
+                      </h4>
+                      <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 14}}>
+                        <div style={{padding: 12, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8}}>
+                          <div style={{fontSize: 12, fontWeight: 700, color: '#6b7280'}}>Configuracion IVA</div>
+                          <div style={{fontSize: 15, fontWeight: 800, color: ivaInfo.es_aplicable ? '#047857' : '#6b7280'}}>
+                            {ivaInfo.es_aplicable ? 'Activa' : 'No aplicable'} {porcentajeIVA > 0 ? `(${porcentajeIVA.toFixed(2)}%)` : ''}
+                          </div>
+                        </div>
+                        <div style={{padding: 12, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8}}>
+                          <div style={{fontSize: 12, fontWeight: 700, color: '#6b7280'}}>Base gravada</div>
+                          <div style={{fontSize: 15, fontWeight: 800, color: '#111827'}}>{formatCurrency(baseIVA)}</div>
+                        </div>
+                        <div style={{padding: 12, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8}}>
+                          <div style={{fontSize: 12, fontWeight: 700, color: '#6b7280'}}>IVA factura</div>
+                          <div style={{fontSize: 15, fontWeight: 800, color: '#7c3aed'}}>{formatCurrency(impuesto)}</div>
+                        </div>
+                        <div style={{padding: 12, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8}}>
+                          <div style={{fontSize: 12, fontWeight: 700, color: '#6b7280'}}>Conceptos gravados</div>
+                          <div style={{fontSize: 15, fontWeight: 800, color: '#111827'}}>{ivaInfo.conceptos_gravados ?? 0}</div>
+                        </div>
+                      </div>
+                      <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+                        {[
+                          ['Subtotal', subtotal],
+                          ['Descuento', -descuento],
+                          ['IVA', impuesto],
+                          ['Total factura', total],
+                          ['Total pagado', montoPagado],
+                          ['Saldo pendiente', saldoPendiente],
+                        ].map(([label, value]) => (
+                          <div key={label} style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 12, padding: '8px 0', borderBottom: '1px solid #eef2f7'}}>
+                            <span style={{fontSize: 14, color: '#374151', fontWeight: label === 'Total factura' ? 800 : 600}}>{label}</span>
+                            <strong style={{fontSize: 14, color: value < 0 ? '#059669' : label === 'Saldo pendiente' && value > 0 ? '#dc2626' : '#111827'}}>
+                              {formatCurrency(value)}
+                            </strong>
+                          </div>
+                        ))}
+                      </div>
+                      <p style={{margin: '12px 0 0', fontSize: 12, lineHeight: 1.5, color: '#4b5563'}}>
+                        {ivaInfo.regla || 'El IVA se aplica solo a servicios externos/adicionales; no a consumo de agua, multas, mora, aportes ni convenios.'}
+                      </p>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: 18,
+                        background: '#ffffff',
+                        border: '2px solid #059669',
+                        borderRadius: 10,
+                        overflow: 'visible',
+                        visibility: 'visible',
+                        opacity: 1,
+                        color: '#111827'
+                      }}
+                    >
+                      <div style={{display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap'}}>
+                        <h4 style={{margin: 0, fontSize: 16, fontWeight: 800, color: '#111827'}}>
+                          Historial de Pagos ({pagosFactura.length})
+                        </h4>
+                        {permissions.canDelete && pagosRegistrados.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleAnularPagoConRegeneracion(selectedPago)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              border: 0,
+                              borderRadius: 8,
+                              padding: '9px 12px',
+                              background: '#dc2626',
+                              color: '#ffffff',
+                              fontWeight: 800,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <Ban className="w-4 h-4" />
+                            Anular pago / regenerar
+                          </button>
+                        )}
+                      </div>
+
+                      {pagosFactura.length > 0 ? (
+                        <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
+                          {pagosFactura.map((pago, index) => {
+                            const estado = (pago.estado_pago || 'REGISTRADO').toUpperCase();
+                            const esAnulado = estado === 'ANULADO';
+                            const cajero = pago.cajero || pago.usuario_cajero?.nombre_completo || pago.nombre_cajero || 'N/A';
+
+                            return (
+                              <div
+                                key={pago.id_pago || `pago-visible-${index}`}
+                                style={{
+                                  padding: 14,
+                                  background: esAnulado ? '#fef2f2' : '#f8fafc',
+                                  border: `1px solid ${esAnulado ? '#fecaca' : '#e5e7eb'}`,
+                                  borderLeft: `4px solid ${esAnulado ? '#dc2626' : '#059669'}`,
+                                  borderRadius: 8,
+                                  color: '#111827'
+                                }}
+                              >
+                                <div style={{display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap'}}>
+                                  <strong style={{fontSize: 15}}>Pago #{pago.id_pago || index + 1}</strong>
+                                  <span style={{fontSize: 12, fontWeight: 800, color: esAnulado ? '#dc2626' : '#059669'}}>{estado}</span>
+                                </div>
+                                <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10}}>
+                                  <div><span style={{fontSize: 12, color: '#6b7280', fontWeight: 700}}>Fecha</span><div style={{fontWeight: 700}}>{formatDate(pago.fecha_pago)}</div></div>
+                                  <div><span style={{fontSize: 12, color: '#6b7280', fontWeight: 700}}>Monto</span><div style={{fontWeight: 800, color: '#059669'}}>{formatCurrency(pago.monto_pago)}</div></div>
+                                  <div><span style={{fontSize: 12, color: '#6b7280', fontWeight: 700}}>Metodo</span><div style={{fontWeight: 700}}>{pago.metodo_pago || 'N/A'}</div></div>
+                                  <div><span style={{fontSize: 12, color: '#6b7280', fontWeight: 700}}>Cajero</span><div style={{fontWeight: 700}}>{cajero}</div></div>
+                                </div>
+                                {pago.observaciones && (
+                                  <div style={{marginTop: 10, padding: 10, background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13}}>
+                                    <strong>Observaciones: </strong>{pago.observaciones}
+                                  </div>
+                                )}
+                                {esAnulado && (pago.fecha_anulacion || pago.motivo_anulacion) && (
+                                  <div style={{marginTop: 10, padding: 10, background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 8, fontSize: 13, color: '#991b1b'}}>
+                                    <strong>Anulacion:</strong> {pago.fecha_anulacion ? formatDate(pago.fecha_anulacion) : ''}
+                                    {pago.motivo_anulacion ? ` - ${pago.motivo_anulacion}` : ''}
+                                  </div>
+                                )}
+                                <div style={{display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap'}}>
+                                  {pago.tiene_comprobante ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => descargarComprobante(pago.id_pago)}
+                                      title={pago.nombre_archivo || 'Descargar comprobante'}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 8,
+                                        border: 0,
+                                        borderRadius: 8,
+                                        padding: '9px 12px',
+                                        background: '#2563eb',
+                                        color: '#ffffff',
+                                        fontWeight: 800,
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      <FileCheck className="w-4 h-4" />
+                                      Descargar comprobante
+                                    </button>
+                                  ) : (
+                                    <span style={{fontSize: 13, color: '#6b7280', fontWeight: 700}}>Sin comprobante registrado</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          <div style={{padding: 14, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8}}>
+                            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 10}}>
+                              <div><span style={{fontSize: 12, color: '#047857', fontWeight: 700}}>Total factura</span><div style={{fontWeight: 800}}>{formatCurrency(total)}</div></div>
+                              <div><span style={{fontSize: 12, color: '#047857', fontWeight: 700}}>Pagado</span><div style={{fontWeight: 800}}>{formatCurrency(montoPagado)}</div></div>
+                              <div><span style={{fontSize: 12, color: '#047857', fontWeight: 700}}>Pendiente</span><div style={{fontWeight: 800}}>{formatCurrency(saldoPendiente)}</div></div>
+                            </div>
+                            <div style={{height: 10, background: '#d1fae5', borderRadius: 999, overflow: 'hidden'}}>
+                              <div style={{height: '100%', width: `${progresoPago}%`, background: '#059669'}} />
+                            </div>
+                            <div style={{marginTop: 6, fontSize: 12, fontWeight: 800, color: '#047857'}}>{progresoPago.toFixed(1)}% pagado</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{padding: 14, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, color: '#6b7280', fontWeight: 700}}>
+                          No hay pagos registrados para esta factura
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {false && selectedPago.detalles && selectedPago.detalles.length > 0 && (
                 <div className="conceptos-section">
                   <h4 className="conceptos-section-title">
                     Conceptos ({selectedPago.detalles.length})
                   </h4>
-                  <div className="conceptos-factura-lista">
-                    {selectedPago.detalles.map((detalle, index) => {
-                      const getTipoConfig = (tipo) => {
-                        switch(tipo?.toLowerCase()) {
-                          case 'consumo':
-                            return { 
-                              icon: <DollarSign className="w-4 h-4" />, 
-                              color: '#10b981',
-                              label: 'Consumo'
-                            };
-                          case 'servicio':
-                            return { 
-                              icon: <CreditCard className="w-4 h-4" />, 
-                              color: '#3b82f6',
-                              label: 'Servicio'
-                            };
-                          case 'multa':
-                            return { 
-                              icon: <AlertCircle className="w-4 h-4" />, 
-                              color: '#ef4444',
-                              label: 'Multa'
-                            };
-                          case 'otros':
-                            return { 
-                              icon: <FileText className="w-4 h-4" />, 
-                              color: '#6b7280',
-                              label: 'Otros'
-                            };
-                          default:
-                            return { 
-                              icon: <FileText className="w-4 h-4" />, 
-                              color: '#6b7280',
-                              label: tipo || 'Concepto'
-                            };
-                        }
+                  <div className="pmt-detalles-agrupados">
+                    {(() => {
+                      const grupos = agruparDetallesPago(selectedPago.detalles);
+                      const renderGrupo = (items, titulo, Icon, color) => {
+                        if (!items.length) return null;
+
+                        return (
+                          <div className="pmt-detalle-grupo" style={{ borderTopColor: color }}>
+                            <div className="pmt-detalle-grupo-header" style={{ backgroundColor: color }}>
+                              <Icon className="w-4 h-4" />
+                              <h5>{titulo} ({items.length})</h5>
+                            </div>
+                            <div className="pmt-detalles-lista-visible">
+                              {items.map((detalle, idx) => {
+                                const descripcion = detalle?.descripcion || detalle?.concepto || 'Concepto sin descripcion';
+                                const subtotal = getSafeValue(
+                                  detalle?.subtotal_detalle ?? detalle?.subtotal ?? detalle?.monto,
+                                  0
+                                );
+
+                                return (
+                                  <div
+                                    key={detalle.id_detalle || detalle.id_detalle_factura || `${titulo}-${idx}`}
+                                    className="pmt-detalle-visible-item"
+                                  >
+                                    <span className="pmt-detalle-visible-desc">{descripcion}</span>
+                                    <span className="pmt-detalle-visible-precio">{formatCurrency(subtotal)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
                       };
 
-                      const tipoConfig = getTipoConfig(detalle.tipo_detalle);
-
                       return (
-                        <div key={detalle.id_detalle} className="concepto-item">
-                          <div className="concepto-header">
-                            <div className="concepto-tipo" style={{ color: tipoConfig.color }}>
-                              {tipoConfig.icon}
-                              <span className="concepto-tipo-label">{tipoConfig.label}</span>
-                            </div>
-                            <span className="concepto-numero">#{index + 1}</span>
-                          </div>
-                          <div className="concepto-body">
-                            <p className="concepto-descripcion">{detalle.descripcion}</p>
-                            <div className="concepto-footer">
-                              <span className="concepto-subtotal-label">Subtotal:</span>
-                              <span className="concepto-subtotal-value" style={{ color: tipoConfig.color }}>
-                                {formatCurrency(detalle.subtotal_detalle)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                        <>
+                          {renderGrupo(grupos.consumo, 'Consumo de Agua', Droplets, '#059669')}
+                          {renderGrupo(grupos.exceso, 'Exceso de Consumo', TrendingUp, '#ea580c')}
+                          {renderGrupo(grupos.multas, 'Multas', AlertCircle, '#dc2626')}
+                          {renderGrupo(grupos.servicios, 'Servicios', Wrench, '#2563eb')}
+                          {renderGrupo(grupos.otros, 'Otros Conceptos', FileText, '#64748b')}
+                        </>
                       );
-                    })}
+                    })()}
                     
                     {/* TOTALES DE LA FACTURA */}
                     <div className="conceptos-totales">
@@ -2540,7 +2900,16 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
               )}
 
               {/* SECCIÓN DE HISTORIAL DE PAGOS */}
-              {selectedPago.pagos && selectedPago.pagos.length > 0 && (
+              {(!selectedPago.detalles || selectedPago.detalles.length === 0) && (
+                <div className="factura-section">
+                  <div className="empty-state-small">
+                    <AlertCircle className="w-8 h-8 text-gray-400" />
+                    <p>No hay conceptos de facturacion registrados para esta factura</p>
+                  </div>
+                </div>
+              )}
+
+              {false && selectedPago.pagos && selectedPago.pagos.length > 0 && (
                 <div className="historial-pagos-section">
                   <h4 className="historial-pagos-title">
                     <DollarSign className="w-4 h-4" />
@@ -2695,7 +3064,7 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
               )}
 
               {/* MENSAJE SI NO HAY PAGOS */}
-              {(!selectedPago.pagos || selectedPago.pagos.length === 0) && (
+              {false && (!selectedPago.pagos || selectedPago.pagos.length === 0) && (
                 <div className="factura-section">
                   <div className="empty-state-small">
                     <AlertCircle className="w-8 h-8 text-gray-400" />
@@ -2717,352 +3086,390 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
       )}
 
       {/* MODAL PARA CREAR PAGO  */}
-      {showCreateModal && selectedFactura && (
-        <div className="modal-overlay">
-          <div className="modal modal-payment">
-            <div className="modal-header">
-              <h3>
-                <Plus className="w-5 h-5 inline mr-2" />
-                Registrar Pago - {selectedFactura.num_factura}
-              </h3>
-              <button className="modal-close" onClick={closeCreateModal}>
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+/**
+ * MODAL DE CREAR PAGO — ADAPTADO AL SISTEMA DE ESTILOS EXISTENTE
+ * Usa: .modal-overlay, .modal, .modal-header, .modal-body, .modal-footer,
+ *      .modal-close, .form-group, .form-group label, select, textarea,
+ *      .btn-primary, .btn-secondary
+ *
+ * Clases nuevas mínimas solo para lo que no existe en el sistema:
+ *   .pmt-band, .pmt-items-wrap, .pmt-item, .pmt-metodo-grid, .pmt-metodo-btn
+ */
 
-            <div className="modal-body">
-              {/* ========== INFORMACIÓN DE LA FACTURA ACTUAL ========== */}
-              {selectedFactura && (
-                <div className="payment-factura-actual-section">
-                  <div className="payment-factura-actual-header">
-                    <div className="payment-header-left">
-                      <FileText className="w-5 h-5" />
-                      <h4>Información de la Factura</h4>
-                    </div>
-                  </div>
+{showCreateModal && selectedFactura && (
+  <div className="modal-overlay">
+    <div className="modal modal-payment">
 
-                  {loadingResumen ? (
-                    <div className="payment-resumen-loading">
-                      <RefreshCw className="w-6 h-6 animate-spin" />
-                      <p>Calculando resumen...</p>
-                    </div>
-                  ) : resumenPago ? (
-                    <>
-                      {/* Tarjeta compacta de la factura actual */}
-                      <div className="payment-factura-actual-card">
-                        <div className="payment-factura-actual-info">
-                          <div className="payment-info-row">
-                            <span className="payment-info-label">Número de Factura:</span>
-                            <span className="payment-info-value">{selectedFactura.num_factura}</span>
-                          </div>
-                          <div className="payment-info-row">
-                            <span className="payment-info-label">Periodo:</span>
-                            <span className="payment-info-value">{selectedFactura.periodo}</span>
-                          </div>
-                          <div className="payment-info-row">
-                            <span className="payment-info-label">Fecha de Emisión:</span>
-                            <span className="payment-info-value">{formatDateShort(selectedFactura.fecha_emision)}</span>
-                          </div>
-                          <div className="payment-info-row">
-                            <span className="payment-info-label">Afiliado:</span>
-                            <span className="payment-info-value">{selectedFactura.nombre_completo ?? 'N/A'}</span>
-                          </div>
-                          <div className="payment-info-row">
-                            <span className="payment-info-label">Cédula:</span>
-                            <span className="payment-info-value">{selectedFactura.cedula ?? 'N/A'}</span>
-                          </div>
-                          <div className="payment-info-row">
-                            <span className="payment-info-label">Cod. Afiliado:</span>
-                            <span className="payment-info-value font-mono">{selectedFactura.cod_usuario_afi ?? 'N/A'}</span>
-                          </div>
-                          <div className="payment-info-row">
-                            <span className="payment-info-label">Medidor:</span>
-                            <span className="payment-info-value font-mono">{selectedFactura.num_medidor ?? 'N/A'}</span>
-                          </div>
-                        </div>
-                      </div>
+      {/* ── HEADER ── */}
+      <div className="modal-header">
+        <h3>
+          <Plus className="w-5 h-5 inline mr-2" />
+          Registrar Pago — {selectedFactura.num_factura}
+        </h3>
+        <button className="modal-close" onClick={closeCreateModal}>
+          <X className="w-5 h-5" />
+        </button>
+      </div>
 
-                      {/* ========== SELECCIÓN DE ITEMS A PAGAR ========== */}
-                      <div className="payment-items-section">
-                        <div className="payment-items-header">
-                          <h5>
-                            <DollarSign className="w-5 h-5" />
-                            Seleccione los items a pagar
-                          </h5>
-                          <button 
-                            className="payment-select-all-btn"
-                            onClick={() => {
-                              const consumoTotal = getSafeValue(resumenPago.totales?.opcion_sin_multas?.total_final, 0) - 
-                                                  (getSafeValue(resumenPago.mora?.monto, 0));
-                              
-                              const allChecked = (consumoTotal <= 0 || itemsAPagar.consumos) && 
-                                                (!resumenPago.multas?.tiene_multas || itemsAPagar.multas) &&
-                                                (!resumenPago.mora?.aplica || itemsAPagar.mora);
-                              
-                              setItemsAPagar({
-                                consumos: consumoTotal > 0 ? !allChecked : false,
-                                multas: resumenPago.multas?.tiene_multas ? !allChecked : false,
-                                mora: resumenPago.mora?.aplica ? !allChecked : false
-                              });
-                            }}
-                          >
-                            {(() => {
-                              const consumoTotal = getSafeValue(resumenPago.totales?.opcion_sin_multas?.total_final, 0) - 
-                                                  (getSafeValue(resumenPago.mora?.monto, 0));
-                              const allChecked = (consumoTotal <= 0 || itemsAPagar.consumos) && 
-                                                (!resumenPago.multas?.tiene_multas || itemsAPagar.multas) &&
-                                                (!resumenPago.mora?.aplica || itemsAPagar.mora);
-                              return allChecked ? '☑️ Deseleccionar Todo' : '☐ Seleccionar Todo';
-                            })()}
-                          </button>
+      {/* ── BODY ── */}
+      <div className="modal-body">
 
-                        </div>
-
-                        {/* LISTA DE CONSUMOS Y SERVICIOS - SOLO SI HAY MONTO */}
-                        {(() => {
-                          const consumoTotal = getSafeValue(resumenPago.totales?.opcion_sin_multas?.total_final, 0) - 
-                                              (getSafeValue(resumenPago.mora?.monto, 0));
-                          
-                          const detallesConsumoServicios = selectedFactura?.detalles?.filter(
-                            detalle => detalle.tipo_detalle === 'consumo' || detalle.tipo_detalle === 'servicio'
-                          ) || [];
-                          
-                          // 🆕 OBTENER INFO DEL IVA DESDE EL RESUMEN (calculado por el backend)
-                          const ivaInfo = resumenPago?.iva || {};
-                          const porcentajeIVA = getSafeValue(ivaInfo.porcentaje, 0);
-                          const esExento = ivaInfo.es_exento || false;
-                          
-                          // Calcular IVA de consumos
-                          const subtotalConsumos = getSafeValue(resumenPago.totales?.opcion_sin_multas?.subtotal, 0);
-                          const ivaConsumos = getSafeValue(resumenPago.totales?.opcion_sin_multas?.iva, 0);
-                          const descuentoConsumos = getSafeValue(resumenPago.totales?.opcion_sin_multas?.descuento, 0);
-                          const baseImponibleConsumos = getSafeValue(resumenPago.totales?.opcion_sin_multas?.base, 0);
-                          
-                          return consumoTotal > 0 && (
-                            <div className="payment-item-card">
-                              <div className="payment-item-row">
-                                <div className="payment-item-check">
-                                  <input
-                                    type="checkbox"
-                                    id="check-consumos"
-                                    checked={itemsAPagar.consumos}
-                                    onChange={(e) => setItemsAPagar({...itemsAPagar, consumos: e.target.checked})}
-                                    className="payment-checkbox"
-                                  />
-                                  <label htmlFor="check-consumos" className="payment-item-label">
-                                    <span className="payment-item-icon">💧</span>
-                                    <div className="payment-item-details">
-                                      <span className="payment-item-title">Consumos y Servicios</span>
-                                      
-                                      {/* Lista de detalles */}
-                                      {detallesConsumoServicios.length > 0 ? (
-                                        <div className="payment-consumos-mini-list">
-                                          {detallesConsumoServicios.map((detalle, idx) => (
-                                            <span key={idx} className="payment-consumo-mini">
-                                              • {detalle.tipo_detalle === 'consumo' ? '💧' : '🔧'} {detalle.descripcion}: {formatCurrencySafe(detalle.subtotal_detalle)}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      ) : (
-                                        <span className="payment-item-description">
-                                          Subtotal: {formatCurrencySafe(subtotalConsumos)}
-                                        </span>
-                                      )}
-                                      
-                                      {/* 🆕 INFORMACIÓN DETALLADA DEL IVA - Usando datos del backend */}
-                                      <span className="payment-item-meta">
-                                        {descuentoConsumos > 0 && 
-                                          `Descuento: -${formatCurrencySafe(descuentoConsumos)} | `
-                                        }
-                                        Base imponible: {formatCurrencySafe(baseImponibleConsumos)}
-                                        {' | '}
-                                        {!esExento && porcentajeIVA > 0 ? (
-                                          <>IVA ({porcentajeIVA.toFixed(1)}%): {formatCurrencySafe(ivaConsumos)}</>
-                                        ) : (
-                                          <>Sin IVA (0%)</>
-                                        )}
-                                      </span>
-                                    </div>
-                                  </label>
-                                </div>
-                                <span className="payment-item-amount">
-                                  {formatCurrencySafe(consumoTotal)}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {/* LISTA DE MULTAS */}
-                        {resumenPago.multas?.tiene_multas && resumenPago.multas?.detalles?.length > 0 && (
-                          <div className="payment-item-card payment-item-card-warning">
-                            <div className="payment-item-row">
-                              <div className="payment-item-check">
-                                <input
-                                  type="checkbox"
-                                  id="check-multas"
-                                  checked={itemsAPagar.multas}
-                                  onChange={(e) => setItemsAPagar({...itemsAPagar, multas: e.target.checked})}
-                                  className="payment-checkbox"
-                                />
-                                <label htmlFor="check-multas" className="payment-item-label">
-                                  <span className="payment-item-icon">🚨</span>
-                                  <div className="payment-item-details">
-                                    <span className="payment-item-title">
-                                      Multas ({resumenPago.multas.cantidad})
-                                    </span>
-                                    <div className="payment-multas-mini-list">
-                                      {resumenPago.multas.detalles.map((multa, idx) => (
-                                        <span key={idx} className="payment-multa-mini">
-                                          • {multa.descripcion}: {formatCurrencySafe(multa.subtotal)}
-                                        </span>
-                                      ))}
-                                    </div>
-                                    {/* 🆕 Mostrar desglose de IVA para multas */}
-                                    <span className="payment-item-meta">
-                                      Subtotal: {formatCurrencySafe(resumenPago.multas.subtotal_sin_iva)}
-                                      {' | '}
-                                      {!resumenPago.iva?.es_exento && resumenPago.iva?.porcentaje > 0 ? (
-                                        <>IVA ({resumenPago.iva.porcentaje.toFixed(1)}%): {formatCurrencySafe(resumenPago.multas.iva)}</>
-                                      ) : (
-                                        <>Sin IVA (0%)</>
-                                      )}
-                                    </span>
-                                  </div>
-                                </label>
-                              </div>
-                              <span className="payment-item-amount payment-item-amount-danger">
-                                {formatCurrencySafe(resumenPago.multas.total_con_iva)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* MORA */}
-                        {resumenPago?.mora?.aplica && getSafeValue(resumenPago.mora?.monto) > 0 && (
-                          <div className="payment-item-card payment-item-card-danger">
-                            <div className="payment-item-row">
-                              <div className="payment-item-check">
-                                <input
-                                  type="checkbox"
-                                  id="check-mora"
-                                  checked={itemsAPagar.mora}
-                                  onChange={(e) => setItemsAPagar({...itemsAPagar, mora: e.target.checked})}
-                                  className="payment-checkbox"
-                                />
-                                <label htmlFor="check-mora" className="payment-item-label">
-                                  <span className="payment-item-icon">⏰</span>
-                                  <div className="payment-item-details">
-                                    <span className="payment-item-title">Mora por Pago Tardío</span>
-                                    <span className="payment-item-description">
-                                      {getSafeValue(resumenPago.mora.dias_transcurridos, 0)} días desde emisión | 
-                                      {' '}{getSafeValue(resumenPago.mora.dias_mora_efectivos, 0)} días de mora efectivos
-                                    </span>
-                                    <span className="payment-item-meta">
-                                      {resumenPago.mora.configuracion_nombre && `Config: ${resumenPago.mora.configuracion_nombre}`}
-                                    </span>
-                                  </div>
-                                </label>
-                              </div>
-                              <span className="payment-item-amount payment-item-amount-danger">
-                                {formatCurrencySafe(resumenPago.mora.monto)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                      </div>
-
-                      {/* ========== DETALLES DEL PAGO ========== */}
-                      <div className="payment-form-section">
-                        <h5 className="payment-form-title">
-                          <DollarSign className="w-5 h-5" />
-                          Detalles del Pago
-                        </h5>
-
-                        {/* Método de Pago */}
-                        <div className="payment-form-group">
-                          <label className="payment-form-label">Método de Pago *</label>
-                          <select
-                            className="payment-form-input"
-                            value={nuevoPago.metodo_pago}
-                            onChange={(e) => setNuevoPago({ ...nuevoPago, metodo_pago: e.target.value })}
-                          >
-                            <option value="EFECTIVO">💵 Efectivo</option>
-                            <option value="TRANSFERENCIA">🏦 Transferencia Bancaria</option>
-                            <option value="TARJETA">💳 Tarjeta</option>
-                          </select>
-                        </div>
-
-                        {/* Observaciones */}
-                        <div className="payment-form-group">
-                          <label className="payment-form-label">Observaciones (Opcional)</label>
-                          <textarea
-                            className="payment-form-input payment-form-textarea"
-                            rows="3"
-                            value={nuevoPago.observaciones}
-                            onChange={(e) => setNuevoPago({ ...nuevoPago, observaciones: e.target.value })}
-                            placeholder="Ingresa notas adicionales sobre este pago..."
-                          />
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="payment-resumen-error">No se pudo cargar el resumen del pago</p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* ========== FOOTER CON TOTAL Y BOTÓN DE PAGO ========== */}
-            <div className="payment-modal-footer">
-              <div className="payment-footer-total-display">
-                <div className="payment-total-breakdown">
-                  <span className="payment-total-label">Total a Pagar:</span>
-                  <span className="payment-total-counter">
-                    {formatCurrency(calcularTotalAPagar())}
-                  </span>
-                </div>
-                {!itemsAPagar.consumos && !itemsAPagar.multas && !itemsAPagar.mora && (
-                  <p className="payment-warning-text">
-                    <AlertCircle className="w-4 h-4" />
-                    Debe seleccionar al menos un item para pagar
-                  </p>
-                )}
-              </div>
-
-              <div className="payment-footer-actions">
-                <button className="btn-secondary" onClick={closeCreateModal} disabled={loading}>
-                  <X className="w-4 h-4 mr-2" />
-                  Cancelar
-                </button>
-
-                <button
-                  className="btn-primary"
-                  onClick={handleCreatePago}
-                  disabled={loading || (!itemsAPagar.consumos && !itemsAPagar.multas && !itemsAPagar.mora)}
-                  title="Registrar el pago de los items seleccionados"
-                >
-                  {loading ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Procesando...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-4 h-4 mr-2"/>
-                      Registrar Pago
-                      <span className="payment-btn-amount">
-                        {formatCurrency(calcularTotalAPagar())}
-                      </span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
+        {/* Datos del afiliado */}
+        <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
+          <div className="form-group">
+            <label>Afiliado</label>
+            <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
+              {selectedFactura.nombre_completo || '—'}
+            </p>
+          </div>
+          <div className="form-group">
+            <label>Cédula</label>
+            <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
+              {selectedFactura.cedula || '—'}
+            </p>
+          </div>
+          <div className="form-group">
+            <label>Periodo</label>
+            <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
+              {selectedFactura.periodo || '—'}
+            </p>
+          </div>
+          <div className="form-group">
+            <label>Número de factura</label>
+            <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem',
+                        fontFamily: 'monospace' }}>
+              {selectedFactura.num_factura || '—'}
+            </p>
           </div>
         </div>
-      )}
+
+        <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '0 0 1.25rem' }} />
+
+        {/* Loading */}
+        {loadingResumen && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
+                        justifyContent: 'center', padding: '2.5rem 0', gap: '0.75rem',
+                        color: '#6b7280' }}>
+            <RefreshCw className="w-8 h-8 animate-spin" style={{ color: '#3b82f6' }} />
+            <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+              Calculando desglose del pago…
+            </span>
+          </div>
+        )}
+
+        {/* Sin resumen */}
+        {!loadingResumen && !resumenPago && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        padding: '0.75rem 1rem', background: '#fee2e2', borderRadius: '0.5rem',
+                        color: '#991b1b', fontSize: '0.875rem', fontWeight: 600,
+                        marginBottom: '1rem' }}>
+            <AlertCircle className="w-4 h-4" style={{ flexShrink: 0 }} />
+            No se pudo cargar el desglose. Intenta recargar.
+          </div>
+        )}
+
+        {/* ── CONTENIDO PRINCIPAL ── */}
+        {!loadingResumen && resumenPago && (() => {
+
+          const moraMonto   = getSafeValue(resumenPago.mora?.monto, 0);
+          const tieneMora   = resumenPago.mora?.aplica && moraMonto > 0;
+          const tieneMultas = resumenPago.multas?.tiene_multas;
+          const multasTotal = getSafeValue(resumenPago.multas?.total_con_iva, 0);
+          const consumoTotal = Math.max(
+            0,
+            getSafeValue(resumenPago.totales?.opcion_sin_multas?.total_final, 0) - moraMonto
+          );
+          const detallesConsumo = normalizarDetallesFactura(
+            selectedFactura?.detalles || []
+          ).filter(d => (d.tipo_detalle || '').toLowerCase() !== 'multa');
+
+          return (
+            <>
+              {/* ── ITEMS A PAGAR ── */}
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center',
+                              justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <label style={{ marginBottom: 0 }}>Items a pagar</label>
+                  <button
+                    type="button"
+                    style={{ fontSize: '0.8rem', fontWeight: 600, color: '#3b82f6',
+                             background: '#eff6ff', border: '1px solid #bfdbfe',
+                             borderRadius: '0.375rem', padding: '3px 10px', cursor: 'pointer' }}
+                    onClick={() => {
+                      const allOn =
+                        (consumoTotal <= 0 || itemsAPagar.consumos) &&
+                        (!tieneMultas    || itemsAPagar.multas) &&
+                        (!tieneMora      || itemsAPagar.mora);
+                      setItemsAPagar({
+                        consumos: consumoTotal > 0 ? !allOn : false,
+                        multas:   tieneMultas      ? !allOn : false,
+                        mora:     tieneMora        ? !allOn : false,
+                      });
+                    }}
+                  >
+                    {(() => {
+                      const allOn =
+                        (consumoTotal <= 0 || itemsAPagar.consumos) &&
+                        (!tieneMultas    || itemsAPagar.multas) &&
+                        (!tieneMora      || itemsAPagar.mora);
+                      return allOn ? '☑ Deseleccionar todo' : '☐ Seleccionar todo';
+                    })()}
+                  </button>
+                </div>
+
+                <div className="pmt-items-wrap">
+
+                  {/* Consumo */}
+                  {consumoTotal > 0 && (
+                    <div
+                      className={`pmt-item ${itemsAPagar.consumos ? 'pmt-item-checked' : ''}`}
+                      onClick={() => setItemsAPagar(p => ({ ...p, consumos: !p.consumos }))}
+                    >
+                      <input
+                        type="checkbox"
+                        className="pmt-item-cb"
+                        checked={itemsAPagar.consumos}
+                        onChange={e => setItemsAPagar(p => ({ ...p, consumos: e.target.checked }))}
+                        onClick={e => e.stopPropagation()}
+                      />
+                      <div className="pmt-item-body">
+                        <div className="pmt-item-top">
+                          <span className="pmt-item-ico">💧</span>
+                          <span className="pmt-item-name">Consumos y servicios</span>
+                          <span className="pmt-item-amt" style={{ color: '#059669' }}>
+                            {formatCurrencySafe(consumoTotal)}
+                          </span>
+                        </div>
+                        {detallesConsumo.length > 0 && (
+                          <div className="pmt-item-rows">
+                            {detallesConsumo.slice(0, 3).map((d, i) => (
+                              <div key={i} className="pmt-item-row">
+                                <span>{d.descripcion}</span>
+                                <span className="pmt-item-row-val">
+                                  {formatCurrencySafe(d.subtotal_detalle)}
+                                </span>
+                              </div>
+                            ))}
+                            {detallesConsumo.length > 3 && (
+                              <div className="pmt-item-row">
+                                <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                                  +{detallesConsumo.length - 3} concepto(s) más
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Multas */}
+                  {tieneMultas && (
+                    <div
+                      className={`pmt-item ${itemsAPagar.multas ? 'pmt-item-checked' : ''}`}
+                      onClick={() => setItemsAPagar(p => ({ ...p, multas: !p.multas }))}
+                    >
+                      <input
+                        type="checkbox"
+                        className="pmt-item-cb"
+                        checked={itemsAPagar.multas}
+                        onChange={e => setItemsAPagar(p => ({ ...p, multas: e.target.checked }))}
+                        onClick={e => e.stopPropagation()}
+                      />
+                      <div className="pmt-item-body">
+                        <div className="pmt-item-top">
+                          <span className="pmt-item-ico">🚨</span>
+                          <span className="pmt-item-name">
+                            Multas ({resumenPago.multas?.cantidad || 0})
+                          </span>
+                          <span className="pmt-item-amt" style={{ color: '#dc2626' }}>
+                            {formatCurrencySafe(multasTotal)}
+                          </span>
+                        </div>
+                        {resumenPago.multas?.detalles?.length > 0 && (
+                          <div className="pmt-item-rows">
+                            {resumenPago.multas.detalles.map((m, i) => (
+                              <div key={i} className="pmt-item-row">
+                                <span>{m.descripcion}</span>
+                                <span className="pmt-item-row-val">
+                                  {formatCurrencySafe(m.subtotal)}
+                                </span>
+                              </div>
+                            ))}
+                            <div className="pmt-item-row" style={{ marginTop: 2 }}>
+                              <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                                Subtotal: {formatCurrencySafe(resumenPago.multas?.subtotal_sin_iva)}
+                                {' · '}IVA: {formatCurrencySafe(resumenPago.multas?.iva)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {!itemsAPagar.multas && (
+                          <span style={{ display: 'inline-block', marginTop: 6, fontSize: '0.75rem',
+                                         fontWeight: 600, color: '#b45309', background: '#fef3c7',
+                                         padding: '2px 8px', borderRadius: 4 }}>
+                            ⚠ Quedarán pendientes si no se incluyen
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mora */}
+                  {tieneMora && (
+                    <div
+                      className={`pmt-item ${itemsAPagar.mora ? 'pmt-item-checked' : ''}`}
+                      onClick={() => setItemsAPagar(p => ({ ...p, mora: !p.mora }))}
+                    >
+                      <input
+                        type="checkbox"
+                        className="pmt-item-cb"
+                        checked={itemsAPagar.mora}
+                        onChange={e => setItemsAPagar(p => ({ ...p, mora: e.target.checked }))}
+                        onClick={e => e.stopPropagation()}
+                      />
+                      <div className="pmt-item-body">
+                        <div className="pmt-item-top">
+                          <span className="pmt-item-ico">⏰</span>
+                          <span className="pmt-item-name">Mora por pago tardío</span>
+                          <span className="pmt-item-amt" style={{ color: '#d97706' }}>
+                            {formatCurrencySafe(moraMonto)}
+                          </span>
+                        </div>
+                        <div className="pmt-item-rows">
+                          <div className="pmt-item-row">
+                            <span>Días desde emisión</span>
+                            <span className="pmt-item-row-val">
+                              {getSafeValue(resumenPago.mora?.dias_transcurridos, 0)} días
+                            </span>
+                          </div>
+                          <div className="pmt-item-row">
+                            <span>Días de mora efectivos</span>
+                            <span className="pmt-item-row-val">
+                              {getSafeValue(resumenPago.mora?.dias_mora_efectivos, 0)} días
+                            </span>
+                          </div>
+                          {resumenPago.mora?.fecha_inicio_mora && (
+                            <div className="pmt-item-row">
+                              <span>Mora desde</span>
+                              <span className="pmt-item-row-val">
+                                {formatDateShort(resumenPago.mora.fecha_inicio_mora)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sin items */}
+                  {consumoTotal <= 0 && !tieneMultas && !tieneMora && (
+                    <div style={{ padding: '1rem', color: '#94a3b8', fontSize: '0.875rem',
+                                  textAlign: 'center' }}>
+                      No hay conceptos pendientes para esta factura.
+                    </div>
+                  )}
+
+                </div>
+              </div>
+
+              <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb',
+                           margin: '0 0 1.25rem' }} />
+
+              {/* ── MÉTODO DE PAGO ── */}
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
+                <label>Método de pago *</label>
+                <div className="pmt-metodo-grid">
+                  {[
+                    { value: 'EFECTIVO',      label: 'Efectivo',      ico: '💵' },
+                    { value: 'TRANSFERENCIA', label: 'Transferencia', ico: '🏦' },
+                    { value: 'TARJETA',       label: 'Tarjeta',       ico: '💳' },
+                  ].map(op => (
+                    <button
+                      key={op.value}
+                      type="button"
+                      className={`pmt-metodo-btn ${nuevoPago.metodo_pago === op.value ? 'pmt-metodo-btn-active' : ''}`}
+                      onClick={() => setNuevoPago(p => ({ ...p, metodo_pago: op.value }))}
+                    >
+                      <span style={{ fontSize: 20, lineHeight: 1 }}>{op.ico}</span>
+                      {op.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── OBSERVACIONES ── */}
+              <div className="form-group">
+                <label>Observaciones <span style={{ fontWeight: 400, color: '#9ca3af' }}>(opcional)</span></label>
+                <textarea
+                  rows={3}
+                  placeholder="Notas adicionales sobre este pago…"
+                  value={nuevoPago.observaciones}
+                  onChange={e => setNuevoPago(p => ({ ...p, observaciones: e.target.value }))}
+                />
+              </div>
+
+            </>
+          );
+        })()}
+      </div>
+      {/* fin modal-body */}
+
+      {/* ── FOOTER ── */}
+      <div className="modal-footer">
+        {/* Total a pagar (izquierda) */}
+        <div style={{ flex: 1 }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280',
+                         textTransform: 'uppercase', letterSpacing: '0.4px',
+                         display: 'block', marginBottom: 2 }}>
+            Total a pagar
+          </span>
+          <span style={{ fontSize: '1.5rem', fontWeight: 800, fontFamily: 'monospace',
+                         color: calcularTotalAPagar() > 0 ? '#1e40af' : '#94a3b8',
+                         lineHeight: 1 }}>
+            {formatCurrency(calcularTotalAPagar())}
+          </span>
+          {!itemsAPagar.consumos && !itemsAPagar.multas && !itemsAPagar.mora && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4,
+                           fontSize: '0.75rem', fontWeight: 600, color: '#d97706' }}>
+              <AlertCircle className="w-3 h-3" />
+              Selecciona al menos un item
+            </span>
+          )}
+        </div>
+
+        {/* Botones (derecha) */}
+        <button className="btn-secondary" onClick={closeCreateModal} disabled={loading}>
+          <X className="w-4 h-4 mr-1" />
+          Cancelar
+        </button>
+
+        <button
+          className="btn-primary"
+          onClick={handleCreatePago}
+          disabled={
+            loading ||
+            (!itemsAPagar.consumos && !itemsAPagar.multas && !itemsAPagar.mora)
+          }
+        >
+          {loading ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin mr-1" />
+              Procesando…
+            </>
+          ) : (
+            <>
+              <CheckCircle className="w-4 h-4 mr-1" />
+              Registrar pago
+            </>
+          )}
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
+
 
       {/* MODAL DE DESGLOSE DE ADEUDOS POR PERIODOS */}
       {showAdeudosModal && selectedFacturaAdeudos && selectedAfiliadoAdeudos && (

@@ -10,6 +10,7 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
   endpoints: {
     notifications: '/notifications',
     notificationById: (id) => `/notifications/${id}`,
+    deleteBulk: '/notifications/bulk',
     markAsRead: (id) => `/notifications/${id}/marcar-leida`,
     markAllAsRead: '/notifications/marcar-todas-leidas',
     unreadCount: '/notifications/no-leidas/count',
@@ -344,6 +345,40 @@ class NotificationsService {
         message: error.message || 'Error al eliminar notificación'
       };
     }
+  }
+
+  /**
+   * Eliminar varias notificaciones o todas las del usuario actual
+   */
+  async deleteNotificationsBulk(notificationIds = [], eliminarTodas = false) {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.deleteBulk, {
+        method: 'DELETE',
+        body: {
+          ids: notificationIds,
+          eliminar_todas: eliminarTodas
+        }
+      });
+
+      this.cachedNotifications = null;
+      this.unreadCount = 0;
+
+      return {
+        success: true,
+        data,
+        message: data?.message || 'Notificaciones eliminadas correctamente'
+      };
+    } catch (error) {
+      console.error('âŒ Error eliminando notificaciones:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al eliminar notificaciones'
+      };
+    }
+  }
+
+  async deleteAllNotifications() {
+    return this.deleteNotificationsBulk([], true);
   }
 
   /**

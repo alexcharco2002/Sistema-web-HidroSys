@@ -2495,34 +2495,18 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                   <br />
                   <h4 className="section-title">
                     <FileText className="w-4 h-4" />
-                    Conceptos de Facturación
+                    Conceptos de Facturación ({normalizarDetallesFactura(selectedPago.detalles).length})
                   </h4>
-                  <br />
                 </div>
               )}
 
               {/* Sección de CONCEPTOS DE FACTURACIÓN */}
               {normalizarDetallesFactura(selectedPago.detalles).length > 0 && (
-                <div
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    marginTop: 18,
-                    marginBottom: 18,
-                    padding: 18,
-                    background: '#ffffff',
-                    border: '2px solid #2563eb',
-                    borderRadius: 10,
-                    overflow: 'visible',
-                    visibility: 'visible',
-                    opacity: 1,
-                    color: '#111827'
-                  }}
-                >
-                  <h4 style={{margin: '0 0 14px', fontSize: 16, fontWeight: 800, color: '#111827'}}>
-                    Conceptos de Facturacion ({normalizarDetallesFactura(selectedPago.detalles).length})
-                  </h4>
-                  <div style={{display: 'flex', flexDirection: 'column', gap: 10}}>
+                <div className="factura-section">
+                  
+                  <br />
+                  
+                  <div className="pmt-detalles-agrupados">
                     {normalizarDetallesFactura(selectedPago.detalles).map((detalle, index) => {
                       const tipo = (detalle.tipo_detalle || 'otros').toLowerCase();
                       const descripcion = (detalle.descripcion || '').toLowerCase();
@@ -2545,19 +2529,8 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                       return (
                         <div
                           key={detalle.id_detalle || `concepto-visible-${index}`}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'minmax(0, 1fr) auto',
-                            gap: 14,
-                            alignItems: 'center',
-                            padding: '12px 14px',
-                            background: '#f8fafc',
-                            border: '1px solid #e5e7eb',
-                            borderLeft: `4px solid ${color}`,
-                            borderRadius: 8,
-                            minHeight: 54,
-                            color: '#111827'
-                          }}
+                          className="pmt-detalle-visible-item"
+                          style={{ borderLeft: `4px solid ${color}`, background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', marginBottom: '10px', border: '1px solid #e5e7eb', borderLeftWidth: '4px' }}
                         >
                           <div style={{minWidth: 0}}>
                             <div style={{fontSize: 12, fontWeight: 800, textTransform: 'uppercase', color, marginBottom: 4}}>
@@ -3078,6 +3051,7 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
 
             <div className="modal-footer">
               <button className="btn-secondary" onClick={closeModal}>
+                <X className="w-5 h-5" />
                 Cerrar
               </button>
             </div>
@@ -3086,390 +3060,379 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
       )}
 
       {/* MODAL PARA CREAR PAGO  */}
-/**
- * MODAL DE CREAR PAGO — ADAPTADO AL SISTEMA DE ESTILOS EXISTENTE
- * Usa: .modal-overlay, .modal, .modal-header, .modal-body, .modal-footer,
- *      .modal-close, .form-group, .form-group label, select, textarea,
- *      .btn-primary, .btn-secondary
- *
- * Clases nuevas mínimas solo para lo que no existe en el sistema:
- *   .pmt-band, .pmt-items-wrap, .pmt-item, .pmt-metodo-grid, .pmt-metodo-btn
- */
+      {showCreateModal && selectedFactura && (
+        <div className="modal-overlay">
+          <div className="modal modal-payment">
 
-{showCreateModal && selectedFactura && (
-  <div className="modal-overlay">
-    <div className="modal modal-payment">
+            {/* ── HEADER ── */}
+            <div className="modal-header">
+              <h3>
+                <Plus className="w-5 h-5 inline mr-2" />
+                Registrar Pago — {selectedFactura.num_factura}
+              </h3>
+              <button className="modal-close" onClick={closeCreateModal}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-      {/* ── HEADER ── */}
-      <div className="modal-header">
-        <h3>
-          <Plus className="w-5 h-5 inline mr-2" />
-          Registrar Pago — {selectedFactura.num_factura}
-        </h3>
-        <button className="modal-close" onClick={closeCreateModal}>
-          <X className="w-5 h-5" />
-        </button>
-      </div>
+            {/* ── BODY ── */}
+            <div className="modal-body">
 
-      {/* ── BODY ── */}
-      <div className="modal-body">
-
-        {/* Datos del afiliado */}
-        <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
-          <div className="form-group">
-            <label>Afiliado</label>
-            <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
-              {selectedFactura.nombre_completo || '—'}
-            </p>
-          </div>
-          <div className="form-group">
-            <label>Cédula</label>
-            <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
-              {selectedFactura.cedula || '—'}
-            </p>
-          </div>
-          <div className="form-group">
-            <label>Periodo</label>
-            <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
-              {selectedFactura.periodo || '—'}
-            </p>
-          </div>
-          <div className="form-group">
-            <label>Número de factura</label>
-            <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem',
-                        fontFamily: 'monospace' }}>
-              {selectedFactura.num_factura || '—'}
-            </p>
-          </div>
-        </div>
-
-        <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '0 0 1.25rem' }} />
-
-        {/* Loading */}
-        {loadingResumen && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        justifyContent: 'center', padding: '2.5rem 0', gap: '0.75rem',
-                        color: '#6b7280' }}>
-            <RefreshCw className="w-8 h-8 animate-spin" style={{ color: '#3b82f6' }} />
-            <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
-              Calculando desglose del pago…
-            </span>
-          </div>
-        )}
-
-        {/* Sin resumen */}
-        {!loadingResumen && !resumenPago && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem',
-                        padding: '0.75rem 1rem', background: '#fee2e2', borderRadius: '0.5rem',
-                        color: '#991b1b', fontSize: '0.875rem', fontWeight: 600,
-                        marginBottom: '1rem' }}>
-            <AlertCircle className="w-4 h-4" style={{ flexShrink: 0 }} />
-            No se pudo cargar el desglose. Intenta recargar.
-          </div>
-        )}
-
-        {/* ── CONTENIDO PRINCIPAL ── */}
-        {!loadingResumen && resumenPago && (() => {
-
-          const moraMonto   = getSafeValue(resumenPago.mora?.monto, 0);
-          const tieneMora   = resumenPago.mora?.aplica && moraMonto > 0;
-          const tieneMultas = resumenPago.multas?.tiene_multas;
-          const multasTotal = getSafeValue(resumenPago.multas?.total_con_iva, 0);
-          const consumoTotal = Math.max(
-            0,
-            getSafeValue(resumenPago.totales?.opcion_sin_multas?.total_final, 0) - moraMonto
-          );
-          const detallesConsumo = normalizarDetallesFactura(
-            selectedFactura?.detalles || []
-          ).filter(d => (d.tipo_detalle || '').toLowerCase() !== 'multa');
-
-          return (
-            <>
-              {/* ── ITEMS A PAGAR ── */}
-              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center',
-                              justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <label style={{ marginBottom: 0 }}>Items a pagar</label>
-                  <button
-                    type="button"
-                    style={{ fontSize: '0.8rem', fontWeight: 600, color: '#3b82f6',
-                             background: '#eff6ff', border: '1px solid #bfdbfe',
-                             borderRadius: '0.375rem', padding: '3px 10px', cursor: 'pointer' }}
-                    onClick={() => {
-                      const allOn =
-                        (consumoTotal <= 0 || itemsAPagar.consumos) &&
-                        (!tieneMultas    || itemsAPagar.multas) &&
-                        (!tieneMora      || itemsAPagar.mora);
-                      setItemsAPagar({
-                        consumos: consumoTotal > 0 ? !allOn : false,
-                        multas:   tieneMultas      ? !allOn : false,
-                        mora:     tieneMora        ? !allOn : false,
-                      });
-                    }}
-                  >
-                    {(() => {
-                      const allOn =
-                        (consumoTotal <= 0 || itemsAPagar.consumos) &&
-                        (!tieneMultas    || itemsAPagar.multas) &&
-                        (!tieneMora      || itemsAPagar.mora);
-                      return allOn ? '☑ Deseleccionar todo' : '☐ Seleccionar todo';
-                    })()}
-                  </button>
+              {/* Datos del afiliado */}
+              <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
+                <div className="form-group">
+                  <label>Afiliado</label>
+                  <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
+                    {selectedFactura.nombre_completo || '—'}
+                  </p>
                 </div>
+                <div className="form-group">
+                  <label>Cédula</label>
+                  <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
+                    {selectedFactura.cedula || '—'}
+                  </p>
+                </div>
+                <div className="form-group">
+                  <label>Periodo</label>
+                  <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
+                    {selectedFactura.periodo || '—'}
+                  </p>
+                </div>
+                <div className="form-group">
+                  <label>Número de factura</label>
+                  <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem',
+                              fontFamily: 'monospace' }}>
+                    {selectedFactura.num_factura || '—'}
+                  </p>
+                </div>
+              </div>
 
-                <div className="pmt-items-wrap">
+              <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '0 0 1.25rem' }} />
 
-                  {/* Consumo */}
-                  {consumoTotal > 0 && (
-                    <div
-                      className={`pmt-item ${itemsAPagar.consumos ? 'pmt-item-checked' : ''}`}
-                      onClick={() => setItemsAPagar(p => ({ ...p, consumos: !p.consumos }))}
-                    >
-                      <input
-                        type="checkbox"
-                        className="pmt-item-cb"
-                        checked={itemsAPagar.consumos}
-                        onChange={e => setItemsAPagar(p => ({ ...p, consumos: e.target.checked }))}
-                        onClick={e => e.stopPropagation()}
-                      />
-                      <div className="pmt-item-body">
-                        <div className="pmt-item-top">
-                          <span className="pmt-item-ico">💧</span>
-                          <span className="pmt-item-name">Consumos y servicios</span>
-                          <span className="pmt-item-amt" style={{ color: '#059669' }}>
-                            {formatCurrencySafe(consumoTotal)}
-                          </span>
-                        </div>
-                        {detallesConsumo.length > 0 && (
-                          <div className="pmt-item-rows">
-                            {detallesConsumo.slice(0, 3).map((d, i) => (
-                              <div key={i} className="pmt-item-row">
-                                <span>{d.descripcion}</span>
-                                <span className="pmt-item-row-val">
-                                  {formatCurrencySafe(d.subtotal_detalle)}
-                                </span>
-                              </div>
-                            ))}
-                            {detallesConsumo.length > 3 && (
-                              <div className="pmt-item-row">
-                                <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
-                                  +{detallesConsumo.length - 3} concepto(s) más
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        )}
+              {/* Loading */}
+              {loadingResumen && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
+                              justifyContent: 'center', padding: '2.5rem 0', gap: '0.75rem',
+                              color: '#6b7280' }}>
+                  <RefreshCw className="w-8 h-8 animate-spin" style={{ color: '#3b82f6' }} />
+                  <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+                    Calculando desglose del pago…
+                  </span>
+                </div>
+              )}
+
+              {/* Sin resumen */}
+              {!loadingResumen && !resumenPago && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem',
+                              padding: '0.75rem 1rem', background: '#fee2e2', borderRadius: '0.5rem',
+                              color: '#991b1b', fontSize: '0.875rem', fontWeight: 600,
+                              marginBottom: '1rem' }}>
+                  <AlertCircle className="w-4 h-4" style={{ flexShrink: 0 }} />
+                  No se pudo cargar el desglose. Intenta recargar.
+                </div>
+              )}
+
+              {/* ── CONTENIDO PRINCIPAL ── */}
+              {!loadingResumen && resumenPago && (() => {
+
+                const moraMonto   = getSafeValue(resumenPago.mora?.monto, 0);
+                const tieneMora   = resumenPago.mora?.aplica && moraMonto > 0;
+                const tieneMultas = resumenPago.multas?.tiene_multas;
+                const multasTotal = getSafeValue(resumenPago.multas?.total_con_iva, 0);
+                const consumoTotal = Math.max(
+                  0,
+                  getSafeValue(resumenPago.totales?.opcion_sin_multas?.total_final, 0) - moraMonto
+                );
+                const detallesConsumo = normalizarDetallesFactura(
+                  selectedFactura?.detalles || []
+                ).filter(d => (d.tipo_detalle || '').toLowerCase() !== 'multa');
+
+                return (
+                  <>
+                    {/* ── ITEMS A PAGAR ── */}
+                    <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center',
+                                    justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <label style={{ marginBottom: 0 }}>Items a pagar</label>
+                        <button
+                          type="button"
+                          style={{ fontSize: '0.8rem', fontWeight: 600, color: '#3b82f6',
+                                  background: '#eff6ff', border: '1px solid #bfdbfe',
+                                  borderRadius: '0.375rem', padding: '3px 10px', cursor: 'pointer' }}
+                          onClick={() => {
+                            const allOn =
+                              (consumoTotal <= 0 || itemsAPagar.consumos) &&
+                              (!tieneMultas    || itemsAPagar.multas) &&
+                              (!tieneMora      || itemsAPagar.mora);
+                            setItemsAPagar({
+                              consumos: consumoTotal > 0 ? !allOn : false,
+                              multas:   tieneMultas      ? !allOn : false,
+                              mora:     tieneMora        ? !allOn : false,
+                            });
+                          }}
+                        >
+                          {(() => {
+                            const allOn =
+                              (consumoTotal <= 0 || itemsAPagar.consumos) &&
+                              (!tieneMultas    || itemsAPagar.multas) &&
+                              (!tieneMora      || itemsAPagar.mora);
+                            return allOn ? '☑ Deseleccionar todo' : '☐ Seleccionar todo';
+                          })()}
+                        </button>
                       </div>
-                    </div>
-                  )}
 
-                  {/* Multas */}
-                  {tieneMultas && (
-                    <div
-                      className={`pmt-item ${itemsAPagar.multas ? 'pmt-item-checked' : ''}`}
-                      onClick={() => setItemsAPagar(p => ({ ...p, multas: !p.multas }))}
-                    >
-                      <input
-                        type="checkbox"
-                        className="pmt-item-cb"
-                        checked={itemsAPagar.multas}
-                        onChange={e => setItemsAPagar(p => ({ ...p, multas: e.target.checked }))}
-                        onClick={e => e.stopPropagation()}
-                      />
-                      <div className="pmt-item-body">
-                        <div className="pmt-item-top">
-                          <span className="pmt-item-ico">🚨</span>
-                          <span className="pmt-item-name">
-                            Multas ({resumenPago.multas?.cantidad || 0})
-                          </span>
-                          <span className="pmt-item-amt" style={{ color: '#dc2626' }}>
-                            {formatCurrencySafe(multasTotal)}
-                          </span>
-                        </div>
-                        {resumenPago.multas?.detalles?.length > 0 && (
-                          <div className="pmt-item-rows">
-                            {resumenPago.multas.detalles.map((m, i) => (
-                              <div key={i} className="pmt-item-row">
-                                <span>{m.descripcion}</span>
-                                <span className="pmt-item-row-val">
-                                  {formatCurrencySafe(m.subtotal)}
+                      <div className="pmt-items-wrap">
+
+                        {/* Consumo */}
+                        {consumoTotal > 0 && (
+                          <div
+                            className={`pmt-item ${itemsAPagar.consumos ? 'pmt-item-checked' : ''}`}
+                            onClick={() => setItemsAPagar(p => ({ ...p, consumos: !p.consumos }))}
+                          >
+                            <input
+                              type="checkbox"
+                              className="pmt-item-cb"
+                              checked={itemsAPagar.consumos}
+                              onChange={e => setItemsAPagar(p => ({ ...p, consumos: e.target.checked }))}
+                              onClick={e => e.stopPropagation()}
+                            />
+                            <div className="pmt-item-body">
+                              <div className="pmt-item-top">
+                                <span className="pmt-item-ico">💧</span>
+                                <span className="pmt-item-name">Consumos y servicios</span>
+                                <span className="pmt-item-amt" style={{ color: '#059669' }}>
+                                  {formatCurrencySafe(consumoTotal)}
                                 </span>
                               </div>
-                            ))}
-                            <div className="pmt-item-row" style={{ marginTop: 2 }}>
-                              <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
-                                Subtotal: {formatCurrencySafe(resumenPago.multas?.subtotal_sin_iva)}
-                                {' · '}IVA: {formatCurrencySafe(resumenPago.multas?.iva)}
-                              </span>
+                              {detallesConsumo.length > 0 && (
+                                <div className="pmt-item-rows">
+                                  {detallesConsumo.slice(0, 3).map((d, i) => (
+                                    <div key={i} className="pmt-item-row">
+                                      <span>{d.descripcion}</span>
+                                      <span className="pmt-item-row-val">
+                                        {formatCurrencySafe(d.subtotal_detalle)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                  {detallesConsumo.length > 3 && (
+                                    <div className="pmt-item-row">
+                                      <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                                        +{detallesConsumo.length - 3} concepto(s) más
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}
-                        {!itemsAPagar.multas && (
-                          <span style={{ display: 'inline-block', marginTop: 6, fontSize: '0.75rem',
-                                         fontWeight: 600, color: '#b45309', background: '#fef3c7',
-                                         padding: '2px 8px', borderRadius: 4 }}>
-                            ⚠ Quedarán pendientes si no se incluyen
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
 
-                  {/* Mora */}
-                  {tieneMora && (
-                    <div
-                      className={`pmt-item ${itemsAPagar.mora ? 'pmt-item-checked' : ''}`}
-                      onClick={() => setItemsAPagar(p => ({ ...p, mora: !p.mora }))}
-                    >
-                      <input
-                        type="checkbox"
-                        className="pmt-item-cb"
-                        checked={itemsAPagar.mora}
-                        onChange={e => setItemsAPagar(p => ({ ...p, mora: e.target.checked }))}
-                        onClick={e => e.stopPropagation()}
-                      />
-                      <div className="pmt-item-body">
-                        <div className="pmt-item-top">
-                          <span className="pmt-item-ico">⏰</span>
-                          <span className="pmt-item-name">Mora por pago tardío</span>
-                          <span className="pmt-item-amt" style={{ color: '#d97706' }}>
-                            {formatCurrencySafe(moraMonto)}
-                          </span>
-                        </div>
-                        <div className="pmt-item-rows">
-                          <div className="pmt-item-row">
-                            <span>Días desde emisión</span>
-                            <span className="pmt-item-row-val">
-                              {getSafeValue(resumenPago.mora?.dias_transcurridos, 0)} días
-                            </span>
-                          </div>
-                          <div className="pmt-item-row">
-                            <span>Días de mora efectivos</span>
-                            <span className="pmt-item-row-val">
-                              {getSafeValue(resumenPago.mora?.dias_mora_efectivos, 0)} días
-                            </span>
-                          </div>
-                          {resumenPago.mora?.fecha_inicio_mora && (
-                            <div className="pmt-item-row">
-                              <span>Mora desde</span>
-                              <span className="pmt-item-row-val">
-                                {formatDateShort(resumenPago.mora.fecha_inicio_mora)}
-                              </span>
+                        {/* Multas */}
+                        {tieneMultas && (
+                          <div
+                            className={`pmt-item ${itemsAPagar.multas ? 'pmt-item-checked' : ''}`}
+                            onClick={() => setItemsAPagar(p => ({ ...p, multas: !p.multas }))}
+                          >
+                            <input
+                              type="checkbox"
+                              className="pmt-item-cb"
+                              checked={itemsAPagar.multas}
+                              onChange={e => setItemsAPagar(p => ({ ...p, multas: e.target.checked }))}
+                              onClick={e => e.stopPropagation()}
+                            />
+                            <div className="pmt-item-body">
+                              <div className="pmt-item-top">
+                                <span className="pmt-item-ico">🚨</span>
+                                <span className="pmt-item-name">
+                                  Multas ({resumenPago.multas?.cantidad || 0})
+                                </span>
+                                <span className="pmt-item-amt" style={{ color: '#dc2626' }}>
+                                  {formatCurrencySafe(multasTotal)}
+                                </span>
+                              </div>
+                              {resumenPago.multas?.detalles?.length > 0 && (
+                                <div className="pmt-item-rows">
+                                  {resumenPago.multas.detalles.map((m, i) => (
+                                    <div key={i} className="pmt-item-row">
+                                      <span>{m.descripcion}</span>
+                                      <span className="pmt-item-row-val">
+                                        {formatCurrencySafe(m.subtotal)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                  <div className="pmt-item-row" style={{ marginTop: 2 }}>
+                                    <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                                      Subtotal: {formatCurrencySafe(resumenPago.multas?.subtotal_sin_iva)}
+                                      {' · '}IVA: {formatCurrencySafe(resumenPago.multas?.iva)}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                              {!itemsAPagar.multas && (
+                                <span style={{ display: 'inline-block', marginTop: 6, fontSize: '0.75rem',
+                                              fontWeight: 600, color: '#b45309', background: '#fef3c7',
+                                              padding: '2px 8px', borderRadius: 4 }}>
+                                  ⚠ Quedarán pendientes si no se incluyen
+                                </span>
+                              )}
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
+
+                        {/* Mora */}
+                        {tieneMora && (
+                          <div
+                            className={`pmt-item ${itemsAPagar.mora ? 'pmt-item-checked' : ''}`}
+                            onClick={() => setItemsAPagar(p => ({ ...p, mora: !p.mora }))}
+                          >
+                            <input
+                              type="checkbox"
+                              className="pmt-item-cb"
+                              checked={itemsAPagar.mora}
+                              onChange={e => setItemsAPagar(p => ({ ...p, mora: e.target.checked }))}
+                              onClick={e => e.stopPropagation()}
+                            />
+                            <div className="pmt-item-body">
+                              <div className="pmt-item-top">
+                                <span className="pmt-item-ico">⏰</span>
+                                <span className="pmt-item-name">Mora por pago tardío</span>
+                                <span className="pmt-item-amt" style={{ color: '#d97706' }}>
+                                  {formatCurrencySafe(moraMonto)}
+                                </span>
+                              </div>
+                              <div className="pmt-item-rows">
+                                <div className="pmt-item-row">
+                                  <span>Días desde emisión</span>
+                                  <span className="pmt-item-row-val">
+                                    {getSafeValue(resumenPago.mora?.dias_transcurridos, 0)} días
+                                  </span>
+                                </div>
+                                <div className="pmt-item-row">
+                                  <span>Días de mora efectivos</span>
+                                  <span className="pmt-item-row-val">
+                                    {getSafeValue(resumenPago.mora?.dias_mora_efectivos, 0)} días
+                                  </span>
+                                </div>
+                                {resumenPago.mora?.fecha_inicio_mora && (
+                                  <div className="pmt-item-row">
+                                    <span>Mora desde</span>
+                                    <span className="pmt-item-row-val">
+                                      {formatDateShort(resumenPago.mora.fecha_inicio_mora)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Sin items */}
+                        {consumoTotal <= 0 && !tieneMultas && !tieneMora && (
+                          <div style={{ padding: '1rem', color: '#94a3b8', fontSize: '0.875rem',
+                                        textAlign: 'center' }}>
+                            No hay conceptos pendientes para esta factura.
+                          </div>
+                        )}
+
                       </div>
                     </div>
-                  )}
 
-                  {/* Sin items */}
-                  {consumoTotal <= 0 && !tieneMultas && !tieneMora && (
-                    <div style={{ padding: '1rem', color: '#94a3b8', fontSize: '0.875rem',
-                                  textAlign: 'center' }}>
-                      No hay conceptos pendientes para esta factura.
+                    <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb',
+                                margin: '0 0 1.25rem' }} />
+
+                    {/* ── MÉTODO DE PAGO ── */}
+                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                      <label>Método de pago *</label>
+                      <div className="pmt-metodo-grid">
+                        {[
+                          { value: 'EFECTIVO',      label: 'Efectivo',      ico: '💵' },
+                          { value: 'TRANSFERENCIA', label: 'Transferencia', ico: '🏦' },
+                          { value: 'TARJETA',       label: 'Tarjeta',       ico: '💳' },
+                        ].map(op => (
+                          <button
+                            key={op.value}
+                            type="button"
+                            className={`pmt-metodo-btn ${nuevoPago.metodo_pago === op.value ? 'pmt-metodo-btn-active' : ''}`}
+                            onClick={() => setNuevoPago(p => ({ ...p, metodo_pago: op.value }))}
+                          >
+                            <span style={{ fontSize: 20, lineHeight: 1 }}>{op.ico}</span>
+                            {op.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  )}
 
-                </div>
+                    {/* ── OBSERVACIONES ── */}
+                    <div className="form-group">
+                      <label>Observaciones <span style={{ fontWeight: 400, color: '#9ca3af' }}>(opcional)</span></label>
+                      <textarea
+                        rows={3}
+                        placeholder="Notas adicionales sobre este pago…"
+                        value={nuevoPago.observaciones}
+                        onChange={e => setNuevoPago(p => ({ ...p, observaciones: e.target.value }))}
+                      />
+                    </div>
+
+                  </>
+                );
+              })()}
+            </div>
+            {/* fin modal-body */}
+
+            {/* ── FOOTER ── */}
+            <div className="modal-footer">
+              {/* Total a pagar (izquierda) */}
+              <div style={{ flex: 1 }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280',
+                              textTransform: 'uppercase', letterSpacing: '0.4px',
+                              display: 'block', marginBottom: 2 }}>
+                  Total a pagar
+                </span>
+                <span style={{ fontSize: '1.5rem', fontWeight: 800, fontFamily: 'monospace',
+                              color: calcularTotalAPagar() > 0 ? '#1e40af' : '#94a3b8',
+                              lineHeight: 1 }}>
+                  {formatCurrency(calcularTotalAPagar())}
+                </span>
+                {!itemsAPagar.consumos && !itemsAPagar.multas && !itemsAPagar.mora && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4,
+                                fontSize: '0.75rem', fontWeight: 600, color: '#d97706' }}>
+                    <AlertCircle className="w-3 h-3" />
+                    Selecciona al menos un item
+                  </span>
+                )}
               </div>
 
-              <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb',
-                           margin: '0 0 1.25rem' }} />
+              {/* Botones (derecha) */}
+              <button className="btn-secondary" onClick={closeCreateModal} disabled={loading}>
+                <X className="w-4 h-4 mr-1" />
+                Cancelar
+              </button>
 
-              {/* ── MÉTODO DE PAGO ── */}
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label>Método de pago *</label>
-                <div className="pmt-metodo-grid">
-                  {[
-                    { value: 'EFECTIVO',      label: 'Efectivo',      ico: '💵' },
-                    { value: 'TRANSFERENCIA', label: 'Transferencia', ico: '🏦' },
-                    { value: 'TARJETA',       label: 'Tarjeta',       ico: '💳' },
-                  ].map(op => (
-                    <button
-                      key={op.value}
-                      type="button"
-                      className={`pmt-metodo-btn ${nuevoPago.metodo_pago === op.value ? 'pmt-metodo-btn-active' : ''}`}
-                      onClick={() => setNuevoPago(p => ({ ...p, metodo_pago: op.value }))}
-                    >
-                      <span style={{ fontSize: 20, lineHeight: 1 }}>{op.ico}</span>
-                      {op.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <button
+                className="btn-primary"
+                onClick={handleCreatePago}
+                disabled={
+                  loading ||
+                  (!itemsAPagar.consumos && !itemsAPagar.multas && !itemsAPagar.mora)
+                }
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin mr-1" />
+                    Procesando…
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-1" />
+                    Registrar pago
+                  </>
+                )}
+              </button>
+            </div>
 
-              {/* ── OBSERVACIONES ── */}
-              <div className="form-group">
-                <label>Observaciones <span style={{ fontWeight: 400, color: '#9ca3af' }}>(opcional)</span></label>
-                <textarea
-                  rows={3}
-                  placeholder="Notas adicionales sobre este pago…"
-                  value={nuevoPago.observaciones}
-                  onChange={e => setNuevoPago(p => ({ ...p, observaciones: e.target.value }))}
-                />
-              </div>
-
-            </>
-          );
-        })()}
-      </div>
-      {/* fin modal-body */}
-
-      {/* ── FOOTER ── */}
-      <div className="modal-footer">
-        {/* Total a pagar (izquierda) */}
-        <div style={{ flex: 1 }}>
-          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280',
-                         textTransform: 'uppercase', letterSpacing: '0.4px',
-                         display: 'block', marginBottom: 2 }}>
-            Total a pagar
-          </span>
-          <span style={{ fontSize: '1.5rem', fontWeight: 800, fontFamily: 'monospace',
-                         color: calcularTotalAPagar() > 0 ? '#1e40af' : '#94a3b8',
-                         lineHeight: 1 }}>
-            {formatCurrency(calcularTotalAPagar())}
-          </span>
-          {!itemsAPagar.consumos && !itemsAPagar.multas && !itemsAPagar.mora && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4,
-                           fontSize: '0.75rem', fontWeight: 600, color: '#d97706' }}>
-              <AlertCircle className="w-3 h-3" />
-              Selecciona al menos un item
-            </span>
-          )}
+          </div>
         </div>
-
-        {/* Botones (derecha) */}
-        <button className="btn-secondary" onClick={closeCreateModal} disabled={loading}>
-          <X className="w-4 h-4 mr-1" />
-          Cancelar
-        </button>
-
-        <button
-          className="btn-primary"
-          onClick={handleCreatePago}
-          disabled={
-            loading ||
-            (!itemsAPagar.consumos && !itemsAPagar.multas && !itemsAPagar.mora)
-          }
-        >
-          {loading ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin mr-1" />
-              Procesando…
-            </>
-          ) : (
-            <>
-              <CheckCircle className="w-4 h-4 mr-1" />
-              Registrar pago
-            </>
-          )}
-        </button>
-      </div>
-
-    </div>
-  </div>
-)}
-
+      )}
 
       {/* MODAL DE DESGLOSE DE ADEUDOS POR PERIODOS */}
       {showAdeudosModal && selectedFacturaAdeudos && selectedAfiliadoAdeudos && (

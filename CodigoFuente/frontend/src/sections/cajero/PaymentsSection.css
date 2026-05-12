@@ -649,7 +649,24 @@
   }
 }
 
+.detail-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+}
 
+.detail-group label {
+  display: block;
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.factura-section > br {
+  display: none;
+}
 
 /* ========================================
    ESTILOS ESPECÍFICOS PARA PAGOS

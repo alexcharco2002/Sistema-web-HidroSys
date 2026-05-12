@@ -254,18 +254,25 @@ const NotificationDropdown = ({ onViewAll }) => {
     }
   };
 
-  const handleDeleteAllNotifications = async () => {
-    const confirmed = window.confirm('¿Estás seguro de que quieres eliminar todas tus notificaciones? Esta acción no se puede deshacer.');
+  const handleDeleteVisibleNotifications = async () => {
+    const notificationIds = notifications.slice(0, 5).map(notification => notification.id);
+    if (notificationIds.length === 0) return;
+
+    const confirmed = window.confirm('¿Estás seguro de que quieres eliminar las notificaciones mostradas en este panel? Esta acción no se puede deshacer.');
     if (!confirmed) return;
 
     try {
-      const result = await notificationsService.deleteAllNotifications();
+      const result = await notificationsService.deleteNotificationsBulk(notificationIds, false);
       if (result.success) {
-        setNotifications([]);
-        setUnreadCount(0);
+        setNotifications(prev => {
+          const filtered = prev.filter(n => !notificationIds.includes(n.id));
+          const unread = filtered.filter(n => !n.read).length;
+          setUnreadCount(unread);
+          return filtered;
+        });
       }
     } catch (error) {
-      console.error('Error al eliminar todas las notificaciones:', error);
+      console.error('Error al eliminar las notificaciones mostradas:', error);
     }
   };
 
@@ -342,6 +349,7 @@ const NotificationDropdown = ({ onViewAll }) => {
 
   const unreadNotifications = notifications.filter(n => !n.read);
   const hasUnread = unreadNotifications.length > 0;
+  const visibleNotifications = notifications.slice(0, 5);
 
   // ======================================== 
   // RENDER 
@@ -394,8 +402,8 @@ const NotificationDropdown = ({ onViewAll }) => {
               {notifications.length > 0 && (
                 <button
                   className="btn-delete-all-notifications"
-                  onClick={handleDeleteAllNotifications}
-                  title="Eliminar todas"
+                  onClick={handleDeleteVisibleNotifications}
+                  title="Eliminar las mostradas"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -411,13 +419,13 @@ const NotificationDropdown = ({ onViewAll }) => {
                 <div className="spinner"></div>
                 <p>Cargando notificaciones...</p>
               </div>
-            ) : notifications.length === 0 ? (
+            ) : visibleNotifications.length === 0 ? (
               <div className="notification-empty">
                 <Bell className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                 No hay notificaciones
               </div>
             ) : (
-              notifications.slice(0, 5).map((notification) => {
+              visibleNotifications.map((notification) => {
                 const Icon = getNotificationIcon(notification.type);
 
                 return (

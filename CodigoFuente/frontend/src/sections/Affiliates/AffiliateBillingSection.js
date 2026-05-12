@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import affiliateBillingServices from '../../services/affiliateBillingServices';
 import affiliateGeneralServices from '../../services/affiliateGeneralServices';
 import authService from '../../services/authServices';
+import PayPalPaymentReceipt from '../../components/PayPalPaymentReceipt';
 
 // Agregar junto a los demás imports (arriba del todo)
 import jsPDF from 'jspdf'
@@ -72,6 +73,12 @@ const AffiliateBillingSection = () => {
   const [uploadingPago, setUploadingPago] = useState(null);
   const [comprobante, setComprobante] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [paypalConfig, setPaypalConfig] = useState(null);
+  const [paypalLoading, setPaypalLoading] = useState(false);
+  const [paypalMessage, setPaypalMessage] = useState('');
+  const [paypalReceipt, setPaypalReceipt] = useState(null);
+  const [showPaypalModal, setShowPaypalModal] = useState(false);
+  const [paypalFactura, setPaypalFactura] = useState(null);
 
   // ============================================================
   // ESTADÍSTICAS
@@ -145,27 +152,34 @@ const AffiliateBillingSection = () => {
     }
   }, []);
 
+  // para cargar el comprobante desde el modal de PayPal
+  useEffect(() => {
+      if (!permissions.canRead) return;
+      const cargarPaypalConfig = async () => {
+          const result = await affiliateBillingServices.getPaypalConfig();
+          if (result.success) setPaypalConfig(result.data);
+      };
+      cargarPaypalConfig();
+  }, [permissions.canRead]);
+
   // ============================================================
   // INICIALIZACIÓN: carga medidores + periodos en paralelo
   // ============================================================
   useEffect(() => {
-    const inicializar = async () => {
-      if (!permissions.canRead || isInitialized) return;
+      const inicializar = async () => {
+          if (!permissions.canRead || isInitialized) return;
 
-      const [anioReciente] = await Promise.all([
-        fetchPeriodosDisponibles(),
-        fetchMisMedidores(),
-      ]);
+          const [anioReciente] = await Promise.all([
+              fetchPeriodosDisponibles(),
+              fetchMisMedidores(),
+          ]);
 
-      if (anioReciente) {
-        setSelectedAnio(anioReciente);
-      }
-
-      setIsInitialized(true);
-    };
-
-    inicializar();
+          if (anioReciente) setSelectedAnio(anioReciente);
+          setIsInitialized(true);
+      };
+      inicializar();
   }, [permissions.canRead, isInitialized, fetchPeriodosDisponibles, fetchMisMedidores]);
+
 
   // Sincronizar meses cuando cambia año o periodos disponibles
   useEffect(() => {
@@ -176,64 +190,47 @@ const AffiliateBillingSection = () => {
     }
   }, [selectedAnio, periodosDisponibles]);
 
-  // ============================================================
-  // CARGAR FACTURAS — se dispara cuando cambian filtros reales.
-  // NO filtra por medidor en el backend: se hace en frontend
-  // para que las pestañas respondan sin llamadas extra.
-  // ============================================================
+  // cargar facturas cada vez que cambian los periodos seleccionados o el filtro de estado
   useEffect(() => {
-    const cargarFacturas = async () => {
-      if (!permissions.canRead || !isInitialized) return;
-
-      const anioParam = selectedAnio === '' ? null : selectedAnio;
-      const mesParam = selectedMes === '' ? null : selectedMes;
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const result = await affiliateBillingServices.getMisFacturasPorPeriodo(
-          anioParam,
-          mesParam,
-          { estadofactura: filterEstadoFactura }
-        );
-
-        if (result.success) {
-          setFacturas(result.data);
-          calcularEstadisticas(result.data);
-        } else {
-          setError(result.message);
-        }
-      } catch (err) {
-        setError('Error al cargar tus facturas');
-        console.error('❌ Error cargando facturas:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    cargarFacturas();
+      const cargarFacturas = async () => {
+          if (!permissions.canRead || !isInitialized) return;
+          const t0 = performance.now();
+          
+          setLoading(true);
+          setError(null);
+          try {
+              const result = await affiliateBillingServices.getMisFacturasPorPeriodo(
+                  selectedAnio === '' ? null : selectedAnio,
+                  selectedMes === '' ? null : selectedMes,
+                  { estadofactura: filterEstadoFactura }
+              );
+              if (result.success) {
+                  setFacturas(result.data);
+                  calcularEstadisticas(result.data);
+              } else {
+                  setError(result.message);
+              }
+          } catch (err) {
+              console.error(`❌ [FACTURAS] Error a los ${Math.round(performance.now() - t0)}ms`, err);
+              setError('Error al cargar tus facturas');
+          } finally {
+              setLoading(false);
+          }
+      };
+      cargarFacturas();
   }, [permissions.canRead, isInitialized, selectedAnio, selectedMes, filterEstadoFactura]);
 
-  // ============================================================
-  // RECALCULAR ESTADÍSTICAS cuando cambia la pestaña de medidor
-  // ============================================================
-  // useEffect de estadísticas — también directo
-// ← REEMPLAZA el useEffect de estadísticas
-useEffect(() => {
-  if (facturas.length === 0) return;
-  const base = selectedMedidor
-    ? facturas.filter(f => f.usuario_afiliado?.num_medidor === selectedMedidor)
-    : facturas;
-  calcularEstadisticas(base);
-}, [selectedMedidor, facturas]);
 
-  // ============================================================
-  // CONTEO DE FACTURAS POR MEDIDOR (para los badges de pestañas)
-  // Las facturas tienen usuario_afiliado.num_medidor o
-  // usuario_afiliado.medidores[] (array con todos).
-  // Usamos num_medidor del medidor activo para hacer match.
-  // ============================================================
+  // Recalcular estadísticas cuando cambian facturas o medidor activo (aunque el cálculo no dependa del medidor, así se actualizan al cambiar de pestaña)
+  useEffect(() => {
+    if (facturas.length === 0) return;
+    const base = selectedMedidor
+      ? facturas.filter(f => f.usuario_afiliado?.num_medidor === selectedMedidor)
+      : facturas;
+    calcularEstadisticas(base);
+  }, [selectedMedidor, facturas]);
+
+  // función para contar facturas por medidor — se usa para mostrar el conteo en cada pestaña
   const conteoPorMedidor = useMemo(() => {
     const mapa = {};
     facturas.forEach(f => {
@@ -246,122 +243,121 @@ useEffect(() => {
   // ============================================================
   // FILTRADO + ORDENAMIENTO — incluye filtro por medidor activo
   // ============================================================
-const filteredFacturas = useMemo(() => {
-  return facturas
-    .filter(factura => {
-      if (
-        selectedMedidor !== null &&
-        factura.usuario_afiliado?.num_medidor !== selectedMedidor
-      ) {
-        return false;
-      }
+  const filteredFacturas = useMemo(() => {
+    return facturas
+      .filter(factura => {
+        if (
+          selectedMedidor !== null &&
+          factura.usuario_afiliado?.num_medidor !== selectedMedidor
+        ) {
+          return false;
+        }
 
-      const matchesSearch =
-        factura.num_factura?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        factura.id_factura?.toString().includes(searchTerm) ||
-        factura.usuario_afiliado?.usuario_sistema?.nombre_completo
-          ?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        factura.usuario_afiliado?.num_medidor?.includes(searchTerm) ||
-        factura.usuario_afiliado?.sector?.nombre_sector
-          ?.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSearch =
+          factura.num_factura?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          factura.id_factura?.toString().includes(searchTerm) ||
+          factura.usuario_afiliado?.usuario_sistema?.nombre_completo
+            ?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          factura.usuario_afiliado?.num_medidor?.includes(searchTerm) ||
+          factura.usuario_afiliado?.sector?.nombre_sector
+            ?.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const fechaEmision = new Date(factura.fecha_emision);
+        const fechaEmision = new Date(factura.fecha_emision);
 
-      const matchesFechaDesde =
-        !filterFechaDesde || fechaEmision >= new Date(filterFechaDesde);
+        const matchesFechaDesde =
+          !filterFechaDesde || fechaEmision >= new Date(filterFechaDesde);
 
-      const matchesFechaHasta =
-        !filterFechaHasta || fechaEmision <= new Date(filterFechaHasta);
+        const matchesFechaHasta =
+          !filterFechaHasta || fechaEmision <= new Date(filterFechaHasta);
 
-      const matchesMontoMin =
-        !filterMontoMin || factura.total >= parseFloat(filterMontoMin);
+        const matchesMontoMin =
+          !filterMontoMin || factura.total >= parseFloat(filterMontoMin);
 
-      const matchesMontoMax =
-        !filterMontoMax || factura.total <= parseFloat(filterMontoMax);
+        const matchesMontoMax =
+          !filterMontoMax || factura.total <= parseFloat(filterMontoMax);
 
-      return (
-        matchesSearch &&
-        matchesFechaDesde &&
-        matchesFechaHasta &&
-        matchesMontoMin &&
-        matchesMontoMax
-      );
-    })
-    .sort((a, b) => {
-      let comparison = 0;
+        return (
+          matchesSearch &&
+          matchesFechaDesde &&
+          matchesFechaHasta &&
+          matchesMontoMin &&
+          matchesMontoMax
+        );
+      })
+      .sort((a, b) => {
+        let comparison = 0;
 
-      switch (sortBy) {
-        case 'fecha_emision':
-          comparison =
-            new Date(a.fecha_emision) - new Date(b.fecha_emision);
-          break;
+        switch (sortBy) {
+          case 'fecha_emision':
+            comparison =
+              new Date(a.fecha_emision) - new Date(b.fecha_emision);
+            break;
 
-        case 'monto':
-          comparison = a.total - b.total;
-          break;
+          case 'monto':
+            comparison = a.total - b.total;
+            break;
 
-        case 'numero':
-          comparison = (a.num_factura || '').localeCompare(
-            b.num_factura || ''
-          );
-          break;
+          case 'numero':
+            comparison = (a.num_factura || '').localeCompare(
+              b.num_factura || ''
+            );
+            break;
 
-        default:
-          comparison =
-            new Date(a.fecha_emision) - new Date(b.fecha_emision);
-      }
+          default:
+            comparison =
+              new Date(a.fecha_emision) - new Date(b.fecha_emision);
+        }
 
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-}, [
-  facturas,
-  selectedMedidor,
-  searchTerm,
-  filterFechaDesde,
-  filterFechaHasta,
-  filterMontoMin,
-  filterMontoMax,
-  sortBy,
-  sortOrder
-]);
+        return sortOrder === 'asc' ? comparison : -comparison;
+      });
+  }, [
+    facturas,
+    selectedMedidor,
+    searchTerm,
+    filterFechaDesde,
+    filterFechaHasta,
+    filterMontoMin,
+    filterMontoMax,
+    sortBy,
+    sortOrder
+  ]);
 
   // Info del medidor activo
-const medidorActivo = useMemo(
-  () => selectedMedidor
-    ? medidores.find(m => m.num_medidor === selectedMedidor) || null
-    : null,
-  [selectedMedidor, medidores]
-);
+  const medidorActivo = useMemo(
+    () => selectedMedidor
+      ? medidores.find(m => m.num_medidor === selectedMedidor) || null
+      : null,
+    [selectedMedidor, medidores]
+  );
 
   // ============================================================
   // CALCULAR ESTADÍSTICAS
   // ============================================================
-const calcularEstadisticas = (facturasData) => {
-  if (!facturasData || facturasData.length === 0) {
-    setStats({ totalfacturas: 0, totalpagadas: 0, totalpendientes: 0,
-               montototal: 0, montopagado: 0, montopendiente: 0, promediomensual: 0 })
-    return
-  }
-  const total    = facturasData.length
-  // ✅ Maneja ambos formatos (por si acaso)
-  const pagadas  = facturasData.filter(f =>
-    f.esta_totalmente_pagada || f.estatotalmentepagada
-  ).length
-  const pendientes = total - pagadas
-  const montoTotal    = facturasData.reduce((sum, f) => sum + (f.total || 0), 0)
-  const montoPagado   = facturasData.reduce((sum, f) => sum + (f.monto_pagado   || f.montopagado   || 0), 0)
-  const montoPendiente = facturasData.reduce((sum, f) => sum + (f.saldo_pendiente || f.saldopendiente || 0), 0)
+  const calcularEstadisticas = (facturasData) => {
+    if (!facturasData || facturasData.length === 0) {
+      setStats({ totalfacturas: 0, totalpagadas: 0, totalpendientes: 0,
+                montototal: 0, montopagado: 0, montopendiente: 0, promediomensual: 0 })
+      return
+    }
+    const total    = facturasData.length
+    const pagadas  = facturasData.filter(f =>
+      f.esta_totalmente_pagada || f.estatotalmentepagada
+    ).length
+    const pendientes = total - pagadas
+    const montoTotal    = facturasData.reduce((sum, f) => sum + (f.total || 0), 0)
+    const montoPagado   = facturasData.reduce((sum, f) => sum + (f.monto_pagado   || f.montopagado   || 0), 0)
+    const montoPendiente = facturasData.reduce((sum, f) => sum + (f.saldo_pendiente || f.saldopendiente || 0), 0)
 
-  setStats({
-    totalfacturas:  total,
-    totalpagadas:   pagadas,
-    totalpendientes: pendientes,
-    montototal:      montoTotal.toFixed(2),
-    montopagado:     montoPagado.toFixed(2),
-    montopendiente:  montoPendiente.toFixed(2),
-    promediomensual: total > 0 ? (montoTotal / total).toFixed(2) : 0
-  })
-}
+    setStats({
+      totalfacturas:  total,
+      totalpagadas:   pagadas,
+      totalpendientes: pendientes,
+      montototal:      montoTotal.toFixed(2),
+      montopagado:     montoPagado.toFixed(2),
+      montopendiente:  montoPendiente.toFixed(2),
+      promediomensual: total > 0 ? (montoTotal / total).toFixed(2) : 0
+    })
+  }
 
   // ============================================================
   // PERIODOS
@@ -428,14 +424,150 @@ const calcularEstadisticas = (facturasData) => {
   // ============================================================
   // MODAL
   // ============================================================
-  const verDetalle = (factura) => { setSelectedFactura(factura); setShowModal(true); };
+  const verDetalle = async (factura) => {
+    setPaypalMessage('');
+    setSelectedFactura({ ...factura, cargando_detalle: true });
+    setShowModal(true);
+
+    try {
+      const result = await affiliateBillingServices.getDetalleFactura(factura.id_factura);
+      if (result.success) {
+        setSelectedFactura(result.data);
+      } else {
+        setSelectedFactura({ ...factura, cargando_detalle: false });
+      }
+    } catch (error) {
+      setSelectedFactura({ ...factura, cargando_detalle: false });
+    }
+  };
   const closeModal = () => { setShowModal(false); setSelectedFactura(null); };
+  const closePaypalModal = () => {
+    setShowPaypalModal(false);
+    setPaypalFactura(null);
+    setPaypalMessage('');
+    setPaypalLoading(false);
+  };
+  const abrirPagoPaypal = async (factura) => {
+    setPaypalMessage('');
+    setPaypalFactura({ ...factura, cargando_detalle: true });
+    setShowPaypalModal(true);
+
+    try {
+      const result = await affiliateBillingServices.getDetalleFactura(factura.id_factura);
+      if (result.success) {
+        setPaypalFactura(result.data);
+      } else {
+        setPaypalFactura({ ...factura, cargando_detalle: false });
+        setPaypalMessage(result.message || 'No se pudo cargar la factura');
+      }
+    } catch (error) {
+      setPaypalFactura({ ...factura, cargando_detalle: false });
+      setPaypalMessage('No se pudo cargar la factura');
+    }
+  };
   const closeUploadModal = () => {
     setShowUploadModal(false);
     setUploadingPago(null);
     setComprobante(null);
     setUploadProgress(0);
   };
+
+  const cargarPaypalSdk = useCallback((clientId, currency = 'USD') => {
+    return new Promise((resolve, reject) => {
+      if (window.paypal) {
+        resolve(window.paypal);
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=${currency}&intent=capture`;
+      script.async = true;
+      script.onload = () => resolve(window.paypal);
+      script.onerror = () => reject(new Error('No se pudo cargar PayPal'));
+      document.body.appendChild(script);
+    });
+  }, []);
+
+  useEffect(() => {
+    const saldoPendiente = Number(paypalFactura?.saldo_pendiente || 0);
+    if (!showPaypalModal || !paypalFactura || paypalFactura.cargando_detalle || saldoPendiente <= 0) return;
+    if (!paypalConfig?.enabled || !paypalConfig?.client_id) return;
+
+    let cancelado = false;
+    const containerId = 'paypal-button-container-afiliado';
+
+    const renderPaypal = async () => {
+      try {
+        const paypal = await cargarPaypalSdk(paypalConfig.client_id, paypalConfig.currency || 'USD');
+        const container = document.getElementById(containerId);
+        if (!container || cancelado) return;
+        container.innerHTML = '';
+
+        paypal.Buttons({
+          style: {
+            layout: 'vertical',
+            color: 'gold',
+            shape: 'rect',
+            label: 'pay'
+          },
+          createOrder: async () => {
+            setPaypalLoading(true);
+            setPaypalMessage('');
+            const result = await affiliateBillingServices.crearOrdenPaypal(paypalFactura.id_factura);
+            if (!result.success) {
+              setPaypalLoading(false);
+              setPaypalMessage(result.message || 'No se pudo crear la orden de PayPal');
+              throw new Error(result.message || 'No se pudo crear la orden de PayPal');
+            }
+            return result.data.order_id;
+          },
+          onApprove: async (data) => {
+            setPaypalLoading(true);
+            setPaypalMessage('Confirmando pago con PayPal...');
+            const result = await affiliateBillingServices.capturarOrdenPaypal(data.orderID);
+            setPaypalLoading(false);
+
+            if (!result.success) {
+              setPaypalMessage(result.message || 'No se pudo registrar el pago');
+              return;
+            }
+
+            setPaypalMessage('Pago registrado correctamente.');
+            setPaypalReceipt({
+              payment: result.data,
+              factura: paypalFactura
+            });
+            const detalle = await affiliateBillingServices.getDetalleFactura(paypalFactura.id_factura);
+            if (detalle.success) {
+              setPaypalFactura(detalle.data);
+              if (selectedFactura?.id_factura === detalle.data.id_factura) {
+                setSelectedFactura(detalle.data);
+              }
+            }
+            handleRecargar();
+          },
+          onCancel: () => {
+            setPaypalLoading(false);
+            setPaypalMessage('Pago cancelado.');
+          },
+          onError: (err) => {
+            console.error('PayPal error:', err);
+            setPaypalLoading(false);
+            setPaypalMessage('No se pudo procesar el pago con PayPal.');
+          }
+        }).render(`#${containerId}`);
+      } catch (error) {
+        setPaypalMessage(error.message || 'No se pudo cargar PayPal');
+      }
+    };
+
+    renderPaypal();
+
+    return () => {
+      cancelado = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPaypalModal, paypalFactura, paypalConfig, cargarPaypalSdk]);
 
   // ============================================================
   // COMPROBANTE
@@ -1213,6 +1345,8 @@ const calcularEstadisticas = (facturasData) => {
       const ultimoPago = pagosRegistrados[0] || null;
       const pagosConComprobantes = pagosRegistrados.filter(p => p.tiene_comprobante);
       const estaPagada = factura.estado_factura === 'pagada';
+      const puedePagarPaypal = Number(factura.saldo_pendiente || 0) > 0 &&
+        ['pendiente', 'vencida', 'parcial'].includes((factura.estado_factura || '').toLowerCase());
 
       return (
         <div key={factura.id_factura} className="factura-card-item">
@@ -1311,11 +1445,21 @@ const calcularEstadisticas = (facturasData) => {
 
           {/* Col 7: Ver */}
           <div className="fc-accion">
+            {puedePagarPaypal && (
+              <button
+                className="factura-btn-ver factura-btn-paypal"
+                title="Pagar con PayPal"
+                onClick={(e) => { e.stopPropagation(); abrirPagoPaypal(factura); }}
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
               className="factura-btn-ver"
               onClick={(e) => { e.stopPropagation(); verDetalle(factura); }}
+              title="Ver detalle"
             >
-              <Eye className="w-3.5 h-3.5" /><span>Ver</span>
+              <Eye className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -1329,7 +1473,7 @@ const calcularEstadisticas = (facturasData) => {
       {/* ==================== MODAL DE DETALLE ==================== */}
       {showModal && selectedFactura && (
         <div className="modal-overlay">
-          <div className="modal modal-factura">
+          <div className="modal fp-detalles-modal">
             <div className="modal-header">
               <h3>
                 <FileText className="w-5 h-5 inline mr-2" />
@@ -1340,7 +1484,7 @@ const calcularEstadisticas = (facturasData) => {
               </button>
             </div>
 
-            <div className="modal-body">
+            <div className="modal-body fp-detalles-body">
               {/* Info factura */}
               <div className="factura-section">
                 <h4 className="section-title"><FileText className="w-4 h-4" />Información de la Factura</h4>
@@ -1453,19 +1597,15 @@ const calcularEstadisticas = (facturasData) => {
                     <label>Valor Exceso</label>
                     <p>{formatCurrency(selectedFactura.valor_exceso)}</p>
                   </div>
-                </div>
-                <br />
-                <h4 className="section-title">
-                  <FileText className="w-4 h-4" />Conceptos y pagos asociados
-                </h4>
-                <br />
+                </div>                
               </div>
 
+              <div className="fp-detalles-conceptos">
               {/* Conceptos */}
               {selectedFactura.detalles && selectedFactura.detalles.length > 0 && (
                 <div className="conceptos-section">
                   <h4 className="conceptos-section-title">
-                    Conceptos de Facturación ({selectedFactura.detalles.length})
+                    <FileText className="w-4 h-4" />Conceptos de Facturación ({selectedFactura.detalles.length})
                   </h4>
                   <div className="conceptos-factura-lista">
                     {selectedFactura.detalles.map((detalle, index) => {
@@ -1648,10 +1788,86 @@ const calcularEstadisticas = (facturasData) => {
                   </div>
                 </div>
               )}
+
+              {Number(selectedFactura.saldo_pendiente || 0) > 0 && (
+                <div className="factura-section fp-detalles-pay-action">
+                  <div>
+                    <h4 className="section-title">
+                      <CreditCard className="w-4 h-4" />Pago en línea
+                    </h4>
+                    <p>Saldo pendiente: <strong>{formatCurrency(selectedFactura.saldo_pendiente)}</strong></p>
+                  </div>
+                    
+                  <button className="btn-primary" onClick={() => abrirPagoPaypal(selectedFactura)}>
+                    <CreditCard className="w-4 h-4 mr-2" />Pagar con PayPal
+                  </button>
+                </div>
+              )}
+
+              </div>
             </div>
 
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={closeModal}>Cerrar</button>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL PAGO PAYPAL ==================== */}
+      {showPaypalModal && paypalFactura && (
+        <div className="modal-overlay">
+          <div className="modal fp-paypal-modal">
+            <div className="modal-header">
+              <h3>
+                <CreditCard className="w-5 h-5 inline mr-2" />
+                Pagar con PayPal
+              </h3>
+              <button className="modal-close" onClick={closePaypalModal} title="Cerrar">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="modal-body fp-paypal-body">
+              <div className="fp-paypal-summary">
+                <div>
+                  <span>Factura: </span>
+                  <strong>{paypalFactura.num_factura || `#${paypalFactura.id_factura}`}</strong>
+                </div>
+                <div>
+                  <span>Periodo: </span>
+                  <strong>{formatPeriodoDisplay(paypalFactura.periodo)}</strong>
+                </div>
+                <div>
+                  <span>Saldo pendiente: </span>
+                  <strong>{formatCurrency(paypalFactura.saldo_pendiente)}</strong>
+                </div>
+              </div>
+
+              {paypalFactura.cargando_detalle ? (
+                <p className="paypal-status">
+                  <RefreshCw className="w-4 h-4 spin-animation" />Cargando factura...
+                </p>
+              ) : paypalConfig?.enabled ? (
+                <>
+                  <div id="paypal-button-container-afiliado" className="paypal-button-container" />
+                  {paypalLoading && (
+                    <p className="paypal-status">
+                      <RefreshCw className="w-4 h-4 spin-animation" />Procesando pago...
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="alert alert-warning">
+                  <AlertCircle className="w-4 h-4" />
+                  <p className="text-sm">PayPal todavía no está configurado en el servidor.</p>
+                </div>
+              )}
+
+              {paypalMessage && <p className="paypal-message">{paypalMessage}</p>}
+            </div>
+
+            <div className="modal-footer fp-paypal-footer">
+              <button className="btn-secondary" onClick={closePaypalModal}>
+                <X className="w-4 h-4" />Cerrar
+              </button>
             </div>
           </div>
         </div>
@@ -1707,6 +1923,14 @@ const calcularEstadisticas = (facturasData) => {
             </div>
           </div>
         </div>
+      )}
+
+      {paypalReceipt && (
+        <PayPalPaymentReceipt
+          payment={paypalReceipt.payment}
+          factura={paypalReceipt.factura}
+          onClose={() => setPaypalReceipt(null)}
+        />
       )}
 
     </div>

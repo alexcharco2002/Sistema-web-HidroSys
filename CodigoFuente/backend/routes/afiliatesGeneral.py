@@ -701,89 +701,97 @@ def obtener_mis_medidores(
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
-    """
-    Obtiene todos los medidores asignados al usuario logueado.
-    Un afiliado puede tener múltiples medidores.
-    """
-    current_user = get_current_user(payload, db)
+    # Una sola query con todos los JOINs necesarios — sin lazy-loads
+    from sqlalchemy import func as sqlfunc
+    
+    row = (
+        db.query(
+            UsuarioAfiliado.id_usuario_afi,
+            UsuarioAfiliado.cod_usuario_afi,
+            UsuarioAfiliado.fecha_afiliacion,
+            UsuarioAfiliado.activo,
+            UsuarioSistema.id_usuario_sistema,
+            UsuarioSistema.nombres,
+            UsuarioSistema.apellidos,
+            UsuarioSistema.cedula,
+            UsuarioSistema.email,
+            UsuarioSistema.telefono,
+            UsuarioSistema.direccion,
+            Sector.id_sector.label("sector_afi_id"),
+            Sector.nombre_sector.label("sector_afi_nombre"),
+        )
+        .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
+        .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
+        .filter(
+            UsuarioSistema.usuario == payload["sub"],
+            UsuarioAfiliado.activo == True
+        )
+        .first()
+    )
 
-    usuario_afiliado = db.query(UsuarioAfiliado).filter(
-        UsuarioAfiliado.id_usuario_sistema == current_user.id_usuario_sistema,
-        UsuarioAfiliado.activo == True
-    ).first()
-
-    if not usuario_afiliado:
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No tienes un perfil de afiliado registrado"
         )
 
-    # Usar directamente la relación ORM (1:N) del modelo
-    medidores = db.query(Medidor).filter(
-        Medidor.id_usuario_afi == usuario_afiliado.id_usuario_afi
-    ).all()
+    # Medidores con su sector en UNA sola query
+    medidores_rows = (
+        db.query(
+            Medidor.id_medidor,
+            Medidor.num_medidor,
+            Medidor.activo,
+            Medidor.latitud,
+            Medidor.longitud,
+            Medidor.altitud,
+            Sector.id_sector.label("sector_id"),
+            Sector.nombre_sector.label("sector_nombre"),
+        )
+        .outerjoin(Sector, Medidor.id_sector == Sector.id_sector)
+        .filter(Medidor.id_usuario_afi == row.id_usuario_afi)
+        .all()
+    )
 
-    medidores_list = []
-    for medidor in medidores:
-        sector_info = None
-        if medidor.sector:
-            sector_info = {
-                "id_sector": medidor.sector.id_sector,
-                "nombre_sector": medidor.sector.nombre_sector,
-                "descripcion": getattr(medidor.sector, 'descripcion', None),
-                "activo": getattr(medidor.sector, 'activo', True)
-            }
-
-        medidores_list.append({
-            "id_medidor": medidor.id_medidor,
-            "num_medidor": medidor.num_medidor,
-            "activo": medidor.activo,
-            "latitud": float(medidor.latitud) if medidor.latitud else None,
-            "longitud": float(medidor.longitud) if medidor.longitud else None,
-            "altitud": float(medidor.altitud) if medidor.altitud else None,
-            "sector": sector_info
-        })
-
-    # Info del usuario sistema
-    usuario_sistema_info = None
-    if usuario_afiliado.usuario_sistema:
-        us = usuario_afiliado.usuario_sistema
-        usuario_sistema_info = {
-            "id_usuario_sistema": us.id_usuario_sistema,
-            "nombres": us.nombres,
-            "apellidos": us.apellidos,
-            "cedula": us.cedula,
-            "email": us.email,
-            "telefono": us.telefono,
-            "direccion": us.direccion
+    medidores_list = [
+        {
+            "id_medidor": m.id_medidor,
+            "num_medidor": m.num_medidor,
+            "activo": m.activo,
+            "latitud": float(m.latitud) if m.latitud else None,
+            "longitud": float(m.longitud) if m.longitud else None,
+            "altitud": float(m.altitud) if m.altitud else None,
+            "sector": {
+                "id_sector": m.sector_id,
+                "nombre_sector": m.sector_nombre,
+                "activo": True
+            } if m.sector_id else None
         }
-
-    # Sector del afiliado
-    sector_afiliado_info = None
-    if usuario_afiliado.sector:
-        sector_afiliado_info = {
-            "id_sector": usuario_afiliado.sector.id_sector,
-            "nombre_sector": usuario_afiliado.sector.nombre_sector
-        }
+        for m in medidores_rows
+    ]
 
     return {
         "medidores": medidores_list,
         "total_medidores": len(medidores_list),
         "afiliado": {
-            "id_usuario_afi": usuario_afiliado.id_usuario_afi,
-            "cod_usuario_afi": usuario_afiliado.cod_usuario_afi,
-            "fecha_afiliacion": (
-                usuario_afiliado.fecha_afiliacion.strftime("%Y-%m-%d")
-                if usuario_afiliado.fecha_afiliacion
-                else None
-            ),
-            "activo": usuario_afiliado.activo,
-            # ✅ ELIMINADO: "num_medidor" no existe en el modelo
-            "sector": sector_afiliado_info,
-            "usuario_sistema": usuario_sistema_info
+            "id_usuario_afi": row.id_usuario_afi,
+            "cod_usuario_afi": row.cod_usuario_afi,
+            "fecha_afiliacion": row.fecha_afiliacion.strftime("%Y-%m-%d") if row.fecha_afiliacion else None,
+            "activo": row.activo,
+            "sector": {
+                "id_sector": row.sector_afi_id,
+                "nombre_sector": row.sector_afi_nombre
+            } if row.sector_afi_id else None,
+            "usuario_sistema": {
+                "id_usuario_sistema": row.id_usuario_sistema,
+                "nombres": row.nombres,
+                "apellidos": row.apellidos,
+                "cedula": row.cedula,
+                "email": row.email,
+                "telefono": row.telefono,
+                "direccion": row.direccion
+            }
         }
     }
-
 
 
 def obtener_nombre_mes(mes: int) -> str:

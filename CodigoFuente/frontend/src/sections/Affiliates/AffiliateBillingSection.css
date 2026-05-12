@@ -38,6 +38,55 @@
   margin-bottom: 0.5rem;
 }
 
+/* Contenedor principal del bloque de pago */
+.fp-detalles-pay-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 20px;
+  margin-top: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Contenedor del texto */
+.fp-detalles-pay-action > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Texto saldo pendiente */
+.fp-detalles-pay-action p {
+  margin: 0;
+  font-size: 14px;
+  color: #475569;
+}
+
+/* Valor del saldo */
+.fp-detalles-pay-action p strong {
+  color: #dc2626;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* Responsive para pantallas pequeñas */
+@media (max-width: 768px) {
+  .fp-detalles-pay-action {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .fp-detalles-pay-action button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+
 .fcol-h {
   display: flex;
   align-items: center;

@@ -11,7 +11,8 @@
           "min-width: fit-content",
           "min-height: auto",
           "scrollbar-width",
-          "scrollbar-width: none"
+          "scrollbar-width: none",
+          "overscroll-behavior-x"
         ]
       }
     ]

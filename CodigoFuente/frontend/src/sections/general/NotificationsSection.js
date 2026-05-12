@@ -34,6 +34,7 @@ const NotificationsSection = () => {
   const [filterType, setFilterType] = useState('all');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [selectionMode, setSelectionMode] = useState(false);
   const [selectedNotificationIds, setSelectedNotificationIds] = useState([]);
 
   // Modal
@@ -495,6 +496,18 @@ const handleSubmit = async (e) => {
     });
   };
 
+  const handleToggleSelectionMode = () => {
+    setSelectionMode(prev => {
+      if (prev) {
+        setSelectedNotificationIds([]);
+      }
+
+      return !prev;
+    });
+    setError('');
+    setSuccessMessage('');
+  };
+
   const handleBulkDelete = async (deleteAll = false) => {
     if (!permissions.canDelete) {
       setError('No tienes permisos para eliminar notificaciones');
@@ -516,6 +529,7 @@ const handleSubmit = async (e) => {
     const result = await notificationsService.deleteNotificationsBulk(idsToDelete, deleteAll);
     if (result.success) {
       setSelectedNotificationIds([]);
+      setSelectionMode(false);
       setSuccessMessage(result.message);
       loadNotifications();
       setTimeout(() => setSuccessMessage(''), 2500);
@@ -692,9 +706,16 @@ return (
           </button>
         )}
         {permissions.canDelete && notifications.length > 0 && (
-          <button className="btn-danger" onClick={() => handleBulkDelete(true)}>
-            <Trash2 className="w-4 h-4 mr-2" />
-            Borrar todas
+          <button
+            className={selectionMode ? 'btn-secondary' : 'btn-danger'}
+            onClick={handleToggleSelectionMode}
+          >
+            {selectionMode ? (
+              <X className="w-4 h-4 mr-2" />
+            ) : (
+              <Trash2 className="w-4 h-4 mr-2" />
+            )}
+            {selectionMode ? 'Cancelar selección' : 'Borrar notificaciones'}
           </button>
         )}
         
@@ -818,7 +839,7 @@ return (
       </div>
     </div>
 
-    {permissions.canDelete && filteredNotifications.length > 0 && (
+    {selectionMode && permissions.canDelete && filteredNotifications.length > 0 && (
       <div className="notifications-bulk-bar">
         <label className="notifications-select-all">
           <input
@@ -872,9 +893,11 @@ return (
           return (
             <div 
               key={notification.id}
-              className={`notification-card ${!notification.read ? 'notification-unread' : 'notification-read'}`}
+              className={`notification-card ${!notification.read ? 'notification-unread' : 'notification-read'} ${
+                selectedNotificationIds.includes(notification.id) ? 'notification-selected' : ''
+              }`}
             >
-              {permissions.canDelete && (
+              {selectionMode && permissions.canDelete && (
                 <label className="notification-select">
                   <input
                     type="checkbox"

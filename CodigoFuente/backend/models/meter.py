@@ -23,18 +23,18 @@ class Medidor(Base):
     usuario_afiliado = relationship(
         "UsuarioAfiliado",
         back_populates="medidores",
-        lazy="joined"
+        lazy="select"
     )
     sector = relationship(
         "Sector",
         backref="medidores",
-        lazy="joined"
+        lazy="select"
     )
     lecturas = relationship(
         "Lectura",
         back_populates="medidor",
         cascade="all, delete-orphan",
-        lazy="selectin"
+        lazy="select"
     )
 
     def __repr__(self):

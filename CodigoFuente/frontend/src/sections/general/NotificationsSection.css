@@ -120,6 +120,11 @@
   opacity: 0.85;
 }
 
+.notification-selected {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
 /* Tipos de notificación */
 .notification-info {
   border-left: 4px solid #3b82f6;

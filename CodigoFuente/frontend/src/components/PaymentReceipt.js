@@ -1776,6 +1776,14 @@ export const generateMultiplePaymentPDF = async (pagoMultiple, facturas, afiliad
     return String(value);
   };
 
+  const getNumber = (...values) => {
+    for (const value of values) {
+      const parsed = parseFloat(value);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    return 0;
+  };
+
   try {
     const doc = new jsPDF({
       orientation: 'portrait',
@@ -1925,16 +1933,34 @@ export const generateMultiplePaymentPDF = async (pagoMultiple, facturas, afiliad
         factura.fecha_emision ?? factura.fechaemision ?? null;
       const consumoM3 =
         factura.consumo_m3 ?? factura.consumom3 ?? factura.consumo ?? 0;
-      const totalFactura = parseFloat(
-        factura.totalconmora ??
-        factura.total_con_mora ??
-        factura.saldo_pendiente ??
-        factura.saldopendiente ??
-        factura.total ??
-        0
+      const totalFactura = getNumber(
+        factura.totalconmora,
+        factura.total_con_mora,
+        factura.saldo_pendiente,
+        factura.saldopendiente,
+        factura.totalfactura,
+        factura.total_factura,
+        factura.total
       );
-      const moraFactura = parseFloat(
-        factura.mora_monto ?? factura.moramonto ?? factura.mora ?? 0
+      const saldoSinMora = getNumber(
+        factura.saldopendiente,
+        factura.saldo_pendiente,
+        factura.totalfactura,
+        factura.total_factura,
+        factura.total
+      );
+      const moraExplicita = getNumber(
+        factura.mora?.monto,
+        factura.mora_monto,
+        factura.moramonto,
+        factura.monto_mora,
+        factura.mora_calculada,
+        factura.recargo_mora,
+        factura.interes_mora,
+        factura.mora
+      );
+      const moraFactura = moraExplicita || (
+        totalFactura > saldoSinMora ? totalFactura - saldoSinMora : 0
       );
 
       totalGeneral += totalFactura;
@@ -2113,7 +2139,7 @@ export const printMultipleThermalTicket = (pagoMultiple, facturas, afiliado) => 
   const formatCurrency = (v) => new Intl.NumberFormat('es-EC', { 
     style: 'currency', 
     currency: 'USD' 
-  }).format(v || 0);
+  }).format(parseFloat(v) || 0);
   
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -2127,6 +2153,14 @@ export const printMultipleThermalTicket = (pagoMultiple, facturas, afiliado) => 
     });
   };
 
+  const getNumber = (...values) => {
+    for (const value of values) {
+      const parsed = parseFloat(value);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    return 0;
+  };
+
   // ✅ CALCULAR TOTALES GENERALES Y POR CONCEPTO
 
   let totalConsumo = 0;
@@ -2137,15 +2171,41 @@ export const printMultipleThermalTicket = (pagoMultiple, facturas, afiliado) => 
 
   // Procesar cada factura para extraer detalles
   const facturasDetalladas = facturas.map((f) => {
-    const totalFactura = parseFloat(f.saldo_pendiente || f.total_con_mora || 0);
-    const moraFactura = parseFloat(f.mora_monto || f.mora?.monto || 0);
-    const consumoM3 = parseFloat(f.consumo_m3 || 0);
+    const totalFactura = getNumber(
+      f.totalconmora,
+      f.total_con_mora,
+      f.saldopendiente,
+      f.saldo_pendiente,
+      f.totalfactura,
+      f.total
+    );
+    const saldoSinMora = getNumber(
+      f.saldopendiente,
+      f.saldo_pendiente,
+      f.totalfactura,
+      f.total_factura,
+      f.total
+    );
+    const moraExplicita = getNumber(
+      f.mora?.monto,
+      f.mora_monto,
+      f.moramonto,
+      f.monto_mora,
+      f.mora_calculada,
+      f.recargo_mora,
+      f.interes_mora,
+      f.mora
+    );
+    const moraFactura = moraExplicita || (
+      totalFactura > saldoSinMora ? totalFactura - saldoSinMora : 0
+    );
+    const consumoM3 = getNumber(f.consumo_m3, f.consumom3);
     
     // Extraer desglose de conceptos
     const desglose = f.desglose || {};
-    const consumoTotal = desglose.consumo?.total || 0;
-    const serviciosTotal = desglose.servicios?.total || 0;
-    const multasTotal = desglose.multas?.total || 0;
+    const consumoTotal = getNumber(desglose.consumo?.total, f.subtotal_consumo);
+    const serviciosTotal = getNumber(desglose.servicios?.total, f.subtotal_servicios);
+    const multasTotal = getNumber(desglose.multas?.total, f.subtotal_multas);
     
     // Acumular totales generales
 
@@ -2157,6 +2217,8 @@ export const printMultipleThermalTicket = (pagoMultiple, facturas, afiliado) => 
     
     return {
       ...f,
+      numFactura: f.num_factura ?? f.numfactura ?? f.numero_factura ?? 'S/N',
+      periodoFactura: f.periodo ?? f.periodo_factura ?? 'S/P',
       totalFactura,
       moraFactura,
       consumoM3,
@@ -2291,7 +2353,7 @@ export const printMultipleThermalTicket = (pagoMultiple, facturas, afiliado) => 
         
         ${totalServicios > 0 ? `
         <div class="concepto-row">
-          <span class="concepto-label"> Servicios:</span>
+          <span class="concepto-label">Servicios:</span>
           <span class="bold">${formatCurrency(totalServicios)}</span>
         </div>
         ` : ''}
@@ -2305,7 +2367,7 @@ export const printMultipleThermalTicket = (pagoMultiple, facturas, afiliado) => 
         
         ${totalMora > 0 ? `
         <div class="concepto-row">
-          <span class="concepto-label"> Mora:</span>
+          <span class="concepto-label">Mora:</span>
           <span class="bold">${formatCurrency(totalMora)}</span>
         </div>
         ` : ''}
@@ -2319,40 +2381,40 @@ export const printMultipleThermalTicket = (pagoMultiple, facturas, afiliado) => 
         <div class="factura-item">
           <!-- Header de factura -->
           <div class="row bold">
-            <span>${idx + 1}. ${f.num_factura}</span>
+            <span>${idx + 1}. ${f.numFactura}</span>
             <span>${formatCurrency(f.totalFactura)}</span>
           </div>
           
           <div class="concepto-row small">
-            <span>${f.periodo}</span>
+            <span>${f.periodoFactura}</span>
             ${f.consumoM3 > 0 ? `<span>${f.consumoM3} m³</span>` : ''}
           </div>
           
           <!-- Desglose de conceptos -->
           ${f.consumoTotal > 0 ? `
           <div class="concepto-row">
-            <span class="concepto-label">💧 Consumo:</span>
+            <span class="concepto-label">Consumo:</span>
             <span>${formatCurrency(f.consumoTotal)}</span>
           </div>
           ` : ''}
           
           ${f.serviciosTotal > 0 ? `
           <div class="concepto-row">
-            <span class="concepto-label">🔧 Servicios:</span>
+            <span class="concepto-label">Servicios:</span>
             <span>${formatCurrency(f.serviciosTotal)}</span>
           </div>
           ` : ''}
           
           ${f.multasTotal > 0 ? `
           <div class="concepto-row">
-            <span class="concepto-label">🚨 Multas:</span>
+            <span class="concepto-label">Multas:</span>
             <span>${formatCurrency(f.multasTotal)}</span>
           </div>
           ` : ''}
           
           ${f.moraFactura > 0 ? `
           <div class="concepto-row">
-            <span class="concepto-label">⏰ Mora:</span>
+            <span class="concepto-label">Mora:</span>
             <span>${formatCurrency(f.moraFactura)}</span>
           </div>
           ` : ''}

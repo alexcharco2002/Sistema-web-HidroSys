@@ -1,0 +1,11 @@
+.excel-preview-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  /* overscroll-behavior-x: contain; */ /* Removido por incompatibilidad en Safari iOS < 16 */
+  scroll-snap-type: x proximity;
+  padding: 6px 2px 10px;
+  margin-top: 10px;
+  margin-bottom: 8px;
+  scrollbar-width: thin;
+}

@@ -1,9 +1,9 @@
 // src/components/MultiplePaymentReceipt.js
 import React, { useState, useEffect } from 'react';
 import {
-  X, Printer, Download, CheckCircle, AlertCircle,
-  User, FileText, DollarSign, Droplets, Wrench,
-  Clock, CreditCard
+  X, CheckCircle, AlertCircle,
+  User, FileText, DollarSign,
+  CreditCard
 } from 'lucide-react';
 import './PaymentReceipt.css';
 import { generateMultiplePaymentPDF, printMultipleThermalTicket } from './PaymentReceipt';
@@ -47,7 +47,7 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
     const codigoAfiliado   = afiliado?.cod_usuario_afi ?? afiliado?.codUsuarioAfi ?? 'N/A';
     const numMedidor       = afiliado?.num_medidor ?? afiliado?.numMedidor ?? 'N/A';
     const nombreSector     = afiliado?.nombre_sector ?? afiliado?.sector?.nombre_sector ?? 'N/A';
-    const nombreCajero     = pagoMultiple?.cajero ?? 'N/A';
+    const nombreCajero     = pagoMultiple?.cajero ?? pagoMultiple?.nombre_cajero ?? 'N/A';
 
     // Normalizar facturas y calcular totales
     let totalConsumo = 0, totalServicios = 0, totalMultas = 0;
@@ -57,15 +57,37 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
       const numFactura   = f.num_factura ?? f.numfactura ?? f.numero_factura ?? 'S/N';
       const periodo      = f.periodo ?? f.periodo_factura ?? 'S/P';
       const fechaEmision = f.fecha_emision ?? f.fechaemision ?? '';
-      const estadoFact   = f.estado_factura ?? f.estadofactura ?? 'pendiente';
+      const fechaVencimiento = f.fecha_vencimiento ?? f.fechavencimiento ?? '';
+      const estadoFact   = f.estado_factura ?? f.estadofactura ?? 'pagada';
       const consumom3    = parseFloat(f.consumo_m3 ?? f.consumom3 ?? 0);
 
-      // Mora — buscar en todas las posibles ubicaciones
-      const moraFactura = parseFloat(
-        f.mora?.monto ?? f.mora_monto ?? f.moramonto ?? f.mora ?? 0
+      const totalConMora = parseFloat(
+        f.totalconmora ?? f.total_con_mora ?? f.saldo_pendiente ?? f.saldopendiente ?? f.total ?? 0
       );
+      const saldoSinMora = parseFloat(
+        f.saldopendiente ?? f.saldo_pendiente ?? f.totalfactura ?? f.total_factura ?? f.total ?? 0
+      );
+
+      // Mora: usar campo explícito; si no viene, calcularla por diferencia.
+      const moraExplicita = parseFloat(
+        f.mora?.monto ??
+        f.mora_monto ??
+        f.moramonto ??
+        f.monto_mora ??
+        f.mora_calculada ??
+        f.recargo_mora ??
+        f.interes_mora ??
+        f.mora ??
+        NaN
+      );
+      const moraPorDiferencia = totalConMora > saldoSinMora
+        ? totalConMora - saldoSinMora
+        : 0;
+      const moraFactura = Number.isNaN(moraExplicita)
+        ? moraPorDiferencia
+        : moraExplicita;
       const diasMora = parseInt(
-        f.mora?.dias_mora_efectivos ?? f.mora?.diasmoraefectivos ?? 0
+        f.mora?.dias_mora_efectivos ?? f.mora?.diasmoraefectivos ?? f.dias_transcurridos ?? 0
       );
 
       // Desglose desde f.desglose (estructura del modal anterior)
@@ -75,14 +97,10 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
       const multasVal   = parseFloat(desglose.multas?.total   ?? f.subtotal_multas   ?? 0);
       const cantMultas  = parseInt(desglose.multas?.cantidad ?? f.cantidad_multas ?? 0);
 
-      const subtotal   = parseFloat(f.subtotal ?? 0);
+      const subtotal   = parseFloat(f.subtotal ?? (consumoVal + servicioVal + multasVal) ?? 0);
       const ivaPorc    = parseFloat(f.iva?.porcentaje ?? f.iva_porcentaje ?? 0);
       const ivaMonto   = parseFloat(f.impuesto ?? f.iva?.monto ?? 0);
       const descuento  = parseFloat(f.descuento ?? 0);
-
-      const totalConMora = parseFloat(
-        f.totalconmora ?? f.total_con_mora ?? f.saldo_pendiente ?? f.saldopendiente ?? f.total ?? 0
-      );
 
       totalConsumo        += consumoVal;
       totalServicios      += servicioVal;
@@ -97,6 +115,7 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
         numFactura,
         periodo,
         fechaEmision,
+        fechaVencimiento,
         estadoFact,
         consumom3,
         moraFactura,
@@ -222,8 +241,7 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
         {/* HEADER */}
         <div className="modal-header">
           <h3>
-            <CheckCircle className="w-5 h-5 inline mr-2" style={{ color: '#10b981' }} />
-            Comprobante de Pago Múltiple
+            Pago múltiple registrado
           </h3>
           <button className="modal-close" onClick={onClose}><X className="w-5 h-5" /></button>
         </div>
@@ -231,37 +249,39 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
         <div className="modal-body receipt-body">
 
           {/* ── CABECERA EMPRESA ── */}
-          <div className="receipt-header" style={{ textAlign: 'center', paddingBottom: '16px', borderBottom: '2px solid #e5e7eb', marginBottom: '20px' }}>
-            <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#1e293b', margin: '0 0 2px' }}>
+          <div className="receipt-header" style={{ textAlign: 'center', paddingBottom: '18px', borderBottom: '2px solid #e5e7eb', marginBottom: '20px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: '0 0 2px' }}>
               JUNTA DE AGUA POTABLE
             </h2>
-            <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#2563eb', margin: '0 0 6px' }}>SANJAPAMBA</h3>
-            <p style={{ fontSize: '12px', color: '#6b7280', margin: '2px 0' }}>Sanjapamba, Chimborazo, Ecuador</p>
-            <p style={{ fontSize: '12px', color: '#6b7280', margin: '2px 0' }}>Teléfono: 593 3-XXX-XXXX</p>
+            <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1d4ed8', margin: '0 0 6px' }}>SANJAPAMBA</h3>
+            <div style={{ display: 'grid', gap: '3px', marginTop: '8px', color: '#334155', fontSize: '12px', lineHeight: '1.35' }}>
+              <span>Sanjapamba, Chimborazo, Ecuador</span>
+              <span>Teléfono: 593 3-XXX-XXXX</span>
+            </div>
 
             {/* Badge comprobante */}
             <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '8px',
-              marginTop: '12px', padding: '8px 20px',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              marginTop: '14px', padding: '8px 18px',
               background: 'linear-gradient(135deg, #10b981, #059669)',
               borderRadius: '99px', color: 'white',
             }}>
-              <CheckCircle style={{ width: '16px', height: '16px' }} />
               <span style={{ fontWeight: '700', fontSize: '13px', letterSpacing: '0.5px' }}>
                 COMPROBANTE DE PAGO MÚLTIPLE
               </span>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginTop: '10px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '12px', color: '#64748b' }}>
-                <strong>No.</strong> {String(pagoMultiple.id_pago).padStart(6, '0')}
-              </span>
-              <span style={{ fontSize: '12px', color: '#64748b' }}>
-                <strong>Facturas:</strong> {datos.cantidadFacturas}
-              </span>
-              <span style={{ fontSize: '12px', color: '#64748b' }}>
-                <strong>Fecha:</strong> {formatDate(pagoMultiple.fecha_pago)}
-              </span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginTop: '12px' }}>
+              {[
+                ['No.', String(pagoMultiple.id_pago).padStart(6, '0')],
+                ['Facturas', datos.cantidadFacturas],
+                ['Fecha', formatDate(pagoMultiple.fecha_pago)],
+              ].map(([label, value]) => (
+                <div key={label} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px', minWidth: 0 }}>
+                  <div style={{ fontSize: '10px', color: '#475569', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+                  <div style={{ fontSize: '12px', color: '#0f172a', fontWeight: '700', marginTop: '2px', overflowWrap: 'anywhere' }}>{value}</div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -291,7 +311,7 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
                   { label: 'Teléfono', value: datos.telefonoCliente },
                 ].map(({ label, value }) => (
                   <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', gap: '8px' }}>
-                    <span style={{ color: '#94a3b8', fontWeight: '600', flexShrink: 0 }}>{label}</span>
+                    <span style={{ color: '#475569', fontWeight: '700', flexShrink: 0 }}>{label}</span>
                     <span style={{ color: '#1e293b', fontWeight: '500', textAlign: 'right', wordBreak: 'break-word' }}>{value}</span>
                   </div>
                 ))}
@@ -320,7 +340,7 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
                     { label: 'Ref.',     value: pagoMultiple.referencia ?? pagoMultiple.numero_transaccion ?? '—' },
                   ].map(({ label, value }) => (
                     <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', gap: '8px' }}>
-                      <span style={{ color: '#94a3b8', fontWeight: '600' }}>{label}</span>
+                      <span style={{ color: '#475569', fontWeight: '700' }}>{label}</span>
                       <span style={{ color: '#1e293b', fontWeight: '500', textAlign: 'right' }}>{value}</span>
                     </div>
                   ))}
@@ -341,21 +361,24 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
                 </div>
                 <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {[
-                    { icon: <Droplets style={{ width: '13px', color: '#059669' }} />, label: 'Consumo agua', val: datos.totalConsumo, color: '#059669', show: datos.totalConsumo > 0 },
-                    { icon: <Wrench   style={{ width: '13px', color: '#2563eb' }} />, label: 'Servicios',    val: datos.totalServicios, color: '#2563eb', show: datos.totalServicios > 0 },
-                    { icon: <AlertCircle style={{ width: '13px', color: '#dc2626' }} />, label: 'Multas',   val: datos.totalMultas, color: '#dc2626', show: datos.totalMultas > 0 },
-                    { icon: <Clock    style={{ width: '13px', color: '#d97706' }} />, label: 'Mora',        val: datos.totalMora, color: '#d97706', show: datos.totalMora > 0 },
-                  ].filter(r => r.show).map(({ icon, label, val, color }) => (
-                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#64748b' }}>
-                        {icon}{label}
+                    { label: 'Consumo de agua', note: `${datos.facturasNorm.reduce((s, f) => s + f.consumom3, 0).toFixed(2)} m³ facturados`, val: datos.totalConsumo, color: '#047857', show: datos.totalConsumo > 0 },
+                    { label: 'Servicios adicionales', note: 'Cargos operativos incluidos en las facturas', val: datos.totalServicios, color: '#1d4ed8', show: datos.totalServicios > 0 },
+                    { label: 'Multas', note: `${datos.facturasNorm.reduce((s, f) => s + f.cantMultas, 0)} multa(s) aplicadas`, val: datos.totalMultas, color: '#b91c1c', show: datos.totalMultas > 0 },
+                    { label: 'Mora', note: 'Recargos por atraso incluidos en el pago', val: datos.totalMora, color: '#b45309', show: datos.totalMora > 0 },
+                    { label: 'IVA', note: 'Impuestos calculados en las facturas', val: datos.totalIVA, color: '#475569', show: datos.totalIVA > 0 },
+                    { label: 'Descuentos', note: 'Valores descontados del total', val: datos.totalDescuento, color: '#047857', show: datos.totalDescuento > 0 },
+                  ].filter(r => r.show).map(({ label, note, val, color }) => (
+                    <div key={label} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'start', fontSize: '12px', padding: '7px 0', borderBottom: '1px solid #e5e7eb' }}>
+                      <span style={{ color: '#334155' }}>
+                        <strong style={{ display: 'block', color: '#0f172a' }}>{label}</strong>
+                        <span style={{ fontSize: '11px', color: '#475569' }}>{note}</span>
                       </span>
-                      <span style={{ fontWeight: '700', color, fontFamily: 'monospace' }}>{fmt(val)}</span>
+                      <span style={{ fontWeight: '800', color, fontFamily: 'monospace' }}>{fmt(val)}</span>
                     </div>
                   ))}
                   {datos.totalConsumo === 0 && datos.totalServicios === 0 &&
                    datos.totalMultas  === 0 && datos.totalMora      === 0 && (
-                    <span style={{ fontSize: '12px', color: '#cbd5e1', fontStyle: 'italic' }}>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>
                       Sin desglose disponible
                     </span>
                   )}
@@ -380,9 +403,9 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
               <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    {['#', 'Factura', 'Periodo', 'm³', 'Consumo', 'Servicios', 'Multas', 'Mora', 'IVA', 'Total'].map(h => (
+                    {['#', 'Factura', 'Periodo', 'Emisión', 'Estado', 'm³', 'Consumo', 'Servicios', 'Multas', 'Mora', 'IVA', 'Subtotal', 'Desc.', 'Total'].map(h => (
                       <th key={h} style={{
-                        padding: '8px 10px', textAlign: h === '#' ? 'center' : h === 'Total' || h === 'Mora' || h === 'IVA' || h === 'Consumo' || h === 'Servicios' || h === 'Multas' ? 'right' : 'left',
+                        padding: '8px 10px', textAlign: h === '#' ? 'center' : ['Total', 'Mora', 'IVA', 'Consumo', 'Servicios', 'Multas', 'Subtotal', 'Desc.', 'm³'].includes(h) ? 'right' : 'left',
                         fontWeight: '700', color: '#475569', fontSize: '11px',
                         textTransform: 'uppercase', letterSpacing: '0.4px', whiteSpace: 'nowrap',
                       }}>
@@ -408,6 +431,8 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
                         {f.numFactura}
                       </td>
                       <td style={{ padding: '8px 10px', color: '#475569', whiteSpace: 'nowrap' }}>{f.periodo}</td>
+                      <td style={{ padding: '8px 10px', color: '#475569', whiteSpace: 'nowrap' }}>{f.fechaEmision ? formatDate(f.fechaEmision) : 'N/A'}</td>
+                      <td style={{ padding: '8px 10px', color: '#047857', fontWeight: '700', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{f.estadoFact}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right', color: '#059669', fontWeight: '600' }}>
                         {f.consumom3}
                       </td>
@@ -426,6 +451,12 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
                       <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace', color: '#6b7280' }}>
                         {f.ivaMonto > 0 ? fmt(f.ivaMonto) : f.ivaPorc > 0 ? `${f.ivaPorc}%` : 'Exento'}
                       </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace', color: '#334155' }}>
+                        {fmt(f.subtotal)}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace', color: '#047857' }}>
+                        {f.descuento > 0 ? fmt(f.descuento) : '—'}
+                      </td>
                       <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#1e293b' }}>
                         {fmt(f.totalConMora)}
                       </td>
@@ -435,7 +466,7 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
                 {/* Totales */}
                 <tfoot>
                   <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc' }}>
-                    <td colSpan={4} style={{ padding: '10px 10px', fontWeight: '700', color: '#374151', fontSize: '12px' }}>
+                    <td colSpan={6} style={{ padding: '10px 10px', fontWeight: '700', color: '#374151', fontSize: '12px' }}>
                       TOTALES ({datos.cantidadFacturas} facturas)
                     </td>
                     <td style={{ padding: '10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#059669' }}>
@@ -452,6 +483,12 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
                     </td>
                     <td style={{ padding: '10px', textAlign: 'right', fontFamily: 'monospace', color: '#6b7280' }}>
                       {datos.totalIVA > 0 ? fmt(datos.totalIVA) : '—'}
+                    </td>
+                    <td style={{ padding: '10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#334155' }}>
+                      {fmt(datos.totalSubtotal)}
+                    </td>
+                    <td style={{ padding: '10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#047857' }}>
+                      {datos.totalDescuento > 0 ? fmt(datos.totalDescuento) : '—'}
                     </td>
                     <td style={{ padding: '10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '800', color: '#1e293b', fontSize: '13px' }}>
                       {fmt(datos.totalPagado)}
@@ -470,10 +507,10 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
             marginBottom: '16px',
           }}>
             <div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>
+              <div style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>
                 Total pagado — {datos.cantidadFacturas} facturas
               </div>
-              <div style={{ fontSize: '12px', color: '#64748b' }}>
+              <div style={{ fontSize: '12px', color: '#e2e8f0' }}>
                 Incluye mora{datos.totalMora > 0 ? ` (${fmt(datos.totalMora)})` : ' ($0.00)'}
               </div>
             </div>
@@ -501,12 +538,12 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
             {['Firma del Cajero', 'Firma del Afiliado'].map(label => (
               <div key={label} style={{ textAlign: 'center' }}>
                 <div style={{ height: '1px', background: '#94a3b8', marginBottom: '6px' }} />
-                <span style={{ fontSize: '11px', color: '#6b7280' }}>{label}</span>
+                <span style={{ fontSize: '11px', color: '#475569', fontWeight: '600' }}>{label}</span>
               </div>
             ))}
           </div>
 
-          <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '11px', color: '#94a3b8', paddingTop: '12px', borderTop: '1px dashed #e2e8f0' }}>
+          <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '11px', color: '#475569', paddingTop: '12px', borderTop: '1px dashed #e2e8f0' }}>
             <p style={{ margin: '2px 0' }}>Este comprobante certifica el pago múltiple realizado.</p>
             <p style={{ margin: '2px 0' }}>Generado el {new Date().toLocaleString('es-EC')}</p>
           </div>
@@ -534,19 +571,19 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
         </div>
 
         {/* FOOTER */}
-        <div className="modal-footer">
+        <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
           <button className="btn-secondary" onClick={onClose}>
-            <X className="w-4 h-4 mr-2" /> Cerrar
+            Cerrar
           </button>
           <button className="btn-primary" onClick={handlePrintThermal}
             style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none' }}>
-            <Printer className="w-4 h-4 mr-2" /> Ticket 58mm
+            Ticket 58mm
           </button>
           <button className="btn-primary" onClick={handlePrintA4} disabled={isGenerating}>
-            <Printer className="w-4 h-4 mr-2" /> Imprimir A4
+            Imprimir A4
           </button>
           <button className="btn-primary" onClick={handleDownload} disabled={isGenerating}>
-            <Download className="w-4 h-4 mr-2" /> Descargar PDF
+            Descargar PDF
           </button>
         </div>
       </div>

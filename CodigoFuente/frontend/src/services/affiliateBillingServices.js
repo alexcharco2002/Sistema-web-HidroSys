@@ -15,7 +15,11 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
 
     subirComprobante: '/afiliados/subir-comprobante',
     misPagos: '/afiliados/mis-pagos',
-    descargarFactura: '/afiliados/descargar-factura'
+    descargarFactura: '/afiliados/descargar-factura',
+    paypalConfig: '/afiliados/paypal/config',
+    paypalCrearOrden: '/afiliados/paypal/crear-orden',
+    paypalCapturarOrden: '/afiliados/paypal/capturar-orden',
+    guardarComprobantePago: '/afiliados/comprobante'
   }
 };
 
@@ -27,71 +31,80 @@ class AffiliateBillingServices {
   /**
    * Realizar petición HTTPS con configuración común
    */
-  async makeRequest(endpoint, options = {}) {
+ async makeRequest(endpoint, options = {}) {
     const url = `${API_CONFIG.baseURL}${endpoint}`;
+    const method = options.method || 'GET';
+    const t0 = performance.now();
+    console.log(`🌐 [START] ${method} ${endpoint}`);
+
     const defaultOptions = {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${authService.getToken()}`
-      },
-      timeout: 50000,
+        method,
+        headers: {
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${authService.getToken()}`
+        },
+        timeout: 50000,
     };
 
     const finalOptions = {
-      ...defaultOptions,
-      ...options,
-      headers: {
-        ...defaultOptions.headers,
-        ...options.headers,
-      },
+        ...defaultOptions,
+        ...options,
+        headers: {
+            ...defaultOptions.headers,
+            ...options.headers,
+        },
     };
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
-      const response = await fetch(url, {
-        ...finalOptions,
-        signal: controller.signal,
-      });
+        const response = await fetch(url, {
+            ...finalOptions,
+            signal: controller.signal,
+        });
 
-      clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        let errorMessage = '';
+        const t1 = performance.now();
+        console.log(`✅ [${Math.round(t1 - t0)}ms] ${method} ${endpoint} → HTTP ${response.status}`);
 
-        if (typeof errorData.detail === 'string') {
-          errorMessage = errorData.detail;
-        } else if (Array.isArray(errorData.detail)) {
-          errorMessage = errorData.detail.map(err => err.msg).join(', ');
-        } else {
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            let errorMessage = '';
+
+            if (typeof errorData.detail === 'string') {
+                errorMessage = errorData.detail;
+            } else if (Array.isArray(errorData.detail)) {
+                errorMessage = errorData.detail.map(err => err.msg).join(', ');
+            } else {
+                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            }
+
+            throw new Error(errorMessage);
         }
 
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      console.log(`✅ API Response:`, data);
-      return data;
+        const data = await response.json();
+        console.log(`📦 [${Math.round(performance.now() - t0)}ms total] ${endpoint} → ${Array.isArray(data) ? data.length + ' items' : 'object'}`);
+        return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
-      
-      if (error.name === 'AbortError') {
-        throw new Error('La petición tardó demasiado tiempo');
-      }
-      
-      if (error.message.includes('Failed to fetch')) {
-        throw new Error('No se pudo conectar con el servidor');
-      }
-      
-      throw error;
+        const t1 = performance.now();
+
+        if (error.name === 'AbortError') {
+            console.error(`⏰ [TIMEOUT ${Math.round(t1 - t0)}ms] ${endpoint}`);
+            throw new Error('La petición tardó demasiado tiempo');
+        }
+
+        console.error(`❌ [${Math.round(t1 - t0)}ms] FAIL ${method} ${endpoint} →`, error.message);
+
+        if (error.message.includes('Failed to fetch')) {
+            throw new Error('No se pudo conectar con el servidor');
+        }
+
+        throw error;
     }
-  }
+}
 
   // ============================================================
   // MÉTODOS DE FACTURAS
@@ -207,6 +220,87 @@ class AffiliateBillingServices {
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
+      };
+    }
+  }
+
+  async getPaypalConfig() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.paypalConfig);
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Error al obtener configuración de PayPal'
+      };
+    }
+  }
+
+  async crearOrdenPaypal(idFactura) {
+    try {
+      const data = await this.makeRequest(
+        `${API_CONFIG.endpoints.paypalCrearOrden}/${idFactura}`,
+        { method: 'POST' }
+      );
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Error al crear la orden de PayPal'
+      };
+    }
+  }
+
+  async capturarOrdenPaypal(orderId) {
+    try {
+      const data = await this.makeRequest(
+        `${API_CONFIG.endpoints.paypalCapturarOrden}/${orderId}`,
+        { method: 'POST' }
+      );
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Error al capturar el pago de PayPal'
+      };
+    }
+  }
+
+  async guardarComprobantePago(idPago, archivo) {
+    try {
+      if (!archivo || archivo.type !== 'application/pdf') {
+        throw new Error('El comprobante debe ser un PDF');
+      }
+
+      const maxSize = 5 * 1024 * 1024;
+      if (archivo.size > maxSize) {
+        throw new Error('El archivo no debe superar los 5MB');
+      }
+
+      const formData = new FormData();
+      formData.append('comprobante', archivo);
+
+      const url = `${API_CONFIG.baseURL}${API_CONFIG.endpoints.guardarComprobantePago}/${idPago}/pdf`;
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${authService.getToken()}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Error ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return { success: true, data };
+    } catch (error) {
+      console.error('❌ Error guardando comprobante:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al guardar el comprobante'
       };
     }
   }

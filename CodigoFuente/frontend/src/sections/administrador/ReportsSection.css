@@ -1652,11 +1652,12 @@
 .modal-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 12px 20px;
   border-top: 0.5px solid #e5e7eb;
   background: #f9fafb;
   border-radius: 0 0 12px 12px;
+  gap: 10px;
 }
 
 .footer-step-info {

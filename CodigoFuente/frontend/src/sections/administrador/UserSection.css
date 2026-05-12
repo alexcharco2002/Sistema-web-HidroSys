@@ -651,32 +651,7 @@
 .users-section .modal-body {
   padding: 1.5rem;
 }
-/* ========================================
-   DETALLES DE USUARIO (VISTA)
-   ======================================== */
-.user-details {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
 
-.detail-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-}
-
-.detail-group label {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.detail-group p {
-  font-size: 1rem;
-  color: var(--text-primary);
-  margin: 0;
-}
 /* ========================================
    FOTO DE PERFIL (DETALLES DE USUARIO)
    ======================================== */

@@ -2485,13 +2485,6 @@
   padding: 24px;
 }
 
-.modal-footer {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  padding: 16px 24px;
-  border-top: 1px solid #e5e7eb;
-}
 /* ============================================================================
    SIDEBAR COLAPSABLE Y MÓVIL
    ============================================================================ */

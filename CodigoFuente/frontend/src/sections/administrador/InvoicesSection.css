@@ -675,6 +675,194 @@
   }
 }
 
+@media (max-width: 768px) {
+  .invoices-list-container {
+    overflow: visible;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .invoices-list-header {
+    display: none;
+  }
+
+  .invoices-list-body {
+    max-height: none;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .invoices-list-item {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 10px 0;
+    padding: 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+  }
+
+  .invoices-list-item:hover {
+    transform: none;
+  }
+
+  .invoices-list-item.inv-anulada {
+    border-left: 4px solid #ef4444;
+    opacity: 0.9;
+  }
+
+  .inv-col-index {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+  }
+
+  .inv-col-numero {
+    grid-column: 1 / -1;
+    padding-right: 58px;
+    min-width: 0;
+  }
+
+  .inv-numero-text {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.2;
+  }
+
+  .inv-col-fecha,
+  .inv-col-codigo,
+  .inv-col-usuario,
+  .inv-col-consumo,
+  .inv-col-detalles,
+  .inv-col-total,
+  .inv-col-estado {
+    min-width: 0;
+    width: 100%;
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.2;
+    text-align: left;
+    justify-content: flex-start;
+    align-items: flex-start;
+    background: #f8fafc;
+    white-space: normal;
+  }
+
+  .inv-col-usuario,
+  .inv-col-detalles,
+  .inv-col-estado {
+    grid-column: 1 / -1;
+  }
+
+  .inv-usuario-nombre {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .inv-col-fecha svg {
+    display: none;
+  }
+
+  .inv-col-fecha::before,
+  .inv-col-codigo::before,
+  .inv-col-usuario::before,
+  .inv-col-consumo::before,
+  .inv-col-detalles::before,
+  .inv-col-total::before,
+  .inv-col-estado::before {
+    display: block;
+    margin-bottom: 4px;
+    color: #64748b;
+    font-size: 10px;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .inv-col-fecha::before {
+    content: "Fecha";
+  }
+
+  .invoices-list-item > .inv-col-codigo:nth-child(4)::before {
+    content: "Medidor";
+  }
+
+  .invoices-list-item > .inv-col-codigo:nth-child(5)::before {
+    content: "Codigo";
+  }
+
+  .inv-col-usuario::before {
+    content: "Afiliado";
+  }
+
+  .inv-col-consumo::before {
+    content: "Consumo";
+  }
+
+  .inv-col-detalles::before {
+    content: "Detalles";
+  }
+
+  .inv-col-total::before {
+    content: "Total";
+  }
+
+  .inv-col-estado::before {
+    content: "Estado";
+  }
+
+  .inv-col-consumo,
+  .inv-col-total {
+    display: block;
+  }
+
+  .inv-col-detalles {
+    display: block;
+  }
+
+  .inv-detalles-container {
+    justify-content: flex-start;
+  }
+
+  .inv-col-estado {
+    display: block;
+  }
+
+  .inv-col-acciones {
+    grid-column: 1 / -1;
+    justify-content: center;
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .inv-btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+  }
+
+  .invoices-list-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .invoices-footer-stats {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
 /* ==================== IVA CONTROLS ==================== */
 .iva-controls {
   display: flex;

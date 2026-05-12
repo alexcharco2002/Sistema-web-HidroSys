@@ -1,6 +1,7 @@
 // src/sections/ProfileSection.js
 import React, { useState, useEffect, useRef } from 'react';
 import "./ProfileSection.css"
+import "./profile.fhot.css"
 import { 
   User, Edit, Save, X, Camera, Mail, Phone, MapPin, CheckCircle,
   Calendar, RefreshCw, AlertCircle, Lock, Eye, EyeOff , Wallet, Shield, BookOpen, Users, UserCog
@@ -15,6 +16,7 @@ const ProfileSection = () => {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [showPhotoPreview, setShowPhotoPreview] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -376,7 +378,10 @@ const getEstadoBadge = (estado) => {
           <div className="profile-sidebar-card">
             {/* Avatar */}
             <div className="profile-avatar-container">
-              <div className="profile-avatar-wrapper">
+              <div 
+                className={`profile-avatar-wrapper ${showPhotoPreview ? 'preview-active' : ''}`}
+                onClick={() => setShowPhotoPreview(!showPhotoPreview)}
+              >
                 {uploadingPhoto && (
                   <div className="avatar-loading-overlay">
                     <RefreshCw className="spinner" size={24} />
@@ -396,7 +401,10 @@ const getEstadoBadge = (estado) => {
                   </div>
                 )}
                 <button 
-                  onClick={handleImageUpload}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleImageUpload();
+                  }}
                   disabled={uploadingPhoto}
                   className="avatar-edit-button"
                   title="Cambiar foto"

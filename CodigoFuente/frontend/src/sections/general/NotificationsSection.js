@@ -521,8 +521,8 @@ const handleSubmit = async (e) => {
     }
 
     const message = deleteAll
-      ? '¿Estás seguro de que quieres eliminar todas tus notificaciones? Esta acción no se puede deshacer.'
-      : `¿Eliminar ${idsToDelete.length} notificación(es) seleccionada(s)?`;
+      ? '⚠️ ¿Estás seguro de que quieres eliminar todas tus notificaciones?\n\n🗑️ Esta acción no se puede deshacer.'
+      : `🗑️ ¿Eliminar ${idsToDelete.length} notificación(es) seleccionada(s)?`;
 
     if (!window.confirm(message)) return;
 

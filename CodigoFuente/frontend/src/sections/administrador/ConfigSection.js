@@ -2215,12 +2215,6 @@ const afiliadosFiltrados = useMemo(() => {
     );
   }
 
-  const stats = {
-    secciones: configSections.filter(s => s.visible).length,
-    backupsTotal: backups.length,
-    ultimoBackup: backups.length > 0 ? backups[0].filename : 'N/A'
-  };
-
   const currentSection = configSections.find(
     (section) => section.id === selectedSection
   );
@@ -2232,35 +2226,6 @@ const afiliadosFiltrados = useMemo(() => {
         <div className="section-title">
           <Settings className="w-6 h-6 text-blue-600" />
           <h2>Configuración del Sistema</h2>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="users-stats">
-        <div className="stat-item">
-          <Settings className="stat-icon text-blue-600" />
-          <div>
-            <p className="stat-label">Secciones</p>
-            <p className="stat-value">{stats.secciones}</p>
-          </div>
-        </div>
-
-        <div className="stat-item">
-          <Database className="stat-icon text-green-600" />
-          <div>
-            <p className="stat-label">Backups Totales</p>
-            <p className="stat-value">{stats.backupsTotal}</p>
-          </div>
-        </div>
-
-        <div className="stat-item">
-          <Clock className="stat-icon text-purple-600" />
-          <div>
-            <p className="stat-label">Último Backup</p>
-              <p className="text-[30px] font-bold truncate max-w-[150px]">
-                {stats.ultimoBackup}
-              </p>
-          </div>
         </div>
       </div>
 
@@ -2521,7 +2486,7 @@ const afiliadosFiltrados = useMemo(() => {
                   </div>
                 ) : (
                   <div className="table-container">
-                    <table className="data-table">
+                    <table className="data-table config-table-limites">
                       <thead>
                         <tr>
                           <th>Nombre</th>
@@ -2923,7 +2888,7 @@ const afiliadosFiltrados = useMemo(() => {
                         </div>
                       ) : (
                         <div className="table-container">
-                          <table className="data-table">
+                          <table className="data-table config-table-iva">
                             <thead>
                               <tr>
                                 <th>Código</th>
@@ -3342,7 +3307,7 @@ const afiliadosFiltrados = useMemo(() => {
                         </div>
                       ) : (
                         <div className="table-container">
-                          <table className="data-table">
+                          <table className="data-table config-table-mora">
                             <thead>
                               <tr>
                                 <th>Nombre</th>
@@ -3965,7 +3930,7 @@ const afiliadosFiltrados = useMemo(() => {
                     </div>
                   ) : (
                     <div className="table-container">
-                      <table className="data-table">
+                      <table className="data-table config-table-servicios">
                         <thead>
                           <tr>
                             <th>Nombre</th>

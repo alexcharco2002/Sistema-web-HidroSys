@@ -427,24 +427,91 @@
 /* ========================================
    RESPONSIVE
    ======================================== */
+@media (max-width: 768px) {
+  .notification-container .notification-dropdown {
+    width: min(340px, calc(100vw - 24px));
+    max-height: calc(100dvh - 96px);
+  }
+
+  .notification-container .notification-header {
+    padding: 14px 16px;
+  }
+
+  .notification-container .notification-list {
+    max-height: calc(100dvh - 220px);
+  }
+
+  .notification-container .notification-item {
+    padding: 12px 44px 12px 14px;
+  }
+}
+
 @media (max-width: 480px) {
-  .notification-dropdown {
-    width: calc(100vw - 32px);
-    right: -8px;
+  .notification-container .notification-dropdown {
+    position: fixed;
+    top: 72px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: calc(100dvh - 92px);
+    border-radius: 10px;
   }
-  
-  .notification-item {
-    padding: 12px;
+
+  .notification-container .notification-header {
+    padding: 12px 14px;
   }
-  
-  .notification-icon-wrapper {
-    width: 32px;
-    height: 32px;
+
+  .notification-container .notification-header h3 {
+    font-size: 14px;
   }
-  
-  .notification-icon {
-    width: 18px;
-    height: 18px;
+
+  .notification-container .notification-list {
+    max-height: calc(100dvh - 208px);
+  }
+
+  .notification-container .notification-item {
+    gap: 10px;
+    padding: 10px 42px 10px 12px;
+  }
+
+  .notification-container .notification-icon-wrapper {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+  }
+
+  .notification-container .notification-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .notification-container .notification-title,
+  .notification-container .notification-message {
+    font-size: 12px;
+  }
+
+  .notification-container .notification-time {
+    font-size: 10px;
+  }
+
+  .notification-container .notification-dot {
+    top: 16px;
+    right: 36px;
+  }
+
+  .notification-container .notification-delete {
+    top: 10px;
+    right: 10px;
+    opacity: 1;
+  }
+
+  .notification-container .notification-footer {
+    padding: 10px 12px;
+  }
+
+  .notification-container .btn-view-all {
+    padding: 9px;
+    font-size: 12px;
   }
 }
 

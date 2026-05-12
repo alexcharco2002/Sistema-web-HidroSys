@@ -451,6 +451,16 @@
   gap: 1rem;
 }
 
+.filters-section-content-full {
+  display: block;
+}
+
+.filter-group-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
 /* ========================================
    GRUPOS DE FILTROS
    ======================================== */
@@ -611,17 +621,37 @@
 }
 
 @media (max-width: 640px) {
+  .filters-main-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+  }
+
   .filters-section-card {
     padding: 1rem;
   }
 
-  .filters-section-content {
+  .filters-section-header {
+    margin-bottom: 0.875rem;
+  }
+
+  .filters-section-content,
+  .filter-group-row {
     grid-template-columns: 1fr;
     gap: 0.875rem;
   }
 
+  .filter-select,
+  .filter-btn-toggle,
+  .filter-btn-action {
+    width: 100%;
+    min-height: 42px;
+  }
+
   .filter-actions-group {
     flex-direction: column;
+    grid-column: 1;
+    gap: 0.625rem;
   }
 
   .filter-btn-action {
@@ -937,11 +967,46 @@
   }
 
   .lecturas-grid-list .lectura-card-item {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem;
   }
 
+  .lectura-info-section,
+  .lectura-consumo-section,
+  .lectura-valores-section,
+  .lectura-actions-section {
+    grid-column: 1 / -1;
+  }
+
   .lectura-clasificacion-section {
+    grid-column: 1;
     justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .lectura-estado-section {
+    grid-column: 2;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .lectura-clasificacion-section .lectura-badge,
+  .lectura-estado-section .lectura-badge {
+    max-width: 100%;
+    padding-inline: 10px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 420px) {
+  .lecturas-grid-list .lectura-card-item {
+    gap: 0.75rem;
+  }
+
+  .lectura-clasificacion-section .lectura-badge,
+  .lectura-estado-section .lectura-badge {
+    gap: 5px;
+    padding-inline: 8px;
+    font-size: 10px;
   }
 }

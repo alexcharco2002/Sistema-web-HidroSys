@@ -636,10 +636,244 @@
 }
 
 @media (max-width: 768px) {
+  .payments-invoices-wrapper {
+    max-height: none;
+    margin-top: 16px;
+    border-radius: 12px;
+    overflow: visible;
+    box-shadow: none;
+    background: transparent;
+    border: none;
+  }
+
+  .payments-invoices-scroll-wrapper {
+    overflow-x: visible;
+  }
+
+  .payments-invoices-inner {
+    gap: 12px;
+  }
+
+  .payments-invoices-header {
+    display: none;
+  }
+
+  .payments-invoices-body {
+    max-height: none;
+    overflow: visible;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .payments-invoices-item {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 12px;
+    padding: 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  }
+
+  .payments-invoices-item:hover {
+    transform: none;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  }
+
+  .payments-invoices-item.pmt-inv-anulada,
+  .payments-invoices-item.pmt-inv-pagada,
+  .payments-invoices-item.pmt-inv-vencida {
+    border-left-width: 4px;
+  }
+
+  .pmt-inv-col-index {
+    justify-content: flex-start;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+  }
+
+  .pmt-inv-index-badge {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  .pmt-inv-col-numero {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
+  .pmt-inv-numero-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .pmt-inv-numero-text {
+    font-size: 14px;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .pmt-inv-col-fecha,
+  .pmt-inv-col-medidor,
+  .pmt-inv-col-codigo,
+  .pmt-inv-col-usuario,
+  .pmt-inv-col-meses-adeudo,
+  .pmt-inv-col-total,
+  .pmt-inv-col-estado,
+  .pmt-inv-col-comprobante {
+    display: flex;
+    min-width: 0;
+    width: 100%;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+  }
+
+  .pmt-inv-col-fecha,
+  .pmt-inv-col-medidor,
+  .pmt-inv-col-codigo,
+  .pmt-inv-col-total {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 5px;
+  }
+
+  .pmt-inv-col-fecha::before,
+  .pmt-inv-col-medidor::before,
+  .pmt-inv-col-codigo::before,
+  .pmt-inv-col-usuario::before,
+  .pmt-inv-col-meses-adeudo::before,
+  .pmt-inv-col-total::before,
+  .pmt-inv-col-estado::before,
+  .pmt-inv-col-comprobante::before {
+    color: #64748b;
+    content: "";
+    flex: 0 0 auto;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .pmt-inv-col-fecha::before { content: "Emision"; }
+  .pmt-inv-col-medidor::before { content: "Medidor"; }
+  .pmt-inv-col-codigo::before { content: "Codigo"; }
+  .pmt-inv-col-usuario::before { content: "Afiliado"; }
+  .pmt-inv-col-meses-adeudo::before { content: "Adeudo"; }
+  .payments-invoices-item > .pmt-inv-col-total:nth-of-type(8)::before { content: "Total"; }
+  .payments-invoices-item > .pmt-inv-col-total:nth-of-type(9)::before { content: "Saldo"; }
+  .pmt-inv-col-estado::before { content: "Estado"; }
+  .pmt-inv-col-comprobante::before { content: "Comprobante"; }
+
+  .pmt-inv-col-fecha > svg {
+    display: none;
+  }
+
+  .pmt-inv-col-meses-adeudo,
+  .pmt-inv-col-estado,
+  .pmt-inv-col-comprobante,
+  .pmt-inv-col-acciones {
+    grid-column: 1 / -1;
+  }
+
+  .pmt-inv-col-meses-adeudo,
+  .pmt-inv-col-estado,
+  .pmt-inv-col-comprobante {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 36px;
+    border-top: 1px solid #f8fafc;
+  }
+
+  .pmt-inv-usuario-info {
+    text-align: right;
+    max-width: 68%;
+  }
+
+  .pmt-inv-usuario-nombre {
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .pmt-inv-medidor-badge,
+  .pmt-meses-badge,
+  .pmt-inv-monto,
+  .pmt-inv-sin-dato {
+    max-width: 100%;
+    white-space: normal;
+    text-align: right;
+  }
+
+  .pmt-inv-col-codigo {
+    font-size: 12px;
+    text-align: right;
+  }
+
+  .pmt-inv-col-codigo {
+    grid-column: 1;
+  }
+
+  .pmt-inv-col-usuario {
+    grid-column: 2;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: flex-start;
+    gap: 5px;
+    min-height: auto;
+    padding: 8px 0;
+    border-top: none;
+  }
+
+  .pmt-inv-col-usuario .pmt-inv-usuario-info {
+    max-width: 100%;
+  }
+
+  .pmt-inv-col-usuario .pmt-inv-usuario-nombre {
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  .pmt-inv-col-comprobante {
+    align-items: center;
+  }
+
+  .pmt-comprobantes-container {
+    width: auto;
+    justify-content: flex-end;
+  }
+
+  .pmt-inv-col-acciones {
+    justify-content: center;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid #f1f5f9;
+  }
+
+  .pmt-inv-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+  }
+
   .payments-invoices-footer {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
   }
   
   .payments-invoices-footer-stats {

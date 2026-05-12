@@ -527,6 +527,52 @@
 }
 
 @media (max-width: 768px) {
+  .periodo-management-page > .section-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
+  }
+
+  .periodo-management-page > .section-header .section-title-with-back {
+    min-width: 0;
+  }
+
+  .periodo-management-page > .section-header .section-title h2 {
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .periodo-management-page > .section-header .section-subtitle {
+    font-size: 0.75rem;
+  }
+
+  .periodo-management-page > .section-header .actions {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: max-content;
+  }
+
+  .periodo-management-page > .section-header .actions .btn-primary {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    font-size: 0;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 40px;
+  }
+
+  .periodo-management-page > .section-header .actions .btn-primary svg {
+    width: 18px;
+    height: 18px;
+    margin: 0 !important;
+  }
+
   .readings-list-header {
     display: none;
   }
@@ -536,14 +582,15 @@
   }
   
   .readings-list-item {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 16px;
-    margin: 12px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 14px;
+    margin: 10px;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    background: #ffffff;
   }
   
   .readings-list-item.inactive {
@@ -573,17 +620,121 @@
     font-weight: 500;
   }
   
+  .readings-list-item > .list-col-id {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    min-width: 32px;
+  }
+
+  .readings-list-item > .list-col-medidor {
+    grid-column: 1 / -1;
+    padding-right: 72px;
+    min-width: 0;
+  }
+
+  .readings-list-item > .status-wrapper {
+    position: absolute;
+    top: 14px;
+    right: 54px;
+    width: auto;
+  }
+
+  .readings-list-item > .list-col-codigo,
+  .readings-list-item > .list-col-nombre,
+  .readings-list-item > .list-col-sector,
+  .readings-list-item > .list-col-lectura,
+  .readings-list-item > .list-col-consumo,
+  .readings-list-item > .list-col-fecha {
+    min-width: 0;
+    width: 100%;
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    text-align: left;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .readings-list-item > .list-col-nombre,
+  .readings-list-item > .list-col-sector {
+    grid-column: 1 / -1;
+  }
+
+  .readings-list-item > .list-col-nombre {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .readings-list-item > .list-col-codigo::before,
+  .readings-list-item > .list-col-nombre::before,
+  .readings-list-item > .list-col-sector::before,
+  .readings-list-item > .list-col-lectura::before,
+  .readings-list-item > .list-col-consumo::before,
+  .readings-list-item > .list-col-fecha::before {
+    display: block;
+    margin-bottom: 4px;
+    color: #64748b;
+    font-size: 10px;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .readings-list-item > .list-col-codigo::before {
+    content: "Codigo";
+  }
+
+  .readings-list-item > .list-col-nombre::before {
+    content: "Afiliado";
+  }
+
+  .readings-list-item > .list-col-sector::before {
+    content: "Sector";
+  }
+
+  .readings-list-item > .list-col-lectura:nth-child(6)::before {
+    content: "Lect. ant.";
+  }
+
+  .readings-list-item > .list-col-lectura:nth-child(7)::before {
+    content: "Lect. act.";
+  }
+
+  .readings-list-item > .list-col-consumo::before {
+    content: "Consumo";
+  }
+
+  .readings-list-item > .list-col-fecha::before {
+    content: "Fecha";
+  }
+
+  .readings-list-item > .list-col-fecha {
+    display: block;
+  }
+
+  .readings-list-item > .list-col-fecha svg,
+  .readings-list-item > .list-col-nombre svg,
+  .readings-list-item > .list-col-sector svg {
+    display: none;
+  }
+
   .list-actions {
+    grid-column: 1 / -1;
     width: 100%;
     justify-content: center;
-    padding-top: 12px;
+    padding-top: 10px;
     border-top: 1px solid #e2e8f0;
-    gap: 12px;
+    gap: 10px;
   }
   
   .list-action-btn {
-    width: 40px;
-    height: 40px;
+    width: 38px;
+    height: 38px;
   }
 }
 

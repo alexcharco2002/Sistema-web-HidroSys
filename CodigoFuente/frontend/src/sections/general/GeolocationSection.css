@@ -366,10 +366,12 @@
   .geo-main {
     flex-direction: column;
     height: auto;
-    min-height: 700px;
+    min-height: 0;
+    overflow: visible;
   }
 
   .geo-sidebar {
+    order: 2;
     width: 100%;
     max-height: 300px;
     border-right: none;
@@ -377,7 +379,11 @@
   }
 
   .geo-map-container {
-    min-height: 400px;
+    order: 1;
+    width: 100%;
+    min-height: 460px;
+    height: min(62vh, 560px);
+    flex: 0 0 auto;
   }
 
 
@@ -392,7 +398,7 @@
 
 @media (max-width: 768px) {
   .geo-main {
-    min-height: 600px;
+    min-height: 0;
   }
 
   .geo-sidebar {
@@ -400,7 +406,8 @@
   }
 
   .geo-map-container {
-    min-height: 350px;
+    min-height: 420px;
+    height: 58vh;
   }
 
   .map-legend {
@@ -442,6 +449,12 @@
   .geo-main {
     gap: 0.5rem;
     margin-top: 0.5rem;
+    border-radius: 6px;
+  }
+
+  .geo-map-container {
+    min-height: 380px;
+    height: 56vh;
   }
 
   .sidebar-title {

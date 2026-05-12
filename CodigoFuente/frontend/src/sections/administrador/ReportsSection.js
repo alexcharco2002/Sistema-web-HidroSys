@@ -2551,6 +2551,7 @@ const toggleTodasColumnas = (seleccionar) => {
                         <div
                           key={i}
                           className={`report-col-data ${getColumnClass(key, value)}`}
+                          data-label={formatColumnName(key)}
                           title={formatTooltip(key, value)}
                         >
                           {formatCellValue(key, value)}

@@ -335,8 +335,8 @@ const AffiliateBillingSection = () => {
   // ============================================================
   const calcularEstadisticas = (facturasData) => {
     if (!facturasData || facturasData.length === 0) {
-      setStats({ totalfacturas: 0, totalpagadas: 0, totalpendientes: 0,
-                montototal: 0, montopagado: 0, montopendiente: 0, promediomensual: 0 })
+      setStats({ total_facturas: 0, total_pagadas: 0, total_pendientes: 0,
+                monto_total: 0, monto_pagado: 0, monto_pendiente: 0, promedio_mensual: 0 })
       return
     }
     const total    = facturasData.length
@@ -349,13 +349,13 @@ const AffiliateBillingSection = () => {
     const montoPendiente = facturasData.reduce((sum, f) => sum + (f.saldo_pendiente || f.saldopendiente || 0), 0)
 
     setStats({
-      totalfacturas:  total,
-      totalpagadas:   pagadas,
-      totalpendientes: pendientes,
-      montototal:      montoTotal.toFixed(2),
-      montopagado:     montoPagado.toFixed(2),
-      montopendiente:  montoPendiente.toFixed(2),
-      promediomensual: total > 0 ? (montoTotal / total).toFixed(2) : 0
+      total_facturas:  total,
+      total_pagadas:   pagadas,
+      total_pendientes: pendientes,
+      monto_total:      montoTotal.toFixed(2),
+      monto_pagado:     montoPagado.toFixed(2),
+      monto_pendiente:  montoPendiente.toFixed(2),
+      promedio_mensual: total > 0 ? (montoTotal / total).toFixed(2) : 0
     })
   }
 

@@ -413,3 +413,212 @@
 .btn-refresh:hover {
   background: #16a34a;
 }
+
+/* ========================================
+   FACTURAS Y PAGOS - TARJETAS MOVIL
+   ======================================== */
+@media (max-width: 768px) {
+  .facturas-container {
+    padding: 1rem;
+    border-radius: 12px;
+  }
+
+  .facturas-header-row {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .facturas-header-title h3 {
+    font-size: 1rem;
+    line-height: 1.25;
+  }
+
+  .fcols-header {
+    display: none;
+  }
+
+  .facturas-grid-list {
+    gap: 12px;
+  }
+
+  .facturas-grid-list .factura-card-item {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  }
+
+  .factura-card-item:hover {
+    transform: none;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  }
+
+  .fc-fecha {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .fc-fecha-dia {
+    grid-column: 1;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .fc-fact-num {
+    grid-column: 1;
+    font-size: 12px;
+  }
+
+  .fc-pago-fecha {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    justify-self: end;
+    width: fit-content;
+    max-width: 100%;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #f0fdf4;
+    white-space: nowrap;
+  }
+
+  .fc-medidor,
+  .fc-consumo,
+  .fc-total,
+  .fc-estado,
+  .fc-comprobante {
+    min-width: 0;
+    padding: 8px 0;
+  }
+
+  .fc-medidor::before,
+  .fc-consumo::before,
+  .fc-total::before,
+  .fc-estado::before,
+  .fc-comprobante::before {
+    display: block;
+    margin-bottom: 5px;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .fc-estado::before {
+    align-self: flex-start;
+    width: 100%;
+    text-align: left;
+  }
+
+  .fc-medidor::before { content: "Medidor"; }
+  .fc-consumo::before { content: "Consumo"; }
+  .fc-total::before { content: "Total"; }
+  .fc-estado::before { content: "Estado"; }
+  .fc-comprobante::before { content: "Comprobante"; }
+
+  .fc-medidor {
+    grid-column: 1;
+    align-items: flex-start;
+  }
+
+  .fc-estado {
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start !important;
+    align-items: flex-start !important;
+    overflow: hidden;
+    text-align: left;
+  }
+
+  .fc-estado .status-badge,
+  .fc-estado [class*="status-badge"] {
+    align-self: flex-start;
+    max-width: 100%;
+    justify-content: flex-start;
+    white-space: normal;
+    text-align: left;
+    margin-left: 0;
+  }
+
+  .fc-consumo {
+    grid-column: 1;
+  }
+
+  .fc-total {
+    grid-column: 2;
+    text-align: left;
+    align-items: flex-start;
+  }
+
+  .fc-comprobante {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding-top: 10px;
+    border-top: 1px solid #f1f5f9;
+  }
+
+  .fc-comp-dl,
+  .fc-comp-none {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .fc-accion {
+    grid-column: 1 / -1;
+    justify-content: center;
+    gap: 10px;
+    padding-top: 4px;
+  }
+
+  .factura-btn-ver {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 10px;
+  }
+
+  .fc-sector {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .fc-consumo .lectura-consumo-box {
+    width: 100%;
+    justify-content: flex-start;
+    padding: 0.625rem 0.75rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .facturas-grid-list .factura-card-item {
+    gap: 9px;
+    padding: 12px;
+  }
+
+  .fc-med-pill,
+  .fc-total-num,
+  .fc-saldo,
+  .fc-comp-none,
+  .fc-comp-dl {
+    font-size: 11px;
+  }
+
+  .fc-consumo .lectura-consumo-valor {
+    font-size: 0.95rem;
+  }
+}

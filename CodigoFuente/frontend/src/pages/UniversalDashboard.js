@@ -1,11 +1,5 @@
 // ============================================================================
 // 🌐 UNIVERSAL DASHBOARD
-// Archivo central del sistema donde se arma el dashboard dinámico
-// Maneja:
-//  - Navegación
-//  - Carga de módulos
-//  - Rutas protegidas
-//  - Layout general
 // ============================================================================
 
 // ============================================================================
@@ -85,7 +79,6 @@ import {
   ChevronDown,
   ChevronRight,
   Menu, 
-  X, 
   ChevronLeft
 } from 'lucide-react';
 
@@ -231,7 +224,6 @@ const UniversalDashboard = () => {
   const location = useLocation();
   
   const [notifications] = useState([]);
-  const [loading] = useState(false);
   const [user, setUser] = useState(null);
   const [, setUserPermissions] = useState([]);
   const [organizedModules, setOrganizedModules] = useState([]);
@@ -584,15 +576,6 @@ const toggleSidebar = () => {
     <>
     <div className="dashboard">
 
-      {/* 🔥 BOTÓN HAMBURGUESA MÓVIL */}
-      <button
-        className="mobile-menu-toggle"
-        onClick={toggleSidebarMobile}
-        aria-label="Abrir menú"
-      >
-        <Menu size={24} />
-      </button>
-
       {/* SIDEBAR */}
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${sidebarMobileOpen ? 'mobile-open' : ''}`}>
 
@@ -603,13 +586,6 @@ const toggleSidebar = () => {
             onClick={toggleSidebarMobile}
           />
         )}
-        {/* Botón cerrar móvil */}
-        <button 
-          className="sidebar-close-btn-mobile" 
-          onClick={toggleSidebarMobile}
-        >
-          <X className="w-5 h-5" />
-        </button>
 
         {/* Header del Sidebar */}
         <div className="sidebar-header">
@@ -630,7 +606,7 @@ const toggleSidebar = () => {
             )}
           </div>
 
-          {/* 🔥 BOTÓN TOGGLE PARA COLAPSAR/EXPANDIR SIDEBAR */}
+          {/* BOTÓN TOGGLE PARA COLAPSAR/EXPANDIR SIDEBAR MEJORADO */}
           <button
             className="sidebar-toggle-btn"
             onClick={toggleSidebar}
@@ -647,15 +623,7 @@ const toggleSidebar = () => {
 
         {/* Navegación */}
         <nav className="sidebar-nav">
-
-          <button
-            className="sidebar-close-btn-mobile"
-            onClick={toggleSidebarMobile}
-            aria-label="Cerrar menú"
-          >
-            <X size={24} />
-          </button>
-          {/* 🔥 CATEGORÍAS REALES DEL SISTEMA */}
+          {/* CATEGORÍAS REALES DEL SISTEMA */}
           {organizedModules.map((category) => (
             <div key={category.id} className="nav-category">
 
@@ -729,14 +697,6 @@ const toggleSidebar = () => {
             </div>
 
             <div className="header-actions">
-              <button
-                className={`refresh-btn ${loading ? 'loading' : ''}`}
-                onClick={handleRefresh}
-                disabled={loading}
-                title="Actualizar datos"
-              >
-                <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-              </button>
 
               <NotificationDropdown
                 notifications={notifications}
@@ -799,7 +759,7 @@ const toggleSidebar = () => {
                 path={module.path}
                 element={
                   <DynamicModuleRenderer 
-                    modulePath={module.path}zz
+                    modulePath={module.path}
                     user={user}
                     roleBasePath={roleBasePath}
                     organizedModules={organizedModules}

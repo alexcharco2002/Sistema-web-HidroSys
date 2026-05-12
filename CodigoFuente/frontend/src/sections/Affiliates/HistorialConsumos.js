@@ -222,8 +222,8 @@ const HistorialConsumos = () => {
   // ============================================================
   const calcularEstadisticas = (lecturasData) => {
     if (!lecturasData || lecturasData.length === 0) {
-      setStats({ totallecturas: 0, consumopromedio: 0, consumototal: 0,
-                mesmayorconsumo: null, mesmenorconsumo: null, tendencia: null })
+      setStats({ total_lecturas: 0, consumo_promedio: 0, consumo_total: 0,
+                mes_mayor_consumo: null, mes_menor_consumo: null, tendencia: null })
       return
     }
     // Helper para leer campos en ambos formatos
@@ -261,11 +261,11 @@ const HistorialConsumos = () => {
     }
 
     setStats({
-      totallecturas:  total,
-      consumopromedio: parseFloat(consumoPromedio),
-      consumototal:   consumoTotal.toFixed(2),
-      mesmayorconsumo: lecturaMayor,
-      mesmenorconsumo: lecturaMenor,
+      total_lecturas:  total,
+      consumo_promedio: parseFloat(consumoPromedio),
+      consumo_total:   consumoTotal.toFixed(2),
+      mes_mayor_consumo: lecturaMayor,
+      mes_menor_consumo: lecturaMenor,
       tendencia
     })
   }

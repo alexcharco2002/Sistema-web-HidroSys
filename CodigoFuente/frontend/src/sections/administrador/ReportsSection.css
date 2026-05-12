@@ -1358,6 +1358,207 @@
 }
 
 /* ============================================================
+   REPORTES - AJUSTES MOVIL
+   ============================================================ */
+@media (max-width: 768px) {
+  .periodo-management-page > .section-header {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .periodo-management-page > .section-header .section-title-with-back {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+    order: 1;
+    width: 100%;
+  }
+
+  .periodo-management-page > .section-header .btn-back {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .periodo-management-page > .section-header .btn-back span {
+    display: none;
+  }
+
+  .periodo-management-page > .section-header .section-title {
+    min-width: 0;
+    align-items: flex-start;
+  }
+
+  .periodo-management-page > .section-header .section-title h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .periodo-management-page > .section-header .section-subtitle {
+    display: block;
+    margin-top: 3px;
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
+  .periodo-management-page > .section-header .actions {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 8px;
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    order: 2;
+    padding-top: 10px;
+    margin-top: 2px;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .periodo-management-page > .section-header .actions .btn-export,
+  .periodo-management-page > .section-header .actions .btn-primary {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .periodo-management-page > .section-header .actions .btn-export-label,
+  .periodo-management-page > .section-header .actions .btn-primary .ml-2 {
+    display: none;
+  }
+
+  .periodo-management-page > .section-header .actions svg {
+    margin: 0 !important;
+    flex-shrink: 0;
+  }
+
+  .reports-list-container {
+    overflow: visible;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .reports-list-scroll-wrapper {
+    overflow: visible;
+    max-height: none;
+  }
+
+  .reports-list-header {
+    display: none;
+  }
+
+  .reports-list-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: none;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .reports-list-item {
+    display: flex !important;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  }
+
+  .reports-list-item:hover {
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  }
+
+  .report-col-id {
+    align-self: flex-start;
+    min-width: 0;
+    margin-bottom: 8px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .report-col-data {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 0;
+    border: none;
+    border-top: 1px solid #f1f5f9;
+    border-radius: 0;
+    background: transparent;
+    white-space: normal;
+    overflow: visible;
+    text-align: right;
+  }
+
+  .report-col-data:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: #f1f5f9;
+  }
+
+  .report-col-data::before {
+    content: attr(data-label);
+    color: #64748b;
+    flex: 0 0 42%;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .report-col-data > *:not(svg) {
+    min-width: 0;
+  }
+
+  .status-badge,
+  .report-status-wrapper {
+    margin-left: auto;
+  }
+
+  .reports-list-footer {
+    flex-direction: column;
+    align-items: stretch;
+    margin-top: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+  }
+
+  .reports-list-footer .btn-secondary {
+    justify-content: center;
+  }
+
+  .reports-list-footer-stats {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    text-align: center;
+  }
+}
+
+/* ============================================================
    MODAL REPORTE INDIVIDUAL - usando clases existentes del proyecto
    ============================================================ */
 

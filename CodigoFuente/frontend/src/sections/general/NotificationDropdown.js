@@ -258,7 +258,9 @@ const NotificationDropdown = ({ onViewAll }) => {
     const notificationIds = notifications.slice(0, 5).map(notification => notification.id);
     if (notificationIds.length === 0) return;
 
-    const confirmed = window.confirm('¿Estás seguro de que quieres eliminar las notificaciones mostradas en este panel? Esta acción no se puede deshacer.');
+    const confirmed = window.confirm(
+      '⚠️ ¿Estás seguro de que quieres eliminar las notificaciones mostradas en este panel?\n\n🗑️ Esta acción no se puede deshacer.'
+    );
     if (!confirmed) return;
 
     try {

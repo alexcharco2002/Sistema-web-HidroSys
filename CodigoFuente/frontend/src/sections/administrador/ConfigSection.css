@@ -929,3 +929,335 @@ button:disabled {
 .radio-option span {
   font-size: 0.95rem;
 }
+
+/* ========================================
+   CONFIGURACION - AJUSTES MOVIL
+   ======================================== */
+@media (max-width: 768px) {
+  .roles-section > .section-header {
+    padding: 12px 14px;
+    margin-bottom: 1rem;
+  }
+
+  .roles-section > .section-header .section-title {
+    min-width: 0;
+  }
+
+  .roles-section > .section-header .section-title h2 {
+    font-size: 1.1rem;
+    line-height: 1.25;
+  }
+
+  .roles-section > .users-stats {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 1rem;
+  }
+
+  .roles-section > .users-stats .stat-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .roles-section > .users-stats .stat-icon {
+    flex-shrink: 0;
+  }
+
+  .roles-section > .users-stats .stat-label,
+  .roles-section > .users-stats .stat-value,
+  .roles-section > .users-stats p {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .roles-section > .users-stats .stat-value {
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+
+  .roles-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .roles-list-panel {
+    max-height: none;
+    padding: 1rem;
+    overflow: visible;
+  }
+
+  .roles-list-panel .panel-title {
+    margin-bottom: 0.75rem;
+    font-size: 1rem;
+  }
+
+  .roles-list {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(190px, 78%);
+    gap: 0.75rem;
+    overflow-x: auto;
+    padding-bottom: 0.35rem;
+    scroll-snap-type: x proximity;
+  }
+
+  .roles-list::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .roles-list::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+  }
+
+  .role-item {
+    scroll-snap-align: start;
+    padding: 0.875rem;
+  }
+
+  .role-item-title {
+    display: flex;
+    align-items: center;
+    font-size: 0.92rem;
+    min-width: 0;
+  }
+
+  .role-item-description {
+    margin-bottom: 0;
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  .actions-panel {
+    padding: 1rem;
+    min-height: 0;
+    border-radius: 12px;
+  }
+
+  .actions-header,
+  .content-section > .section-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .actions-header .panel-title,
+  .section-title-group h2 {
+    font-size: 1.08rem;
+    line-height: 1.25;
+  }
+
+  .actions-header .panel-subtitle,
+  .section-subtitle {
+    font-size: 0.8rem;
+    line-height: 1.35;
+  }
+
+  .actions-header > div:last-child,
+  .content-section > .section-header > div:last-child {
+    display: flex !important;
+    justify-content: center;
+    gap: 8px !important;
+    width: 100%;
+    padding-top: 10px;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .actions-header > div:last-child button,
+  .content-section > .section-header > div:last-child button {
+    width: 40px !important;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0 !important;
+    justify-content: center;
+    font-size: 0;
+    overflow: hidden;
+  }
+
+  .actions-header > div:last-child button svg,
+  .content-section > .section-header > div:last-child button svg {
+    width: 16px;
+    height: 16px;
+    margin: 0 !important;
+    flex-shrink: 0;
+  }
+
+  .info-card {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    padding: 1rem;
+  }
+
+  .info-value {
+    font-size: 1.15rem;
+    overflow-wrap: anywhere;
+  }
+
+  .table-container {
+    overflow: visible;
+    border: none;
+    background: transparent;
+  }
+
+  .data-table {
+    display: block;
+    width: 100%;
+    border-collapse: separate;
+  }
+
+  .data-table thead {
+    display: none;
+  }
+
+  .data-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .data-table tbody tr {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  }
+
+  .data-table tbody tr:hover {
+    background: #ffffff;
+  }
+
+  .data-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    text-align: right;
+  }
+
+  .data-table td:last-child {
+    border-bottom: none;
+  }
+
+  .data-table td::before {
+    content: "";
+    flex: 0 0 42%;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .config-table-limites td:nth-child(1)::before { content: "Nombre"; }
+  .config-table-limites td:nth-child(2)::before { content: "Coordenadas"; }
+  .config-table-limites td:nth-child(3)::before { content: "Altitud"; }
+  .config-table-limites td:nth-child(4)::before { content: "Estado"; }
+  .config-table-limites td:nth-child(5)::before { content: "Creado"; }
+  .config-table-limites td:nth-child(6)::before { content: "Acciones"; }
+
+  .config-table-iva td:nth-child(1)::before { content: "Codigo"; }
+  .config-table-iva td:nth-child(2)::before { content: "Descripcion"; }
+  .config-table-iva td:nth-child(3)::before { content: "Porcentaje"; }
+  .config-table-iva td:nth-child(4)::before { content: "Tipo"; }
+  .config-table-iva td:nth-child(5)::before { content: "Estado"; }
+  .config-table-iva td:nth-child(6)::before { content: "Observaciones"; }
+  .config-table-iva td:nth-child(7)::before { content: "Acciones"; }
+
+  .config-table-mora td:nth-child(1)::before { content: "Nombre"; }
+  .config-table-mora td:nth-child(2)::before { content: "Tipo calculo"; }
+  .config-table-mora td:nth-child(3)::before { content: "Valor/tasa"; }
+  .config-table-mora td:nth-child(4)::before { content: "Periodo gracia"; }
+  .config-table-mora td:nth-child(5)::before { content: "Tipo periodo"; }
+  .config-table-mora td:nth-child(6)::before { content: "Aplicar sobre"; }
+  .config-table-mora td:nth-child(7)::before { content: "Vigencia"; }
+  .config-table-mora td:nth-child(8)::before { content: "Estado"; }
+  .config-table-mora td:nth-child(9)::before { content: "Acciones"; }
+
+  .config-table-servicios td:nth-child(1)::before { content: "Nombre"; }
+  .config-table-servicios td:nth-child(2)::before { content: "Servicio"; }
+  .config-table-servicios td:nth-child(3)::before { content: "Periodo"; }
+  .config-table-servicios td:nth-child(4)::before { content: "Usuarios"; }
+  .config-table-servicios td:nth-child(5)::before { content: "Vigencia"; }
+  .config-table-servicios td:nth-child(6)::before { content: "Estado"; }
+  .config-table-servicios td:nth-child(7)::before { content: "Acciones"; }
+
+  .limite-nombre,
+  .badge,
+  .data-table td > strong,
+  .data-table td > small {
+    min-width: 0;
+    text-align: right;
+  }
+
+  .coordenadas-cell {
+    width: 100%;
+    max-width: 180px;
+    grid-template-columns: 1fr;
+    margin-left: auto;
+    text-align: left;
+  }
+
+  .action-buttons {
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .btn-icon {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    flex: 0 0 38px;
+  }
+
+  .config-table-limites td:last-child,
+  .config-table-iva td:last-child,
+  .config-table-mora td:last-child,
+  .config-table-servicios td:last-child {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .config-table-limites td:last-child::before,
+  .config-table-iva td:last-child::before,
+  .config-table-mora td:last-child::before,
+  .config-table-servicios td:last-child::before {
+    flex: 0 0 auto;
+    width: 100%;
+    text-align: center;
+  }
+
+  .action-card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .action-card-header .action-buttons {
+    justify-content: center;
+    padding-top: 8px;
+    border-top: 1px solid #f1f5f9;
+  }
+}

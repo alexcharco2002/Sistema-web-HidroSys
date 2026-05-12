@@ -572,6 +572,173 @@
 }
 
 @media (max-width: 768px) {
+  .fines-table-container {
+    overflow: visible;
+    border-radius: 12px;
+    box-shadow: none;
+    background: transparent;
+    border: 0;
+  }
+
+  .fines-table-inner {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .fines-table-header {
+    display: none;
+  }
+
+  .fines-table-body {
+    max-height: none;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .fines-table-body .fines-table-item {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 10px 0;
+    padding: 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+  }
+
+  .fines-table-body .fines-table-item:hover {
+    transform: none;
+  }
+
+  .fines-table-body .fines-table-item.inactive {
+    border-left: 4px solid #ef4444;
+  }
+
+  .fines-col-id {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    min-width: 34px;
+  }
+
+  .fines-col-nombre {
+    grid-column: 1 / -1;
+    padding-right: 48px;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.3;
+  }
+
+  .fines-col-codigo,
+  .fines-col-sector {
+    display: block !important;
+    overflow: visible !important;
+    padding: 8px 10px !important;
+  }
+
+  .fines-col-codigo,
+  .fines-col-sector,
+  .fines-col-tipo,
+  .fines-col-monto,
+  .fines-col-fecha {
+    min-width: 0;
+    width: 100%;
+    margin: 0;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.2;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .fines-col-tipo,
+  .fines-col-monto,
+  .fines-col-fecha {
+    padding: 8px 10px;
+    background: #f8fafc;
+  }
+
+  .fines-col-sector {
+    grid-column: 1 / -1;
+  }
+
+  .fines-col-sector svg,
+  .fines-col-fecha svg,
+  .fines-col-nombre svg {
+    display: none;
+  }
+
+  .fines-col-codigo::before,
+  .fines-col-sector::before,
+  .fines-col-tipo::before,
+  .fines-col-monto::before,
+  .fines-col-fecha::before {
+    display: block;
+    margin-bottom: 4px;
+    color: #64748b;
+    font-size: 10px;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .fines-table-item > .fines-col-codigo:nth-child(3)::before {
+    content: "Codigo";
+  }
+
+  .fines-table-item > .fines-col-codigo:nth-child(4)::before {
+    content: "Cedula";
+  }
+
+  .fines-col-sector::before {
+    content: "Sector";
+  }
+
+  .fines-col-tipo::before {
+    content: "Tipo";
+  }
+
+  .fines-col-monto::before {
+    content: "Monto";
+  }
+
+  .fines-col-fecha::before {
+    content: "Fecha";
+  }
+
+  .fines-status-wrapper {
+    justify-content: flex-start;
+    align-items: center;
+  }
+
+  .fines-status-wrapper::before {
+    content: "Estado";
+    display: block;
+    margin-right: 8px;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .fines-actions {
+    grid-column: 1 / -1;
+    justify-content: center;
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+  }
+
+  .fines-action-btn {
+    width: 38px;
+    height: 38px;
+  }
+
   .fines-table-footer {
     flex-direction: column;
     align-items: stretch;

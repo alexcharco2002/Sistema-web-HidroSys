@@ -12,10 +12,13 @@ import * as XLSX from "xlsx";
 
 import {
   UserPlus, Search, Edit, Trash2, Eye, UserCheck, UserX, Phone, MapPin, Calendar, X, Save, RefreshCw, AlertCircle, 
-  CheckCircle, XCircle, Map, ArrowUpDown, Gauge, IdCard, Plus, FileSpreadsheet, Download, Users
+  CheckCircle, XCircle, Map, ArrowUpDown, Gauge, IdCard, Plus, FileSpreadsheet, Download, Users,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 const AffiliatesSection = () => {
+  const pageSizeOptions = [10, 20, 50];
+
   // ==================== ESTADOS ====================
   const [affiliates, setAffiliates] = useState([]);
   const [availableUsers, setAvailableUsers] = useState([]);
@@ -25,6 +28,8 @@ const AffiliatesSection = () => {
   const [debouncedSearchTerm] = useState(searchTerm);
   const [filterSector, setFilterSector] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [pageSize, setPageSize] = useState(20);
+  const [currentPage, setCurrentPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('create');
   const [selectedAffiliate, setSelectedAffiliate] = useState(null);
@@ -372,11 +377,13 @@ const afiliadosValidos = excelPreview.filter((a) => {
   // ==================== FUNCIONES DE FILTRADO Y ORDENAMIENTO ====================
   
   const filteredAffiliates = affiliates.filter(aff => {
+    const searchValue = searchTerm.trim().toLowerCase();
+
     const matchesSearch = 
-      aff.usuario?.nombres.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      aff.usuario?.apellidos.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      aff.usuario?.cedula.includes(searchTerm) ||
-      aff.cod_usuario_afi.toString().includes(searchTerm);
+      searchValue === '' ||
+      `${aff.usuario?.nombres || ''} ${aff.usuario?.apellidos || ''}`.toLowerCase().includes(searchValue) ||
+      (aff.usuario?.cedula || '').includes(searchTerm.trim()) ||
+      (aff.cod_usuario_afi || '').toString().toLowerCase().includes(searchValue);
     
     const matchesSector = filterSector === 'all' || aff.id_sector === parseInt(filterSector);
     
@@ -412,6 +419,11 @@ const afiliadosValidos = excelPreview.filter((a) => {
     return sortOrder === 'asc' ? comparison : -comparison;
   });
 
+  const totalPages = Math.max(1, Math.ceil(sortedAffiliates.length / pageSize));
+  const normalizedCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (normalizedCurrentPage - 1) * pageSize;
+  const pageEndIndex = pageStartIndex + pageSize;
+
   const toggleSortOrder = () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
   };
@@ -419,6 +431,10 @@ const afiliadosValidos = excelPreview.filter((a) => {
   const handleStatusFilterClick = (status) => {
     setFilterStatus(status);
   };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterSector, filterStatus, sortOption, sortOrder, pageSize]);
 
   // ==================== FUNCIONES DE MODAL ====================
   
@@ -744,6 +760,9 @@ const afiliadosValidos = excelPreview.filter((a) => {
       ...sortedAffiliates.filter(a => a.id_usuario_afi !== miPerfilAfiliado.id_usuario_afi),
     ]
   : sortedAffiliates;
+  const paginatedAffiliates = afiliadosConMiPerfil.slice(pageStartIndex, pageEndIndex);
+  const showingFrom = sortedAffiliates.length === 0 ? 0 : pageStartIndex + 1;
+  const showingTo = Math.min(pageEndIndex, sortedAffiliates.length);
 
   // ==================== RENDER PRINCIPAL ====================
   return (
@@ -871,6 +890,20 @@ const afiliadosValidos = excelPreview.filter((a) => {
 
         {/* DERECHA — Agrupamos todos los filtros */}
         <div className="filters-right">
+          
+          {/* 🔀 Ordenamiento */}
+          <select
+            className="filter-select page-size-select"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            title="Afiliados por página"
+          >
+            {pageSizeOptions.map(size => (
+              <option key={size} value={size}>
+                {size} por página
+              </option>
+            ))}
+          </select>
 
           {/* 🏷️ Filtro por sector */}
           <select 
@@ -886,7 +919,6 @@ const afiliadosValidos = excelPreview.filter((a) => {
             ))}
           </select>
 
-          {/* 🔀 Ordenamiento */}
           <select
             className="filter-select"
             value={sortOption}
@@ -922,15 +954,39 @@ const afiliadosValidos = excelPreview.filter((a) => {
         </div>
       </div>
 
+      {affiliates.length > 100 && (
+        <div className="affiliates-search-advice">
+          <AlertCircle className="w-4 h-4" />
+          <span>
+            Hay {affiliates.length} afiliados cargados. Para listas grandes, busca por nombre, código o cédula y usa los filtros para encontrar el registro más rápido.
+          </span>
+        </div>
+      )}
+
+      <div className="affiliates-list-summary">
+        <span>
+          Mostrando {showingFrom}-{showingTo} de {sortedAffiliates.length} afiliado{sortedAffiliates.length !== 1 ? 's' : ''}
+        </span>
+        {searchTerm.trim() && (
+          <button
+            type="button"
+            className="clear-search-btn"
+            onClick={() => setSearchTerm('')}
+          >
+            Limpiar búsqueda
+          </button>
+        )}
+      </div>
+
       {/* ==================== GRID DE AFILIADOS ==================== */}
       <div className="users-grid">
-        {afiliadosConMiPerfil.map(affiliate=> (
+        {paginatedAffiliates.map(affiliate=> (
           <div key={affiliate.id_usuario_afi} className={`user-card ${!affiliate.activo ? 'inactive' : ''} ${affiliate.esMiPerfil ? 'mi-perfil' : ''}`}>
-{affiliate.esMiPerfil && (
-  <div className="mi-perfil-badge">
-     👤 Tu perfil
-  </div>
- )}
+            {affiliate.esMiPerfil && (
+              <div className="mi-perfil-badge">
+                👤 Tu perfil
+              </div>
+            )}
             <div className="user-card-header">
               <div className="user-info">
                 {affiliate.usuario?.foto ? (
@@ -1082,6 +1138,34 @@ const afiliadosValidos = excelPreview.filter((a) => {
           <UserPlus className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3>No se encontraron afiliados</h3>
           <p>No hay afiliados que coincidan con los criterios de búsqueda.</p>
+        </div>
+      )}
+
+      {sortedAffiliates.length > 0 && (
+        <div className="pagination-controls">
+          <button
+            type="button"
+            className="pagination-btn"
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={normalizedCurrentPage === 1}
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Anterior
+          </button>
+
+          <span className="pagination-status">
+            Página {normalizedCurrentPage} de {totalPages}
+          </span>
+
+          <button
+            type="button"
+            className="pagination-btn"
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={normalizedCurrentPage === totalPages}
+          >
+            Siguiente
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       )}
 

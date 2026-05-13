@@ -549,6 +549,100 @@
   font-weight: 600;
 }
 
+.page-size-select {
+  min-width: 145px;
+}
+
+.payments-search-advice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  margin: -0.5rem 0 1.25rem;
+  border: 1px solid #bfdbfe;
+  border-left: 4px solid #2563eb;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.payments-search-advice svg {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.payments-list-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  color: #4b5563;
+  font-size: 0.875rem;
+}
+
+.clear-search-btn {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.25rem 0;
+}
+
+.clear-search-btn:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.payments-pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+}
+
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-width: 116px;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #374151;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pagination-status {
+  min-width: 120px;
+  text-align: center;
+  color: #4b5563;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 /* Alineado visual con la tabla de facturacion */
 .payments-invoices-header,
 .payments-invoices-item {
@@ -879,6 +973,17 @@
   .payments-invoices-footer-stats {
     flex-direction: column;
     gap: 8px;
+    width: 100%;
+  }
+
+  .payments-list-summary,
+  .payments-pagination-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pagination-btn,
+  .pagination-status {
     width: 100%;
   }
 }

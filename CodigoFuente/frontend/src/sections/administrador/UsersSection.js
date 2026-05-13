@@ -11,17 +11,22 @@ import {
   Users, Plus, Search, Edit, Trash2, Eye, UserCheck, UserX,
   Mail, Phone, MapPin, Calendar, X, Save, RefreshCw, Key,
   Image as ImageIcon, AlertCircle, ArrowUpDown, IdCard, CheckCircle, XCircle,
-  UserCog, Wallet, BookOpen, User, FileSpreadsheet, Download, Unlock
+  UserCog, Wallet, BookOpen, User, FileSpreadsheet, Download, Unlock,
+  ChevronLeft, ChevronRight
   
 } from 'lucide-react';
 
 const UsersSection = () => {
+  const pageSizeOptions = [10, 20, 50];
+
   // ==================== ESTADOS ====================
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
+  const [pageSize, setPageSize] = useState(20);
+  const [currentPage, setCurrentPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('create');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -326,11 +331,13 @@ const UsersSection = () => {
    * 🔍 Filtra usuarios según los criterios de búsqueda, rol y estado
    */
   const filteredUsers = users.filter(user => {
+    const searchValue = searchTerm.trim().toLowerCase();
     // Filtro por búsqueda de texto
     const matchesSearch =
-      user.nombres.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.apellidos.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.cedula.includes(searchTerm)
+      searchValue === '' ||
+      `${user.nombres || ''} ${user.apellidos || ''}`.toLowerCase().includes(searchValue) ||
+      (user.usuario || '').toLowerCase().includes(searchValue) ||
+      (user.cedula || '').includes(searchTerm.trim())
 
     // Filtro por rol
     const matchesRole =
@@ -372,6 +379,11 @@ const UsersSection = () => {
     return sortOrder === 'asc' ? comparison : -comparison;
   });
 
+  const totalPages = Math.max(1, Math.ceil(sortedUsers.length / pageSize));
+  const normalizedCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (normalizedCurrentPage - 1) * pageSize;
+  const pageEndIndex = pageStartIndex + pageSize;
+
   /**
    * 🔄 Cambia el orden de clasificación (ascendente/descendente)
    */
@@ -386,6 +398,10 @@ const UsersSection = () => {
   const handleStatusFilterClick = (status) => {
     setStatusFilter(status);
   };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterRole, statusFilter, sortOption, sortOrder, pageSize]);
 
   // ==================== FUNCIONES DE MODAL ====================
   
@@ -861,6 +877,9 @@ const getBlockStatusText = (user) => {
       ...sortedUsers.filter(u => u.id !== miPerfil.id),
     ]
   : sortedUsers;
+  const paginatedUsers = usuariosConMiPerfil.slice(pageStartIndex, pageEndIndex);
+  const showingFrom = sortedUsers.length === 0 ? 0 : pageStartIndex + 1;
+  const showingTo = Math.min(pageEndIndex, sortedUsers.length);
 
   // Renderizado principal
   return (
@@ -963,7 +982,7 @@ const getBlockStatusText = (user) => {
           <Search className="search-icon" />
           <input
             type="text"
-            placeholder="Buscar por nombre o cédula..."
+            placeholder="Buscar por nombre, código o cédula..."
             className="search-input"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -972,6 +991,21 @@ const getBlockStatusText = (user) => {
 
         {/* DERECHA — Agrupamos todos los filtros */}
         <div className="filters-right">
+
+          {/* 🔀 Ordenamiento */}
+          <select
+            className="filter-select page-size-select"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            title="Usuarios por página"
+          >
+            {pageSizeOptions.map(size => (
+              <option key={size} value={size}>
+                {size} por página
+              </option>
+            ))}
+          </select>
+          
           
           {/* 🏷️ Filtro por rol */}
           <select 
@@ -987,7 +1021,8 @@ const getBlockStatusText = (user) => {
             ))}
           </select>
 
-          {/* 🔀 Ordenamiento */}
+          
+
           <select
             className="filter-select"
             value={sortOption}
@@ -1022,9 +1057,33 @@ const getBlockStatusText = (user) => {
         </div>
      </div>
 
+      {users.length > 100 && (
+        <div className="users-search-advice">
+          <AlertCircle className="w-4 h-4" />
+          <span>
+            Hay {users.length} usuarios cargados. Para listas grandes, busca por nombre, código o cédula y usa los filtros para encontrar el registro más rápido.
+          </span>
+        </div>
+      )}
+
+      <div className="users-list-summary">
+        <span>
+          Mostrando {showingFrom}-{showingTo} de {sortedUsers.length} usuario{sortedUsers.length !== 1 ? 's' : ''}
+        </span>
+        {searchTerm.trim() && (
+          <button
+            type="button"
+            className="clear-search-btn"
+            onClick={() => setSearchTerm('')}
+          >
+            Limpiar búsqueda
+          </button>
+        )}
+      </div>
+
       {/* ==================== GRID DE USUARIOS ==================== */}
       <div className="users-grid">
-        {usuariosConMiPerfil.map(user=> (
+        {paginatedUsers.map(user=> (
            <div key={user.id} className={`user-card ${!user.activo ? 'inactive' : ''} ${user.esMiPerfil ? 'mi-perfil' : ''}`}>
             {user.esMiPerfil && (
               <div className="mi-perfil-badge">
@@ -1219,6 +1278,34 @@ const getBlockStatusText = (user) => {
           <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3>No se encontraron usuarios</h3>
           <p>No hay usuarios que coincidan con los criterios de búsqueda.</p>
+        </div>
+      )}
+
+      {sortedUsers.length > 0 && (
+        <div className="pagination-controls">
+          <button
+            type="button"
+            className="pagination-btn"
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={normalizedCurrentPage === 1}
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Anterior
+          </button>
+
+          <span className="pagination-status">
+            Página {normalizedCurrentPage} de {totalPages}
+          </span>
+
+          <button
+            type="button"
+            className="pagination-btn"
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={normalizedCurrentPage === totalPages}
+          >
+            Siguiente
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       )}
 

@@ -8,10 +8,12 @@ import './MetersSection.css';
 import { 
   Gauge, Search, CheckCircle, XCircle, MapPin, X, Save, RefreshCw, 
   AlertCircle, Map, Navigation, Mountain, UserCheck, IdCard, UserX, 
-  User, Eye, Edit, Trash2, ArrowRightLeft
+  User, Eye, Edit, Trash2, ArrowRightLeft, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 const MetersSection = () => {
+  const pageSizeOptions = [10, 20, 50];
+
   // ============================================================================
   // ESTADOS PRINCIPALES
   // ============================================================================
@@ -24,6 +26,8 @@ const MetersSection = () => {
   const [filterSector, setFilterSector] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterAssignment, setFilterAssignment] = useState('all');
+  const [pageSize, setPageSize] = useState(20);
+  const [currentPage, setCurrentPage] = useState(1);
   
   // Estados para modal principal (crear/editar/ver)
   const [showModal, setShowModal] = useState(false);
@@ -166,10 +170,13 @@ const MetersSection = () => {
   // FILTRADO Y ORDENAMIENTO
   // ============================================================================
   const filteredMeters = meters.filter(meter => {
+    const searchValue = searchTerm.trim().toLowerCase();
+
     const matchesSearch = (
-      meter.num_medidor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (meter.cod_usuario_afi && meter.cod_usuario_afi.toString().includes(searchTerm)) ||
-      (meter.nombre_afiliado && meter.nombre_afiliado.toLowerCase().includes(searchTerm.toLowerCase()))
+      searchValue === '' ||
+      (meter.num_medidor || '').toLowerCase().includes(searchValue) ||
+      (meter.cod_usuario_afi || '').toString().toLowerCase().includes(searchValue) ||
+      (meter.nombre_afiliado || '').toLowerCase().includes(searchValue)
     );
     
     const matchesSector = filterSector === 'all' || meter.id_sector === parseInt(filterSector);
@@ -199,6 +206,18 @@ const MetersSection = () => {
     
     return a.num_medidor.localeCompare(b.num_medidor);
   });
+
+  const totalPages = Math.max(1, Math.ceil(sortedMeters.length / pageSize));
+  const normalizedCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (normalizedCurrentPage - 1) * pageSize;
+  const pageEndIndex = pageStartIndex + pageSize;
+  const paginatedMeters = sortedMeters.slice(pageStartIndex, pageEndIndex);
+  const showingFrom = sortedMeters.length === 0 ? 0 : pageStartIndex + 1;
+  const showingTo = Math.min(pageEndIndex, sortedMeters.length);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterSector, filterStatus, filterAssignment, pageSize]);
 
   // ============================================================================
   // MODALES - CREAR/EDITAR/VER
@@ -653,15 +672,52 @@ const MetersSection = () => {
             <option value="unassigned">Sin asignar</option>
           </select>
 
+          <select
+            className="filter-select page-size-select"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            title="Medidores por página"
+          >
+            {pageSizeOptions.map(size => (
+              <option key={size} value={size}>
+                {size} por página
+              </option>
+            ))}
+          </select>
+
           <button className="btn-secondary" onClick={fetchMeters} title="Recargar lista">
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
       </div>
 
+      {meters.length > 100 && (
+        <div className="meters-search-advice">
+          <AlertCircle className="w-4 h-4" />
+          <span>
+            Hay {meters.length} medidores cargados. Para listas grandes, busca por número de medidor, código o nombre de afiliado y usa los filtros para encontrar el registro más rápido.
+          </span>
+        </div>
+      )}
+
+      <div className="meters-list-summary">
+        <span>
+          Mostrando {showingFrom}-{showingTo} de {sortedMeters.length} medidor{sortedMeters.length !== 1 ? 'es' : ''}
+        </span>
+        {searchTerm.trim() && (
+          <button
+            type="button"
+            className="clear-search-btn"
+            onClick={() => setSearchTerm('')}
+          >
+            Limpiar búsqueda
+          </button>
+        )}
+      </div>
+
       {/* GRID DE MEDIDORES */}
       <div className="users-grid">
-        {sortedMeters.map(meter => {
+        {paginatedMeters.map(meter => {
           const isAssigned = meter.id_usuario_afi !== null;
           
           return (
@@ -821,7 +877,7 @@ const MetersSection = () => {
           );
         })}
 
-        {filteredMeters.length === 0 && (
+        {sortedMeters.length === 0 && (
           <div className="empty-state">
             <Gauge className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3>No se encontraron medidores</h3>
@@ -829,6 +885,34 @@ const MetersSection = () => {
           </div>
         )}
       </div>
+
+      {sortedMeters.length > 0 && (
+        <div className="pagination-controls">
+          <button
+            type="button"
+            className="pagination-btn"
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={normalizedCurrentPage === 1}
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Anterior
+          </button>
+
+          <span className="pagination-status">
+            Página {normalizedCurrentPage} de {totalPages}
+          </span>
+
+          <button
+            type="button"
+            className="pagination-btn"
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={normalizedCurrentPage === totalPages}
+          >
+            Siguiente
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* ==================== MODAL PRINCIPAL (CREAR/EDITAR/VER) ==================== */}
       {showModal && (

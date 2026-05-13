@@ -24,11 +24,13 @@ import {
   ArrowUpDown,
   TrendingUp,
   Ban,
-  CalendarDays, ChevronDown, 
+  CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
   Gauge, User, IdCard  ,Tag, Percent, Package, Briefcase
 } from 'lucide-react';
 
 const InvoicesSection = () => {
+  const pageSizeOptions = [10, 20, 50];
+
   // ============================================================
   // ESTADOS PRINCIPALES
   // ============================================================
@@ -52,6 +54,8 @@ const InvoicesSection = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortOption, setSortOption] = useState('codigo');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [pageSize, setPageSize] = useState(20);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // ============================================================
   // ESTADOS DE ESTADÍSTICAS
@@ -413,6 +417,18 @@ const InvoicesSection = () => {
       return sortOrder === 'asc' ? comparison : -comparison;
     });
   }, [filteredFacturas, sortOption, sortOrder]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedFacturas.length / pageSize));
+  const normalizedCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (normalizedCurrentPage - 1) * pageSize;
+  const pageEndIndex = pageStartIndex + pageSize;
+  const paginatedFacturas = sortedFacturas.slice(pageStartIndex, pageEndIndex);
+  const showingFrom = sortedFacturas.length === 0 ? 0 : pageStartIndex + 1;
+  const showingTo = Math.min(pageEndIndex, sortedFacturas.length);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus, sortOption, sortOrder, pageSize, periodoSeleccionado]);
 
   const toggleSortOrder = () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
@@ -1312,6 +1328,19 @@ const agruparDetallesPorTipo = (detalles) => {
                 <option value="estado">Ordenar por Estado</option>
               </select>
 
+              <select
+                className="filter-select page-size-select"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                title="Facturas por página"
+              >
+                {pageSizeOptions.map(size => (
+                  <option key={size} value={size}>
+                    {size} por página
+                  </option>
+                ))}
+              </select>
+
               <button
                 className="btn-secondary"
                 onClick={toggleSortOrder}
@@ -1335,6 +1364,33 @@ const agruparDetallesPorTipo = (detalles) => {
           </div>
           
           {/* SECCIÓN DE SERVICIOS MASIVOS CON TOGGLE */}
+          {facturas.length > 100 && (
+            <div className="invoices-search-advice">
+              <AlertCircle className="w-4 h-4" />
+              <span>
+                Hay {facturas.length} facturas cargadas en este período. Para listas grandes, busca por factura, medidor, código, afiliado o cédula y usa los filtros para encontrar el registro más rápido.
+              </span>
+            </div>
+          )}
+
+          <div className="invoices-list-summary">
+            <span>
+              Mostrando {showingFrom}-{showingTo} de {sortedFacturas.length} factura{sortedFacturas.length !== 1 ? 's' : ''}
+            </span>
+            {(searchTerm.trim() || filterStatus !== 'all') && (
+              <button
+                type="button"
+                className="clear-search-btn"
+                onClick={() => {
+                  setSearchTerm('');
+                  setFilterStatus('all');
+                }}
+              >
+                Limpiar búsqueda
+              </button>
+            )}
+          </div>
+
           {permissions.canUpdate && (
             <div className="services-bulk-section">
               <div className="services-toggle-header">
@@ -1500,14 +1556,14 @@ const agruparDetallesPorTipo = (detalles) => {
               {/* BODY */}
               <div className="invoices-list-body">
                 {sortedFacturas.length > 0 ? (
-                  sortedFacturas.map((factura, index) => (
+                  paginatedFacturas.map((factura, index) => (
                     <div
                         key={factura.id_factura}
                         className={`invoices-list-item ${factura.estado_factura === 'anulada' ? 'inv-anulada' : ''}`}
                       >
                         {/* Columna 1: # */}
                         <div className="inv-col-index">
-                          <span className="inv-index-badge">{index + 1}</span>
+                          <span className="inv-index-badge">{pageStartIndex + index + 1}</span>
                         </div>
 
                         {/* Columna 2: Número */}
@@ -1718,12 +1774,40 @@ const agruparDetallesPorTipo = (detalles) => {
                   
                   <div className="invoices-footer-stats">
                     <span>
-                      Mostrando <strong>{sortedFacturas.length}</strong> facturas
+                      Mostrando <strong>{showingFrom}-{showingTo}</strong> de <strong>{sortedFacturas.length}</strong> facturas
                     </span>
                     <span>
                       Total: <strong>{formatCurrency(sortedFacturas.reduce((sum, f) => sum + parseFloat(f.total || 0), 0))}</strong>
                     </span>
                   </div>
+                </div>
+              )}
+
+              {sortedFacturas.length > 0 && (
+                <div className="invoices-pagination-controls">
+                  <button
+                    type="button"
+                    className="pagination-btn"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={normalizedCurrentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Anterior
+                  </button>
+
+                  <span className="pagination-status">
+                    Pagina {normalizedCurrentPage} de {totalPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    className="pagination-btn"
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={normalizedCurrentPage === totalPages}
+                  >
+                    Siguiente
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
               )}
             </div>

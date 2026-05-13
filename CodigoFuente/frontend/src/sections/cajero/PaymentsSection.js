@@ -36,11 +36,13 @@ import {
   IdCard,
   FileText,
   CreditCard,
-  Plus, ChevronDown,
+  Plus, ChevronDown, ChevronLeft, ChevronRight,
   Wallet, XCircle, FileCheck, Gauge, CheckSquare, Square, AlertTriangle, Wrench, Droplets
 } from 'lucide-react';
 
 const PaymentsSection = () => {
+  const pageSizeOptions = [10, 20, 50];
+
   // ============================================================
   // ESTADOS PRINCIPALES
   // ============================================================
@@ -63,6 +65,8 @@ const PaymentsSection = () => {
   const [filterMetodo, setFilterMetodo] = useState('all');
   const [sortOption, setSortOption] = useState('fecha');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [pageSize, setPageSize] = useState(20);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Estado para almacenar facturas pendientes por afiliado
   const [facturasPendientesPorAfiliado, setFacturasPendientesPorAfiliado] = useState({});
@@ -594,6 +598,17 @@ const PaymentsSection = () => {
 
   // constante para ordenar facturas
   const sortedFacturas = filteredFacturas;
+  const totalPages = Math.max(1, Math.ceil(sortedFacturas.length / pageSize));
+  const normalizedCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (normalizedCurrentPage - 1) * pageSize;
+  const pageEndIndex = pageStartIndex + pageSize;
+  const paginatedFacturas = sortedFacturas.slice(pageStartIndex, pageEndIndex);
+  const showingFrom = sortedFacturas.length === 0 ? 0 : pageStartIndex + 1;
+  const showingTo = Math.min(pageEndIndex, sortedFacturas.length);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus, filterMetodo, sortOption, sortOrder, pageSize, periodoSeleccionado]);
 
 
   /**
@@ -2056,6 +2071,19 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                 <option value="estado">Ordenar por Estado</option>
               </select>
 
+              <select
+                className="filter-select page-size-select"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                title="Facturas por pagina"
+              >
+                {pageSizeOptions.map(size => (
+                  <option key={size} value={size}>
+                    {size} por pagina
+                  </option>
+                ))}
+              </select>
+
               <button
                 className="btn-secondary"
                 onClick={toggleSortOrder}
@@ -2078,27 +2106,33 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
             </div>
           </div>
 
-          {/*  CONTADOR DE RESULTADOS */}
-          {searchTerm || filterStatus !== 'all' || filterMetodo !== 'all' ? (
-            <div className="filter-results-info">
+          {facturas.length > 100 && (
+            <div className="payments-search-advice">
+              <AlertCircle className="w-4 h-4" />
               <span>
-                Mostrando <strong>{sortedFacturas.length}</strong> de <strong>{facturas.length}</strong> facturas
+                Hay {facturas.length} facturas cargadas en este periodo. Para listas grandes, busca por factura, medidor, codigo, afiliado o cedula y usa los filtros para encontrar el registro mas rapido.
               </span>
-              {(searchTerm || filterStatus !== 'all' || filterMetodo !== 'all') && (
-                <button 
-                  className="btn-clear-filters"
-                  onClick={() => {
-                    setSearchTerm('');
-                    setFilterStatus('all');
-                    setFilterMetodo('all');
-                  }}
-                >
-                  <X className="w-3 h-3" />
-                  Limpiar filtros
-                </button>
-              )}
             </div>
-          ) : null}
+          )}
+
+          <div className="payments-list-summary">
+            <span>
+              Mostrando {showingFrom}-{showingTo} de {sortedFacturas.length} factura{sortedFacturas.length !== 1 ? 's' : ''}
+            </span>
+            {(searchTerm.trim() || filterStatus !== 'all' || filterMetodo !== 'all') && (
+              <button
+                type="button"
+                className="clear-search-btn"
+                onClick={() => {
+                  setSearchTerm('');
+                  setFilterStatus('all');
+                  setFilterMetodo('all');
+                }}
+              >
+                Limpiar busqueda
+              </button>
+            )}
+          </div>
 
 
           {/* MENSAJE DE ERROR */}
@@ -2143,7 +2177,7 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                   {/* BODY */}
                   <div className="payments-invoices-body">
                     {sortedFacturas.length > 0 ? (
-                      sortedFacturas.map((factura, index) => {
+                      paginatedFacturas.map((factura, index) => {
 
                         const saldoPendiente = calcularSaldoPendiente(factura);
                         const puedeRecibirPago = factura.estado_factura === 'pendiente' || factura.estado_factura === 'vencida';
@@ -2175,7 +2209,7 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                           >
                             {/* Columna 1: # */}
                             <div className="pmt-inv-col-index">
-                              <span className="pmt-inv-index-badge">{index + 1}</span>
+                              <span className="pmt-inv-index-badge">{pageStartIndex + index + 1}</span>
                             </div>
 
                             {/* Columna 2: Número Factura */}
@@ -2363,7 +2397,7 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                   
                   <div className="payments-invoices-footer-stats">
                     <span>
-                      Mostrando <strong>{sortedFacturas.length}</strong> facturas
+                      Mostrando <strong>{showingFrom}-{showingTo}</strong> de <strong>{sortedFacturas.length}</strong> facturas
                     </span>
                     <span>
                       Total facturado: <strong>{formatCurrency(sortedFacturas.reduce((sum, f) => sum + parseFloat(f.total || 0), 0))}</strong>
@@ -2375,6 +2409,34 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                       Saldo pendiente: <strong className="text-red-600">{formatCurrency(sortedFacturas.reduce((sum, f) => sum + calcularSaldoPendiente(f), 0))}</strong>
                     </span>
                   </div>
+                </div>
+              )}
+
+              {sortedFacturas.length > 0 && (
+                <div className="payments-pagination-controls">
+                  <button
+                    type="button"
+                    className="pagination-btn"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={normalizedCurrentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Anterior
+                  </button>
+
+                  <span className="pagination-status">
+                    Pagina {normalizedCurrentPage} de {totalPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    className="pagination-btn"
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={normalizedCurrentPage === totalPages}
+                  >
+                    Siguiente
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
               )}
             </div>

@@ -166,6 +166,100 @@
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+.page-size-select {
+  min-width: 145px;
+}
+
+.users-search-advice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  margin: -0.5rem 0 1.25rem;
+  border: 1px solid #bfdbfe;
+  border-left: 4px solid #2563eb;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.users-search-advice svg {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.users-list-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  color: #4b5563;
+  font-size: 0.875rem;
+}
+
+.clear-search-btn {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.25rem 0;
+}
+
+.clear-search-btn:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin: 0 0 2rem;
+}
+
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-width: 120px;
+  min-height: 40px;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #374151;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+}
+
+.pagination-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.pagination-status {
+  min-width: 120px;
+  text-align: center;
+  color: #4b5563;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 /* ========================================
    ESTADÍSTICAS MEJORADAS
 ======================================== */
@@ -796,6 +890,17 @@
   }
 
   .filter-select {
+    width: 100%;
+  }
+
+  .users-list-summary,
+  .pagination-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pagination-btn,
+  .pagination-status {
     width: 100%;
   }
 

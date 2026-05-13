@@ -10,10 +10,13 @@ import * as XLSX from "xlsx";
 import {
   BookOpen, Search, Edit, Trash2, Eye, CheckCircle, XCircle, Calendar, X, Save,
   RefreshCw, AlertCircle, ArrowUpDown, Gauge, Plus, FileSpreadsheet, TrendingUp,
-  User, Download, Upload, MapPin, CalendarDays, Clock, Check, Activity, ChevronDown
+  User, Download, Upload, MapPin, CalendarDays, Clock, Check, Activity, ChevronDown,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 const ReadingsSection = () => {
+  const pageSizeOptions = [10, 20, 50, 100];
+
   // ============================================================
   // ESTADOS PRINCIPALES
   // ============================================================
@@ -45,6 +48,8 @@ const ReadingsSection = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortOption, setSortOption] = useState('periodo');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [pageSize, setPageSize] = useState(20);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // ============================================================
   // ESTADOS DE MODAL
@@ -614,6 +619,17 @@ const sortedReadings = [...filteredReadings].sort((a, b) => {
   return sortOrder === 'asc' ? comparison : -comparison;
 });
 
+  const totalPages = Math.max(1, Math.ceil(sortedReadings.length / pageSize));
+  const normalizedCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (normalizedCurrentPage - 1) * pageSize;
+  const pageEndIndex = pageStartIndex + pageSize;
+  const paginatedReadings = sortedReadings.slice(pageStartIndex, pageEndIndex);
+  const showingFrom = sortedReadings.length === 0 ? 0 : pageStartIndex + 1;
+  const showingTo = Math.min(pageEndIndex, sortedReadings.length);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus, sortOption, sortOrder, pageSize, periodoSeleccionado]);
 
   const toggleSortOrder = () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
@@ -1561,6 +1577,19 @@ return (
               <option value="consumo">Ordenar por Consumo</option>
             </select>
 
+            <select
+              className="filter-select page-size-select"
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              title="Lecturas por página"
+            >
+              {pageSizeOptions.map(size => (
+                <option key={size} value={size}>
+                  {size} por página
+                </option>
+              ))}
+            </select>
+
             <button
               className="btn-secondary"
               onClick={toggleSortOrder}
@@ -1578,6 +1607,30 @@ return (
               <RefreshCw className="w-4 h-4" />
             </button>
           </div>
+        </div>
+
+        {readings.length > 100 && (
+          <div className="readings-search-advice">
+            <AlertCircle className="w-4 h-4" />
+            <span>
+              Hay {readings.length} lecturas cargadas en este período. Para listas grandes, busca por medidor, código, nombre o usa los filtros para encontrar el registro más rápido.
+            </span>
+          </div>
+        )}
+
+        <div className="readings-list-summary">
+          <span>
+            Mostrando {showingFrom}-{showingTo} de {sortedReadings.length} lectura{sortedReadings.length !== 1 ? 's' : ''}
+          </span>
+          {searchTerm.trim() && (
+            <button
+              type="button"
+              className="clear-search-btn"
+              onClick={() => setSearchTerm('')}
+            >
+              Limpiar búsqueda
+            </button>
+          )}
         </div>
 
         {/* MENSAJE DE ERROR */}
@@ -1733,14 +1786,14 @@ return (
 
             <div className="readings-list-body">
               {sortedReadings.length > 0 ? (
-                sortedReadings.map((reading, index) => {
+                paginatedReadings.map((reading, index) => {
                   const consumoClass = reading.consumo_m3 > 100 ? 'alto' : reading.consumo_m3 > 50 ? 'medio' : '';
                   return (
                     <div 
                       key={reading.id_lectura} 
                       className={`readings-list-item ${!reading.activo ? 'inactive' : ''} ${reading.es_estimada ? 'estimated' : ''}`}
                     >
-                      <div className="list-col-id">{index + 1}</div>
+                      <div className="list-col-id">{pageStartIndex + index + 1}</div>
 
                       <div className="list-col-medidor">
                         <div className="medidor-icon">
@@ -1866,7 +1919,7 @@ return (
                 
                 <div className="readings-list-footer-stats">
                   <span>
-                    Mostrando <strong>{sortedReadings.length}</strong> lecturas
+                    Mostrando <strong>{showingFrom}-{showingTo}</strong> de <strong>{sortedReadings.length}</strong> lecturas
                   </span>
                   <span>
                     Consumo total: <strong>{sortedReadings.reduce((sum, r) => sum + (r.consumo_m3 || 0), 0)} m³</strong>
@@ -1879,6 +1932,34 @@ return (
                     </span>
                   )}
                 </div>
+              </div>
+            )}
+
+            {sortedReadings.length > 0 && (
+              <div className="readings-pagination-controls">
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={normalizedCurrentPage === 1}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Anterior
+                </button>
+
+                <span className="pagination-status">
+                  Página {normalizedCurrentPage} de {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={normalizedCurrentPage === totalPages}
+                >
+                  Siguiente
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
             )}
           </div>

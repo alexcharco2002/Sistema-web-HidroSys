@@ -3,10 +3,23 @@
 
 /* ==================== CONTENEDOR DE LISTA ==================== */
 .invoices-list-container {
+  --invoice-grid-columns:
+    52px
+    minmax(116px, 0.9fr)
+    104px
+    92px
+    96px
+    minmax(180px, 1.5fr)
+    96px
+    136px
+    96px
+    116px
+    132px;
   background: #ffffff;
   border-radius: 16px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   margin-top: 24px;
   border: 1px solid #e2e8f0;
 }
@@ -38,6 +51,8 @@
   position: sticky;
   top: 0;
   z-index: 10;
+  grid-template-columns: var(--invoice-grid-columns);
+  min-width: 1230px;
 }
 
 .invoices-list-header span {
@@ -56,7 +71,8 @@
 .invoices-list-body {
   max-height: 600px;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: visible;
+  min-width: 1230px;
 }
 
 /* ==================== SCROLLBAR PERSONALIZADO ==================== */
@@ -101,6 +117,8 @@
   align-items: center;
   transition: all 0.2s ease;
   position: relative;
+  grid-template-columns: var(--invoice-grid-columns);
+  min-width: 1230px;
 }
 
 .invoices-list-item:nth-child(even) {
@@ -769,7 +787,39 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (min-width: 901px) and (max-width: 1400px) {
+  .invoices-list-container {
+    --invoice-grid-columns:
+      44px
+      minmax(108px, 0.9fr)
+      96px
+      82px
+      88px
+      minmax(160px, 1.4fr)
+      86px
+      118px
+      88px
+      104px
+      116px;
+  }
+
+  .invoices-list-header,
+  .invoices-list-item {
+    grid-template-columns: var(--invoice-grid-columns);
+    min-width: 1090px;
+    font-size: 11px;
+  }
+
+  .invoices-list-body {
+    min-width: 1090px;
+  }
+
+  .inv-btn {
+    padding: 6px;
+  }
+}
+
+@media (max-width: 900px) {
   .invoices-list-container {
     overflow: visible;
     border: 0;
@@ -786,6 +836,7 @@
     max-height: none;
     overflow: visible;
     background: transparent;
+    min-width: 0;
   }
 
   .invoices-list-item {
@@ -798,6 +849,7 @@
     border-radius: 12px;
     background: #ffffff;
     box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+    min-width: 0;
   }
 
   .invoices-list-item:hover {
@@ -845,6 +897,7 @@
     text-align: left;
     justify-content: flex-start;
     align-items: flex-start;
+    flex-direction: column;
     background: #f8fafc;
     white-space: normal;
   }
@@ -965,6 +1018,40 @@
   .pagination-btn,
   .pagination-status {
     width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .invoices-list-item {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .inv-col-numero,
+  .inv-col-usuario,
+  .inv-col-detalles,
+  .inv-col-estado,
+  .inv-col-acciones {
+    grid-column: 1 / -1;
+  }
+
+  .inv-col-index {
+    top: 12px;
+    right: 12px;
+  }
+
+  .inv-index-badge {
+    padding: 5px 9px;
+  }
+
+  .inv-detalles-container,
+  .inv-col-acciones {
+    justify-content: flex-start;
+  }
+
+  .invoices-search-advice,
+  .invoices-list-summary {
+    font-size: 0.8125rem;
   }
 }
 

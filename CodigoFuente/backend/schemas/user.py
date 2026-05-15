@@ -58,8 +58,8 @@ class ChangePasswordFirstLoginRequest(BaseModel):
 class UserCreate(BaseModel):
     """
     Schema para crear usuario - El backend genera automáticamente:
-    - usuario: basado en los nombres (en minúsculas)
-    - clave: la cédula completa
+    - usuario: la cédula completa
+    - clave inicial: la cédula completa
     """
     nombres: str
     apellidos: str

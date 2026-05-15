@@ -1,5 +1,5 @@
 // src/components/MultiplePaymentReceipt.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X, CheckCircle, AlertCircle,
   User, FileText, DollarSign,
@@ -9,10 +9,11 @@ import './PaymentReceipt.css';
 import { generateMultiplePaymentPDF, printMultipleThermalTicket } from './PaymentReceipt';
 import paymentsServices from '../services/paymentsServices';
 
-const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) => {
+const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose, autoSaveComprobante = false }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError]               = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const autoSaveStartedRef = useRef(false);
 
   // ── Formateo ────────────────────────────────────────────────
   const parseLocalDate = (dateString) => {
@@ -154,11 +155,23 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
   // ── Auto-guardado ────────────────────────────────────────────
   useEffect(() => {
     const autoSave = async () => {
+      if (!autoSaveComprobante) return;
+      if (autoSaveStartedRef.current) {
+        console.log('[PAGO MULT FRONT] auto-guardado omitido: ya estaba en proceso');
+        return;
+      }
+      autoSaveStartedRef.current = true;
       try {
+        const t0 = performance.now();
         const pdfFile = await generateMultiplePaymentPDF(pagoMultiple, facturas, afiliado);
         if (!pdfFile || pdfFile.size === 0) return;
-        const idsPagos = pagoMultiple.ids_pagos || [pagoMultiple.id_pago];
+        const idsPagos = [...new Set((pagoMultiple.ids_pagos || [pagoMultiple.id_pago]).filter(Boolean))];
         if (!Array.isArray(idsPagos) || idsPagos.length === 0) return;
+        console.log('[PAGO MULT FRONT] auto-guardado comprobante:', {
+          idsPagos,
+          archivo: pdfFile.name,
+          kb: (pdfFile.size / 1024).toFixed(2),
+        });
         const resultados = await Promise.all(
           idsPagos.map(id => paymentsServices.uploadComprobante(id, pdfFile)
             .then(() => ({ id, ok: true }))
@@ -170,12 +183,13 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose }) =
           setSuccessMessage(`Comprobante guardado (${ok}/${idsPagos.length})`);
           setTimeout(() => setSuccessMessage(null), 4000);
         }
+        console.log(`[PAGO MULT FRONT] auto-guardado TOTAL: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
       } catch (err) {
         console.warn('Auto-guardado:', err);
       }
     };
     autoSave();
-  }, []); // eslint-disable-line
+  }, [autoSaveComprobante]); // eslint-disable-line
 
   // ── Acciones ─────────────────────────────────────────────────
   const handleDownload = async () => {

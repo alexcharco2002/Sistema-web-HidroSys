@@ -254,30 +254,6 @@ const NotificationDropdown = ({ onViewAll }) => {
     }
   };
 
-  const handleDeleteVisibleNotifications = async () => {
-    const notificationIds = notifications.slice(0, 5).map(notification => notification.id);
-    if (notificationIds.length === 0) return;
-
-    const confirmed = window.confirm(
-      '⚠️ ¿Estás seguro de que quieres eliminar las notificaciones mostradas en este panel?\n\n🗑️ Esta acción no se puede deshacer.'
-    );
-    if (!confirmed) return;
-
-    try {
-      const result = await notificationsService.deleteNotificationsBulk(notificationIds, false);
-      if (result.success) {
-        setNotifications(prev => {
-          const filtered = prev.filter(n => !notificationIds.includes(n.id));
-          const unread = filtered.filter(n => !n.read).length;
-          setUnreadCount(unread);
-          return filtered;
-        });
-      }
-    } catch (error) {
-      console.error('Error al eliminar las notificaciones mostradas:', error);
-    }
-  };
-
   // ======================================== 
   // 🔥 VER TODAS LAS NOTIFICACIONES
   // ========================================
@@ -401,15 +377,7 @@ const NotificationDropdown = ({ onViewAll }) => {
                   <Check className="w-4 h-4" />
                 </button>
               )}
-              {notifications.length > 0 && (
-                <button
-                  className="btn-delete-all-notifications"
-                  onClick={handleDeleteVisibleNotifications}
-                  title="Eliminar las mostradas"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
+              
               </div>
             </div>
           </div>

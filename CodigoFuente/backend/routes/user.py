@@ -130,8 +130,12 @@ def process_user_photo(foto_bytes):
             return f"data:image/jpeg;base64,{foto_base64}"
         except Exception as e:
             print(f"Error procesando foto: {e}")
-            return None
     return None
+
+
+def cedula_login_value(cedula: str) -> str:
+    """Normaliza la cedula usada como usuario y clave inicial."""
+    return (cedula or "").strip()
 
 # ============================================================================
 # HELPER: Convertir usuario a respuesta
@@ -298,40 +302,15 @@ def create_user(
     Crea un nuevo usuario.
     Requiere permiso: usuarios.crear o usuarios.crud
     
-    ✅ Usuario: se genera automáticamente en minúsculas a partir del nombre
-    ✅ Contraseña: es la cédula completa
+    ✅ Usuario: es la cédula completa
+    ✅ Contraseña inicial: es la cédula completa
     """
     # Verificar permisos
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "usuarios", "crear")
 
     # ===============================
-    # 1️⃣ Normalizar y generar usuario automáticamente
-    # ===============================
-    primer_nombre = user_data.nombres.strip().split()[0].lower()
-    # Remover acentos básicos
-    primer_nombre = primer_nombre.replace('á', 'a').replace('é', 'e').replace('í', 'i')
-    primer_nombre = primer_nombre.replace('ó', 'o').replace('ú', 'u').replace('ñ', 'n')
-    
-    base_username = primer_nombre
-    username = base_username
-
-    # Si ya existe un usuario igual, agregar año de nacimiento o contador
-    counter = 1
-    while db.query(UsuarioSistema).filter(UsuarioSistema.usuario == username).first():
-        if user_data.fecha_nac:
-            username = f"{base_username}{user_data.fecha_nac.year}"
-            if db.query(UsuarioSistema).filter(UsuarioSistema.usuario == username).first():
-                username = f"{base_username}{user_data.fecha_nac.year}{counter}"
-                counter += 1
-        else:
-            username = f"{base_username}{counter}"
-            counter += 1
-
-    print(f"✅ Usuario generado: {username}")
-
-    # ===============================
-    # 2️⃣ Generar contraseña = CÉDULA
+    # 1️⃣ Usuario y contraseña inicial = CÉDULA
     # ===============================
     if not user_data.cedula or len(user_data.cedula.strip()) < 8:
         raise HTTPException(
@@ -339,35 +318,42 @@ def create_user(
             detail="Cédula inválida (debe tener al menos 8 caracteres)."
         )
 
-    raw_password = user_data.cedula.strip()
+    username = cedula_login_value(user_data.cedula)
+    raw_password = username
     hashed_password = hash_password(raw_password)
     
-    print(f"✅ Contraseña generada: {raw_password}")
+    print(f"✅ Usuario y contraseña inicial generados desde cédula: {username}")
 
     # ===============================
-    # 3️⃣ Verificar email o cédula duplicada
+    # 2️⃣ Verificar usuario, email o cédula duplicada
     # ===============================
     existing_user = db.query(UsuarioSistema).filter(
         or_(
-            UsuarioSistema.email == user_data.email,
-            UsuarioSistema.cedula == user_data.cedula
+            UsuarioSistema.usuario == username,
+            UsuarioSistema.email == user_data.email.strip().lower(),
+            UsuarioSistema.cedula == username
         )
     ).first()
 
     if existing_user:
-        if existing_user.email == user_data.email:
+        if existing_user.usuario == username:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya existe un usuario con esa cédula"
+            )
+        elif existing_user.email == user_data.email.strip().lower():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="El correo electrónico ya está registrado"
             )
-        elif existing_user.cedula == user_data.cedula:
+        elif existing_user.cedula == username:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La cédula ya está registrada"
             )
 
     # ===============================
-    # 4️⃣ Crear el nuevo usuario
+    # 3️⃣ Crear el nuevo usuario
     # ===============================
     new_user = UsuarioSistema(
         usuario=username,
@@ -1139,47 +1125,27 @@ def create_users_bulk(
             print(f"📝 Procesando fila {fila_numero}: {user_data.nombres} {user_data.apellidos}")
             
             # ===============================
-            # 1️⃣ Normalizar y generar usuario
+            # 1️⃣ Usuario y contraseña inicial = CÉDULA
             # ===============================
-            primer_nombre = user_data.nombres.strip().split()[0].lower()
-            # Remover acentos
-            primer_nombre = (primer_nombre
-                .replace('á', 'a').replace('é', 'e').replace('í', 'i')
-                .replace('ó', 'o').replace('ú', 'u').replace('ñ', 'n'))
-            
-            base_username = primer_nombre
-            username = base_username
-            
-            # Si existe, agregar año o contador
-            counter = 1
-            while db.query(UsuarioSistema).filter(UsuarioSistema.usuario == username).first():
-                if user_data.fecha_nac:
-                    username = f"{base_username}{user_data.fecha_nac.year}"
-                    if db.query(UsuarioSistema).filter(UsuarioSistema.usuario == username).first():
-                        username = f"{base_username}{user_data.fecha_nac.year}{counter}"
-                        counter += 1
-                else:
-                    username = f"{base_username}{counter}"
-                    counter += 1
-            
-            # ===============================
-            # 2️⃣ Generar contraseña = CÉDULA
-            # ===============================
-            raw_password = user_data.cedula.strip()
+            username = cedula_login_value(user_data.cedula)
+            raw_password = username
             hashed_password = hash_password(raw_password)
             
             # ===============================
-            # 3️⃣ Verificar duplicados
+            # 2️⃣ Verificar duplicados
             # ===============================
             existing = db.query(UsuarioSistema).filter(
                 or_(
+                    UsuarioSistema.usuario == username,
                     UsuarioSistema.email == user_data.email.lower(),
-                    UsuarioSistema.cedula == user_data.cedula
+                    UsuarioSistema.cedula == username
                 )
             ).first()
             
             if existing:
-                if existing.email == user_data.email.lower():
+                if existing.usuario == username:
+                    error_msg = "Usuario ya registrado con esa cédula"
+                elif existing.email == user_data.email.lower():
                     error_msg = "Email ya registrado"
                 else:
                     error_msg = "Cédula ya registrada"
@@ -1195,7 +1161,7 @@ def create_users_bulk(
                 continue
             
             # ===============================
-            # 4️⃣ Crear usuario con ROL CLIENTE (4) y ACTIVO
+            # 3️⃣ Crear usuario con ROL CLIENTE (4) y ACTIVO
             # ===============================
             new_user = UsuarioSistema(
                 usuario=username,

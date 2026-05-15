@@ -1378,9 +1378,9 @@ const getBlockStatusText = (user) => {
                         <br />
                         &nbsp;&nbsp;&nbsp;• Estado: <strong>Activo</strong>
                         <br />
-                        &nbsp;&nbsp;&nbsp;• Contraseña: <strong>Su número de cédula</strong>
+                        &nbsp;&nbsp;&nbsp;• Usuario: <strong>Su número de cédula</strong>
                         <br />
-                        &nbsp;&nbsp;&nbsp;• Usuario: <strong>Se genera automáticamente</strong>
+                        &nbsp;&nbsp;&nbsp;• Contraseña: <strong>Su número de cédula</strong>
                         <br />
                         &nbsp;&nbsp;&nbsp;• Máximo: <strong>500 usuarios por carga</strong>
                       </small>
@@ -1511,9 +1511,10 @@ const getBlockStatusText = (user) => {
                         }}>
                           <strong>ℹ️ Información:</strong>
                           <ul style={{ marginTop: '8px', marginLeft: '20px' }}>
-                            <li>Usuario y contraseña se generarán automáticamente</li>
+                            <li>Usuario y contraseña inicial serán el número de cédula</li>
                             <li>Rol asignado: <strong>Cliente</strong></li>
                             <li>Estado: <strong>Activo</strong></li>
+                            <li>Usuario inicial: <strong>Número de cédula</strong></li>
                             <li>Contraseña inicial: <strong>Número de cédula</strong></li>
                           </ul>
                         </div>

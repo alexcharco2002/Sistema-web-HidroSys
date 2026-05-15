@@ -545,8 +545,6 @@ def listar_mis_facturas_completo(
 
     t1 = time.perf_counter()
 
-    
-
     # ── 1. Afiliado (una sola query con JOIN) ─────────────────
     afiliado = _get_afiliado_by_username(payload["sub"], db)
 

@@ -13,7 +13,7 @@ import {
   MapPin, Search, CheckCircle,
   RefreshCw, AlertCircle, Layers, Navigation,
   X, User, Navigation2, ChevronDown, ChevronUp,
-  LocateFixed, Crosshair, Check, Loader2, Move, Map, Plus, Save
+  LocateFixed, Crosshair, Check, Loader2, Move, Map, Plus, Save, Trash2
 } from 'lucide-react';
 import metersService from '../../services/metersServices';
 
@@ -112,7 +112,7 @@ const GeolocationSection = () => {
   const [error,            setError]            = useState(null);
   const [estadisticas,     setEstadisticas]     = useState(null);
   const [,                 setCurrentUser]      = useState(null);
-  const [permissions,      setPermissions]      = useState({ canRead: false, canUpdate: false });
+  const [permissions,      setPermissions]      = useState({ canRead: false, canUpdate: false, canDelete: false });
   const [mapInstance,      setMapInstance]      = useState(null);
   const [userLocation,     setUserLocation]     = useState(null);
   const [,                 setLocationError]    = useState(null);
@@ -125,6 +125,7 @@ const GeolocationSection = () => {
   const [confirmDialog, setConfirmDialog] = useState(false);  // dialog visible
   const [savingCoords,  setSavingCoords]  = useState(false);  // petición en curso
   const [toastGeo,      setToastGeo]      = useState(null);   // {tipo, msg}
+  const [deletingMedidorId, setDeletingMedidorId] = useState(null);
 
   // Limites geográficos
   const [limitesGeo, setLimitesGeo] = useState([]);
@@ -150,7 +151,7 @@ const GeolocationSection = () => {
 
   const { isLoaded, loadError } = useGoogleMaps();
 
-  const permissionsRef = useRef({ canRead: false, canUpdate: false });
+  const permissionsRef = useRef({ canRead: false, canUpdate: false, canDelete: false });
 
   const scrollToMedidorInList = useCallback((medidorId) => {
     const item = medidorItemRefs.current[medidorId];
@@ -162,9 +163,14 @@ const GeolocationSection = () => {
   useEffect(() => {
     const canRead   = authService.hasPermission('geolocalizacion', 'lectura') ||
                       authService.hasPermission('geolocalizacion', 'operaciones crud');
-    const canUpdate = authService.hasPermission('geolocalizacion', 'actualizar') ;
-                      permissionsRef.current = { canRead, canUpdate };
-    setPermissions({ canRead, canUpdate });
+    const canUpdate = authService.hasPermission('geolocalizacion', 'actualizar') ||
+                      authService.hasPermission('geolocalizacion', 'operaciones crud') ||
+                      authService.hasPermission('medidores', 'actualizar');
+    const canDelete = authService.hasPermission('geolocalizacion', 'eliminar') ||
+                      authService.hasPermission('geolocalizacion', 'operaciones crud') ||
+                      authService.hasPermission('medidores', 'eliminar');
+    permissionsRef.current = { canRead, canUpdate, canDelete };
+    setPermissions({ canRead, canUpdate, canDelete });
     setCurrentUser(authService.getCurrentUser());
   }, []);
 
@@ -435,6 +441,48 @@ const confirmarActualizacion = async () => {
     setSavingCoords(false);
     setConfirmDialog(false);
     setTimeout(() => setToastGeo(null), 4000);
+  }
+};
+
+
+const eliminarMedidor = async (medidor, e) => {
+  e.stopPropagation();
+  if (!medidor || deletingMedidorId) return;
+
+  const confirmar = window.confirm(
+    `¿Eliminar el medidor ${medidor.num_medidor}?\n\nSi tiene registros relacionados, el sistema lo desactivará para conservar el historial.`
+  );
+  if (!confirmar) return;
+
+  setDeletingMedidorId(medidor.id_medidor);
+  try {
+    const result = await geolocalizacionService.eliminarMedidor(medidor.id_medidor);
+
+    if (!result.success) {
+      setToastGeo({ tipo: 'error', msg: result.message || 'No se pudo eliminar el medidor' });
+      return;
+    }
+
+    if (result.accion === 'eliminado') {
+      setMedidores(prev => prev.filter(m => m.id_medidor !== medidor.id_medidor));
+      if (selectedMedidor?.id_medidor === medidor.id_medidor) setSelectedMedidor(null);
+    } else if (result.accion === 'desactivado') {
+      const medidorActualizado = result.data?.medidor;
+      setMedidores(prev => prev.map(m =>
+        m.id_medidor === medidor.id_medidor
+          ? { ...m, activo: false, ...(medidorActualizado || {}) }
+          : m
+      ));
+    }
+
+    shouldFitBoundsRef.current = true;
+    setToastGeo({ tipo: 'exito', msg: result.message || 'Medidor actualizado' });
+    await fetchData(true);
+  } catch {
+    setToastGeo({ tipo: 'error', msg: 'Error de conexión al eliminar medidor' });
+  } finally {
+    setDeletingMedidorId(null);
+    setTimeout(() => setToastGeo(null), 4500);
   }
 };
 
@@ -758,14 +806,50 @@ const limiteStyleHover = {
                   >
                     {/* Cabecera del card */}
                     <div className="sidebar-item-header">
-                      <div className="flex items-center gap-2">
+                      <div className="geo-meter-title">
                         <div className={`status-dot ${medidor.activo ? 'active' : 'inactive'}`} />
-                        <span className="font-semibold">
+                        <span className="geo-meter-number">
                           {isCurrentUser && '🏠 '}
                           {medidor.num_medidor}
                         </span>
                       </div>
-                      <Navigation2 className="w-4 h-4 text-gray-400" />
+                      <div className="geo-card-actions">
+                        {permissions.canUpdate && (
+                          <button
+                            type="button"
+                            className={`geo-card-icon-btn update ${isModoActivo ? 'active' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              isModoActivo
+                                ? cancelarModoUbicacion()
+                                : iniciarModoUbicacion(medidor, e);
+                            }}
+                            title={isModoActivo ? 'Cancelar actualización de ubicación' : 'Actualizar ubicación en el mapa'}
+                            aria-label={isModoActivo ? 'Cancelar actualización de ubicación' : 'Actualizar ubicación en el mapa'}
+                          >
+                            {isModoActivo ? <X size={15} /> : <Move size={15} />}
+                          </button>
+                        )}
+
+                        {permissions.canDelete && (
+                          <button
+                            type="button"
+                            className="geo-card-icon-btn delete"
+                            onClick={(e) => eliminarMedidor(medidor, e)}
+                            disabled={deletingMedidorId === medidor.id_medidor}
+                            title="Eliminar medidor"
+                            aria-label="Eliminar medidor"
+                          >
+                            {deletingMedidorId === medidor.id_medidor ? (
+                              <Loader2 size={15} className="spin" />
+                            ) : (
+                              <Trash2 size={15} />
+                            )}
+                          </button>
+                        )}
+
+                        <Navigation2 className="geo-card-nav-icon" />
+                      </div>
                     </div>
 
                     {isCurrentUser && (

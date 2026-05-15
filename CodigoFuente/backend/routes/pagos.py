@@ -1,8 +1,9 @@
 # routes/pagos.py
 # funciones de control y de 
 import locale
+import time
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Query
-from sqlalchemy.orm import Session, aliased, joinedload, selectinload
+from sqlalchemy.orm import Session, aliased, joinedload, selectinload, load_only
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Tuple as TypingTuple  
 from sqlalchemy import  String, cast, func, extract,case, and_,  or_
@@ -43,6 +44,10 @@ from security.jwt import verify_token
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
 CENTAVOS = Decimal("0.01")
+
+
+def _log_pago_tiempo(scope: str, paso: str, inicio: float) -> None:
+    print(f"[{scope}] {paso}: {time.perf_counter() - inicio:.3f}s")
 
 
 def redondear_dinero(valor) -> Decimal:
@@ -2247,14 +2252,20 @@ def crear_pago(
     - IVA dinámico de la configuración
     - Soporte para múltiples pagos parciales
     """
+    t0 = time.perf_counter()
+    t1 = time.perf_counter()
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "pagos", "crear")
+    current_user_id = current_user.id_usuario_sistema
+    _log_pago_tiempo("PAGO IND", "1 usuario/permisos", t1)
     
     # ========================================
     # PASO 1: OBTENER CONFIGURACIÓN DE IVA
     # ========================================
+    t1 = time.perf_counter()
     from utils.facturacion import obtener_configuracion_iva
     tasa_impuesto, iva_config = obtener_configuracion_iva(db)
+    _log_pago_tiempo("PAGO IND", "2 config iva", t1)
     print(f"📊 IVA aplicado: {float(tasa_impuesto * 100):.2f}%")
     
     # Variables de control
@@ -2273,6 +2284,7 @@ def crear_pago(
     # ========================================
     # PASO 2: VALIDAR FACTURA Y AFILIADO
     # ========================================
+    t1 = time.perf_counter()
     if pago.id_factura:
         factura = validar_factura_para_pago(pago.id_factura, db)
         
@@ -2287,10 +2299,12 @@ def crear_pago(
     
     if pago.id_usuario_afi:
         validar_afiliado(pago.id_usuario_afi, db)
+    _log_pago_tiempo("PAGO IND", "3 validar factura/afiliado/montos", t1)
     
     # ========================================
     # PASO 3: EVALUAR Y CALCULAR MORA
     # ========================================
+    t1 = time.perf_counter()
     if pago.id_factura and factura and pago.incluir_mora:
         # ✅ Primero obtener la configuración para mostrar info
         from utils.config_mora import obtener_configuracion_mora_activa
@@ -2330,10 +2344,12 @@ def crear_pago(
             redondear_dinero(monto_sin_multas + monto_mora),
             pago.incluir_multas
         )
+    _log_pago_tiempo("PAGO IND", "4 calcular mora", t1)
 
     # ========================================
     # PASO 4: CALCULAR MONTO TOTAL A COBRAR
     # ========================================
+    t1 = time.perf_counter()
     monto_total_cobrar = redondear_dinero(pago.monto_pago)
     
     print(f"\n{'='*60}")
@@ -2346,11 +2362,13 @@ def crear_pago(
         print(f"   Mora incluida en el monto: ${monto_mora}")
     print(f"   = TOTAL A COBRAR: ${monto_total_cobrar}")
     print(f"{'='*60}\n")
+    _log_pago_tiempo("PAGO IND", "5 preparar resumen", t1)
     
     try:
         # ========================================
         # PASO 5: CREAR REGISTRO DE PAGO
         # ========================================
+        t1 = time.perf_counter()
         
         # Construir observaciones del pago
         observaciones_pago = pago.observaciones or ""
@@ -2387,12 +2405,14 @@ def crear_pago(
         
         db.add(nuevo_pago)
         db.flush()
+        _log_pago_tiempo("PAGO IND", "6 insert pago/flush", t1)
         
         print(f"✅ Pago registrado: ID={nuevo_pago.id_pago}, Monto=${monto_total_cobrar}")
         
         # ========================================
         # PASO 6: PROCESAR FACTURA Y MULTAS
         # ========================================
+        t1 = time.perf_counter()
         if pago.id_factura and factura:
             #  CALCULAR TOTAL PAGADO ACUMULADO
             total_pagado = db.query(func.sum(Pago.monto_pago)).filter(
@@ -2469,12 +2489,16 @@ def crear_pago(
             print(f"   🔄 ACTUALIZANDO FACTURA:")
             print(f"      - Estado: {factura.estado_factura}")
             print(f"{'='*70}\n")
+        _log_pago_tiempo("PAGO IND", "7 actualizar factura/multas", t1)
         
         # ========================================
         # PASO 7: COMMIT Y AUDITORÍA
         # ========================================
+        t1 = time.perf_counter()
         db.commit()
         db.refresh(nuevo_pago)
+        _log_pago_tiempo("PAGO IND", "8 commit/refresh", t1)
+        t1 = time.perf_counter()
         
         # Auditoría
         desc_auditoria = f"Pago #{nuevo_pago.id_pago} - Monto: ${monto_total_cobrar} - Método: {pago.metodo_pago}"
@@ -2496,11 +2520,12 @@ def crear_pago(
 
         
         # Notificación
+        t1 = time.perf_counter()
         registrar_auditoria(
             db=db,
             accion="CREATE",
             descripcion=desc_auditoria,
-            id_usuario=current_user.id_usuario_sistema
+            id_usuario=current_user_id
         )
 
         mensaje_notif = f"Pago de ${monto_total_cobrar} registrado"
@@ -2513,11 +2538,13 @@ def crear_pago(
         
         registrar_notificacion(
             db=db,
-            id_usuario=current_user.id_usuario_sistema,
+            id_usuario=current_user_id,
             titulo="Pago registrado",
             mensaje=mensaje_notif,
             tipo="exito"
         )
+        _log_pago_tiempo("PAGO IND", "9 auditoria/notificacion", t1)
+        _log_pago_tiempo("PAGO IND", "TOTAL", t0)
         
         return nuevo_pago
         
@@ -2733,14 +2760,19 @@ def crear_pago_multiple(
     - Maneja multas independientemente
     - Todo en una sola transacción (atomicidad)
     """
+    t0 = time.perf_counter()
+    t1 = time.perf_counter()
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "pagos", "crear")
+    _log_pago_tiempo("PAGO MULT", "1 usuario/permisos", t1)
     
     # Obtener configuración de IVA
+    t1 = time.perf_counter()
     from utils.facturacion import obtener_configuracion_iva
     from utils.config_mora import evaluar_y_aplicar_mora
     
     tasa_impuesto, iva_config = obtener_configuracion_iva(db)
+    _log_pago_tiempo("PAGO MULT", "2 config iva/imports", t1)
     
     # Inicializar variables de control
     pagos_creados = []
@@ -2759,22 +2791,29 @@ def crear_pago_multiple(
         # ========================================
         # PROCESAR CADA FACTURA
         # ========================================
+        t_loop = time.perf_counter()
         for idx, item in enumerate(pago_multiple.facturas, 1):
+            t_iter = time.perf_counter()
             print(f"\n📄 [{idx}/{len(pago_multiple.facturas)}] Procesando factura ID: {item.id_factura}")
             
             # Validar factura
+            t_step = time.perf_counter()
             factura = validar_factura_para_pago(item.id_factura, db)
+            _log_pago_tiempo("PAGO MULT", f"3.{idx} validar factura {item.id_factura}", t_step)
             
             # Calcular montos con/sin multas
+            t_step = time.perf_counter()
             monto_sin_multas, multas_en_factura, total_multas = calcular_montos_con_multas(
                 factura, item.incluir_multas, tasa_impuesto, db
             )
+            _log_pago_tiempo("PAGO MULT", f"4.{idx} calcular montos/multas", t_step)
             
             # Evaluar mora solo si fue seleccionada en el pago
             monto_mora = Decimal('0.00')
             mora_aplicada = False
             detalle_mora = "Mora no incluida en este pago"
             if item.incluir_mora:
+                t_step = time.perf_counter()
                 monto_mora, mora_aplicada, detalle_mora = evaluar_y_aplicar_mora(
                     factura=factura,
                     fecha_pago=datetime.now(),
@@ -2787,6 +2826,7 @@ def crear_pago_multiple(
                     if mora_existente:
                         monto_mora = redondear_dinero(mora_existente.monto_mora)
                         detalle_mora = "Mora aplicada previamente"
+                _log_pago_tiempo("PAGO MULT", f"5.{idx} evaluar mora", t_step)
             
             # El frontend envia el monto final seleccionado para esta factura.
             monto_total_factura = redondear_dinero(item.monto_a_pagar)
@@ -2806,6 +2846,7 @@ def crear_pago_multiple(
                 obs_factura += f" | {pago_multiple.observaciones}"
             
             # Crear registro de pago
+            t_step = time.perf_counter()
             nuevo_pago = Pago(
                 id_factura=item.id_factura,
                 monto_pago=monto_total_factura,
@@ -2822,9 +2863,11 @@ def crear_pago_multiple(
             db.flush()
             
             pagos_creados.append(nuevo_pago.id_pago)
+            _log_pago_tiempo("PAGO MULT", f"6.{idx} insert pago/flush", t_step)
             print(f"   ✅ Pago registrado: ID={nuevo_pago.id_pago}")
             
             # Actualizar estado de factura
+            t_step = time.perf_counter()
             total_pagado = db.query(func.sum(Pago.monto_pago)).filter(
                 Pago.id_factura == item.id_factura,
                 Pago.estado_pago == 'REGISTRADO'
@@ -2890,11 +2933,16 @@ def crear_pago_multiple(
                 estado_final=factura.estado_factura,
                 esta_totalmente_pagada=esta_totalmente_pagada
             ))
+            _log_pago_tiempo("PAGO MULT", f"7.{idx} actualizar factura/multas/respuesta", t_step)
+            _log_pago_tiempo("PAGO MULT", f"ITER {idx}/{len(pago_multiple.facturas)}", t_iter)
+        _log_pago_tiempo("PAGO MULT", "8 procesar todas facturas", t_loop)
         
         # ========================================
         # COMMIT TRANSACCIÓN
         # ========================================
+        t1 = time.perf_counter()
         db.commit()
+        _log_pago_tiempo("PAGO MULT", "9 commit", t1)
         
         print(f"\n{'='*80}")
         print(f"✅ PAGO MÚLTIPLE COMPLETADO")
@@ -2916,6 +2964,7 @@ def crear_pago_multiple(
         )
         
         # Construir respuesta
+        _log_pago_tiempo("PAGO MULT", "TOTAL antes respuesta", t0)
         return PagoMultipleResponse(
             success=True,
             total_pagado=total_general,
@@ -3678,11 +3727,22 @@ async def subir_comprobante(
     - **id_pago**: ID del pago
     - **comprobante**: Archivo PDF del comprobante (máximo 5MB)
     """
+    t0 = time.perf_counter()
+    t1 = time.perf_counter()
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "pagos", "actualizar")
+    current_user_id = current_user.id_usuario_sistema
+    _log_pago_tiempo("COMP PAGO", f"1 usuario/permisos pago={id_pago}", t1)
     
     # Validar que el pago existe
-    pago = db.query(Pago).filter(Pago.id_pago == id_pago).first()
+    t1 = time.perf_counter()
+    pago = (
+        db.query(Pago)
+        .options(load_only(Pago.id_pago, Pago.activo, Pago.estado_pago, Pago.nombre_archivo, Pago.tipo_mime))
+        .filter(Pago.id_pago == id_pago)
+        .first()
+    )
+    _log_pago_tiempo("COMP PAGO", f"2 buscar pago={id_pago}", t1)
     if not pago:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -3697,47 +3757,60 @@ async def subir_comprobante(
         )
     
     # Validar tipo de archivo
+    t1 = time.perf_counter()
     if not comprobante.content_type or comprobante.content_type != 'application/pdf':
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El archivo debe ser un PDF"
         )
+    _log_pago_tiempo("COMP PAGO", f"3 validar archivo pago={id_pago}", t1)
     
     try:
         # Leer el contenido del archivo
+        t1 = time.perf_counter()
         pdf_content = await comprobante.read()
+        _log_pago_tiempo("COMP PAGO", f"4 leer archivo pago={id_pago} bytes={len(pdf_content)}", t1)
         
         # Validar tamaño (máximo 5MB)
+        t1 = time.perf_counter()
         size_mb = len(pdf_content) / (1024 * 1024)
         if size_mb > 5:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"El archivo excede el límite de 5MB (tamaño: {size_mb:.2f} MB)"
             )
+        _log_pago_tiempo("COMP PAGO", f"5 validar tamano pago={id_pago}", t1)
         
         # Guardar en la base de datos
+        t1 = time.perf_counter()
         pago.comprobante_pdf = pdf_content
         pago.nombre_archivo = comprobante.filename
         pago.tipo_mime = comprobante.content_type
+        _log_pago_tiempo("COMP PAGO", f"6 asignar campos pago={id_pago}", t1)
         
+        t1 = time.perf_counter()
         db.commit()
-        db.refresh(pago)
+        _log_pago_tiempo("COMP PAGO", f"7 commit pdf pago={id_pago}", t1)
         
         # Auditoría
         registrar_auditoria(
             db=db,
             accion="UPDATE",
             descripcion=f"Comprobante PDF subido para pago #{id_pago} - Archivo: {comprobante.filename} ({size_mb:.2f} MB)",
-            id_usuario=current_user.id_usuario_sistema
+            id_usuario=current_user_id
         )
+        _log_pago_tiempo("COMP PAGO", f"9 auditoria pago={id_pago}", t1)
         
+        t1 = time.perf_counter()
         registrar_notificacion(
             db=db,
-            id_usuario=current_user.id_usuario_sistema,
+            id_usuario=current_user_id,
             titulo="Comprobante guardado",
             mensaje=f"Comprobante del pago #{id_pago} guardado exitosamente",
             tipo="exito"
         )
+        _log_pago_tiempo("COMP PAGO", f"10 notificacion pago={id_pago}", t1)
+        _log_pago_tiempo("COMP PAGO", f"TOTAL pago={id_pago}", t0)
         
         return {
             "success": True,

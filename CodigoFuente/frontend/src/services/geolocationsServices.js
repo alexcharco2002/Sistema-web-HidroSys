@@ -260,6 +260,31 @@ class GeolocalizacionService {
     }
   }
 
+  // ── Eliminar medidor desde geolocalizacion ───────────────────────────
+  async eliminarMedidor(medidorId) {
+    try {
+      const data = await this.makeRequest(
+        `${API_CONFIG.endpoints.baseGeoMedidores}/${medidorId}`,
+        { method: 'DELETE', cache: 'no-store' }
+      );
+
+      this.clearCacheAndInflight('medidores_geo', API_CONFIG.endpoints.medidoresGeo);
+      this.clearCacheAndInflight('mis_medidores', API_CONFIG.endpoints.misMedidores);
+
+      return {
+        success: Boolean(data?.success),
+        accion: data?.accion,
+        data,
+        message: data?.message || 'Operacion completada',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Error al eliminar medidor',
+      };
+    }
+  }
+
   // ── Helpers ──────────────────────────────────────────────────────────
   validarCoordenadas(lat, lng) {
     const la = parseFloat(lat), ln = parseFloat(lng);

@@ -21,7 +21,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Integer, cast, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
+from psycopg2.errors import ForeignKeyViolation
 
 from db.session import SessionLocal
 from models.affiliate import UsuarioAfiliado
@@ -554,12 +556,12 @@ def actualizar_coordenadas(
     Endpoint dedicado para el mapa — no modifica otros campos del medidor.
 
     Valida el formato y el límite geográfico antes de guardar.
-    Requiere permiso: medidores.actualizar  o  geolocalizacion.crud
+    Requiere permiso: medidores.actualizar  o  geolocalizacion.actualizar/crud
     """
     current_user = get_current_user(payload, db)
     require_any_permission(
         current_user, db,
-        [("medidores", "actualizar"), ("geolocalizacion", "crud")],
+        [("medidores", "actualizar"), ("geolocalizacion", "actualizar"), ("geolocalizacion", "crud")],
     )
 
     medidor = (
@@ -655,6 +657,134 @@ def actualizar_coordenadas(
             detail="Error al actualizar las coordenadas",
         )
     
+# ============================================================================
+# ENDPOINT 8: DELETE /geo/medidores/{id_medidor}
+# Elimina un medidor desde el modulo de geolocalizacion.
+# Si tiene relaciones, conserva el historial y lo desactiva.
+# ============================================================================
+
+@router.delete("/medidores/{id_medidor}", status_code=status.HTTP_200_OK)
+def eliminar_medidor_geo(
+    id_medidor: int,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token),
+):
+    """
+    Elimina un medidor desde geolocalizacion.
+    Usa el mismo comportamiento del modulo medidores: si hay relaciones,
+    desactiva el medidor en lugar de romper integridad referencial.
+
+    Requiere permiso: medidores.eliminar o geolocalizacion.eliminar/crud.
+    """
+    current_user = get_current_user(payload, db)
+    require_any_permission(
+        current_user, db,
+        [("medidores", "eliminar"), ("geolocalizacion", "eliminar"), ("geolocalizacion", "crud")],
+    )
+
+    medidor = (
+        db.query(Medidor)
+        .options(
+            joinedload(Medidor.sector),
+            joinedload(Medidor.usuario_afiliado).joinedload(
+                UsuarioAfiliado.usuario_sistema
+            ),
+        )
+        .filter(Medidor.id_medidor == id_medidor)
+        .first()
+    )
+
+    if not medidor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Medidor no encontrado",
+        )
+
+    medidor_snapshot = medidor.to_dict()
+    num_medidor = medidor.num_medidor
+
+    try:
+        db.delete(medidor)
+        db.commit()
+
+        registrar_auditoria(
+            db=db,
+            accion="DELETE",
+            descripcion=f"Medidor '{num_medidor}' eliminado desde geolocalizacion por '{payload['sub']}'",
+            id_usuario=current_user.id_usuario_sistema,
+        )
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Medidor eliminado",
+            mensaje=f"El medidor '{num_medidor}' fue eliminado correctamente.",
+            tipo="info",
+        )
+
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": f"El medidor '{num_medidor}' fue eliminado correctamente.",
+                "accion": "eliminado",
+                "medidor": medidor_snapshot,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    except IntegrityError as e:
+        db.rollback()
+
+        if isinstance(e.orig, ForeignKeyViolation):
+            if not medidor.activo:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El medidor '{num_medidor}' ya esta inactivo.",
+                )
+
+            medidor.activo = False
+            db.commit()
+            db.refresh(medidor)
+            medidor_snapshot_desactivado = medidor.to_dict()
+
+            registrar_auditoria(
+                db=db,
+                accion="UPDATE",
+                descripcion=f"Medidor '{num_medidor}' desactivado desde geolocalizacion por relaciones por '{payload['sub']}'",
+                id_usuario=current_user.id_usuario_sistema,
+            )
+            registrar_notificacion(
+                db=db,
+                id_usuario=current_user.id_usuario_sistema,
+                titulo="Medidor desactivado",
+                mensaje=f"El medidor '{num_medidor}' no se pudo eliminar porque esta relacionado con otros modulos. Fue desactivado automaticamente.",
+                tipo="alerta",
+            )
+
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "message": f"El medidor '{num_medidor}' no se pudo eliminar porque esta relacionado con otros modulos, solo fue desactivado.",
+                    "accion": "desactivado",
+                    "medidor": medidor_snapshot_desactivado,
+                },
+                headers={"Cache-Control": "no-store"},
+            )
+
+        print(f"Error inesperado al eliminar medidor desde geo: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al intentar eliminar el medidor",
+        )
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error al eliminar medidor desde geo: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al eliminar el medidor",
+        )
+
+
 # funcion para obtener los limites configurados de la comunidad 
 @router.get("/limites")
 def obtener_limites_geograficos(db: Session = Depends(get_db)):

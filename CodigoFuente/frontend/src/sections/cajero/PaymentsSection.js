@@ -1136,9 +1136,10 @@ const closePagoMultipleModal = () => {
       alert(mensaje);
 
       // 🔄 OPERACIONES EN SEGUNDO PLANO (no bloquean UI)
-      Promise.all([
+      (async () => {
+        try {
         // Generar y guardar PDF
-        (async () => {
+        await (async () => {
           try {
             console.log('📄 Generando comprobante PDF...');
             const pdfFile = await generatePaymentPDF(pagoCreado, facturaOptimista);
@@ -1152,10 +1153,10 @@ const closePagoMultipleModal = () => {
             console.error('⚠️ Error con comprobante:', pdfError);
             // No mostramos error al usuario, el pago ya se registró
           }
-        })(),
+        })();
         
         // Recargar datos del servidor (verificar valores reales)
-        (async () => {
+        await (async () => {
           try {
             console.log('🔄 Recargando datos del servidor...');
             await fetchFacturasPeriodo();
@@ -1180,11 +1181,13 @@ const closePagoMultipleModal = () => {
           } catch (err) {
             console.error('⚠️ Error al recargar datos:', err);
           }
-        })()
-      ]).then(() => {
+        })();
+        console.log('Todas las operaciones completadas');
+        } catch (backgroundError) {
+          console.error('Error en operaciones en segundo plano:', backgroundError);
+        }
+      })();
         console.log('🎉 Todas las operaciones completadas');
-      });
-
       // Preparar datos para mostrar comprobante
       setPagoRegistrado(pagoCreado);
       setFacturaDelPago(facturaOptimista);

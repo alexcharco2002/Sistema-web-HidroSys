@@ -34,6 +34,7 @@ class PaymentsServices {
    */
   async makeRequest(endpoint, options = {}) {
     const url = `${API_CONFIG.baseURL}${endpoint}`;
+    const requestStart = performance.now();
     
     const defaultOptions = {
       method: 'GET',
@@ -69,6 +70,7 @@ class PaymentsServices {
         ...finalOptions,
         signal: controller.signal,
       });
+      console.log(`[PAYMENTS API] fetch ${finalOptions.method} ${endpoint}: ${((performance.now() - requestStart) / 1000).toFixed(3)}s`);
       
       clearTimeout(timeoutId);
 
@@ -90,12 +92,14 @@ class PaymentsServices {
       }
 
       const data = await response.json();
+      console.log(`[PAYMENTS API] parse json ${finalOptions.method} ${endpoint}: ${((performance.now() - requestStart) / 1000).toFixed(3)}s`);
       console.log(`✅ API Response:`, data);
       return data;
       
     } catch (error) {
       console.error(`❌ API Error:`, error);
       
+      console.error(`[PAYMENTS API] error ${finalOptions.method} ${endpoint}: ${((performance.now() - requestStart) / 1000).toFixed(3)}s`);
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
       }
@@ -478,8 +482,15 @@ class PaymentsServices {
    * Registrar un nuevo pago
    */
   async createPago(pagoData) {
+    const t0 = performance.now();
     try {
       const montoPago = Number.parseFloat(Number(pagoData.monto_pago || 0).toFixed(2));
+      console.log('[PAGO IND FRONT] 1 preparar payload:', {
+        segundos: ((performance.now() - t0) / 1000).toFixed(3),
+        id_factura: pagoData.id_factura,
+        id_usuario_afi: pagoData.id_usuario_afi,
+        monto_pago: montoPago
+      });
       const data = await this.makeRequest(API_CONFIG.endpoints.pagos, {
         method: 'POST',
         body: {
@@ -496,6 +507,7 @@ class PaymentsServices {
           incluir_consumos: pagoData.incluir_consumos !== undefined ? pagoData.incluir_consumos : true
         }
       });
+      console.log(`[PAGO IND FRONT] 2 backend respondio: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
 
       console.log('📤 Datos enviados al backend:', {
         monto_pago: montoPago,
@@ -508,6 +520,7 @@ class PaymentsServices {
       // Limpiar cachés
       this.cachedPagos = null;
       this.cachedStats = null;
+      console.log(`[PAGO IND FRONT] TOTAL: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
 
       return {
         success: true,
@@ -644,6 +657,7 @@ class PaymentsServices {
  * Subir comprobante PDF para un pago
  */
 async uploadComprobante(idPago, file) {
+  const t0 = performance.now();
   try {
     console.log(`📤 Subiendo comprobante para pago ${idPago}...`);
     console.log('📄 Archivo:', file.name, `(${(file.size / 1024).toFixed(2)} KB)`);
@@ -666,6 +680,7 @@ async uploadComprobante(idPago, file) {
     const formData = new FormData();
     formData.append('comprobante', file); // ✅ CAMBIAR DE 'file' A 'comprobante'
 
+    console.log(`[COMP FRONT] 1 formData pago=${idPago}: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
     const url = `${API_CONFIG.baseURL}/pagos/${idPago}/comprobante`;
     
     console.log('🌐 Enviando a:', url);
@@ -681,6 +696,7 @@ async uploadComprobante(idPago, file) {
 
     console.log('📡 Response status:', response.status);
 
+    console.log(`[COMP FRONT] 2 fetch pago=${idPago}: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
     if (!response.ok) {
       let errorMessage = 'Error al subir comprobante';
       try {
@@ -694,6 +710,8 @@ async uploadComprobante(idPago, file) {
     }
 
     const data = await response.json();
+    console.log(`[COMP FRONT] 3 parse json pago=${idPago}: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
+    console.log(`[COMP FRONT] TOTAL pago=${idPago}: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
     console.log('✅ Respuesta del servidor:', data);
     
     return {
@@ -703,6 +721,7 @@ async uploadComprobante(idPago, file) {
     };
     
   } catch (error) {
+    console.error(`[COMP FRONT] ERROR pago=${idPago}: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
     console.error('❌ Error subiendo comprobante:', error);
     throw error; // ✅ Lanzar el error para que handleCreatePago lo capture
   }
@@ -792,6 +811,7 @@ async downloadComprobante(idPago) {
 
 // 
 async createPagoMultiple(pagoMultipleData) {
+  const t0 = performance.now();
   try {
     // ✅ El payload ya viene bien formado desde handlePagoMultiple,
     //    solo aseguramos los tipos críticos que Pydantic valida como integer > 0
@@ -817,6 +837,12 @@ async createPagoMultiple(pagoMultipleData) {
       ...f,
       monto_a_pagar: Number.parseFloat(Number(f.monto_a_pagar || 0.01).toFixed(2)),
     }));
+    console.log('[PAGO MULT FRONT] 1 preparar payload:', {
+      segundos: ((performance.now() - t0) / 1000).toFixed(3),
+      cantidad_facturas: body.facturas.length,
+      id_usuario_afi: body.id_usuario_afi,
+      id_cajero: body.id_cajero
+    });
 
     // 🔍 Verificar antes de enviar
     console.log('📤 Body enviado al backend:', JSON.stringify(body, null, 2));
@@ -835,9 +861,11 @@ async createPagoMultiple(pagoMultipleData) {
       `${API_CONFIG.endpoints.pagos}/multiple`,
       { method: 'POST', body }
     );
+    console.log(`[PAGO MULT FRONT] 2 backend respondio: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
 
     this.cachedPagos = null;
     this.cachedStats = null;
+    console.log(`[PAGO MULT FRONT] TOTAL: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
 
     return {
       success: true,

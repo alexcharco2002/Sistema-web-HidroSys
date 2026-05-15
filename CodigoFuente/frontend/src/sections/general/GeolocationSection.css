@@ -117,13 +117,14 @@
 }
 
 .sidebar-item {
-  padding: 0.75rem;
+  padding: 0.8rem;
   margin-bottom: 0.5rem;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
   background: white;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .sidebar-item:hover {
@@ -146,8 +147,85 @@
 .sidebar-item-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 0.75rem;
   margin-bottom: 0.5rem;
+}
+
+.geo-meter-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.geo-meter-number {
+  min-width: 0;
+  color: #111827;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.geo-card-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.geo-card-icon-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.geo-card-icon-btn:hover {
+  transform: translateY(-1px);
+}
+
+.geo-card-icon-btn.update:hover,
+.geo-card-icon-btn.update.active {
+  background: #eff6ff;
+  border-color: #60a5fa;
+  color: #1d4ed8;
+}
+
+.geo-card-icon-btn.delete:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.geo-card-icon-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+  transform: none;
+}
+
+.geo-card-nav-icon {
+  width: 16px;
+  height: 16px;
+  color: #94a3b8;
+  margin-left: 0.1rem;
+}
+
+.spin {
+  animation: geoSpin 0.9s linear infinite;
+}
+
+@keyframes geoSpin {
+  to { transform: rotate(360deg); }
 }
 
 .status-dot {
@@ -612,7 +690,7 @@
 
 /* ── Botón "Ubicar" en cada card ───────────────────────────── */
 .geo-card-update-btn {
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 4px;
   padding: 3px 9px;

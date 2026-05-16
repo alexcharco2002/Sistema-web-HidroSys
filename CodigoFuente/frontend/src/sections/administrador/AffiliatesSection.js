@@ -16,6 +16,35 @@ import {
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 
+const EXCEL_PREVIEW_PAGE_SIZE = 50;
+
+const getAffiliateExcelIssues = (affiliate, allRows = []) => {
+  const issues = [];
+  const medidor = String(affiliate.num_medidor || '').trim();
+  const codigoAfiliado = String(affiliate.cod_usuario_afi || '').trim().toUpperCase();
+
+  if (!affiliate.id_usuario_sistema) issues.push('Falta ID de usuario');
+  if (!affiliate.nombres) issues.push('Falta nombres');
+  if (!affiliate.apellidos) issues.push('Falta apellidos');
+  if (!affiliate.id_sector) issues.push('Falta ID de sector');
+
+  if (codigoAfiliado) {
+    if (codigoAfiliado.length > 6) issues.push('Código de afiliado mayor a 6 caracteres');
+    if (!/^[A-Z0-9]+$/.test(codigoAfiliado)) issues.push('Código de afiliado con caracteres inválidos');
+  }
+
+  if (!medidor) {
+    issues.push('Falta número de medidor');
+  } else {
+    if (medidor.length < 3) issues.push('Medidor debe tener mínimo 3 caracteres');
+    if (!/^[A-Za-z0-9]+$/.test(medidor)) issues.push('Medidor solo permite letras y números');
+    const repeated = allRows.filter(row => String(row.num_medidor || '').trim() === medidor).length;
+    if (repeated > 1) issues.push('Medidor duplicado en el Excel');
+  }
+
+  return issues;
+};
+
 const AffiliatesSection = () => {
   const pageSizeOptions = [10, 20, 50];
 
@@ -46,6 +75,7 @@ const AffiliatesSection = () => {
   const [selectedExcel, setSelectedExcel] = useState(null);
   const [excelPreview, setExcelPreview] = useState([]);
   const [loadingExcel, setLoadingExcel] = useState(false);  
+  const [excelPreviewPage, setExcelPreviewPage] = useState(1);
 
   // constante para almacenar el perfil del afiliado logueado (si es que tiene uno)
   const [miPerfilAfiliado, setMiPerfilAfiliado] = useState(null); 
@@ -60,20 +90,25 @@ const AffiliatesSection = () => {
 
     try {
       const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
+      const workbook = XLSX.read(data, { cellDates: true });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet);
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
 
       // 🔥 Normalizar todas las filas
-      const cleanedRows = rows.map((row) => normalizeKeys(row));
+      const cleanedRows = rows.map((row, index) => ({
+        ...normalizeKeys(row),
+        __fila: index + 2
+      }));
 
       setExcelPreview(cleanedRows);
-          setSelectedExcel(file);
+      setExcelPreviewPage(1);
+      setSelectedExcel(file);
 
     } catch (error) {
       console.error(error);
       setError("Error al leer el archivo Excel");
       setExcelPreview([]);
+      setExcelPreviewPage(1);
       setSelectedExcel(null);
     } finally {
       setLoadingExcel(false);
@@ -104,37 +139,10 @@ const AffiliatesSection = () => {
       return;
     }
 
-// ✅ FILTRAR: Solo filas válidas
-const afiliadosValidos = excelPreview.filter((a) => {
-  // Validar campos obligatorios
-  const camposObligatorios = a.id_usuario_sistema && a.nombres && a.apellidos && a.id_sector;
-  
-  // ✅ Validación código de afiliado OPCIONAL pero si existe debe ser válido
-  let codigoValido = true;
-  if (a.cod_usuario_afi) {
-    const codigo = String(a.cod_usuario_afi).trim().toUpperCase();
-    if (codigo !== '') {
-      // Verificar longitud
-      if (codigo.length > 6) {
-        codigoValido = false;
-      }
-      // Verificar caracteres (solo letras y números)
-      if (!/^[A-Z0-9]+$/.test(codigo)) {
-        codigoValido = false;
-      }
-    }
-  }
-  
-  // Validar medidor
-  const medidorTieneMinLongitud = a.num_medidor && String(a.num_medidor).trim().length >= 3;
-  const medidorSoloAlfanumerico = /^[A-Za-z0-9]+$/.test(String(a.num_medidor).trim());
-  const medidorDuplicado = excelPreview.filter(x => 
-    String(x.num_medidor).trim() === String(a.num_medidor).trim()
-  ).length > 1;
-  const esMedidorValido = a.num_medidor && medidorTieneMinLongitud && medidorSoloAlfanumerico && !medidorDuplicado;
-
-  return camposObligatorios && esMedidorValido && codigoValido;
-});
+    // Filtrar solo filas válidas
+    const afiliadosValidos = excelPreview.filter(
+      affiliate => getAffiliateExcelIssues(affiliate, excelPreview).length === 0
+    );
 
 
     if (afiliadosValidos.length === 0) {
@@ -210,6 +218,7 @@ const afiliadosValidos = excelPreview.filter((a) => {
         // ✅ Cerrar modal y limpiar ANTES de recargar
         closeModal();
         setExcelPreview([]);
+        setExcelPreviewPage(1);
         setSelectedExcel(null);
         
         // ✅ Recargar después de limpiar
@@ -493,6 +502,7 @@ const afiliadosValidos = excelPreview.filter((a) => {
       });
     } else if (type === 'excel') {
       setExcelPreview([]);
+      setExcelPreviewPage(1);
       setSelectedExcel(null);
       setLoadingExcel(false);
     }
@@ -503,6 +513,7 @@ const afiliadosValidos = excelPreview.filter((a) => {
   const closeModal = () => {
     // 🔥 Limpia en el orden correcto
     setExcelPreview([]);
+    setExcelPreviewPage(1);
     setSelectedExcel(null);
     setLoadingExcel(false);
     
@@ -763,6 +774,13 @@ const afiliadosValidos = excelPreview.filter((a) => {
   const paginatedAffiliates = afiliadosConMiPerfil.slice(pageStartIndex, pageEndIndex);
   const showingFrom = sortedAffiliates.length === 0 ? 0 : pageStartIndex + 1;
   const showingTo = Math.min(pageEndIndex, sortedAffiliates.length);
+  const excelTotalPages = Math.max(1, Math.ceil(excelPreview.length / EXCEL_PREVIEW_PAGE_SIZE));
+  const normalizedExcelPreviewPage = Math.min(excelPreviewPage, excelTotalPages);
+  const excelPreviewStart = (normalizedExcelPreviewPage - 1) * EXCEL_PREVIEW_PAGE_SIZE;
+  const excelPreviewEnd = excelPreviewStart + EXCEL_PREVIEW_PAGE_SIZE;
+  const paginatedExcelPreview = excelPreview.slice(excelPreviewStart, excelPreviewEnd);
+  const excelValidCount = excelPreview.filter(a => getAffiliateExcelIssues(a, excelPreview).length === 0).length;
+  const excelInvalidCount = excelPreview.length - excelValidCount;
 
   // ==================== RENDER PRINCIPAL ====================
   return (
@@ -1172,7 +1190,7 @@ const afiliadosValidos = excelPreview.filter((a) => {
       {/* ==================== MODALES ==================== */}
       {showModal && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className={`modal ${modalType === 'excel' ? 'modal-excel' : ''}`}>
             <div className="modal-header">
               <h3>
                 {modalType === 'create' && 'Crear Nuevo Afiliado'}
@@ -1261,54 +1279,25 @@ const afiliadosValidos = excelPreview.filter((a) => {
                       <div className="form-group form-group-full">
                         <label>
                           📊 Vista previa ({excelPreview.length} filas)
-                          {(() => {
-                            const validas = excelPreview.filter(a => {
-                              const camposObligatorios =
-                                a.id_usuario_sistema &&
-                                a.nombres &&
-                                a.apellidos &&
-                                a.id_sector;
-
-                              const medidorTieneMinLongitud =
-                                a.num_medidor &&
-                                String(a.num_medidor).trim().length >= 3;
-
-                              const medidorSoloAlfanumerico =
-                                /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
-
-                              const medidorDuplicado =
-                                excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
-
-                              const esMedidorValido =
-                                a.num_medidor &&
-                                medidorTieneMinLongitud &&
-                                medidorSoloAlfanumerico &&
-                                !medidorDuplicado;
-
-                              return camposObligatorios && esMedidorValido;
-                            }).length;
-
-                            const invalidas = excelPreview.length - validas;
-
-                            return (
-                              <ul className="ml-4 space-y-1">
-                                <li className="text-green-600">✓ {validas} válidas</li>
-                                {invalidas > 0 && (
-                                  <li className="text-red-600">⚠️ {invalidas} inválidas (serán omitidas)</li>
-                                )}
-                              </ul>
-                            );
-                          })()}
+                          <ul className="ml-4 space-y-1">
+                            <li className="text-green-600">✓ {excelValidCount} válidas</li>
+                            {excelInvalidCount > 0 && (
+                              <li className="text-red-600">⚠️ {excelInvalidCount} inválidas (serán omitidas)</li>
+                            )}
+                            <li className="text-gray-500">
+                              Mostrando {excelPreviewStart + 1}-{Math.min(excelPreviewEnd, excelPreview.length)} de {excelPreview.length}
+                            </li>
+                          </ul>
                         </label>
 
                         <div style={{
                           maxHeight: '400px',
-                          overflowY: 'auto',
+                          overflow: 'auto',
                           border: '1px solid #e5e7eb',
                           borderRadius: '8px',
                           backgroundColor: '#fff'
                         }}>
-                          <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+                          <table style={{ minWidth: '1050px', width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
                             <thead style={{
                               position: 'sticky',
                               top: 0,
@@ -1332,52 +1321,22 @@ const afiliadosValidos = excelPreview.filter((a) => {
                             </thead>
 
                             <tbody>
-                              {excelPreview.map((a, idx) => {
-                                // 🟦 VALIDACIÓN DE CAMPOS OBLIGATORIOS
-                                const camposObligatorios =
-                                  a.id_usuario_sistema &&
-                                  a.nombres &&
-                                  a.apellidos &&
-                                  a.id_sector;
-                                
-                                // Validación código de afiliado (OPCIONAL)
-                                const codigoValido = !a.cod_usuario_afi || (
-                                  String(a.cod_usuario_afi).trim().length <= 6 &&
-                                  /^[A-Za-z0-9]+$/.test(String(a.cod_usuario_afi).trim())
-                                );
-
-                                // 🟩 Validación longitud mínima
-                                const medidorTieneMinLongitud =
-                                  a.num_medidor &&
-                                  String(a.num_medidor).trim().length >= 3;
-
-                                // 🟨 Validación caracteres permitidos (solo letras y números)
-                                const medidorSoloAlfanumerico =
-                                  /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
-
-                                // 🟥 Validación de duplicados dentro del archivo
-                                const medidorDuplicado =
-                                  excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
-
-                                // Resultado final
-                                const esMedidorValido =
-                                  a.num_medidor &&
-                                  medidorTieneMinLongitud &&
-                                  medidorSoloAlfanumerico &&
-                                  !medidorDuplicado;
-
-                                const esValidaFila =
-                                  camposObligatorios && esMedidorValido;
+                              {paginatedExcelPreview.map((a, idx) => {
+                                const issues = getAffiliateExcelIssues(a, excelPreview);
+                                const esValidaFila = issues.length === 0;
+                                const codigo = String(a.cod_usuario_afi || '').trim().toUpperCase();
+                                const codigoIssues = issues.filter(issue => issue.startsWith('Código de afiliado'));
+                                const medidorIssues = issues.filter(issue => issue.startsWith('Medidor') || issue.startsWith('Falta número'));
 
                                 return (
                                   <tr
-                                    key={idx}
+                                    key={`${a.__fila || excelPreviewStart + idx + 1}-${idx}`}
                                     style={{
                                       borderBottom: '1px solid #f3f4f6',
                                       backgroundColor: esValidaFila ? 'transparent' : '#fef2f2'
                                     }}
                                   >
-                                    <td style={{ padding: '8px', color: '#6b7280' }}>{idx + 1}</td>
+                                    <td style={{ padding: '8px', color: '#6b7280' }}>{a.__fila || excelPreviewStart + idx + 1}</td>
 
                                     {/* id_usuario_sistema */}
                                     <td style={{ padding: '8px' }}>
@@ -1398,12 +1357,12 @@ const afiliadosValidos = excelPreview.filter((a) => {
                                     <td style={{padding: '8px'}}>
                                       {!a.cod_usuario_afi ? (
                                         <span style={{color: '#10b981'}}>AUTO</span>
-                                      ) : !codigoValido ? (
+                                      ) : codigoIssues.length > 0 ? (
                                         <span style={{color: '#ef4444'}}>
-                                          {String(a.cod_usuario_afi).trim().length > 6 ? '❌ >6 caracteres' : '❌ Caracteres inválidos'}
+                                          {codigoIssues.join('; ')}
                                         </span>
                                       ) : (
-                                        <span style={{color: '#10b981'}}>{String(a.cod_usuario_afi).trim().toUpperCase()}</span>
+                                        <span style={{color: '#10b981'}}>{codigo}</span>
                                       )}
                                     </td>
 
@@ -1414,18 +1373,8 @@ const afiliadosValidos = excelPreview.filter((a) => {
 
                                     {/* num_medidor – VALIDACIONES COMPLETAS */}
                                     <td style={{ padding: '8px' }}>
-                                      {!a.num_medidor ? (
-                                        <span style={{ color: '#ef4444' }}>❌ Falta</span>
-                                      ) : !medidorTieneMinLongitud ? (
-                                        <span style={{ color: '#ef4444' }}>❌ Min 3 caracteres</span>
-                                      ) : !medidorSoloAlfanumerico ? (
-                                        <span style={{ color: '#ef4444' }}>
-                                          ❌ Solo letras/números
-                                        </span>
-                                      ) : medidorDuplicado ? (
-                                        <span style={{ color: '#ef4444' }}>
-                                          ❌ Duplicado
-                                        </span>
+                                      {medidorIssues.length > 0 ? (
+                                        <span style={{ color: '#ef4444' }}>{medidorIssues.join('; ')}</span>
                                       ) : (
                                         a.num_medidor
                                       )}
@@ -1440,7 +1389,7 @@ const afiliadosValidos = excelPreview.filter((a) => {
                                       {esValidaFila ? (
                                         <span style={{ color: '#10b981', fontSize: '12px' }}>✓ OK</span>
                                       ) : (
-                                        <span style={{ color: '#ef4444', fontSize: '12px' }}>✗ Error</span>
+                                        <span style={{ color: '#ef4444', fontSize: '12px' }}>{issues.join('; ')}</span>
                                       )}
                                     </td>
                                   </tr>
@@ -1449,6 +1398,30 @@ const afiliadosValidos = excelPreview.filter((a) => {
                             </tbody>
                           </table>
                         </div>
+
+                        {excelTotalPages > 1 && (
+                          <div className="excel-preview-pagination">
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() => setExcelPreviewPage(page => Math.max(1, page - 1))}
+                              disabled={normalizedExcelPreviewPage === 1}
+                            >
+                              Anterior
+                            </button>
+                            <span>
+                              Página {normalizedExcelPreviewPage} de {excelTotalPages}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() => setExcelPreviewPage(page => Math.min(excelTotalPages, page + 1))}
+                              disabled={normalizedExcelPreviewPage === excelTotalPages}
+                            >
+                              Siguiente
+                            </button>
+                          </div>
+                        )}
 
                         {/* ✅ RESUMEN MEJORADO */}
                         <div style={{
@@ -1483,70 +1456,16 @@ const afiliadosValidos = excelPreview.filter((a) => {
                       className="btn-primary"
                       onClick={handleExcelUpload}
                       disabled={
-                        excelPreview.length === 0 || 
-                        (() => {
-                          // ✅ Contar solo filas válidas
-                          const validas = excelPreview.filter(a => {
-                            const camposObligatorios =
-                              a.id_usuario_sistema &&
-                              a.nombres &&
-                              a.apellidos &&
-                              a.id_sector;
-
-                            const medidorTieneMinLongitud =
-                              a.num_medidor &&
-                              String(a.num_medidor).trim().length >= 3;
-
-                            const medidorSoloAlfanumerico =
-                              /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
-
-                            const medidorDuplicado =
-                              excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
-
-                            const esMedidorValido =
-                              a.num_medidor &&
-                              medidorTieneMinLongitud &&
-                              medidorSoloAlfanumerico &&
-                              !medidorDuplicado;
-
-                            return camposObligatorios && esMedidorValido;
-                          }).length;
-                          return validas === 0 || validas > 500;
-                        })() ||
+                        excelPreview.length === 0 ||
+                        excelValidCount === 0 ||
+                        excelValidCount > 500 ||
                         loadingExcel
                       }
                     >
                       <Save className="w-4 h-4 mr-2" />
                       {loadingExcel 
                         ? 'Procesando...' 
-                        : (() => {
-                            const validas = excelPreview.filter(a => {
-                              const camposObligatorios =
-                                a.id_usuario_sistema &&
-                                a.nombres &&
-                                a.apellidos &&
-                                a.id_sector;
-
-                              const medidorTieneMinLongitud =
-                                a.num_medidor &&
-                                String(a.num_medidor).trim().length >= 3;
-
-                              const medidorSoloAlfanumerico =
-                                /^[A-Za-z0-9]+$/.test(String(a.num_medidor || '').trim());
-
-                              const medidorDuplicado =
-                                excelPreview.filter(x => String(x.num_medidor).trim() === String(a.num_medidor).trim()).length > 1;
-
-                              const esMedidorValido =
-                                a.num_medidor &&
-                                medidorTieneMinLongitud &&
-                                medidorSoloAlfanumerico &&
-                                !medidorDuplicado;
-
-                              return camposObligatorios && esMedidorValido;
-                            }).length;
-                            return `Crear ${validas} afiliado${validas !== 1 ? 's' : ''} válido${validas !== 1 ? 's' : ''}`;
-                          })()
+                        : `Crear ${excelValidCount} afiliado${excelValidCount !== 1 ? 's' : ''} válido${excelValidCount !== 1 ? 's' : ''}`
                       }
                     </button>
                   </div>

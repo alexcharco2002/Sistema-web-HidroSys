@@ -25,6 +25,33 @@ class UsersService {
     this.cachedRoles = null;
   }
 
+  formatUserImportError(message = '') {
+    const text = String(message || '').trim();
+    const lower = text.toLowerCase();
+
+    if (lower.includes('datetimes provided to dates') || lower.includes('date_from_datetime_inexact')) {
+      return 'La fecha de nacimiento debe estar en formato YYYY-MM-DD, sin hora. Ejemplo: 1990-05-15.';
+    }
+
+    if (lower.includes('telefono') && (lower.includes('debe tener 10') || lower.includes('10 dígitos') || lower.includes('10 digitos'))) {
+      return 'El telefono debe tener exactamente 10 digitos numericos.';
+    }
+
+    if (lower.includes('debe tener 10') || lower.includes('10 dígitos') || lower.includes('10 digitos')) {
+      return 'La cedula debe tener exactamente 10 digitos numericos. Si empieza con 0, formatee la celda como texto en Excel.';
+    }
+
+    if (lower.includes('email')) {
+      return 'El correo electronico no tiene un formato valido.';
+    }
+
+    if (lower.includes('value error')) {
+      return text.replace(/value error,?\s*/gi, '').trim() || 'Revise el valor ingresado en esta fila.';
+    }
+
+    return text || 'No se pudo procesar esta fila. Revise los datos obligatorios.';
+  }
+
   /**
    * Realizar petición HTTPS con configuración común
    */
@@ -78,7 +105,13 @@ class UsersService {
           errorMessage = errorData.detail;
         } else if (Array.isArray(errorData.detail)) {
           // Manejar errores de validación de Pydantic
-          errorMessage = errorData.detail.map(err => err.msg).join(', ');
+          errorMessage = errorData.detail
+            .map(err => {
+              const field = Array.isArray(err.loc) ? err.loc.filter(part => typeof part !== 'number').pop() : null;
+              const formatted = this.formatUserImportError(err.msg);
+              return field ? `${field}: ${formatted}` : formatted;
+            })
+            .join('\n');
         } else if (typeof errorData.detail === 'object') {
           errorMessage = JSON.stringify(errorData.detail);
         } else {
@@ -96,7 +129,7 @@ class UsersService {
       console.error(`❌ API Error:`, error);
 
       if (error.name === 'AbortError') {
-        throw new Error('La petición tardó demasiado tiempo');
+        throw new Error('La carga tardó demasiado tiempo. Intente con menos filas o verifique que el servidor siga procesando la importación.');
       }
 
       if (error.message.includes('Failed to fetch')) {
@@ -289,6 +322,7 @@ class UsersService {
       // Enviar al endpoint bulk
       const data = await this.makeRequest(`${API_CONFIG.endpoints.users}/bulk`, {
         method: 'POST',
+        timeout: 180000,
         body: {
           users: usuariosValidados
         }
@@ -306,7 +340,7 @@ class UsersService {
       console.error('❌ Error en carga masiva:', error);
       return {
         success: false,
-        message: error.message || 'Error al crear usuarios masivamente'
+        message: this.formatUserImportError(error.message) || 'Error al crear usuarios masivamente'
       };
     }
   }

@@ -2491,42 +2491,48 @@ def crear_pago(
             print(f"{'='*70}\n")
         _log_pago_tiempo("PAGO IND", "7 actualizar factura/multas", t1)
         
-        # ========================================
+                # ========================================
         # PASO 7: COMMIT Y AUDITORÍA
         # ========================================
         t1 = time.perf_counter()
-        db.commit()
-        db.refresh(nuevo_pago)
-        _log_pago_tiempo("PAGO IND", "8 commit/refresh", t1)
-        t1 = time.perf_counter()
         
-        # Auditoría
-        desc_auditoria = f"Pago #{nuevo_pago.id_pago} - Monto: ${monto_total_cobrar} - Método: {pago.metodo_pago}"
-
-        if mora_aplicada:
-            from utils.config_mora import obtener_configuracion_mora_activa
-            config_mora = obtener_configuracion_mora_activa(db)
-            
-            if config_mora:
-                tipo_periodo_info = f"{config_mora.dias_gracia}d" if config_mora.tipo_periodo == 'dias' else f"{config_mora.meses_gracia}m"
-                desc_auditoria += f" (Mora: ${monto_mora}, Config: {config_mora.nombre} [{tipo_periodo_info}])"
-            else:
-                desc_auditoria += f" (Mora: ${monto_mora})"
+        # Guardar el ID ANTES del commit para no depender de refresh
+        id_pago_nuevo = nuevo_pago.id_pago
+        monto_pago_nuevo = nuevo_pago.monto_pago
+        
+        # ✅ Commit limpio — sin refresh dentro de la transacción con locks
+        db.commit()
+        _log_pago_tiempo("PAGO IND", "8 commit", t1)
+        
+        t1 = time.perf_counter()
+        # ✅ Auditoría y notificación DESPUÉS del commit — nueva transacción limpia
+        desc_auditoria = (
+            f"Pago #{id_pago_nuevo} - Monto: ${monto_total_cobrar}"
+            f" - Método: {pago.metodo_pago}"
+        )
+        
+        if mora_aplicada and config_mora:  # config_mora ya existe del paso 3 ← reutilizar
+            tipo_periodo_info = (
+                f"{config_mora.dias_gracia}d"
+                if config_mora.tipo_periodo == 'dias'
+                else f"{config_mora.meses_gracia}m"
+            )
+            desc_auditoria += f" (Mora: ${monto_mora}, Config: {config_mora.nombre} [{tipo_periodo_info}])"
+        elif mora_aplicada:
+            desc_auditoria += f" (Mora: ${monto_mora})"
 
         if pago.incluir_multas and multas_procesadas > 0:
             desc_auditoria += f" ({multas_procesadas} multa(s) pagada(s))"
         if not pago.incluir_multas and multas_liberadas > 0:
             desc_auditoria += f" ({multas_liberadas} multa(s) liberada(s))"
 
-        
-        # Notificación
-        t1 = time.perf_counter()
         registrar_auditoria(
             db=db,
             accion="CREATE",
             descripcion=desc_auditoria,
             id_usuario=current_user_id
         )
+        print(f"🟢 Auditoría registrada: {desc_auditoria}")
 
         mensaje_notif = f"Pago de ${monto_total_cobrar} registrado"
         if mora_aplicada:
@@ -2535,7 +2541,7 @@ def crear_pago(
             mensaje_notif += f". {multas_procesadas} multa(s) pagada(s)"
         if not pago.incluir_multas and multas_liberadas > 0:
             mensaje_notif += f". {multas_liberadas} multa(s) liberada(s)"
-        
+
         registrar_notificacion(
             db=db,
             id_usuario=current_user_id,
@@ -2545,8 +2551,10 @@ def crear_pago(
         )
         _log_pago_tiempo("PAGO IND", "9 auditoria/notificacion", t1)
         _log_pago_tiempo("PAGO IND", "TOTAL", t0)
-        
-        return nuevo_pago
+
+        # ✅ Query nueva y limpia para retornar el pago — sin locks
+        pago_final = db.query(Pago).filter(Pago.id_pago == id_pago_nuevo).first()
+        return pago_final
         
     except IntegrityError as e:
         db.rollback()

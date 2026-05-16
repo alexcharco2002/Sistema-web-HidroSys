@@ -2,7 +2,7 @@
 # se utiliza para definir los esquemas Pydantic relacionados con usuarios
 from pydantic import BaseModel, EmailStr, validator
 from typing import Optional
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 # ========================================
 # SCHEMA PARA INFORMACIÓN DE ROL
@@ -314,6 +314,34 @@ class UserBulkCreate(BaseModel):
     email: EmailStr
     telefono: Optional[str] = None
     direccion: Optional[str] = "Sanjapamba"
+
+    @validator('fecha_nac', pre=True)
+    def normalize_fecha_nac(cls, v):
+        if v is None or v == "":
+            raise ValueError('La fecha de nacimiento es obligatoria')
+
+        if isinstance(v, datetime):
+            return v.date()
+
+        if isinstance(v, date):
+            return v
+
+        if isinstance(v, (int, float)):
+            return (datetime(1899, 12, 30) + timedelta(days=int(v))).date()
+
+        text = str(v).strip()
+        if "T" in text:
+            text = text.split("T", 1)[0]
+        elif " " in text:
+            text = text.split(" ", 1)[0]
+
+        if "/" in text:
+            parts = text.split("/")
+            if len(parts) == 3:
+                day, month, year = parts
+                return date(int(year), int(month), int(day))
+
+        return text
     
     @validator('nombres', 'apellidos')
     def validate_nombres(cls, v):
@@ -372,8 +400,8 @@ class UserBulkCreateRequest(BaseModel):
     def validate_users_list(cls, v):
         if not v or len(v) == 0:
             raise ValueError('La lista de usuarios no puede estar vacía')
-        if len(v) > 100:
-            raise ValueError('Máximo 100 usuarios por carga')
+        if len(v) > 500:
+            raise ValueError('Máximo 500 usuarios por carga')
         return v
 
 

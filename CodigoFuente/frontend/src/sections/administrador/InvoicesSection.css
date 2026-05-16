@@ -9,12 +9,12 @@
     104px
     92px
     96px
-    minmax(180px, 1.5fr)
+    minmax(150px, 1fr)
     96px
-    136px
+    100px
     96px
     116px
-    132px;
+    150px;
   background: #ffffff;
   border-radius: 16px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -35,7 +35,7 @@
     100px      /* Código Afi - REDUCIDO */
     1fr        /* Nombre Afi - FLEXIBLE (mínimo 200px) */
     110px       /* Consumo */
-    120px      /* Detalles - AUMENTADO */
+    140px      /* Detalles - AUMENTADO */
     115px      /* Total */
     110px      /* Estado */
     140px;     /* Acciones */
@@ -107,7 +107,7 @@
     100px      /* Código Afi - REDUCIDO */
     1fr        /* Nombre Afi - FLEXIBLE (mínimo 200px) */
     95px       /* Consumo */
-    150px      /* Detalles - AUMENTADO */
+    140px      /* Detalles - AUMENTADO */
     80px      /* Total */
     150px      /* Estado */
     140px;     /* Acciones */

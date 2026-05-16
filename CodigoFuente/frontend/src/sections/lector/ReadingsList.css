@@ -1,6 +1,4 @@
 /* src/sections/ReadingsList.css */
-/* ESTILOS PARA VISTA DE LISTA DE LECTURAS - MEJORADO CON ESTIMADAS */
-
 /* ==================== CONTENEDOR DE LISTA ==================== */
 .readings-list-container {
   background: #ffffff;
@@ -1148,22 +1146,45 @@
 
 .excel-preview-container {
   max-height: 400px;
-  overflow-y: auto;
+  overflow: auto;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background-color: #fff;
+}
+
+.readings-section .modal.modal-excel {
+  max-width: min(880px, calc(100vw - 2rem));
+}
+
+.excel-preview-pagination {
+  margin: 12px 0 0;
+  padding: 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.excel-preview-pagination .btn-secondary {
+  width: auto;
+  min-width: 110px;
+  justify-content: center;
 }
 
 .excel-preview-tabs {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
   padding: 6px 2px 10px;
   margin-top: 10px;
   margin-bottom: 8px;
-  scrollbar-width: thin;
+
 }
 
 .excel-preview-tabs::-webkit-scrollbar {
@@ -1231,6 +1252,7 @@
 }
 
 .excel-preview-table {
+  min-width: 920px;
   width: 100%;
   font-size: 13px;
   border-collapse: collapse;

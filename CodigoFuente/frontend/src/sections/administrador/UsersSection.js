@@ -16,6 +16,98 @@ import {
   
 } from 'lucide-react';
 
+const EXCEL_PREVIEW_PAGE_SIZE = 50;
+
+const toIsoDate = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const normalizeExcelDate = (value) => {
+  if (value === null || value === undefined || value === '') return '';
+
+  if (value instanceof Date) {
+    return toIsoDate(value);
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    excelEpoch.setUTCDate(excelEpoch.getUTCDate() + Math.floor(value));
+    return toIsoDate(new Date(excelEpoch.getUTCFullYear(), excelEpoch.getUTCMonth(), excelEpoch.getUTCDate()));
+  }
+
+  const text = String(value).trim();
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  }
+
+  const slashMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s.*)?$/);
+  if (slashMatch) {
+    return `${slashMatch[3]}-${slashMatch[2].padStart(2, '0')}-${slashMatch[1].padStart(2, '0')}`;
+  }
+
+  return text;
+};
+
+const normalizeDigits = (value, padToLength = 10) => {
+  if (value === null || value === undefined || value === '') return '';
+  let text = String(value).trim();
+  if (/^\d+\.0+$/.test(text)) text = text.split('.')[0];
+  const digits = text.replace(/\D/g, '');
+  if (digits.length > 0 && digits.length < padToLength) {
+    return digits.padStart(padToLength, '0');
+  }
+  return digits;
+};
+
+const normalizeExcelUserRow = (row, index) => ({
+  __fila: index + 2,
+  nombres: String(row.nombres || '').trim(),
+  apellidos: String(row.apellidos || '').trim(),
+  sexo: String(row.sexo || 'O').trim().toUpperCase(),
+  fecha_nac: normalizeExcelDate(row.fecha_nac),
+  cedula: normalizeDigits(row.cedula),
+  email: String(row.email || '').trim().toLowerCase(),
+  telefono: normalizeDigits(row.telefono),
+  direccion: String(row.direccion || 'Sanjapamba').trim()
+});
+
+const getExcelUserIssues = (user) => {
+  const issues = [];
+
+  if (!user.nombres) issues.push('Falta nombres');
+  if (!user.apellidos) issues.push('Falta apellidos');
+  if (!['M', 'F', 'O'].includes(user.sexo)) issues.push('Sexo debe ser M, F u O');
+
+  if (!user.fecha_nac) {
+    issues.push('Falta fecha_nac');
+  } else if (!/^\d{4}-\d{2}-\d{2}$/.test(user.fecha_nac)) {
+    issues.push('fecha_nac debe estar en formato YYYY-MM-DD, sin hora');
+  }
+
+  if (!user.cedula) {
+    issues.push('Falta cedula');
+  } else if (!/^\d{10}$/.test(user.cedula)) {
+    issues.push('cedula debe tener exactamente 10 digitos');
+  }
+
+  if (!user.email) {
+    issues.push('Falta email');
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) {
+    issues.push('email no tiene un formato valido');
+  }
+
+  if (user.telefono && !/^\d{10}$/.test(user.telefono)) {
+    issues.push('telefono debe tener exactamente 10 digitos');
+  }
+
+  return issues;
+};
+
 const UsersSection = () => {
   const pageSizeOptions = [10, 20, 50];
 
@@ -39,6 +131,7 @@ const UsersSection = () => {
   const [ selectedExcel,setSelectedExcel] = useState(null);   // archivo subido
   const [excelPreview, setExcelPreview] = useState([]);        // filas leídas
   const [, setLoadingExcel] = useState(false);     // loading
+  const [excelPreviewPage, setExcelPreviewPage] = useState(1);
   // ==== Estados para carga de EXCEL ====
   const handleExcelPreview = async (e) => {
     const file = e.target.files[0];
@@ -49,11 +142,13 @@ const UsersSection = () => {
       setError(null);
 
       const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
+      const workbook = XLSX.read(data, { cellDates: true });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet);
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
+      const normalizedRows = rows.map(normalizeExcelUserRow);
 
-      setExcelPreview(rows);
+      setExcelPreview(normalizedRows);
+      setExcelPreviewPage(1);
       setSelectedExcel(file);
       setLoadingExcel(false);
 
@@ -67,22 +162,27 @@ const UsersSection = () => {
   // función para enviar datos al servidor
   const handleExcelUpload = async () => {
     if (excelPreview.length === 0) {
-      setError("No hay datos para enviar");
+      setError("⚠️ No hay datos cargados para enviar.");
       return;
     }
 
-    // ✅ FILTRAR: Solo usuarios válidos
-    const usuariosValidos = excelPreview.filter(u => 
-      u.nombres && u.apellidos && u.cedula && u.email
+    // Filtrar solo usuarios válidos
+    const usuariosValidos = excelPreview.filter(
+      u => getExcelUserIssues(u).length === 0
     );
 
     if (usuariosValidos.length === 0) {
-      setError("No hay usuarios válidos para importar");
+      setError(
+        "❌ No hay usuarios válidos para importar.\n\n" +
+        "📅 Verifica que las fechas estén en formato YYYY-MM-DD.\n" +
+        "🆔 La cédula debe tener exactamente 10 dígitos.\n" +
+        "📞 El teléfono debe tener exactamente 10 dígitos."
+      );
       return;
     }
 
     if (usuariosValidos.length > 500) {
-      setError("Máximo 500 usuarios válidos por carga");
+      setError("⚠️ Máximo permitido: 500 usuarios válidos por carga masiva.");
       return;
     }
 
@@ -90,83 +190,106 @@ const UsersSection = () => {
       setLoading(true);
       setError(null);
 
-      // ✅ Enviar solo usuarios válidos
+      // Enviar solo usuarios válidos
       const result = await usersService.createManyUsers(usuariosValidos);
 
       if (result.success) {
         const { exitosos, fallidos, total_procesados } = result.data;
         const omitidos = excelPreview.length - usuariosValidos.length;
-        
-        // Construir mensaje detallado
-        let mensaje = `📊 RESULTADO DE LA CARGA MASIVA\n`;
-        mensaje += `${'='.repeat(50)}\n\n`;
-        
+
+        const totalLeidos = excelPreview.length;
+        const totalFallidos = fallidos.length + omitidos;
+        const estadoCarga = totalFallidos === 0
+          ? '✅ Carga completada correctamente'
+          : exitosos.length > 0
+            ? '⚠️ Carga completada con observaciones'
+            : '❌ No se pudo importar ningún usuario';
+
+        const mensajePartes = [
+          '📊 RESULTADO DE LA CARGA MASIVA',
+          '────────────────────────────────',
+          estadoCarga,
+          '',
+          '📌 Resumen',
+          `• Filas leídas del Excel: ${totalLeidos}`,
+          `• Filas válidas enviadas al servidor: ${total_procesados}`,
+          `• Usuarios creados: ${exitosos.length}`,
+          `• Errores del servidor: ${fallidos.length}`,
+          `• Filas omitidas por validación previa: ${omitidos}`,
+          ''
+        ];
+
         if (omitidos > 0) {
-          mensaje += `⚠️ Filas omitidas (inválidas): ${omitidos}\n`;
+          mensajePartes.push(
+            'ℹ️ Las filas omitidas no se enviaron porque tenían datos incompletos o inválidos en la vista previa.',
+            ''
+          );
         }
-        
-        mensaje += `✅ Usuarios creados: ${exitosos.length}/${total_procesados}\n`;
-        mensaje += `❌ Errores: ${fallidos.length}/${total_procesados}\n\n`;
-        
-        // Mostrar usuarios exitosos
+
         if (exitosos.length > 0) {
-          mensaje += `${'='.repeat(50)}\n`;
-          mensaje += `📋 CREDENCIALES GENERADAS:\n`;
-          mensaje += `${'='.repeat(50)}\n\n`;
-          
+          mensajePartes.push('🔐 Credenciales generadas', '');
+
           exitosos.slice(0, 10).forEach((u, idx) => {
-            mensaje += `${idx + 1}. ${u.nombre}\n`;
-            mensaje += `   👤 Usuario: ${u.usuario}\n`;
-            mensaje += `   🔑 Contraseña: ${u.contraseña}\n`;
-            mensaje += `   📧 Email: ${u.email}\n`;
-            mensaje += `   🆔 Cédula: ${u.cedula}\n\n`;
+            mensajePartes.push(
+              `${idx + 1}. 👤 ${u.nombre || 'Usuario creado'}`,
+              `   🧑 Usuario: ${u.usuario || u.cedula || 'No disponible'}`,
+              `   🔑 Contraseña: ${u['contraseña'] || u.contrasena || u.cedula || 'No disponible'}`,
+              `   📧 Email: ${u.email || 'No registrado'}`,
+              `   🆔 Cédula: ${u.cedula || 'No registrada'}`,
+              ''
+            );
           });
-          
+
           if (exitosos.length > 10) {
-            mensaje += `... y ${exitosos.length - 10} más\n\n`;
-          }
-        }
-        
-        // Mostrar errores
-        if (fallidos.length > 0) {
-          mensaje += `${'='.repeat(50)}\n`;
-          mensaje += `❌ ERRORES ENCONTRADOS:\n`;
-          mensaje += `${'='.repeat(50)}\n\n`;
-          
-          fallidos.slice(0, 5).forEach((f, idx) => {
-            mensaje += `${idx + 1}. Fila ${f.fila}: ${f.nombre}\n`;
-            mensaje += `   Error: ${f.error}\n`;
-            if (f.email) mensaje += `   Email: ${f.email}\n`;
-            if (f.cedula) mensaje += `   Cédula: ${f.cedula}\n`;
-            mensaje += `\n`;
-          });
-          
-          if (fallidos.length > 5) {
-            mensaje += `... y ${fallidos.length - 5} errores más\n`;
+            mensajePartes.push(`➕ Se crearon ${exitosos.length - 10} usuarios adicionales.`, '');
           }
         }
 
-        alert(mensaje);
-        
+        if (fallidos.length > 0) {
+          mensajePartes.push('🚨 Errores que debe corregir', '');
+
+          fallidos.slice(0, 8).forEach((f, idx) => {
+            mensajePartes.push(
+              `${idx + 1}. ❌ Fila ${f.fila || 'sin número'}: ${f.nombre || 'Sin nombre'}`,
+              `   ⚠️ Problema: ${usersService.formatUserImportError(f.error)}`,
+              f.email ? `   📧 Email: ${f.email}` : null,
+              f.cedula ? `   🆔 Cédula: ${f.cedula}` : null,
+              ''
+            );
+          });
+
+          if (fallidos.length > 8) {
+            mensajePartes.push(`➕ Hay ${fallidos.length - 8} errores adicionales. Revise el Excel y vuelva a cargarlo.`);
+          }
+        }
+
+        alert(mensajePartes.filter(Boolean).join('\n'));
+
         // Recargar usuarios y cerrar modal
         await fetchUsers();
         closeModal();
         setExcelPreview([]);
         setSelectedExcel(null);
-          
+
       } else {
-        setError(result.message || "Error al procesar usuarios");
+        setError(
+          result.message ||
+          "❌ Ocurrió un error al procesar los usuarios."
+        );
       }
 
     } catch (error) {
-      console.error('Error en carga masiva:', error);
-      setError(error.message || "Error al enviar usuarios");
+      console.error("Error en carga masiva:", error);
+
+      setError(
+        error.message ||
+        "🚨 Error al enviar los usuarios al servidor."
+      );
+
     } finally {
       setLoading(false);
     }
   };
-
-
 
   // 🔽 Estados de ordenamiento mejorados
   const [sortOption, setSortOption] = useState('rol');
@@ -487,6 +610,7 @@ const UsersSection = () => {
     // 🔥 Limpiar estados del Excel
     setSelectedExcel(null);
     setExcelPreview([]);
+    setExcelPreviewPage(1);
   };
 
   // ==================== FUNCIONES DE CRUD ====================
@@ -880,6 +1004,13 @@ const getBlockStatusText = (user) => {
   const paginatedUsers = usuariosConMiPerfil.slice(pageStartIndex, pageEndIndex);
   const showingFrom = sortedUsers.length === 0 ? 0 : pageStartIndex + 1;
   const showingTo = Math.min(pageEndIndex, sortedUsers.length);
+  const excelTotalPages = Math.max(1, Math.ceil(excelPreview.length / EXCEL_PREVIEW_PAGE_SIZE));
+  const normalizedExcelPreviewPage = Math.min(excelPreviewPage, excelTotalPages);
+  const excelPreviewStart = (normalizedExcelPreviewPage - 1) * EXCEL_PREVIEW_PAGE_SIZE;
+  const excelPreviewEnd = excelPreviewStart + EXCEL_PREVIEW_PAGE_SIZE;
+  const paginatedExcelPreview = excelPreview.slice(excelPreviewStart, excelPreviewEnd);
+  const excelValidCount = excelPreview.filter(u => getExcelUserIssues(u).length === 0).length;
+  const excelInvalidCount = excelPreview.length - excelValidCount;
 
   // Renderizado principal
   return (
@@ -1228,10 +1359,6 @@ const getBlockStatusText = (user) => {
             <div className="user-card-body">
               <div className="user-contact">
                 <div className="contact-item">
-                  <User  className="w-4 h-4 text-gray-400" />
-                  <span>{user?.usuario || 'N/A'}</span>
-                </div>
-                <div className="contact-item">
                   <IdCard  className="w-4 h-4 text-gray-400" />
                   <span>{user?.cedula || 'N/A'}</span>
                 </div>
@@ -1312,7 +1439,7 @@ const getBlockStatusText = (user) => {
       {/* ==================== MODALES ==================== */}
       {showModal && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className={`modal ${modalType === 'excel' ? 'modal-excel' : ''}`}>
             <div className="modal-header">
               <h3>
                 {modalType === 'create' && 'Crear Nuevo Usuario'}
@@ -1374,7 +1501,7 @@ const getBlockStatusText = (user) => {
                         <br />
                         ℹ️ <strong>Notas importantes:</strong>
                         <br />
-                        &nbsp;&nbsp;&nbsp;• Todos los usuarios se crearán con <strong>rol Cliente</strong>
+                        &nbsp;&nbsp;&nbsp;• Todos los usuarios se crearán con <strong>rol Afiliado</strong>
                         <br />
                         &nbsp;&nbsp;&nbsp;• Estado: <strong>Activo</strong>
                         <br />
@@ -1405,30 +1532,27 @@ const getBlockStatusText = (user) => {
                       <div className="form-group form-group-full">
                         <label>
                           📊 Vista previa ({excelPreview.length} usuario{excelPreview.length !== 1 ? 's' : ''})
-                          {(() => {
-                            const validos = excelPreview.filter(u => u.nombres && u.apellidos && u.cedula && u.email).length;
-                            const invalidos = excelPreview.length - validos;
-                            
-                            return (
-                              <ul className="ml-4 space-y-1">
-                                <li className="text-green-600">✓ {validos} válidos</li>
-                                {invalidos > 0 && (
-                                  <li className="text-red-600">⚠️ {invalidos} inválidos (serán omitidos)</li>
-                                )}
-                              </ul>
-                            );
-                          })()}
+                          <ul className="ml-4 space-y-1">
+                            <li className="text-green-600">✓ {excelValidCount} válidos</li>
+                            {excelInvalidCount > 0 && (
+                              <li className="text-red-600">⚠️ {excelInvalidCount} inválidos (serán omitidos)</li>
+                            )}
+                            <li className="text-gray-500">
+                              Mostrando {excelPreviewStart + 1}-{Math.min(excelPreviewEnd, excelPreview.length)} de {excelPreview.length}
+                            </li>
+                          </ul>
                         </label>
                         
                         <div style={{ 
                           maxHeight: '400px', 
-                          overflowY: 'auto', 
+                          overflow: 'auto',
                           border: '1px solid #e5e7eb', 
                           borderRadius: '8px',
                           backgroundColor: '#fff'
                         }}>
                           <table style={{ 
-                            width: '100%', 
+                            minWidth: '920px',
+                            width: '100%',
                             fontSize: '13px', 
                             borderCollapse: 'collapse' 
                           }}>
@@ -1452,20 +1576,20 @@ const getBlockStatusText = (user) => {
                               </tr>
                             </thead>
                             <tbody>
-                              {excelPreview.map((u, idx) => {
-                                // ✅ Validación mejorada
-                                const esValido = u.nombres && u.apellidos && u.cedula && u.email;
+                              {paginatedExcelPreview.map((u, idx) => {
+                                const issues = getExcelUserIssues(u);
+                                const esValido = issues.length === 0;
                                 const tieneErrores = !esValido;
                                 
                                 return (
                                   <tr 
-                                    key={idx} 
+                                    key={`${u.__fila || excelPreviewStart + idx + 1}-${idx}`}
                                     style={{ 
                                       borderBottom: '1px solid #f3f4f6',
                                       backgroundColor: tieneErrores ? '#fef2f2' : 'transparent'
                                     }}
                                   >
-                                    <td style={{ padding: '8px', color: '#6b7280' }}>{idx + 1}</td>
+                                    <td style={{ padding: '8px', color: '#6b7280' }}>{u.__fila || excelPreviewStart + idx + 1}</td>
                                     <td style={{ padding: '8px' }}>
                                       {u.nombres || <span style={{ color: '#ef4444' }}>❌ Falta</span>}
                                     </td>
@@ -1491,7 +1615,7 @@ const getBlockStatusText = (user) => {
                                       {esValido ? (
                                         <span style={{ color: '#10b981', fontSize: '12px' }}>✓ OK</span>
                                       ) : (
-                                        <span style={{ color: '#ef4444', fontSize: '12px' }}>✗ Error</span>
+                                        <span style={{ color: '#ef4444', fontSize: '12px' }}>{issues.join('; ')}</span>
                                       )}
                                     </td>
                                   </tr>
@@ -1500,6 +1624,30 @@ const getBlockStatusText = (user) => {
                             </tbody>
                           </table>
                         </div>
+
+                        {excelTotalPages > 1 && (
+                          <div className="excel-preview-pagination">
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() => setExcelPreviewPage(page => Math.max(1, page - 1))}
+                              disabled={normalizedExcelPreviewPage === 1}
+                            >
+                              Anterior
+                            </button>
+                            <span>
+                              Página {normalizedExcelPreviewPage} de {excelTotalPages}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() => setExcelPreviewPage(page => Math.min(excelTotalPages, page + 1))}
+                              disabled={normalizedExcelPreviewPage === excelTotalPages}
+                            >
+                              Siguiente
+                            </button>
+                          </div>
+                        )}
                         
                         {/* ✅ RESUMEN MEJORADO */}
                         <div style={{ 
@@ -1512,7 +1660,7 @@ const getBlockStatusText = (user) => {
                           <strong>ℹ️ Información:</strong>
                           <ul style={{ marginTop: '8px', marginLeft: '20px' }}>
                             <li>Usuario y contraseña inicial serán el número de cédula</li>
-                            <li>Rol asignado: <strong>Cliente</strong></li>
+                            <li>Rol asignado: <strong>Afiliado</strong></li>
                             <li>Estado: <strong>Activo</strong></li>
                             <li>Usuario inicial: <strong>Número de cédula</strong></li>
                             <li>Contraseña inicial: <strong>Número de cédula</strong></li>
@@ -1539,21 +1687,15 @@ const getBlockStatusText = (user) => {
                       onClick={handleExcelUpload}
                       disabled={
                         excelPreview.length === 0 || 
-                        (() => {
-                          // ✅ Contar solo usuarios válidos
-                          const validos = excelPreview.filter(u => u.nombres && u.apellidos && u.cedula && u.email).length;
-                          return validos === 0 || validos > 500;
-                        })() ||
+                        excelValidCount === 0 ||
+                        excelValidCount > 500 ||
                         loading
                       }
                     >
                       <Save className="w-4 h-4 mr-2" />
                       {loading 
                         ? 'Procesando...' 
-                        : (() => {
-                            const validos = excelPreview.filter(u => u.nombres && u.apellidos && u.cedula && u.email).length;
-                            return `Crear ${validos} usuario${validos !== 1 ? 's' : ''} válido${validos !== 1 ? 's' : ''}`;
-                          })()
+                        : `Crear ${excelValidCount} usuario${excelValidCount !== 1 ? 's' : ''} válido${excelValidCount !== 1 ? 's' : ''}`
                       }
                     </button>
                   </div>

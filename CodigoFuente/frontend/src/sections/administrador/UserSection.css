@@ -704,6 +704,30 @@
   box-shadow: var(--shadow-xl);
 }
 
+.users-section .modal.modal-excel {
+  max-width: min(700px, calc(100vw - 2rem));
+}
+
+.users-section .excel-preview-pagination {
+  margin: 12px 0 0;
+  padding: 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.users-section .excel-preview-pagination .btn-secondary {
+  width: auto;
+  min-width: 110px;
+  justify-content: center;
+}
+
 .users-section .modal-header {
   display: flex;
   justify-content: space-between;

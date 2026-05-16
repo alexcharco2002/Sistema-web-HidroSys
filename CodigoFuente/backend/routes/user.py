@@ -1114,6 +1114,55 @@ def create_users_bulk(
     print(f"\n{'='*60}")
     print(f"🚀 INICIANDO CARGA MASIVA DE {len(request.users)} USUARIOS")
     print(f"{'='*60}\n")
+
+    usernames_en_archivo = []
+    emails_en_archivo = []
+    cedulas_en_archivo = []
+    duplicados_archivo = {
+        "usuarios": set(),
+        "emails": set(),
+        "cedulas": set()
+    }
+    vistos_archivo = {
+        "usuarios": set(),
+        "emails": set(),
+        "cedulas": set()
+    }
+
+    for user_data in request.users:
+        username = cedula_login_value(user_data.cedula)
+        email = user_data.email.strip().lower()
+        cedula = user_data.cedula.strip()
+
+        if username in vistos_archivo["usuarios"]:
+            duplicados_archivo["usuarios"].add(username)
+        if email in vistos_archivo["emails"]:
+            duplicados_archivo["emails"].add(email)
+        if cedula in vistos_archivo["cedulas"]:
+            duplicados_archivo["cedulas"].add(cedula)
+
+        vistos_archivo["usuarios"].add(username)
+        vistos_archivo["emails"].add(email)
+        vistos_archivo["cedulas"].add(cedula)
+        usernames_en_archivo.append(username)
+        emails_en_archivo.append(email)
+        cedulas_en_archivo.append(cedula)
+
+    existentes = db.query(
+        UsuarioSistema.usuario,
+        UsuarioSistema.email,
+        UsuarioSistema.cedula
+    ).filter(
+        or_(
+            UsuarioSistema.usuario.in_(usernames_en_archivo),
+            UsuarioSistema.email.in_(emails_en_archivo),
+            UsuarioSistema.cedula.in_(cedulas_en_archivo)
+        )
+    ).all()
+
+    usuarios_existentes = {row.usuario for row in existentes if row.usuario}
+    emails_existentes = {row.email.lower() for row in existentes if row.email}
+    cedulas_existentes = {row.cedula for row in existentes if row.cedula}
     
     # ===============================
     # 🔄 Procesar cada usuario
@@ -1122,35 +1171,26 @@ def create_users_bulk(
         fila_numero = index
         
         try:
-            print(f"📝 Procesando fila {fila_numero}: {user_data.nombres} {user_data.apellidos}")
-            
             # ===============================
             # 1️⃣ Usuario y contraseña inicial = CÉDULA
             # ===============================
             username = cedula_login_value(user_data.cedula)
             raw_password = username
-            hashed_password = hash_password(raw_password)
-            
-            # ===============================
-            # 2️⃣ Verificar duplicados
-            # ===============================
-            existing = db.query(UsuarioSistema).filter(
-                or_(
-                    UsuarioSistema.usuario == username,
-                    UsuarioSistema.email == user_data.email.lower(),
-                    UsuarioSistema.cedula == username
-                )
-            ).first()
-            
-            if existing:
-                if existing.usuario == username:
-                    error_msg = "Usuario ya registrado con esa cédula"
-                elif existing.email == user_data.email.lower():
-                    error_msg = "Email ya registrado"
-                else:
-                    error_msg = "Cédula ya registrada"
-                
-                print(f"   ❌ Error: {error_msg}")
+            email = user_data.email.strip().lower()
+            cedula = user_data.cedula.strip()
+
+            if username in duplicados_archivo["usuarios"] or cedula in duplicados_archivo["cedulas"]:
+                error_msg = "Cédula repetida dentro del archivo Excel"
+            elif email in duplicados_archivo["emails"]:
+                error_msg = "Email repetido dentro del archivo Excel"
+            elif username in usuarios_existentes or cedula in cedulas_existentes:
+                error_msg = "Usuario o cédula ya registrada"
+            elif email in emails_existentes:
+                error_msg = "Email ya registrado"
+            else:
+                error_msg = None
+
+            if error_msg:
                 fallidos.append(UserBulkError(
                     fila=fila_numero,
                     nombre=f"{user_data.nombres} {user_data.apellidos}",
@@ -1159,6 +1199,8 @@ def create_users_bulk(
                     error=error_msg
                 ))
                 continue
+
+            hashed_password = hash_password(raw_password)
             
             # ===============================
             # 3️⃣ Crear usuario con ROL CLIENTE (4) y ACTIVO
@@ -1180,9 +1222,6 @@ def create_users_bulk(
             )
             
             db.add(new_user)
-            db.flush()  # Guardar sin hacer commit aún
-            
-            print(f"   ✅ Usuario creado: {username}")
             
             # Agregar a exitosos
             exitosos.append(UserBulkResult(

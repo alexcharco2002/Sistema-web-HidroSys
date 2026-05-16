@@ -87,7 +87,7 @@ const ReadingsSection = () => {
     });
   };
 
-  const EXCEL_PREVIEW_PAGE_SIZE = 100;
+  const EXCEL_PREVIEW_PAGE_SIZE = 50;
 
   const isValidExcelReading = (lectura) => {
     const esNumerico = /^\d{1,13}$/.test(lectura.lectura_actual);
@@ -127,6 +127,12 @@ const ReadingsSection = () => {
   }, [excelPreview]);
 
   const currentExcelPreviewPage = excelPreviewPages[excelPreviewPage] || excelPreviewPages[0];
+  const excelValidCount = useMemo(
+    () => excelPreview.filter(isValidExcelReading).length,
+    [excelPreview]
+  );
+  const excelInvalidCount = excelPreview.length - excelValidCount;
+
   const estimatedReadingsCount = useMemo(
     () => readings.filter(reading => reading.es_estimada).length,
     [readings]
@@ -938,9 +944,9 @@ const handleDownloadTemplate = async () => {
 
     try {
       const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
+      const workbook = XLSX.read(data, { cellDates: true });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet);
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
 
       const cleanedRows = rows.map((row) => {
         const r = normalizeKeys(row);
@@ -1134,7 +1140,7 @@ const handleDownloadTemplate = async () => {
   // ============================================================
   if (!permissions.canRead) {
     return (
-      <div className="affiliates-section">
+      <div className="affiliates-section readings-section">
         <div className="empty-state">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h3>Sin Acceso</h3>
@@ -1146,7 +1152,7 @@ const handleDownloadTemplate = async () => {
 
   if (loadingPeriodos) {
     return (
-      <div className="affiliates-section">
+      <div className="affiliates-section readings-section">
         <div className="empty-state">
           <RefreshCw className="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin" />
           <h3>Cargando periodos...</h3>
@@ -1159,7 +1165,7 @@ const handleDownloadTemplate = async () => {
 // RENDERIZADO PRINCIPAL
 // ============================================================
 return (
-  <div className="affiliates-section">
+  <div className="affiliates-section readings-section">
     
     {/* ==================== PASO 1: SELECCIÓN DE PERIODO ==================== */}
     {/* Parte 1: SELECCIÓN DE PERIODO */}
@@ -1971,7 +1977,7 @@ return (
     {/* ==================== MODALES ==================== */}
     {showModal && (
       <div className="modal-overlay">
-        <div className="modal">
+        <div className={`modal ${modalType === 'excel' ? 'modal-excel' : ''}`}>
           <div className="modal-header">
             <h3>
               {modalType === 'create' && 'Crear Nueva Lectura'}
@@ -2106,46 +2112,18 @@ return (
                     <div className="form-group form-group-full">
                       <label>
                         📊 Vista previa ({excelPreview.length} lecturas)
-                        {(() => {
-                          const validas = excelPreview.filter(isValidExcelReading).length;
-
-                          const invalidas = excelPreview.length - validas;
-
-                        return (
-                            <ul className="ml-4 space-y-1">
-                              <li className="text-green-600">{validas} válidas</li>
-
-                              {invalidas > 0 && (
-                                <li className="text-red-600">{invalidas} inválidas (serán omitidas)</li>
-                              )}
-                            </ul>
-                          );
-                        })()}
+                        <ul className="ml-4 space-y-1">
+                          <li className="text-green-600">✓ {excelValidCount} válidas</li>
+                          {excelInvalidCount > 0 && (
+                            <li className="text-red-600">⚠️ {excelInvalidCount} inválidas (serán omitidas)</li>
+                          )}
+                          {currentExcelPreviewPage && (
+                            <li className="text-gray-500">
+                              Mostrando {currentExcelPreviewPage.start + 1}-{currentExcelPreviewPage.end} de {excelPreview.length}
+                            </li>
+                          )}
+                        </ul>
                       </label>
-                      {excelPreviewPages.length > 1 && (
-                        <div className="excel-preview-tabs" aria-label="Paginas de vista previa">
-                          {excelPreviewPages.map((page, pageIndex) => (
-                            <button
-                              key={pageIndex}
-                              type="button"
-                              className={`excel-preview-tab ${excelPreviewPage === pageIndex ? 'active' : ''}`}
-                              onClick={() => setExcelPreviewPage(pageIndex)}
-                              title={`Filas ${page.start + 1}-${page.end}`}
-                            >
-                              <span className="excel-preview-tab-title">{page.start + 1}-{page.end}</span>
-                              <span className="excel-preview-tab-meta">
-                                {page.validas} OK{page.invalidas > 0 ? ` / ${page.invalidas} error` : ''}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {currentExcelPreviewPage && (
-                        <div className="excel-preview-range">
-                          Mostrando filas <strong>{currentExcelPreviewPage.start + 1}-{currentExcelPreviewPage.end}</strong> de <strong>{excelPreview.length}</strong>
-                        </div>
-                      )}
 
                       <div className="excel-preview-container">
                         <table className="excel-preview-table">
@@ -2226,6 +2204,30 @@ return (
                           </tbody>
                         </table>
                       </div>
+
+                      {excelPreviewPages.length > 1 && (
+                        <div className="excel-preview-pagination">
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => setExcelPreviewPage(page => Math.max(0, page - 1))}
+                            disabled={excelPreviewPage === 0}
+                          >
+                            Anterior
+                          </button>
+                          <span>
+                            Página {excelPreviewPage + 1} de {excelPreviewPages.length}
+                          </span>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => setExcelPreviewPage(page => Math.min(excelPreviewPages.length - 1, page + 1))}
+                            disabled={excelPreviewPage >= excelPreviewPages.length - 1}
+                          >
+                            Siguiente
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -2244,22 +2246,16 @@ return (
                     disabled={
                       !excelMesSeleccionado || 
                       !excelAnioSeleccionado ||
-                      excelPreview.length === 0 || 
-                      (() => {
-                        // ✅ Contar solo filas válidas
-                        const validas = excelPreview.filter(isValidExcelReading).length;
-                        return validas === 0 || validas > 500;
-                      })() ||
+                      excelPreview.length === 0 ||
+                      excelValidCount === 0 ||
+                      excelValidCount > 500 ||
                       loadingExcel
                     }
                   >
                     <Upload className="w-4 h-4 mr-2" />
                     {loadingExcel 
                       ? 'Procesando...' 
-                      : (() => {
-                          const validas = excelPreview.filter(isValidExcelReading).length;
-                          return `Crear ${validas} lectura${validas !== 1 ? 's' : ''} válida${validas !== 1 ? 's' : ''}`;
-                        })()
+                      : `Crear ${excelValidCount} lectura${excelValidCount !== 1 ? 's' : ''} válida${excelValidCount !== 1 ? 's' : ''}`
                     }
                   </button>
                 </div>

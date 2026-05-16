@@ -1541,7 +1541,7 @@ const agruparDetallesPorTipo = (detalles) => {
               <div className="invoices-list-header">
                 <span>#</span>
                 <span><FileText className="w-4 h-4" /> Número</span>
-                <span><Calendar className="w-4 h-4" /> Fecha Emisión</span>
+                <span><Calendar className="w-4 h-4" /> F Emisión</span>
                 <span><Gauge className="w-4 h-4" /> Medidor</span>
                 <span><IdCard  className="w-4 h-4" /> Código Afi</span>
                 <span><User className="w-4 h-4" /> Nombre Afi</span>

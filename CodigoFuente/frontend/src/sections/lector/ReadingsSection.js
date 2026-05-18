@@ -50,6 +50,7 @@ const ReadingsSection = () => {
   const [sortOrder, setSortOrder] = useState('desc');
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showSearchAdvice, setShowSearchAdvice] = useState(true);
 
   // ============================================================
   // ESTADOS DE MODAL
@@ -636,6 +637,17 @@ const sortedReadings = [...filteredReadings].sort((a, b) => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterStatus, sortOption, sortOrder, pageSize, periodoSeleccionado]);
+
+  useEffect(() => {
+    if (readings.length <= 100) {
+      setShowSearchAdvice(false);
+      return undefined;
+    }
+
+    setShowSearchAdvice(true);
+    const timer = setTimeout(() => setShowSearchAdvice(false), 12000);
+    return () => clearTimeout(timer);
+  }, [readings.length, searchTerm, filterStatus, periodoSeleccionado]);
 
   const toggleSortOrder = () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
@@ -1615,7 +1627,7 @@ return (
           </div>
         </div>
 
-        {readings.length > 100 && (
+        {readings.length > 100 && showSearchAdvice && (
           <div className="readings-search-advice">
             <AlertCircle className="w-4 h-4" />
             <span>

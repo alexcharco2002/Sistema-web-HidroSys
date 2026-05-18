@@ -28,6 +28,7 @@ const MetersSection = () => {
   const [filterAssignment, setFilterAssignment] = useState('all');
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showSearchAdvice, setShowSearchAdvice] = useState(true);
   
   // Estados para modal principal (crear/editar/ver)
   const [showModal, setShowModal] = useState(false);
@@ -130,14 +131,28 @@ const MetersSection = () => {
     setError(null);
     
     try {
-      const result = await metersService.getMeters({
-        id_sector: filterSector === 'all' ? undefined : filterSector,
-        activo: filterStatus === 'all' ? undefined : (filterStatus === 'active'),
-        asignado: filterAssignment === 'all' ? undefined : (filterAssignment === 'assigned')
-      });
+      const pageLimit = 500;
+      let skip = 0;
+      let allMeters = [];
+      let result = { success: true, data: [] };
+
+      do {
+        result = await metersService.getMeters({
+          skip,
+          limit: pageLimit
+        });
+
+        if (!result.success) break;
+
+        const pageData = Array.isArray(result.data) ? result.data : [];
+        allMeters = [...allMeters, ...pageData];
+        skip += pageLimit;
+
+        if (pageData.length < pageLimit) break;
+      } while (skip < 10000);
 
       if (result.success) {
-        setMeters(result.data);
+        setMeters(allMeters);
       } else {
         setError(result.message);
       }
@@ -147,7 +162,7 @@ const MetersSection = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterSector, filterStatus, filterAssignment, permissions.canRead]);
+  }, [permissions.canRead]);
 
   const fetchAvailableAffiliates = async (search) => {
     try {
@@ -179,7 +194,12 @@ const MetersSection = () => {
       (meter.nombre_afiliado || '').toLowerCase().includes(searchValue)
     );
     
-    const matchesSector = filterSector === 'all' || meter.id_sector === parseInt(filterSector);
+    const meterSectorId = meter.id_sector === null || meter.id_sector === undefined || meter.id_sector === ''
+      ? null
+      : Number(meter.id_sector);
+    const matchesSector =
+      filterSector === 'all' ||
+      (filterSector === 'no_sector' ? meterSectorId === null : meterSectorId === Number(filterSector));
     const matchesStatus = filterStatus === 'all' || 
                          (filterStatus === 'active' ? meter.activo : !meter.activo);
     const matchesAssignment = filterAssignment === 'all' || 
@@ -218,6 +238,20 @@ const MetersSection = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterSector, filterStatus, filterAssignment, pageSize]);
+
+  useEffect(() => {
+    if (meters.length <= 100) {
+      setShowSearchAdvice(false);
+      return;
+    }
+
+    setShowSearchAdvice(true);
+    const timer = setTimeout(() => {
+      setShowSearchAdvice(false);
+    }, 12000);
+
+    return () => clearTimeout(timer);
+  }, [meters.length, searchTerm, filterSector, filterStatus, filterAssignment]);
 
   // ============================================================================
   // MODALES - CREAR/EDITAR/VER
@@ -645,6 +679,7 @@ const MetersSection = () => {
             onChange={(e) => setFilterSector(e.target.value)}
           >
             <option value="all">Todos los sectores</option>
+            <option value="no_sector">Sin sector</option>
             {sectors.map(sector => (
               <option key={sector.id_sector} value={sector.id_sector}>
                 {sector.nombre_sector}
@@ -691,7 +726,7 @@ const MetersSection = () => {
         </div>
       </div>
 
-      {meters.length > 100 && (
+      {meters.length > 100 && showSearchAdvice && (
         <div className="meters-search-advice">
           <AlertCircle className="w-4 h-4" />
           <span>

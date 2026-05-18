@@ -119,6 +119,7 @@ const UsersSection = () => {
   const [filterRole, setFilterRole] = useState('all');
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showSearchAdvice, setShowSearchAdvice] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('create');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -416,10 +417,29 @@ const UsersSection = () => {
     setError(null);
   
     try {
+      const pageLimit = 100;
+      let skip = 0;
+      let allUsers = [];
+      let usersResult = { success: true, data: [] };
+
+      do {
+        usersResult = await usersService.getUsers({
+          id_rol: filterRole === 'all' ? undefined : filterRole,
+          skip,
+          limit: pageLimit
+        });
+
+        if (!usersResult.success) break;
+
+        const pageData = Array.isArray(usersResult.data) ? usersResult.data : [];
+        allUsers = [...allUsers, ...pageData];
+        skip += pageLimit;
+
+        if (pageData.length < pageLimit) break;
+      } while (skip < 10000);
+
       const [result, miPerfilResult] = await Promise.all([
-        usersService.getUsers({
-          id_rol: filterRole === 'all' ? undefined : filterRole
-        }),
+        Promise.resolve({ ...usersResult, data: allUsers }),
         usersService.getMiPerfil(),   
       ]);
   
@@ -525,6 +545,20 @@ const UsersSection = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterRole, statusFilter, sortOption, sortOrder, pageSize]);
+
+  useEffect(() => {
+    if (users.length <= 100) {
+      setShowSearchAdvice(false);
+      return;
+    }
+
+    setShowSearchAdvice(true);
+    const timer = setTimeout(() => {
+      setShowSearchAdvice(false);
+    }, 12000);
+
+    return () => clearTimeout(timer);
+  }, [users.length, searchTerm, filterRole, statusFilter]);
 
   // ==================== FUNCIONES DE MODAL ====================
   
@@ -992,8 +1026,13 @@ const getBlockStatusText = (user) => {
     );
   }
 
-  // Mover el perfil del usuario logeado al inicio de la lista
-  const usuariosConMiPerfil = miPerfil
+  const isFullListView =
+    searchTerm.trim() === '' &&
+    filterRole === 'all' &&
+    statusFilter === 'all';
+
+  // Mover el perfil del usuario logeado al inicio solo cuando se muestra toda la lista
+  const usuariosConMiPerfil = miPerfil && isFullListView
   ? [
       // Mi perfil siempre primero con el flag
       { ...miPerfil, esMiPerfil: true },
@@ -1188,7 +1227,7 @@ const getBlockStatusText = (user) => {
         </div>
      </div>
 
-      {users.length > 100 && (
+      {users.length > 100 && showSearchAdvice && (
         <div className="users-search-advice">
           <AlertCircle className="w-4 h-4" />
           <span>
@@ -1201,11 +1240,15 @@ const getBlockStatusText = (user) => {
         <span>
           Mostrando {showingFrom}-{showingTo} de {sortedUsers.length} usuario{sortedUsers.length !== 1 ? 's' : ''}
         </span>
-        {searchTerm.trim() && (
+        {(searchTerm.trim() || filterRole !== 'all' || statusFilter !== 'all') && (
           <button
             type="button"
             className="clear-search-btn"
-            onClick={() => setSearchTerm('')}
+            onClick={() => {
+              setSearchTerm('');
+              setFilterRole('all');
+              setStatusFilter('all');
+            }}
           >
             Limpiar búsqueda
           </button>

@@ -59,6 +59,7 @@ const AffiliatesSection = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showSearchAdvice, setShowSearchAdvice] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('create');
   const [selectedAffiliate, setSelectedAffiliate] = useState(null);
@@ -322,12 +323,28 @@ const AffiliatesSection = () => {
     setError(null);
   
     try {
+      const pageLimit = 500;
+      let skip = 0;
+      let allAffiliates = [];
+      let affiliatesResult = { success: true, data: [] };
+
+      do {
+        affiliatesResult = await affiliatesService.getAffiliates({
+          skip,
+          limit: pageLimit
+        });
+
+        if (!affiliatesResult.success) break;
+
+        const pageData = Array.isArray(affiliatesResult.data) ? affiliatesResult.data : [];
+        allAffiliates = [...allAffiliates, ...pageData];
+        skip += pageLimit;
+
+        if (pageData.length < pageLimit) break;
+      } while (skip < 10000);
+
       const [result, miPerfilResult] = await Promise.all([
-        affiliatesService.getAffiliates({
-          search: debouncedSearchTerm,
-          id_sector: filterSector === 'all' ? undefined : filterSector,
-          activo: filterStatus === 'all' ? undefined : filterStatus === 'active'
-        }),
+        Promise.resolve({ ...affiliatesResult, data: allAffiliates }),
         affiliatesService.getMiPerfilAfiliado(),  // ← nuevo
       ]);
   
@@ -347,7 +364,7 @@ const AffiliatesSection = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterSector, filterStatus, debouncedSearchTerm, permissions.canRead]);
+  }, [permissions.canRead]);
 
 
   useEffect(() => {
@@ -394,7 +411,12 @@ const AffiliatesSection = () => {
       (aff.usuario?.cedula || '').includes(searchTerm.trim()) ||
       (aff.cod_usuario_afi || '').toString().toLowerCase().includes(searchValue);
     
-    const matchesSector = filterSector === 'all' || aff.id_sector === parseInt(filterSector);
+    const affiliateSectorId = aff.id_sector === null || aff.id_sector === undefined || aff.id_sector === ''
+      ? null
+      : Number(aff.id_sector);
+    const matchesSector =
+      filterSector === 'all' ||
+      (filterSector === 'no_sector' ? affiliateSectorId === null : affiliateSectorId === Number(filterSector));
     
     const matchesStatus = filterStatus === 'all' || 
                           (filterStatus === 'active' && aff.activo) ||
@@ -444,6 +466,20 @@ const AffiliatesSection = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterSector, filterStatus, sortOption, sortOrder, pageSize]);
+
+  useEffect(() => {
+    if (affiliates.length <= 100) {
+      setShowSearchAdvice(false);
+      return;
+    }
+
+    setShowSearchAdvice(true);
+    const timer = setTimeout(() => {
+      setShowSearchAdvice(false);
+    }, 12000);
+
+    return () => clearTimeout(timer);
+  }, [affiliates.length, searchTerm, filterSector, filterStatus]);
 
   // ==================== FUNCIONES DE MODAL ====================
   
@@ -763,7 +799,12 @@ const AffiliatesSection = () => {
   }
 
   // Para asegurar que el perfil del afiliado logueado siempre aparezca primero (si es que tiene uno), hacemos esta combinación antes de renderizar
- const afiliadosConMiPerfil = miPerfilAfiliado
+  const isFullListView =
+    searchTerm.trim() === '' &&
+    filterSector === 'all' &&
+    filterStatus === 'all';
+
+ const afiliadosConMiPerfil = miPerfilAfiliado && isFullListView
   ? [
       // Mi perfil siempre primero, con flag para el card
       { ...miPerfilAfiliado, esMiPerfil: true },
@@ -839,7 +880,7 @@ const AffiliatesSection = () => {
             <UserPlus className="stat-icon text-blue-600" />
             <div>
               <p className="stat-label">Total Afiliados</p>
-              <p className="stat-value">{affiliates.length}</p>
+              <p className="stat-value">{filteredAffiliates.length}</p>
             </div>
           </div>
 
@@ -852,7 +893,7 @@ const AffiliatesSection = () => {
             <div>
               <p className="stat-label">Afiliados Activos</p>
               <p className="stat-value">
-                {affiliates.filter(a => a.activo).length}
+                {filteredAffiliates.filter(a => a.activo).length}
               </p>
             </div>
           </div>
@@ -866,7 +907,7 @@ const AffiliatesSection = () => {
             <div>
               <p className="stat-label">Afiliados Inactivos</p>
               <p className="stat-value">
-                {affiliates.filter(a => !a.activo).length}
+                {filteredAffiliates.filter(a => !a.activo).length}
               </p>
             </div>
           </div>
@@ -879,8 +920,9 @@ const AffiliatesSection = () => {
               <p className="stat-value">
                 {
                   new Set(
-                    affiliates
+                    filteredAffiliates
                       .filter(a => a.activo)
+                      .filter(a => a.id_sector !== null && a.id_sector !== undefined && a.id_sector !== '')
                       .map(a => a.id_sector)
                   ).size
                 }
@@ -930,6 +972,7 @@ const AffiliatesSection = () => {
             onChange={(e) => setFilterSector(e.target.value)}
           >
             <option value="all">Todos los sectores</option>
+            <option value="no_sector">Sin sector</option>
             {sectors.map(sector => (
               <option key={sector.id_sector} value={sector.id_sector}>
                 {sector.nombre_sector}
@@ -972,7 +1015,7 @@ const AffiliatesSection = () => {
         </div>
       </div>
 
-      {affiliates.length > 100 && (
+      {affiliates.length > 100 && showSearchAdvice && (
         <div className="affiliates-search-advice">
           <AlertCircle className="w-4 h-4" />
           <span>
@@ -985,11 +1028,15 @@ const AffiliatesSection = () => {
         <span>
           Mostrando {showingFrom}-{showingTo} de {sortedAffiliates.length} afiliado{sortedAffiliates.length !== 1 ? 's' : ''}
         </span>
-        {searchTerm.trim() && (
+        {(searchTerm.trim() || filterSector !== 'all' || filterStatus !== 'all') && (
           <button
             type="button"
             className="clear-search-btn"
-            onClick={() => setSearchTerm('')}
+            onClick={() => {
+              setSearchTerm('');
+              setFilterSector('all');
+              setFilterStatus('all');
+            }}
           >
             Limpiar búsqueda
           </button>

@@ -67,6 +67,7 @@ const PaymentsSection = () => {
   const [sortOrder, setSortOrder] = useState('desc');
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showSearchAdvice, setShowSearchAdvice] = useState(true);
 
   // Estado para almacenar facturas pendientes por afiliado
   const [facturasPendientesPorAfiliado, setFacturasPendientesPorAfiliado] = useState({});
@@ -375,13 +376,31 @@ const PaymentsSection = () => {
       
       console.log(`📅 Cargando facturas del periodo: ${periodoStr}`);
       
-      const result = await paymentsServices.getFacturasPeriodo({
-        periodo: periodoStr,
-        estado_factura: filterStatus !== 'all' ? filterStatus : null,
-        sort_by: sortOption,      
-        sort_order: sortOrder,   
-        limit: 100
-      });
+      const pageLimit = 100;
+      let skip = 0;
+      let facturasPeriodo = [];
+      let result = { success: true, data: [] };
+
+      do {
+        result = await paymentsServices.getFacturasPeriodo({
+          periodo: periodoStr,
+          estado_factura: filterStatus !== 'all' ? filterStatus : null,
+          sort_by: sortOption,
+          sort_order: sortOrder,
+          skip,
+          limit: pageLimit
+        });
+
+        if (!result.success) break;
+
+        const pageData = Array.isArray(result.data) ? result.data : [];
+        facturasPeriodo = [...facturasPeriodo, ...pageData];
+        skip += pageLimit;
+
+        if (pageData.length < pageLimit) break;
+      } while (skip < 5000);
+
+      result = { ...result, data: facturasPeriodo };
 
       if (result.success && result.data) {
         console.log('📦 Facturas cargadas:', result.data.length);
@@ -575,16 +594,41 @@ const PaymentsSection = () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
   };
 
+  const getFacturaNombre = (factura) =>
+    factura.nombre_completo ||
+    factura.usuario_afiliado?.usuario_sistema?.nombre_completo ||
+    '';
+
+  const getFacturaCodigo = (factura) =>
+    factura.cod_usuario_afi ??
+    factura.usuario_afiliado?.cod_usuario_afi ??
+    '';
+
+  const getFacturaMedidor = (factura) =>
+    factura.num_medidor ??
+    factura.usuario_afiliado?.num_medidor ??
+    '';
+
+  const getFacturaCedula = (factura) =>
+    factura.cedula ||
+    factura.usuario_afiliado?.usuario_sistema?.cedula ||
+    '';
+
   const filteredFacturas = facturas.filter(factura => {
     const searchLower = searchTerm.toLowerCase();
+    const toString = (value) => {
+      if (value === null || value === undefined) return '';
+      return String(value).toLowerCase();
+    };
     
     // BÚSQUEDA: Por factura, afiliado, cédula, medidor, código y nombre completo
     const matchesSearch =
-      factura.num_factura?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.cod_usuario_afi?.toString().includes(searchTerm) ||
-      factura.usuario_afiliado?.num_medidor?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.usuario_sistema?.nombre_completo?.toLowerCase().includes(searchLower) ||
-      factura.usuario_afiliado?.usuario_sistema?.cedula?.includes(searchTerm);
+      toString(factura.num_factura).includes(searchLower) ||
+      toString(factura.id_factura).includes(searchLower) ||
+      toString(getFacturaCodigo(factura)).includes(searchLower) ||
+      toString(getFacturaMedidor(factura)).includes(searchLower) ||
+      toString(getFacturaNombre(factura)).includes(searchLower) ||
+      toString(getFacturaCedula(factura)).includes(searchLower);
 
     // FILTRO DE ESTADO DE FACTURA
     const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
@@ -609,6 +653,17 @@ const PaymentsSection = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterStatus, filterMetodo, sortOption, sortOrder, pageSize, periodoSeleccionado]);
+
+  useEffect(() => {
+    if (facturas.length <= 100) {
+      setShowSearchAdvice(false);
+      return undefined;
+    }
+
+    setShowSearchAdvice(true);
+    const timer = setTimeout(() => setShowSearchAdvice(false), 12000);
+    return () => clearTimeout(timer);
+  }, [facturas.length, searchTerm, filterStatus, filterMetodo, periodoSeleccionado]);
 
 
   /**
@@ -2029,7 +2084,7 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
               <Search className="search-icon" />
               <input
                 type="text"
-                placeholder="Buscar por factura, afiliado, cédula, medidor..."
+                placeholder="Buscar por factura, medidor, código, afiliado o cédula..."
                 className="search-input"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -2109,11 +2164,11 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
             </div>
           </div>
 
-          {facturas.length > 100 && (
+          {facturas.length > 100 && showSearchAdvice && (
             <div className="payments-search-advice">
               <AlertCircle className="w-4 h-4" />
               <span>
-                Hay {facturas.length} facturas cargadas en este periodo. Para listas grandes, busca por factura, medidor, codigo, afiliado o cedula y usa los filtros para encontrar el registro mas rapido.
+                Hay {facturas.length} facturas cargadas en este período. Para listas grandes, busca por factura, medidor, código, afiliado o cédula y usa los filtros para encontrar el registro más rápido.
               </span>
             </div>
           )}

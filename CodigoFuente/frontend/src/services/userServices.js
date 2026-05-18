@@ -191,7 +191,7 @@ class UsersService {
       const params = new URLSearchParams();
       
       if (filters.search) params.append('search', filters.search);
-      if (filters.id_rol && filters.id_rol !== 'all') params.append('id_rol', filters.id_rol);
+      if (filters.id_rol && filters.id_rol !== 'all') params.append('rol', filters.id_rol);
       if (filters.activo !== undefined) params.append('activo', filters.activo);
       if (filters.skip) params.append('skip', filters.skip);
       if (filters.limit) params.append('limit', filters.limit);

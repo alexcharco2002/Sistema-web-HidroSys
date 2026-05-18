@@ -54,6 +54,30 @@ def redondear_dinero(valor) -> Decimal:
     return Decimal(str(valor or "0")).quantize(CENTAVOS)
 
 
+def formatear_monto_notificacion(valor) -> str:
+    return f"${redondear_dinero(valor):.2f}"
+
+
+def obtener_nombre_afiliado_factura(db: Session, factura: Factura) -> str:
+    if not factura or not factura.id_usuario_afi:
+        return "usuario sin identificar"
+
+    nombre = (
+        db.query(
+            func.concat(
+                func.coalesce(UsuarioSistema.nombres, ""),
+                " ",
+                func.coalesce(UsuarioSistema.apellidos, "")
+            )
+        )
+        .join(UsuarioAfiliado, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
+        .filter(UsuarioAfiliado.id_usuario_afi == factura.id_usuario_afi)
+        .scalar()
+    )
+
+    return nombre.strip() if nombre and nombre.strip() else "usuario sin nombre"
+
+
 def get_db():
     """Dependencia para obtener la sesión de base de datos"""
     db = SessionLocal()
@@ -2506,8 +2530,12 @@ def crear_pago(
         
         t1 = time.perf_counter()
         # ✅ Auditoría y notificación DESPUÉS del commit — nueva transacción limpia
+        nombre_afiliado = obtener_nombre_afiliado_factura(db, factura) if factura else "usuario sin identificar"
+        numero_factura = factura.num_factura if factura else f"#{pago.id_factura or 'sin factura'}"
+        monto_formateado = formatear_monto_notificacion(monto_total_cobrar)
         desc_auditoria = (
-            f"Pago #{id_pago_nuevo} - Monto: ${monto_total_cobrar}"
+            f"Pago #{id_pago_nuevo} registrado para {nombre_afiliado} "
+            f"por {monto_formateado} en la factura {numero_factura}"
             f" - Método: {pago.metodo_pago}"
         )
         
@@ -2534,7 +2562,7 @@ def crear_pago(
         )
         print(f"🟢 Auditoría registrada: {desc_auditoria}")
 
-        mensaje_notif = f"Pago de ${monto_total_cobrar} registrado"
+        mensaje_notif = f"Pago de {nombre_afiliado} por {monto_formateado} registrado para la factura {numero_factura}"
         if mora_aplicada:
             mensaje_notif += f" (incluye mora de ${monto_mora})"
         if pago.incluir_multas and multas_procesadas > 0:
@@ -3746,7 +3774,14 @@ async def subir_comprobante(
     t1 = time.perf_counter()
     pago = (
         db.query(Pago)
-        .options(load_only(Pago.id_pago, Pago.activo, Pago.estado_pago, Pago.nombre_archivo, Pago.tipo_mime))
+        .options(load_only(
+            Pago.id_pago,
+            Pago.id_factura,
+            Pago.activo,
+            Pago.estado_pago,
+            Pago.nombre_archivo,
+            Pago.tipo_mime
+        ))
         .filter(Pago.id_pago == id_pago)
         .first()
     )
@@ -3799,12 +3834,16 @@ async def subir_comprobante(
         t1 = time.perf_counter()
         db.commit()
         _log_pago_tiempo("COMP PAGO", f"7 commit pdf pago={id_pago}", t1)
+
+        factura_comprobante = db.query(Factura).filter(Factura.id_factura == pago.id_factura).first()
+        numero_factura = factura_comprobante.num_factura if factura_comprobante else f"#{pago.id_factura or 'sin factura'}"
+        mensaje_comprobante = f"Comprobante de pago de la factura {numero_factura} guardado"
         
         # Auditoría
         registrar_auditoria(
             db=db,
             accion="UPDATE",
-            descripcion=f"Comprobante PDF subido para pago #{id_pago} - Archivo: {comprobante.filename} ({size_mb:.2f} MB)",
+            descripcion=f"{mensaje_comprobante}. Pago #{id_pago} - Archivo: {comprobante.filename} ({size_mb:.2f} MB)",
             id_usuario=current_user_id
         )
         _log_pago_tiempo("COMP PAGO", f"9 auditoria pago={id_pago}", t1)
@@ -3814,7 +3853,7 @@ async def subir_comprobante(
             db=db,
             id_usuario=current_user_id,
             titulo="Comprobante guardado",
-            mensaje=f"Comprobante del pago #{id_pago} guardado exitosamente",
+            mensaje=mensaje_comprobante,
             tipo="exito"
         )
         _log_pago_tiempo("COMP PAGO", f"10 notificacion pago={id_pago}", t1)

@@ -211,7 +211,7 @@ def obtener_mi_perfil_afiliado(
             Sector.nombre_sector,
         )
         .join(UsuarioSistema, UsuarioSistema.id_usuario_sistema == UsuarioAfiliado.id_usuario_sistema)
-        .join(Sector, Sector.id_sector == UsuarioAfiliado.id_sector)
+        .outerjoin(Sector, Sector.id_sector == UsuarioAfiliado.id_sector)
         .filter(UsuarioAfiliado.id_usuario_sistema == current_user.id_usuario_sistema)
         .first()
     )
@@ -297,7 +297,7 @@ def listar_afiliados(
             Sector.nombre_sector,
         )
         .join(UsuarioSistema, UsuarioSistema.id_usuario_sistema == UsuarioAfiliado.id_usuario_sistema)
-        .join(Sector, Sector.id_sector == UsuarioAfiliado.id_sector)
+        .outerjoin(Sector, Sector.id_sector == UsuarioAfiliado.id_sector)
     )
 
     if search:
@@ -369,7 +369,7 @@ def listar_afiliados(
                 "foto": process_user_photo(row.foto),   # ← bytes → base64 string
             },
             "sector": {
-                "nombre_sector": row.nombre_sector,
+                "nombre_sector": row.nombre_sector or "Sin sector",
             },
             "medidores": medidores_por_afiliado.get(row.id_usuario_afi, []),
             "total_medidores": len(medidores_por_afiliado.get(row.id_usuario_afi, [])),

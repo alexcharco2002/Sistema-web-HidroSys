@@ -56,6 +56,7 @@ const InvoicesSection = () => {
   const [sortOrder, setSortOrder] = useState('desc');
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showSearchAdvice, setShowSearchAdvice] = useState(true);
 
   // ============================================================
   // ESTADOS DE ESTADÍSTICAS
@@ -429,6 +430,17 @@ const InvoicesSection = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterStatus, sortOption, sortOrder, pageSize, periodoSeleccionado]);
+
+  useEffect(() => {
+    if (facturas.length <= 100) {
+      setShowSearchAdvice(false);
+      return undefined;
+    }
+
+    setShowSearchAdvice(true);
+    const timer = setTimeout(() => setShowSearchAdvice(false), 12000);
+    return () => clearTimeout(timer);
+  }, [facturas.length, searchTerm, filterStatus, periodoSeleccionado]);
 
   const toggleSortOrder = () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
@@ -1364,7 +1376,7 @@ const agruparDetallesPorTipo = (detalles) => {
           </div>
           
           {/* SECCIÓN DE SERVICIOS MASIVOS CON TOGGLE */}
-          {facturas.length > 100 && (
+          {facturas.length > 100 && showSearchAdvice && (
             <div className="invoices-search-advice">
               <AlertCircle className="w-4 h-4" />
               <span>

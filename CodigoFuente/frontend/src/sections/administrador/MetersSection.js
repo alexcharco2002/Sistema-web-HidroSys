@@ -1,7 +1,7 @@
 // src/sections/MetersSection.js
 // MÓDULO DE MEDIDORES - Con cambio de medidor como acción independiente
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import metersService from '../../services/metersServices';
 import authService from '../../services/authServices';
 import './MetersSection.css';
@@ -29,6 +29,8 @@ const MetersSection = () => {
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
   const [showSearchAdvice, setShowSearchAdvice] = useState(true);
+  const adviceTimerRef = useRef(null);
+  const hasShownInitialAdviceRef = useRef(false);
   
   // Estados para modal principal (crear/editar/ver)
   const [showModal, setShowModal] = useState(false);
@@ -62,6 +64,19 @@ const MetersSection = () => {
     id_sector: null,
     activo: true
   });
+
+  const showLargeListAdvice = useCallback(() => {
+    if (meters.length <= 100) return;
+
+    if (adviceTimerRef.current) {
+      clearTimeout(adviceTimerRef.current);
+    }
+
+    setShowSearchAdvice(true);
+    adviceTimerRef.current = setTimeout(() => {
+      setShowSearchAdvice(false);
+    }, 12000);
+  }, [meters.length]);
 
   // PERMISOS DEL USUARIO ACTUAL
   const [permissions, setPermissions] = useState({
@@ -199,11 +214,13 @@ const MetersSection = () => {
       : Number(meter.id_sector);
     const matchesSector =
       filterSector === 'all' ||
-      (filterSector === 'no_sector' ? meterSectorId === null : meterSectorId === Number(filterSector));
+      (filterSector === 'no_sector' ? meterSectorId === null :
+        filterSector === 'with_sector' ? meterSectorId !== null :
+          meterSectorId === Number(filterSector));
     const matchesStatus = filterStatus === 'all' || 
                          (filterStatus === 'active' ? meter.activo : !meter.activo);
     const matchesAssignment = filterAssignment === 'all' || 
-                             (filterAssignment === 'assigned' ? meter.id_usuario_afi : !meter.id_usuario_afi);
+                             (filterAssignment === 'assigned' ? Boolean(meter.id_usuario_afi) : !meter.id_usuario_afi);
     
     return matchesSearch && matchesSector && matchesStatus && matchesAssignment;
   });
@@ -235,6 +252,49 @@ const MetersSection = () => {
   const showingFrom = sortedMeters.length === 0 ? 0 : pageStartIndex + 1;
   const showingTo = Math.min(pageEndIndex, sortedMeters.length);
 
+  const totalActiveMeters = meters.filter(m => m.activo).length;
+  const totalInactiveMeters = meters.filter(m => !m.activo).length;
+  const totalAssignedMeters = meters.filter(m => m.id_usuario_afi).length;
+  const totalUnassignedMeters = meters.filter(m => !m.id_usuario_afi).length;
+  const totalMetersWithSector = meters.filter(m => m.id_sector).length;
+
+  const applySummaryFilter = (type) => {
+    setSearchTerm('');
+
+    if (type === 'all') {
+      setFilterStatus('all');
+      setFilterAssignment('all');
+      setFilterSector('all');
+      return;
+    }
+
+    if (type === 'active') {
+      setFilterStatus('active');
+      setFilterAssignment('all');
+      return;
+    }
+
+    if (type === 'inactive') {
+      setFilterStatus('inactive');
+      setFilterAssignment('all');
+      return;
+    }
+
+    if (type === 'assigned') {
+      setFilterAssignment('assigned');
+      return;
+    }
+
+    if (type === 'unassigned') {
+      setFilterAssignment('unassigned');
+      return;
+    }
+
+    if (type === 'with_sector') {
+      setFilterSector('with_sector');
+    }
+  };
+
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterSector, filterStatus, filterAssignment, pageSize]);
@@ -245,13 +305,17 @@ const MetersSection = () => {
       return;
     }
 
-    setShowSearchAdvice(true);
-    const timer = setTimeout(() => {
-      setShowSearchAdvice(false);
-    }, 12000);
+    if (!hasShownInitialAdviceRef.current) {
+      hasShownInitialAdviceRef.current = true;
+      showLargeListAdvice();
+    }
+  }, [meters.length, showLargeListAdvice]);
 
-    return () => clearTimeout(timer);
-  }, [meters.length, searchTerm, filterSector, filterStatus, filterAssignment]);
+  useEffect(() => () => {
+    if (adviceTimerRef.current) {
+      clearTimeout(adviceTimerRef.current);
+    }
+  }, []);
 
   // ============================================================================
   // MODALES - CREAR/EDITAR/VER
@@ -623,7 +687,10 @@ const MetersSection = () => {
         </div>
         
         <div className="users-stats">
-          <div className="stat-item">
+          <div
+            className={`stat-item ${filterStatus === 'all' && filterAssignment === 'all' && filterSector === 'all' ? 'active' : ''}`}
+            onClick={() => applySummaryFilter('all')}
+          >
             <Gauge className="stat-icon text-blue-600" />
             <div>
               <p className="stat-label">Total Medidores</p>
@@ -631,29 +698,58 @@ const MetersSection = () => {
             </div>
           </div>
 
-          <div className="stat-item active green">
+          <div
+            className={`stat-item ${filterStatus === 'active' ? 'active green' : ''}`}
+            onClick={() => applySummaryFilter('active')}
+          >
             <CheckCircle className="stat-icon text-green-600" />
             <div>
               <p className="stat-label">Medidores Activos</p>
-              <p className="stat-value">{meters.filter(m => m.activo).length}</p>
+              <p className="stat-value">{totalActiveMeters}</p>
             </div>
           </div>
 
-          <div className="stat-item active purple">
+          <div
+            className={`stat-item ${filterStatus === 'inactive' ? 'active red' : ''}`}
+            onClick={() => applySummaryFilter('inactive')}
+          >
+            <XCircle className="stat-icon text-red-600" />
+            <div>
+              <p className="stat-label">Medidores Inactivos</p>
+              <p className="stat-value">{totalInactiveMeters}</p>
+            </div>
+          </div>
+
+          <div
+            className={`stat-item ${filterAssignment === 'assigned' ? 'active purple' : ''}`}
+            onClick={() => applySummaryFilter('assigned')}
+          >
             <UserCheck className="stat-icon text-purple-600" />
             <div>
               <p className="stat-label">Medidores Asignados</p>
-              <p className="stat-value">{meters.filter(m => m.id_usuario_afi).length}</p>
+              <p className="stat-value">{totalAssignedMeters}</p>
             </div>
           </div>
 
-          <div className="stat-item active orange">
+          <div
+            className={`stat-item ${filterAssignment === 'unassigned' ? 'active orange' : ''}`}
+            onClick={() => applySummaryFilter('unassigned')}
+          >
+            <UserX className="stat-icon text-orange-600" />
+            <div>
+              <p className="stat-label">Sin Asignar</p>
+              <p className="stat-value">{totalUnassignedMeters}</p>
+            </div>
+          </div>
+
+          <div
+            className={`stat-item ${filterSector === 'with_sector' ? 'active blue' : ''}`}
+            onClick={() => applySummaryFilter('with_sector')}
+          >
             <Map className="stat-icon text-orange-600" />
             <div>
-              <p className="stat-label">Sectores con Medidores</p>
-              <p className="stat-value">
-                {new Set(meters.filter(m => m.activo && m.id_sector).map(m => m.id_sector)).size}
-              </p>
+              <p className="stat-label">Con Sector</p>
+              <p className="stat-value">{totalMetersWithSector}</p>
             </div>
           </div>
         </div>
@@ -668,7 +764,9 @@ const MetersSection = () => {
             placeholder="Buscar por número de medidor o código de afiliado..."
             className="search-input"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+            }}
           />
         </div>
 
@@ -676,9 +774,12 @@ const MetersSection = () => {
           <select 
             className="filter-select" 
             value={filterSector}
-            onChange={(e) => setFilterSector(e.target.value)}
+            onChange={(e) => {
+              setFilterSector(e.target.value);
+            }}
           >
             <option value="all">Todos los sectores</option>
+            <option value="with_sector">Con sector</option>
             <option value="no_sector">Sin sector</option>
             {sectors.map(sector => (
               <option key={sector.id_sector} value={sector.id_sector}>
@@ -690,7 +791,9 @@ const MetersSection = () => {
           <select 
             className="filter-select" 
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
+            onChange={(e) => {
+              setFilterStatus(e.target.value);
+            }}
           >
             <option value="all">Todos los estados</option>
             <option value="active">Activos</option>
@@ -700,7 +803,9 @@ const MetersSection = () => {
           <select 
             className="filter-select" 
             value={filterAssignment}
-            onChange={(e) => setFilterAssignment(e.target.value)}
+            onChange={(e) => {
+              setFilterAssignment(e.target.value);
+            }}
           >
             <option value="all">Todas las asignaciones</option>
             <option value="assigned">Asignados</option>
@@ -739,11 +844,16 @@ const MetersSection = () => {
         <span>
           Mostrando {showingFrom}-{showingTo} de {sortedMeters.length} medidor{sortedMeters.length !== 1 ? 'es' : ''}
         </span>
-        {searchTerm.trim() && (
+        {(searchTerm.trim() || filterSector !== 'all' || filterStatus !== 'all' || filterAssignment !== 'all') && (
           <button
             type="button"
             className="clear-search-btn"
-            onClick={() => setSearchTerm('')}
+            onClick={() => {
+              setSearchTerm('');
+              setFilterSector('all');
+              setFilterStatus('all');
+              setFilterAssignment('all');
+            }}
           >
             Limpiar búsqueda
           </button>

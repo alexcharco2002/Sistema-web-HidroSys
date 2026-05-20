@@ -628,7 +628,7 @@ const RolesSection = () => {
           </div>
 
           {/* ✅ Roles activos */}
-          <div className="stat-item active green">
+          <div className="stat-item">
             <CheckCircle className="stat-icon text-green-600" />
             <div>
               <p className="stat-label">Roles Activos</p>
@@ -646,7 +646,7 @@ const RolesSection = () => {
           </div>
 
           {/* 🔒 Acciones activas */}
-          <div className="stat-item active amber">
+          <div className="stat-item">
             <Lock className="stat-icon text-amber-600" />
             <div>
               <p className="stat-label">Acciones Activas</p>

@@ -644,14 +644,34 @@ def get_reporte_lecturas(
     """📊 Reporte completo de lecturas con información de afiliado y medidor"""
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "reportes", "lectura")
-    
-    # Query optimizado con joins y joinedload
-    query = db.query(Lectura).options(
-        joinedload(Lectura.medidor).joinedload(Medidor.usuario_afiliado).joinedload(UsuarioAfiliado.usuario_sistema),
-        joinedload(Lectura.medidor).joinedload(Medidor.sector),
-        joinedload(Lectura.lector)
+
+    Lector = aliased(UsuarioSistema)
+
+    query = (
+        db.query(
+            UsuarioAfiliado.cod_usuario_afi,
+            UsuarioSistema.nombres.label("afiliado_nombres"),
+            UsuarioSistema.apellidos.label("afiliado_apellidos"),
+            Medidor.num_medidor,
+            Sector.nombre_sector,
+            Lectura.lectura_anterior,
+            Lectura.lectura_actual,
+            Lectura.consumo_m3,
+            Lectura.fecha_lectura,
+            Lectura.periodo_consumo,
+            Lectura.es_estimada,
+            Lector.nombres.label("lector_nombres"),
+            Lector.apellidos.label("lector_apellidos"),
+            Lectura.observacion,
+            Lectura.activo,
+        )
+        .join(Medidor, Lectura.id_medidor == Medidor.id_medidor)
+        .outerjoin(UsuarioAfiliado, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+        .outerjoin(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
+        .outerjoin(Sector, Medidor.id_sector == Sector.id_sector)
+        .outerjoin(Lector, Lectura.id_lector == Lector.id_usuario_sistema)
     )
-    
+
     # ============================================================
     # FILTRO DE BÚSQUEDA - CORREGIDO
     # ============================================================
@@ -660,7 +680,7 @@ def get_reporte_lecturas(
     if search and search.strip():
         search = search.strip()  # ← limpiar espacios
         search_pattern = f"%{search}%"
-        query = query.join(Lectura.medidor).outerjoin(Medidor.usuario_afiliado).outerjoin(UsuarioAfiliado.usuario_sistema).filter(
+        query = query.filter(
             or_(
                 UsuarioSistema.nombres.ilike(search_pattern),
                 UsuarioSistema.apellidos.ilike(search_pattern),
@@ -685,24 +705,35 @@ def get_reporte_lecturas(
     
     # NUEVO: Filtro por nombre del sector
     if sector:
-        query = query.join(Lectura.medidor).join(Medidor.sector).filter(Sector.nombre_sector == sector)
+        query = query.filter(Sector.nombre_sector == sector)
 
-    query = query.order_by(Lectura.fecha_lectura.desc())
+    query = query.order_by(
+        Lectura.periodo_consumo.desc(),
+        Lectura.fecha_lectura.desc()
+    )
     lecturas = query.offset(skip).limit(limit).all()
     
     return [
         {
-            "cod_usuario_afi": l.medidor.usuario_afiliado.cod_usuario_afi if l.medidor and l.medidor.usuario_afiliado else None,
-            "nombres": f"{l.medidor.usuario_afiliado.usuario_sistema.nombres} {l.medidor.usuario_afiliado.usuario_sistema.apellidos}" if l.medidor and l.medidor.usuario_afiliado and l.medidor.usuario_afiliado.usuario_sistema else "Sin afiliado",
-            "num_medidor": l.medidor.num_medidor if l.medidor else None,
-            "sector": l.medidor.sector.nombre_sector if l.medidor and l.medidor.sector else "Sin sector",
+            "cod_usuario_afi": l.cod_usuario_afi,
+            "nombres": (
+                f"{l.afiliado_nombres or ''} {l.afiliado_apellidos or ''}".strip()
+                if l.afiliado_nombres or l.afiliado_apellidos
+                else "Sin afiliado"
+            ),
+            "num_medidor": l.num_medidor,
+            "sector": l.nombre_sector or "Sin sector",
             "lectura_anterior": l.lectura_anterior,
             "lectura_actual": l.lectura_actual,
             "consumo_m3": l.consumo_m3,
-            "fecha_lectura": l.fecha_lectura.strftime('%d/%m/%Y') if l.fecha_lectura else None,
+            "fecha_lectura": l.fecha_lectura.strftime("%d/%m/%Y") if l.fecha_lectura else None,
             "periodo_consumo": l.periodo_consumo,
             "tipo_lectura": "Estimada" if l.es_estimada else "Real",
-            "lector": f"{l.lector.nombres} {l.lector.apellidos}" if l.lector else "Sin lector",
+            "lector": (
+                f"{l.lector_nombres or ''} {l.lector_apellidos or ''}".strip()
+                if l.lector_nombres or l.lector_apellidos
+                else "Sin lector"
+            ),
             "observacion": l.observacion,
             "activo": l.activo
         }

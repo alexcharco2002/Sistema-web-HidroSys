@@ -95,6 +95,15 @@
   max-width: 150px;
 }
 
+.user-profile .header-user-profile-name {
+  display: block;
+  width: 150px;
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .user-role {
   font-size: 12px;
   color: var(--text-secondary);

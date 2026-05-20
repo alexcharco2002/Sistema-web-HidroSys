@@ -475,7 +475,7 @@ def unlock_user(
     # Verificar rol de administrador
     rol_admin = db.query(Rol).filter(
         Rol.id_rol == db_admin.id_rol,
-        Rol.nombre_rol == "administrador"
+        Rol.nombre_rol.ilike("administrador")
     ).first()
     
     if not rol_admin:
@@ -540,7 +540,7 @@ def get_blocked_users(
     
     rol_admin = db.query(Rol).filter(
         Rol.id_rol == db_admin.id_rol,
-        Rol.nombre_rol == "administrador"
+        Rol.nombre_rol.ilike("administrador")
     ).first()
     
     if not rol_admin:
@@ -732,6 +732,12 @@ def forgot_password(request: dict, db: Session = Depends(get_db)):
                 "message": "Usuario o correo incorrecto",
                 "email_sent": False
             }
+
+        if getattr(user, 'bloqueado_permanente', False):
+            return {
+                "success": False,
+                "message": "Esta cuenta esta bloqueada permanentemente. Contacta al administrador para desbloquearla"
+            }
         
         if hasattr(user, 'activo') and not user.activo:
             return {
@@ -900,6 +906,12 @@ def reset_password(request: dict, db: Session = Depends(get_db)):
             }
         
         # ✅ Actualizar contraseña con manejo de errores
+        if getattr(user, 'bloqueado_permanente', False):
+            return {
+                "success": False,
+                "message": "Esta cuenta esta bloqueada permanentemente. Contacta al administrador para desbloquearla"
+            }
+
         try:
             hashed_password = hash_password(new_password)
             user.clave = hashed_password
@@ -909,8 +921,6 @@ def reset_password(request: dict, db: Session = Depends(get_db)):
                 user.intentos_fallidos = 0
             if hasattr(user, 'bloqueado_hasta'):
                 user.bloqueado_hasta = None
-            if hasattr(user, 'bloqueado_permanente'):
-                user.bloqueado_permanente = False
             
             # Hacer commit
             db.commit()

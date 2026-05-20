@@ -696,7 +696,7 @@ const TarifasSection = () => {
             </div>
 
             {/* ✅ Tarifas vigentes */}
-            <div className="stat-item active green">
+            <div className="stat-item">
               <CheckCircle className="stat-icon text-green-600" />
               <div>
                 <p className="stat-label">Tarifas Vigentes</p>
@@ -705,7 +705,7 @@ const TarifasSection = () => {
             </div>
 
             {/* ⏳ Tarifas vencidas */}
-            <div className="stat-item active orange">
+            <div className="stat-item">
               <Clock className="stat-icon text-orange-600" />
               <div>
                 <p className="stat-label">Tarifas Vencidas</p>
@@ -714,7 +714,7 @@ const TarifasSection = () => {
             </div>
 
             {/* 🏷️ Tipos únicos */}
-            <div className="stat-item active purple">
+            <div className="stat-item">
               <Tag className="stat-icon text-purple-600" />
               <div>
                 <p className="stat-label">Tipos Únicos</p>

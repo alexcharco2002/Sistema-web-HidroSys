@@ -1099,35 +1099,35 @@ const AffiliateBillingSection = () => {
                 <p className="stat-value">{stats.total_facturas}</p>
               </div>
             </div>
-            <div className="stat-item active green">
+            <div className="stat-item">
               <CheckCircle className="stat-icon text-green-600" />
               <div>
                 <p className="stat-label">Pagadas</p>
                 <p className="stat-value">{stats.total_pagadas}</p>
               </div>
             </div>
-            <div className="stat-item active yellow">
+            <div className="stat-item">
               <Clock className="stat-icon text-yellow-600" />
               <div>
                 <p className="stat-label">Pendientes</p>
                 <p className="stat-value">{stats.total_pendientes}</p>
               </div>
             </div>
-            <div className="stat-item active blue">
+            <div className="stat-item">
               <DollarSign className="stat-icon text-blue-600" />
               <div>
                 <p className="stat-label">Monto Total</p>
                 <p className="stat-value">{formatCurrency(stats.monto_total)}</p>
               </div>
             </div>
-            <div className="stat-item active green">
+            <div className="stat-item">
               <TrendingUp className="stat-icon text-green-600" />
               <div>
                 <p className="stat-label">Pagado</p>
                 <p className="stat-value">{formatCurrency(stats.monto_pagado)}</p>
               </div>
             </div>
-            <div className="stat-item active red">
+            <div className="stat-item">
               <TrendingDown className="stat-icon text-red-600" />
               <div>
                 <p className="stat-label">Por Pagar</p>

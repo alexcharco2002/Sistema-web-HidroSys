@@ -103,7 +103,7 @@ const UserProfile = ({ user, onLogout, onViewProfile }) => {
 
         {/* Información del usuario */}
         <div className="user-info">
-          <p className="user-name">
+          <p className="user-name header-user-profile-name">
             { `${user.nombres || ''} ${user.apellidos || ''}`.trim() || 'Usuario'}
           </p>
           <p className="user-role">{user.rol?.nombre_rol || 'Sin rol'}</p>

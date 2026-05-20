@@ -479,7 +479,7 @@ const FinesSection = () => {
             </div>
 
             {/* ✅ Tipos vigentes */}
-            <div className="stat-item active green">
+            <div className="stat-item">
               <CheckCircle className="stat-icon text-green-600" />
               <div>
                 <p className="stat-label">Tipos Vigentes</p>
@@ -488,7 +488,7 @@ const FinesSection = () => {
             </div>
 
             {/* ⏳ Tipos vencidos */}
-            <div className="stat-item active orange">
+            <div className="stat-item">
               <Clock className="stat-icon text-orange-600" />
               <div>
                 <p className="stat-label">Tipos Vencidos</p>

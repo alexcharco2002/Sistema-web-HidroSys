@@ -255,6 +255,16 @@ useEffect(() => {
     maintenance: notifications.filter(n => n.es_mantenimiento).length
   }), [notifications]);
 
+  const handleSummaryStatusFilter = useCallback((status) => {
+    setFilterStatus(status);
+    setFilterType('all');
+  }, []);
+
+  const handleSummaryTypeFilter = useCallback((type) => {
+    setFilterType(type);
+    setFilterStatus('all');
+  }, []);
+
 
 
   // ==================== MODAL ====================
@@ -735,8 +745,8 @@ return (
         
         {/* 📊 Total de notificaciones */}
         <div
-          className={`stat-item ${filterStatus === 'all' ? 'active' : ''}`}
-          onClick={() => setFilterStatus('all')}
+          className={`stat-item ${filterStatus === 'all' && filterType === 'all' ? 'active' : ''}`}
+          onClick={() => handleSummaryStatusFilter('all')}
         >
           <Bell className="stat-icon text-blue-600" />
           <div>
@@ -747,8 +757,8 @@ return (
 
         {/* 🔴 Notificaciones no leídas */}
         <div
-          className={`stat-item ${filterStatus === 'unread' ? 'active red' : ''}`}
-          onClick={() => setFilterStatus('unread')}
+          className={`stat-item ${filterStatus === 'unread' && filterType === 'all' ? 'active red' : ''}`}
+          onClick={() => handleSummaryStatusFilter('unread')}
         >
           <AlertTriangle className="stat-icon text-red-600" />
           <div>
@@ -759,8 +769,8 @@ return (
 
         {/* ✅ Notificaciones leídas */}
         <div
-          className={`stat-item ${filterStatus === 'read' ? 'active green' : ''}`}
-          onClick={() => setFilterStatus('read')}
+          className={`stat-item ${filterStatus === 'read' && filterType === 'all' ? 'active green' : ''}`}
+          onClick={() => handleSummaryStatusFilter('read')}
         >
           <CheckCircle className="stat-icon text-green-600" />
           <div>
@@ -771,8 +781,8 @@ return (
 
         {/* ⚙️ Mantenimientos */}
         <div
-          className={`stat-item ${filterType === 'mantenimiento' ? 'active purple' : ''}`}
-          onClick={() => setFilterType('mantenimiento')}
+          className={`stat-item ${filterType === 'mantenimiento' && filterStatus === 'all' ? 'active purple' : ''}`}
+          onClick={() => handleSummaryTypeFilter('mantenimiento')}
         >
           <Settings className="stat-icon text-purple-600" />
           <div>

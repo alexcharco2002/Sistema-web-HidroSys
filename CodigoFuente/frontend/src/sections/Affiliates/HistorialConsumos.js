@@ -843,21 +843,21 @@ const imprimirReporte = () => {
                 <p className="stat-value">{stats.total_lecturas}</p>
               </div>
             </div>
-            <div className="stat-item active green">
+            <div className="stat-item">
               <Activity className="stat-icon text-green-600" />
               <div>
                 <p className="stat-label">Consumo Total</p>
                 <p className="stat-value">{stats.consumo_total} m³</p>
               </div>
             </div>
-            <div className="stat-item active yellow">
+            <div className="stat-item">
               <BarChart3 className="stat-icon text-yellow-600" />
               <div>
                 <p className="stat-label">Promedio Mensual</p>
                 <p className="stat-value">{stats.consumo_promedio} m³</p>
               </div>
             </div>
-            <div className="stat-item active red">
+            <div className="stat-item">
               <TrendingUp className="stat-icon text-red-600" />
               <div>
                 <p className="stat-label">Mayor Consumo</p>
@@ -866,7 +866,7 @@ const imprimirReporte = () => {
                 </p>
               </div>
             </div>
-            <div className="stat-item active blue">
+            <div className="stat-item">
               <TrendingDown className="stat-icon text-blue-600" />
               <div>
                 <p className="stat-label">Menor Consumo</p>
@@ -876,7 +876,7 @@ const imprimirReporte = () => {
               </div>
             </div>
             {stats.tendencia && (
-              <div className={`stat-item active ${stats.tendencia.direccion === 'aumento' ? 'orange' : 'green'}`}>
+              <div className="stat-item">
                 {stats.tendencia.direccion === 'aumento'
                   ? <TrendingUp className="stat-icon text-orange-600" />
                   : <TrendingDown className="stat-icon text-green-600" />}

@@ -278,6 +278,7 @@
   background: white;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
+  cursor: pointer;
   transition: all 0.2s ease;
 }
 
@@ -285,6 +286,26 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   border-color: #3b82f6;
   transform: translateY(-2px);
+}
+
+.stat-item.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.stat-item.active.green {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.stat-item.active.red {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.stat-item.active.orange {
+  border-color: #f59e0b;
+  background: #fffbeb;
 }
 
 .stat-icon {
@@ -570,6 +591,22 @@
 .action-btn.delete:hover svg {
   color: #dc2626;
   stroke: #dc2626;
+}
+
+.action-btn.unlock svg {
+  color: #d97706;
+  stroke: #d97706;
+  fill: none;
+}
+
+.action-btn.unlock:hover {
+  background-color: #fffbeb;
+  border-color: #d97706;
+}
+
+.action-btn.unlock:hover svg {
+  color: #b45309;
+  stroke: #b45309;
 }
 
 /* Botones sin clase específica (contraseña y foto) - Gris siempre visible */

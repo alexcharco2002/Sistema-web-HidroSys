@@ -683,6 +683,10 @@ class UsersService {
           total: users.length,
           activos: users.filter(u => u.activo).length,
           inactivos: users.filter(u => !u.activo).length,
+          bloqueados: users.filter(u => (
+            u.bloqueado_permanente ||
+            (u.bloqueado_hasta && new Date(u.bloqueado_hasta) > new Date())
+          )).length,
           porRol: users.reduce((acc, user) => {
             const rolName = user.rol?.nombre_rol || 'sin_rol';
             acc[rolName] = (acc[rolName] || 0) + 1;

@@ -674,6 +674,10 @@
 }
 
 /* Reducir movimiento para usuarios sensibles */
+.users-section .periodo-stats-container .stat-item {
+  cursor: default;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sidebar-item,
   .stat-item,
@@ -831,6 +835,48 @@
   box-shadow: 0 20px 60px rgba(0,0,0,0.3);
   animation: dialogIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+.geo-create-dialog {
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.geo-create-dialog .geo-confirm-header {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 20px 24px 14px;
+  border-bottom: 0.5px solid #e5e7eb;
+}
+
+.geo-create-form {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.geo-create-form::-webkit-scrollbar {
+  width: 8px;
+}
+
+.geo-create-form::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.geo-create-form::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.geo-create-form::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
 @keyframes dialogIn {
   from { opacity: 0; transform: scale(0.93) translateY(12px); }
   to   { opacity: 1; transform: scale(1)    translateY(0); }
@@ -901,12 +947,178 @@
 
 .geo-create-actions {
   justify-content: flex-end;
+  position: sticky;
+  bottom: -20px;
+  margin: 0 -24px -20px;
+  padding: 12px 24px 16px;
+  background: #fff;
+  border-top: 0.5px solid #e5e7eb;
+  z-index: 1;
 }
 
 .geo-create-actions .btn-secondary,
 .geo-create-actions .btn-primary {
   width: auto;
   flex: 0 0 auto;
+}
+
+/* Lista de afiliados del modal crear medidor */
+.geo-affiliate-search-container {
+  position: relative;
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+
+.geo-affiliate-search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.geo-affiliate-search-icon {
+  position: absolute;
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.geo-affiliate-search-input {
+  width: 100%;
+  height: 38px;
+  padding: 0 38px 0 36px;
+  border: 0.5px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.geo-affiliate-search-input:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.geo-affiliate-search-clear {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.geo-affiliate-search-clear:hover {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.geo-affiliates-modal-list {
+  max-height: 230px;
+  overflow-y: auto;
+  border: 0.5px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.geo-affiliate-modal-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 0.5px solid #f3f4f6;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.geo-affiliate-modal-item:last-child {
+  border-bottom: none;
+}
+
+.geo-affiliate-modal-item:hover {
+  background: #f9fafb;
+}
+
+.geo-affiliate-modal-item.selected {
+  background: #eff6ff;
+}
+
+.geo-avatar-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #1d4ed8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.geo-affiliate-modal-item.selected .geo-avatar-circle {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.geo-affiliate-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.geo-affiliate-name {
+  margin: 0;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.geo-affiliate-meta {
+  margin: 2px 0 0 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.geo-affiliate-modal-item.selected .geo-affiliate-name {
+  color: #1d4ed8;
+}
+
+.geo-affiliate-modal-item.selected .geo-affiliate-meta {
+  color: #3b82f6;
+}
+
+.geo-affiliate-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 12px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+.geo-affiliate-empty-state p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
 }
 
 .geo-confirm-btn-cancel,

@@ -130,6 +130,40 @@
   font-size: 0.875rem;
   font-weight: 600;
 }
+
+.meters-section .stat-item {
+  cursor: pointer;
+}
+
+.meters-section .stat-item.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.meters-section .stat-item.active.green {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.meters-section .stat-item.active.red {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.meters-section .stat-item.active.purple {
+  border-color: #9333ea;
+  background: #faf5ff;
+}
+
+.meters-section .stat-item.active.orange {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.meters-section .stat-item.active.blue {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
 .meters-section .user-info {
   flex: 1;
   min-width: 0;

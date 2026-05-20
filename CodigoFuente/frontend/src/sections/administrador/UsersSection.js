@@ -1,6 +1,6 @@
 // src/sections/users/UsersSection.js
 // MODULO DE USUARIOS de sistema - Con control de permisos 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 import './UserSection.css';
 import usersService from '../../services/userServices'; // 🔑 Importar usersService
@@ -120,6 +120,8 @@ const UsersSection = () => {
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
   const [showSearchAdvice, setShowSearchAdvice] = useState(true);
+  const adviceTimerRef = useRef(null);
+  const hasShownInitialAdviceRef = useRef(false);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('create');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -318,6 +320,19 @@ const UsersSection = () => {
   });
   const [selectedFile, setSelectedFile] = useState(null);
 
+  const showLargeListAdvice = useCallback(() => {
+    if (users.length <= 100) return;
+
+    if (adviceTimerRef.current) {
+      clearTimeout(adviceTimerRef.current);
+    }
+
+    setShowSearchAdvice(true);
+    adviceTimerRef.current = setTimeout(() => {
+      setShowSearchAdvice(false);
+    }, 12000);
+  }, [users.length]);
+
   // 🔑 PERMISOS DEL USUARIO ACTUAL
   const [permissions, setPermissions] = useState({
     canCreate: false,
@@ -424,7 +439,6 @@ const UsersSection = () => {
 
       do {
         usersResult = await usersService.getUsers({
-          id_rol: filterRole === 'all' ? undefined : filterRole,
           skip,
           limit: pageLimit
         });
@@ -458,7 +472,7 @@ const UsersSection = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterRole, permissions.canRead]);
+  }, [permissions.canRead]);
   
 
   // 🔄 Cargar usuarios cuando cambian los filtros
@@ -466,13 +480,31 @@ const UsersSection = () => {
     if (permissions.canRead) {
       fetchUsers();
     }
-  }, [ filterRole, permissions.canRead, fetchUsers]);
+  }, [permissions.canRead, fetchUsers]);
 
   // ==================== FUNCIONES DE FILTRADO Y ORDENAMIENTO ====================
   
   /**
    * 🔍 Filtra usuarios según los criterios de búsqueda, rol y estado
    */
+  const isUserBlocked = (user) => {
+    if (!user) return false;
+
+    if (user.bloqueado_permanente) {
+      return true;
+    }
+
+    if (user.bloqueado_hasta) {
+      const ahora = new Date();
+      const bloqueadoHasta = new Date(user.bloqueado_hasta);
+      return bloqueadoHasta > ahora;
+    }
+
+    return false;
+  };
+
+  const blockedUsersCount = users.filter(isUserBlocked).length;
+
   const filteredUsers = users.filter(user => {
     const searchValue = searchTerm.trim().toLowerCase();
     // Filtro por búsqueda de texto
@@ -490,7 +522,8 @@ const UsersSection = () => {
     const matchesStatus =
       statusFilter === 'all' ||
       (statusFilter === 'active' && user.activo) ||
-      (statusFilter === 'inactive' && !user.activo);
+      (statusFilter === 'inactive' && !user.activo) ||
+      (statusFilter === 'blocked' && isUserBlocked(user));
 
     return matchesSearch && matchesRole && matchesStatus;
   });
@@ -552,13 +585,17 @@ const UsersSection = () => {
       return;
     }
 
-    setShowSearchAdvice(true);
-    const timer = setTimeout(() => {
-      setShowSearchAdvice(false);
-    }, 12000);
+    if (!hasShownInitialAdviceRef.current) {
+      hasShownInitialAdviceRef.current = true;
+      showLargeListAdvice();
+    }
+  }, [users.length, showLargeListAdvice]);
 
-    return () => clearTimeout(timer);
-  }, [users.length, searchTerm, filterRole, statusFilter]);
+  useEffect(() => () => {
+    if (adviceTimerRef.current) {
+      clearTimeout(adviceTimerRef.current);
+    }
+  }, []);
 
   // ==================== FUNCIONES DE MODAL ====================
   
@@ -941,24 +978,6 @@ const handleUnlockUser = async (userId, usuario) => {
   /**
  * 🔐 Verificar si un usuario está bloqueado
  */
-const isUserBlocked = (user) => {
-  if (!user) return false;
-  
-  // Bloqueado permanentemente
-  if (user.bloqueado_permanente) {
-    return true;
-  }
-  
-  // Bloqueado temporalmente
-  if (user.bloqueado_hasta) {
-    const ahora = new Date();
-    const bloqueadoHasta = new Date(user.bloqueado_hasta);
-    return bloqueadoHasta > ahora;
-  }
-  
-  return false;
-};
-
 /**
  * 🏷️ Obtener texto del estado de bloqueo
  */
@@ -1141,6 +1160,17 @@ const getBlockStatusText = (user) => {
             </div>
           </div>
 
+          <div
+            className={`stat-item ${statusFilter === 'blocked' ? 'active orange' : ''}`}
+            onClick={() => handleStatusFilterClick('blocked')}
+          >
+            <Unlock className="stat-icon text-orange-600" />
+            <div>
+              <p className="stat-label">Usuarios Bloqueados</p>
+              <p className="stat-value">{blockedUsersCount}</p>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -1155,7 +1185,9 @@ const getBlockStatusText = (user) => {
             placeholder="Buscar por nombre, código o cédula..."
             className="search-input"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+            }}
           />
         </div>
 
@@ -1181,7 +1213,9 @@ const getBlockStatusText = (user) => {
           <select 
             className="filter-select"
             value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value)}
+            onChange={(e) => {
+              setFilterRole(e.target.value);
+            }}
           >
             <option value="all">Todos los roles</option>
             {roles.map(rol => (

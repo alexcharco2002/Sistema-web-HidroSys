@@ -673,28 +673,28 @@ const limiteStyleHover = {
                 <p className="stat-value">{estadisticas.total_medidores}</p>
               </div>
             </div>
-            <div className="stat-item active green">
+            <div className="stat-item">
               <Navigation className="stat-icon text-green-600" />
               <div>
                 <p className="stat-label">Con Geolocalización</p>
                 <p className="stat-value">{estadisticas.medidores_con_geo}</p>
               </div>
             </div>
-            <div className="stat-item active emerald">
+            <div className="stat-item">
               <CheckCircle className="stat-icon text-emerald-600" />
               <div>
                 <p className="stat-label">Activos</p>
                 <p className="stat-value">{estadisticas.medidores_activos}</p>
               </div>
             </div>
-            <div className="stat-item active purple">
+            <div className="stat-item">
               <User className="stat-icon text-purple-600" />
               <div>
                 <p className="stat-label">Asignados</p>
                 <p className="stat-value">{estadisticas.medidores_asignados}</p>
               </div>
             </div>
-            <div className="stat-item active orange">
+            <div className="stat-item">
               <Layers className="stat-icon text-orange-600" />
               <div>
                 <p className="stat-label">Cobertura Geo</p>
@@ -1325,7 +1325,7 @@ const limiteStyleHover = {
   {showCreateModal && coordNuevoMedidor && (
   <div className="geo-confirm-overlay" onClick={cancelarModoCrearMedidor}>
     <div
-      className="geo-confirm-dialog"
+      className="geo-confirm-dialog geo-create-dialog"
       style={{ maxWidth: 480, width: '95%' }}
       onClick={e => e.stopPropagation()}
     >
@@ -1355,7 +1355,7 @@ const limiteStyleHover = {
         </div>
       )}
 
-      <form onSubmit={handleCreateMedidor} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <form onSubmit={handleCreateMedidor} className="geo-create-form">
 
         {/* Número de medidor */}
         <div className="form-group" style={{ margin: 0 }}>
@@ -1404,48 +1404,80 @@ const limiteStyleHover = {
           <label>Asignar a Afiliado <small style={{ color: '#9ca3af' }}>opcional</small></label>
 
           {/* Buscador */}
-          <div className="meter-search-container">
-            <div className="meter-search-input-wrapper">
-              <Search className="w-4 h-4 text-gray-400" />
+          <div className="geo-affiliate-search-container">
+            <div className="geo-affiliate-search-input-wrapper">
+              <Search className="geo-affiliate-search-icon" />
               <input
                 type="text"
                 placeholder="Buscar por nombre, código o cédula..."
                 value={affiliateSearchTerm}
                 onChange={e => setAffiliateSearchTerm(e.target.value)}
+                className="geo-affiliate-search-input"
               />
               {affiliateSearchTerm && (
-                <button type="button" onClick={() => setAffiliateSearchTerm('')} className="meter-search-clear-btn">
-                  <X className="w-4 h-4 text-gray-400" />
+                <button type="button" onClick={() => setAffiliateSearchTerm('')} className="geo-affiliate-search-clear">
+                  <X className="w-4 h-4" />
                 </button>
               )}
             </div>
           </div>
 
-          <select
-            style={{ marginTop: 6 }}
-            value={createForm.id_usuario_afi || ''}
-            onChange={e => {
-              const id  = e.target.value ? parseInt(e.target.value) : null;
-              const aff = availableAffiliates.find(a => a.id_usuario_afi === id) || null;
-              setCreateForm(f => ({ ...f, id_usuario_afi: id }));
-              setSelectedAffiliateInfo(aff);
-            }}
-          >
-            <option value="">🚫 Sin asignar</option>
-            {filteredAffiliates.map(a => (
-              <option key={a.id_usuario_afi} value={a.id_usuario_afi}>
-                👤 {a.cod_usuario_afi} — {a.nombre_afiliado}
-                {a.cedula ? ` | 🪪 ${a.cedula}` : ''}
-              </option>
-            ))}
-          </select>
+          <div className="geo-affiliates-modal-list">
+            <button
+              type="button"
+              className={`geo-affiliate-modal-item ${!createForm.id_usuario_afi ? 'selected' : ''}`}
+              onClick={() => {
+                setCreateForm(f => ({ ...f, id_usuario_afi: null }));
+                setSelectedAffiliateInfo(null);
+              }}
+            >
+              <div className="geo-avatar-circle">SA</div>
+              <div className="geo-affiliate-info">
+                <p className="geo-affiliate-name">Sin asignar</p>
+                <p className="geo-affiliate-meta">Crear medidor sin afiliado asociado</p>
+              </div>
+              {!createForm.id_usuario_afi && <CheckCircle className="w-4 h-4 text-blue-600" />}
+            </button>
 
-          {filteredAffiliates.length > 0 && (
-            <small style={{ color: '#6b7280' }}>
-              {filteredAffiliates.length} afiliado{filteredAffiliates.length !== 1 ? 's' : ''}
-              {affiliateSearchTerm && ` para "${affiliateSearchTerm}"`}
-            </small>
-          )}
+            {filteredAffiliates.map(a => {
+              const isSelected = createForm.id_usuario_afi === a.id_usuario_afi;
+              const nombre = a.nombre_afiliado || 'Sin nombre';
+              const iniciales = nombre
+                .split(' ')
+                .filter(Boolean)
+                .slice(0, 2)
+                .map(parte => parte[0])
+                .join('');
+
+              return (
+                <button
+                  type="button"
+                  key={a.id_usuario_afi}
+                  className={`geo-affiliate-modal-item ${isSelected ? 'selected' : ''}`}
+                  onClick={() => {
+                    setCreateForm(f => ({ ...f, id_usuario_afi: a.id_usuario_afi }));
+                    setSelectedAffiliateInfo(a);
+                  }}
+                >
+                  <div className="geo-avatar-circle">{iniciales}</div>
+                  <div className="geo-affiliate-info">
+                    <p className="geo-affiliate-name">{nombre}</p>
+                    <p className="geo-affiliate-meta">
+                      {a.cod_usuario_afi || 'Sin código'} · {a.cedula || 'Sin cédula'} · {a.nombre_sector || 'Sin sector'}
+                    </p>
+                  </div>
+                  {isSelected && <CheckCircle className="w-4 h-4 text-blue-600" />}
+                </button>
+              );
+            })}
+
+            {filteredAffiliates.length === 0 && (
+              <div className="geo-affiliate-empty-state">
+                <User className="w-8 h-8" />
+                <p>No se encontraron afiliados con "{affiliateSearchTerm}"</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Tarjeta info afiliado seleccionado */}

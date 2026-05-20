@@ -630,25 +630,25 @@ const FinesAffiliatesSection = () => {
                   <div><p className="stat-label">Total</p><p className="stat-value">{stats.total_multas||0}</p>
                   <span className="stat-detail">{formatCurrency(stats.monto_total)}</span></div>
                 </div>
-                <div className="stat-item active orange">
+                <div className="stat-item">
                   <Clock className="stat-icon text-orange-600" />
                   <div><p className="stat-label">Pendientes</p><p className="stat-value">{stats.pendientes||0}</p>
                   <span className="stat-detail">{formatCurrency(stats.monto_pendiente)}</span></div>
                 </div>
-                <div className="stat-item active green">
+                <div className="stat-item">
                   <CheckCircle className="stat-icon text-green-600" />
                   <div><p className="stat-label">Pagadas</p><p className="stat-value">{stats.pagadas||0}</p>
                   <span className="stat-detail">{formatCurrency(stats.monto_pagado)}</span></div>
                 </div>
-                <div className="stat-item active red">
+                <div className="stat-item">
                   <XCircle className="stat-icon text-red-600" />
                   <div><p className="stat-label">Anuladas</p><p className="stat-value">{stats.anuladas||0}</p></div>
                 </div>
-                <div className="stat-item active purple">
+                <div className="stat-item">
                   <Ban className="stat-icon text-purple-600" />
                   <div><p className="stat-label">Exoneradas</p><p className="stat-value">{stats.exoneradas||0}</p></div>
                 </div>
-                <div className="stat-item active blue">
+                <div className="stat-item">
                   <Receipt className="stat-icon text-blue-600" />
                   <div><p className="stat-label">Facturadas</p><p className="stat-value">{stats.facturadas||0}</p>
                   <span className="stat-detail">{formatCurrency(stats.monto_facturado)}</span></div>

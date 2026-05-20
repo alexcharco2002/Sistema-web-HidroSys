@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   X, CheckCircle, AlertCircle,
   User, FileText, DollarSign,
-  CreditCard
+  CreditCard, Printer, Download, Receipt
 } from 'lucide-react';
 import './PaymentReceipt.css';
 import { generateMultiplePaymentPDF, printMultipleThermalTicket } from './PaymentReceipt';
@@ -587,16 +587,20 @@ const MultiplePaymentReceipt = ({ pagoMultiple, facturas, afiliado, onClose, aut
         {/* FOOTER */}
         <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
           <button className="btn-secondary" onClick={onClose}>
+            <X className="w-4 h-4 mr-2" />
             Cerrar
           </button>
           <button className="btn-primary" onClick={handlePrintThermal}
             style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none' }}>
+            <Receipt className="w-4 h-4 mr-2" />
             Ticket 58mm
           </button>
           <button className="btn-primary" onClick={handlePrintA4} disabled={isGenerating}>
+            <Printer className="w-4 h-4 mr-2" />
             Imprimir A4
           </button>
           <button className="btn-primary" onClick={handleDownload} disabled={isGenerating}>
+            <Download className="w-4 h-4 mr-2" />
             Descargar PDF
           </button>
         </div>

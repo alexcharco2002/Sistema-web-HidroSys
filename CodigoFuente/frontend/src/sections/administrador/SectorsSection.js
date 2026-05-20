@@ -376,7 +376,7 @@ useEffect(() => {
           </div>
 
           {/* ✅ Sectores activos */}
-          <div className="stat-item active green">
+          <div className="stat-item">
             <CheckCircle className="stat-icon text-green-600" />
             <div>
               <p className="stat-label">Sectores Activos</p>
@@ -387,7 +387,7 @@ useEffect(() => {
           </div>
 
           {/* ❌ Sectores inactivos */}
-          <div className="stat-item active red">
+          <div className="stat-item">
             <XCircle className="stat-icon text-red-600" />
             <div>
               <p className="stat-label">Sectores Inactivos</p>

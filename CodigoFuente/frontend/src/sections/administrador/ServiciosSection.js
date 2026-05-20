@@ -494,7 +494,7 @@ const ServiciosSection = () => {
             </div>
 
             {/* ✅ Servicios vigentes */}
-            <div className="stat-item active green">
+            <div className="stat-item">
               <CheckCircle className="stat-icon text-green-600" />
               <div>
                 <p className="stat-label">Servicios Vigentes</p>
@@ -503,7 +503,7 @@ const ServiciosSection = () => {
             </div>
 
             {/* 🟢 Activos */}
-            <div className="stat-item active emerald">
+            <div className="stat-item">
               <CheckCircle className="stat-icon text-emerald-600" />
               <div>
                 <p className="stat-label">Activos</p>
@@ -512,7 +512,7 @@ const ServiciosSection = () => {
             </div>
 
             {/* 🔴 Inactivos */}
-            <div className="stat-item active red">
+            <div className="stat-item">
               <XCircle className="stat-icon text-red-600" />
               <div>
                 <p className="stat-label">Inactivos</p>

@@ -161,6 +161,25 @@
   opacity: 0.45;
 }
 
+.affiliates-section .stat-item {
+  cursor: pointer;
+}
+
+.affiliates-section .stat-item.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.affiliates-section .stat-item.active.green {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.affiliates-section .stat-item.active.red {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
 .affiliates-section .pagination-status {
   min-width: 120px;
   text-align: center;

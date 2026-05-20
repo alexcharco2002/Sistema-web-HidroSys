@@ -28,6 +28,7 @@ from schemas.user import (
 from security.jwt import verify_token
 from security.password import hash_password, verify_password
 from utils.audit_logger import registrar_auditoria
+from utils.config import get_bloqueo_config
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -118,6 +119,24 @@ def require_permission(user: UsuarioSistema, db: Session, module: str, action: s
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"No tienes permisos para {action or 'acceder a'} {module}"
         )
+
+
+def format_user_lock_info(user: UsuarioSistema, ahora: datetime) -> dict:
+    """Devuelve el estado de bloqueo de un usuario para vistas administrativas."""
+    tiempo_restante = None
+    if user.bloqueado_hasta and user.bloqueado_hasta > ahora:
+        tiempo_restante = int((user.bloqueado_hasta - ahora).total_seconds() / 60)
+
+    return {
+        "id": user.id_usuario_sistema,
+        "usuario": user.usuario,
+        "nombre_completo": f"{user.nombres} {user.apellidos}",
+        "email": user.email,
+        "intentos_fallidos": user.intentos_fallidos or 0,
+        "bloqueado_permanente": bool(user.bloqueado_permanente),
+        "bloqueado_hasta": user.bloqueado_hasta.isoformat() if user.bloqueado_hasta else None,
+        "tiempo_restante_minutos": tiempo_restante
+    }
 
 # ============================================================================
 # HELPER: Procesar foto
@@ -251,6 +270,53 @@ def get_users(
     users = query.offset(skip).limit(limit).all()
     
     return [user_to_response(user, db) for user in users]
+
+# ========================================
+# LISTAR USUARIOS BLOQUEADOS
+# ========================================
+@router.get("/admin/blocked-users", status_code=status.HTTP_200_OK)
+def get_blocked_users_admin(
+    payload: dict = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Lista los usuarios con bloqueo activo y usuarios con intentos fallidos.
+    Requiere permiso para leer usuarios.
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "usuarios", "lectura")
+
+    ahora = datetime.now()
+
+    permanently_blocked = db.query(UsuarioSistema).filter(
+        UsuarioSistema.bloqueado_permanente == True
+    ).all()
+
+    temporarily_blocked = db.query(UsuarioSistema).filter(
+        UsuarioSistema.bloqueado_hasta > ahora,
+        UsuarioSistema.bloqueado_permanente == False
+    ).all()
+
+    users_with_attempts = db.query(UsuarioSistema).filter(
+        UsuarioSistema.intentos_fallidos > 0,
+        UsuarioSistema.bloqueado_permanente == False,
+        or_(
+            UsuarioSistema.bloqueado_hasta == None,
+            UsuarioSistema.bloqueado_hasta <= ahora
+        )
+    ).all()
+
+    return {
+        "success": True,
+        "data": {
+            "permanently_blocked": [format_user_lock_info(u, ahora) for u in permanently_blocked],
+            "temporarily_blocked": [format_user_lock_info(u, ahora) for u in temporarily_blocked],
+            "users_with_attempts": [format_user_lock_info(u, ahora) for u in users_with_attempts],
+            "total_permanently_blocked": len(permanently_blocked),
+            "total_temporarily_blocked": len(temporarily_blocked),
+            "total_with_attempts": len(users_with_attempts)
+        }
+    }
 
 # ========================================
 # OBTENER USUARIO POR ID
@@ -960,17 +1026,14 @@ def get_user_lock_status(
     Obtiene el estado de bloqueo de un usuario
     Admin puede ver cualquier usuario, usuario normal solo el suyo
     """
-    # Verificar permisos
-    if payload.get("rol") != "administrador":
-        current_user = db.query(UsuarioSistema).filter(
-            UsuarioSistema.usuario == payload["sub"]
-        ).first()
-        
-        if not current_user or current_user.id_usuario_sistema != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permisos para ver este estado"
-            )
+    current_user = get_current_user(payload, db)
+    can_view_all = check_permission(current_user, db, "usuarios", "lectura")
+
+    if not can_view_all and current_user.id_usuario_sistema != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para ver este estado"
+        )
     
     user = db.query(UsuarioSistema).filter(
         UsuarioSistema.id_usuario_sistema == user_id
@@ -993,6 +1056,10 @@ def get_user_lock_status(
             tiempo_restante = user.bloqueado_hasta - ahora
             tiempo_restante_minutos = int(tiempo_restante.total_seconds() / 60)
     
+    config = get_bloqueo_config(db)
+    max_temporales = config["MAX_INTENTOS_TEMPORALES"]
+    max_permanentes = config["MAX_INTENTOS_PERMANENTES"]
+
     return {
         "success": True,
         "data": {
@@ -1002,81 +1069,12 @@ def get_user_lock_status(
             "bloqueado_temporal_activo": bloqueado_temporal_activo,
             "bloqueado_hasta": user.bloqueado_hasta.isoformat() if user.bloqueado_hasta else None,
             "tiempo_restante_minutos": tiempo_restante_minutos,
-            "intentos_restantes_para_bloqueo_temporal": max(0, 5 - (user.intentos_fallidos % 5)),
-            "intentos_restantes_para_bloqueo_permanente": max(0, 10 - user.intentos_fallidos)
+            "intentos_restantes_para_bloqueo_temporal": max(0, max_temporales - (user.intentos_fallidos % max_temporales)),
+            "intentos_restantes_para_bloqueo_permanente": max(0, max_permanentes - user.intentos_fallidos)
         }
     }
 
 
-# ========================================
-# LISTAR USUARIOS BLOQUEADOS
-# ========================================
-@router.get("/admin/blocked-users", status_code=status.HTTP_200_OK)
-def get_blocked_users(
-    payload: dict = Depends(verify_token),
-    db: Session = Depends(get_db)
-):
-    """
-    Lista todos los usuarios bloqueados
-    Solo admin puede acceder
-    """
-    # Verificar que el usuario sea admin
-    if payload.get("rol") != "administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para ver usuarios bloqueados"
-        )
-    
-    ahora = datetime.now()
-    
-    # Usuarios con bloqueo permanente
-    permanently_blocked = db.query(UsuarioSistema).filter(
-        UsuarioSistema.bloqueado_permanente == True
-    ).all()
-    
-    # Usuarios con bloqueo temporal activo
-    temporarily_blocked = db.query(UsuarioSistema).filter(
-        UsuarioSistema.bloqueado_hasta > ahora,
-        UsuarioSistema.bloqueado_permanente == False
-    ).all()
-    
-    # Usuarios con intentos fallidos pero no bloqueados
-    users_with_attempts = db.query(UsuarioSistema).filter(
-        UsuarioSistema.intentos_fallidos > 0,
-        UsuarioSistema.bloqueado_permanente == False,
-        or_(
-            UsuarioSistema.bloqueado_hasta == None,
-            UsuarioSistema.bloqueado_hasta <= ahora
-        )
-    ).all()
-    
-    def format_user_lock_info(user):
-        tiempo_restante = None
-        if user.bloqueado_hasta and user.bloqueado_hasta > ahora:
-            tiempo_restante = int((user.bloqueado_hasta - ahora).total_seconds() / 60)
-        
-        return {
-            "id": user.id_usuario_sistema,
-            "usuario": user.usuario,
-            "nombre_completo": f"{user.nombres} {user.apellidos}",
-            "email": user.email,
-            "intentos_fallidos": user.intentos_fallidos,
-            "bloqueado_permanente": user.bloqueado_permanente,
-            "bloqueado_hasta": user.bloqueado_hasta.isoformat() if user.bloqueado_hasta else None,
-            "tiempo_restante_minutos": tiempo_restante
-        }
-    
-    return {
-        "success": True,
-        "data": {
-            "permanently_blocked": [format_user_lock_info(u) for u in permanently_blocked],
-            "temporarily_blocked": [format_user_lock_info(u) for u in temporarily_blocked],
-            "users_with_attempts": [format_user_lock_info(u) for u in users_with_attempts],
-            "total_permanently_blocked": len(permanently_blocked),
-            "total_temporarily_blocked": len(temporarily_blocked),
-            "total_with_attempts": len(users_with_attempts)
-        }
-    }
 # ========================================
 # CREAR USUARIOS MASIVAMENTE DESDE EXCEL
 # ========================================

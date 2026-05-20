@@ -71,23 +71,17 @@
   margin-bottom: 1.5rem;
 }
 
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+.sectors-section .stat-item {
+  cursor: default;
+}
+
+.sectors-section .stat-item.active,
+.sectors-section .stat-item.active.green,
+.sectors-section .stat-item.active.red,
+.sectors-section .stat-item.active.orange {
+  border-color: #e5e7eb;
   background: white;
-  padding: 1.25rem;
-  border-radius: 0.75rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s;
 }
-
-.stat-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-
 
 /* Sectors Grid */
 .sectors-grid {

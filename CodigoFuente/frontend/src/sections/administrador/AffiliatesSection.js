@@ -1,7 +1,7 @@
 // src/sections/AffiliatesSection.js
 // MÓDULO DE AFILIADOS - Con creación simultánea de medidor
 
-import React, { useState, useEffect, useCallback  } from 'react';
+import React, { useState, useEffect, useCallback, useRef  } from 'react';
 
 
 import './AffiliatesSection.css';
@@ -54,12 +54,13 @@ const AffiliatesSection = () => {
   const [sectors, setSectors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm] = useState(searchTerm);
   const [filterSector, setFilterSector] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
   const [showSearchAdvice, setShowSearchAdvice] = useState(true);
+  const adviceTimerRef = useRef(null);
+  const hasShownInitialAdviceRef = useRef(false);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('create');
   const [selectedAffiliate, setSelectedAffiliate] = useState(null);
@@ -77,6 +78,19 @@ const AffiliatesSection = () => {
   const [excelPreview, setExcelPreview] = useState([]);
   const [loadingExcel, setLoadingExcel] = useState(false);  
   const [excelPreviewPage, setExcelPreviewPage] = useState(1);
+
+  const showLargeListAdvice = useCallback(() => {
+    if (affiliates.length <= 100) return;
+
+    if (adviceTimerRef.current) {
+      clearTimeout(adviceTimerRef.current);
+    }
+
+    setShowSearchAdvice(true);
+    adviceTimerRef.current = setTimeout(() => {
+      setShowSearchAdvice(false);
+    }, 12000);
+  }, [affiliates.length]);
 
   // constante para almacenar el perfil del afiliado logueado (si es que tiene uno)
   const [miPerfilAfiliado, setMiPerfilAfiliado] = useState(null); 
@@ -371,7 +385,7 @@ const AffiliatesSection = () => {
     if (permissions.canRead) {
       fetchAffiliates();
     }
-  }, [debouncedSearchTerm, filterSector, filterStatus, permissions.canRead, fetchAffiliates]);
+  }, [permissions.canRead, fetchAffiliates]);
 
   const fetchAvailableUsers = async (search = '') => {
     try {
@@ -473,13 +487,17 @@ const AffiliatesSection = () => {
       return;
     }
 
-    setShowSearchAdvice(true);
-    const timer = setTimeout(() => {
-      setShowSearchAdvice(false);
-    }, 12000);
+    if (!hasShownInitialAdviceRef.current) {
+      hasShownInitialAdviceRef.current = true;
+      showLargeListAdvice();
+    }
+  }, [affiliates.length, showLargeListAdvice]);
 
-    return () => clearTimeout(timer);
-  }, [affiliates.length, searchTerm, filterSector, filterStatus]);
+  useEffect(() => () => {
+    if (adviceTimerRef.current) {
+      clearTimeout(adviceTimerRef.current);
+    }
+  }, []);
 
   // ==================== FUNCIONES DE MODAL ====================
   
@@ -880,7 +898,7 @@ const AffiliatesSection = () => {
             <UserPlus className="stat-icon text-blue-600" />
             <div>
               <p className="stat-label">Total Afiliados</p>
-              <p className="stat-value">{filteredAffiliates.length}</p>
+              <p className="stat-value">{affiliates.length}</p>
             </div>
           </div>
 
@@ -893,7 +911,7 @@ const AffiliatesSection = () => {
             <div>
               <p className="stat-label">Afiliados Activos</p>
               <p className="stat-value">
-                {filteredAffiliates.filter(a => a.activo).length}
+                {affiliates.filter(a => a.activo).length}
               </p>
             </div>
           </div>
@@ -907,7 +925,7 @@ const AffiliatesSection = () => {
             <div>
               <p className="stat-label">Afiliados Inactivos</p>
               <p className="stat-value">
-                {filteredAffiliates.filter(a => !a.activo).length}
+                {affiliates.filter(a => !a.activo).length}
               </p>
             </div>
           </div>
@@ -920,7 +938,7 @@ const AffiliatesSection = () => {
               <p className="stat-value">
                 {
                   new Set(
-                    filteredAffiliates
+                    affiliates
                       .filter(a => a.activo)
                       .filter(a => a.id_sector !== null && a.id_sector !== undefined && a.id_sector !== '')
                       .map(a => a.id_sector)
@@ -944,7 +962,9 @@ const AffiliatesSection = () => {
             placeholder="Buscar por nombre, cédula o código..."
             className="search-input"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+            }}
           />
         </div>
 
@@ -969,7 +989,9 @@ const AffiliatesSection = () => {
           <select 
             className="filter-select"
             value={filterSector}
-            onChange={(e) => setFilterSector(e.target.value)}
+            onChange={(e) => {
+              setFilterSector(e.target.value);
+            }}
           >
             <option value="all">Todos los sectores</option>
             <option value="no_sector">Sin sector</option>

@@ -372,7 +372,7 @@ def crear_mantenimiento_programado(
 def listar_notificaciones(
     estado: Optional[str] = None,
     tipo: Optional[str] = None,
-    es_mantenimiento: Optional[bool] = None,
+    es_mantenimiento: Optional[bool] = None,    
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):

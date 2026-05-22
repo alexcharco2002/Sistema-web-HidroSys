@@ -11,7 +11,7 @@ DB_PORT = "5432"
 
 PG_RESTORE_PATH = r"C:\Program Files\PostgreSQL\17\bin\pg_restore.exe"
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 BACKUP_DIR = BASE_DIR / "backups"
 
 def restaurar_respaldo(nombre_archivo: str):

@@ -20,9 +20,9 @@ import serviciosPermanentesService from '../../services/serviciosPermanentesServ
 import './ConfigSection.css'; // Estilos específicos para ConfigSection
 
 import {
-  Settings, Database, Download, Upload, Trash2, Map, 
+  Settings, Database, Download, Upload, Trash2, Map as MapIcon, 
   DollarSign, Package, Users, UserPlus, UserCheck, X,
-  AlertCircle, CheckCircle, RefreshCw, Calendar, FileText, Clock, Edit, XCircle, Percent, ToggleRight, ToggleLeft
+  AlertCircle, CheckCircle, RefreshCw, Calendar, FileText, Clock, Edit, XCircle, Percent, ToggleRight, ToggleLeft, Search
 } from 'lucide-react';
 
 const ConfigSection = () => {
@@ -34,6 +34,7 @@ const ConfigSection = () => {
 
   // Estado para backups
   const [backups, setBackups] = useState([]);
+  const [backupStats, setBackupStats] = useState(null);
   const [loadingBackups, setLoadingBackups] = useState(false);
 
   // Estados para limites geograficos
@@ -173,6 +174,7 @@ const asignacionesFiltradas = useMemo(() => {
     asig.cod_usuario_afi?.toLowerCase().includes(search) ||
     asig.nombres?.toLowerCase().includes(search) ||
     asig.apellidos?.toLowerCase().includes(search) ||
+    asig.nombre_sector?.toLowerCase().includes(search) ||
     asig.sector?.toLowerCase().includes(search) ||
     String(asig.id_usuario_afi).includes(search)
   );
@@ -238,7 +240,7 @@ const asignacionesFiltradas = useMemo(() => {
       id: 'limites',
       nombre: 'Límites Geográficos',
       descripcion: 'Gestión de límites geográficos para el sistema',
-      icon: Map, 
+      icon: MapIcon, 
       visible: permissions.canManageBackups 
     },
     {
@@ -279,7 +281,10 @@ const asignacionesFiltradas = useMemo(() => {
     setError(null);
 
     try {
-      const result = await configService.listBackups();
+      const [result, statsResult] = await Promise.all([
+        configService.listBackups(),
+        configService.getBackupStats()
+      ]);
 
       if (result.success) {
         setBackups(result.data);
@@ -287,6 +292,8 @@ const asignacionesFiltradas = useMemo(() => {
       } else {
         setError(result.message);
       }
+
+      setBackupStats(statsResult.success ? statsResult.data : null);
 
     } catch (err) {
       setError('Error al cargar la lista de backups');
@@ -2074,7 +2081,10 @@ const openAsignacionesModal = async (config) => {
       try {
           const result = await serviciosPermanentesService.getAfiliados({ estado: 'activos', limit: 1000 });
           if (result.success) {
-              setAfiliadosDisponibles(result.data);
+              const afiliadosUnicos = Array.from(
+                new Map(result.data.map(afi => [afi.id_usuario_afi, afi])).values()
+              );
+              setAfiliadosDisponibles(afiliadosUnicos);
               console.log('✅ Afiliados cargados:', result.data.length);
           }
       } catch (err) {
@@ -2219,6 +2229,15 @@ const afiliadosFiltrados = useMemo(() => {
     (section) => section.id === selectedSection
   );
 
+  const totalBackupSize = backups.reduce((sum, backup) => sum + (backup.size || 0), 0);
+  const latestBackup = backups[0] || null;
+  const backupSummary = {
+    total: backupStats?.total ?? backups.length,
+    totalSize: backupStats?.total_size ?? totalBackupSize,
+    latestName: backupStats?.ultimo_backup ?? latestBackup?.filename ?? 'Ninguno',
+    latestDate: backupStats?.ultima_fecha ?? latestBackup?.created_at ?? null
+  };
+
   return (
     <div className="roles-section">
       {/* Header */}
@@ -2316,6 +2335,29 @@ const afiliadosFiltrados = useMemo(() => {
                           Nuevo Backup
                         </button>
                       )}
+                    </div>
+                  </div>
+
+                  <div className="info-card mora-summary-card config-summary-card backup-summary-card">
+                    <div className="info-item mora-summary-item config-summary-item total">
+                      <span className="info-label">Total de Respaldos</span>
+                      <span className="info-value">{backupSummary.total}</span>
+                    </div>
+                    <div className="info-item mora-summary-item config-summary-item active">
+                      <span className="info-label">Espacio Usado</span>
+                      <span className="info-value">{configService.formatFileSize(backupSummary.totalSize)}</span>
+                    </div>
+                    <div className="info-item mora-summary-item config-summary-item current textual">
+                      <span className="info-label">Ultimo Respaldo</span>
+                      <span className="info-value">{backupSummary.latestName}</span>
+                    </div>
+                    <div className="info-item mora-summary-item config-summary-item assignments textual">
+                      <span className="info-label">Ultima Fecha</span>
+                      <span className="info-value">
+                        {backupSummary.latestDate
+                          ? configService.formatBackupDate(backupSummary.latestDate)
+                          : 'Sin registros'}
+                      </span>
                     </div>
                   </div>
 
@@ -2429,7 +2471,7 @@ const afiliadosFiltrados = useMemo(() => {
                         onClick={() => openLimiteModal()}
                         disabled={loading}
                       >
-                        <Map className='w-4 h-4 mr-2'/>
+                        <MapIcon className='w-4 h-4 mr-2'/>
                         Nuevo Límite
                       </button>
                     )}
@@ -2452,15 +2494,21 @@ const afiliadosFiltrados = useMemo(() => {
                 )}
 
                 {/* Información */}
-                <div className="info-card">
-                  <div className="info-item">
+                <div className="info-card mora-summary-card config-summary-card">
+                  <div className="info-item mora-summary-item config-summary-item total">
                     <span className="info-label">Total de Límites</span>
                     <span className="info-value">{limites.length}</span>
                   </div>
-                  <div className="info-item">
+                  <div className="info-item mora-summary-item config-summary-item active textual">
                     <span className="info-label">Límite Activo</span>
                     <span className="info-value">
                       {limites.find(l => l.activo)?.nombre || 'Ninguno'}
+                    </span>
+                  </div>
+                  <div className="info-item mora-summary-item config-summary-item current">
+                    <span className="info-label">Inactivos</span>
+                    <span className="info-value">
+                      {limites.filter(l => !l.activo).length}
                     </span>
                   </div>
                 </div>
@@ -2485,7 +2533,7 @@ const afiliadosFiltrados = useMemo(() => {
                     )}
                   </div>
                 ) : (
-                  <div className="table-container">
+                  <div className="table-container config-table-section">
                     <table className="data-table config-table-limites">
                       <thead>
                         <tr>
@@ -2575,6 +2623,19 @@ const afiliadosFiltrados = useMemo(() => {
                 )}
 
                 {/* MODAL DE CREACIÓN / EDICIÓN DE LÍMITE */}
+                <div className="alert alert-info config-important-info">
+                  <AlertCircle size={18} />
+                  <div>
+                    <strong>Información importante:</strong>
+                    <ul style={{ marginTop: '0.5rem', paddingLeft: '1.25rem' }}>
+                      <li>Solo puede haber <strong>un límite geográfico activo</strong> a la vez.</li>
+                      <li>El límite activo se usa como referencia para validar ubicaciones del sistema.</li>
+                      <li>Las coordenadas deben mantenerse dentro de rangos válidos de latitud y longitud.</li>
+                      <li>La altitud es opcional y solo aplica cuando se necesita controlar rangos verticales.</li>
+                    </ul>
+                  </div>
+                </div>
+
                 {showLimiteModal && (
                   <div className="modal-overlay" onClick={closeLimiteModal}>
                     <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -2775,7 +2836,7 @@ const afiliadosFiltrados = useMemo(() => {
                   )}
 
                   {/* Toggle para activar/desactivar IVA */}
-                  <div className="info-card" style={{marginBottom: '1.5rem'}}>
+                  <div className="info-card config-toggle-card">
                     <div className="info-item" style={{flex: 1}}>
                       <span className="info-label">Aplicar IVA en facturación</span>
                       <button
@@ -2811,7 +2872,8 @@ const afiliadosFiltrados = useMemo(() => {
                     </div>
                   </div>
 
-                  <div className="alert alert-info" style={{marginBottom: '1.5rem'}}>
+                  {aplicarIVA && (
+                  <div className="alert alert-info config-notice-info">
                     <AlertCircle size={18} />
                     <div>
                       <strong>Aviso de aplicación de IVA:</strong>
@@ -2843,23 +2905,24 @@ const afiliadosFiltrados = useMemo(() => {
                       </div>
                     </div>
                   </div>
+                  )}
 
                   {/* ⚠️ CONTENIDO DINÁMICO: Solo se muestra si aplicarIVA está activado */}
                   {aplicarIVA ? (
                     <>
                       {/* Información */}
-                      <div className="info-card">
-                        <div className="info-item">
+                      <div className="info-card mora-summary-card config-summary-card">
+                        <div className="info-item mora-summary-item config-summary-item total">
                           <span className="info-label">Total de IVAs</span>
                           <span className="info-value">{ivas.length}</span>
                         </div>
-                        <div className="info-item">
+                        <div className="info-item mora-summary-item config-summary-item active">
                           <span className="info-label">IVAs Activos</span>
                           <span className="info-value">
                             {ivas.filter(i => i.activo).length}
                           </span>
                         </div>
-                        <div className="info-item">
+                        <div className="info-item mora-summary-item config-summary-item current">
                           <span className="info-label">IVAs Aplicables</span>
                           <span className="info-value">
                             {ivas.filter(i => i.es_aplicable === true).length}
@@ -2887,7 +2950,7 @@ const afiliadosFiltrados = useMemo(() => {
                           )}
                         </div>
                       ) : (
-                        <div className="table-container">
+                        <div className="table-container config-table-section">
                           <table className="data-table config-table-iva">
                             <thead>
                               <tr>
@@ -2994,7 +3057,7 @@ const afiliadosFiltrados = useMemo(() => {
                       )}
 
                       {/* Información adicional */}
-                      <div className="alert alert-info">
+                      <div className="alert alert-info config-important-info">
                         <AlertCircle size={18} />
                         <div>
                           <strong>Información importante:</strong>
@@ -3221,7 +3284,7 @@ const afiliadosFiltrados = useMemo(() => {
                   )}
 
                   {/* Toggle para activar/desactivar Mora */}
-                  <div className="info-card" style={{marginBottom: '1.5rem'}}>
+                  <div className="info-card config-toggle-card">
                     <div className="info-item" style={{flex: 1}}>
                       <span className="info-label">Aplicar Mora por Pago Tardío</span>
                       <button
@@ -3267,18 +3330,18 @@ const afiliadosFiltrados = useMemo(() => {
                   {aplicarMora ? (
                     <>
                       {/* Información */}
-                      <div className="info-card">
-                        <div className="info-item">
+                      <div className="info-card mora-summary-card config-summary-card">
+                        <div className="info-item mora-summary-item config-summary-item total">
                           <span className="info-label">Total de Configuraciones</span>
                           <span className="info-value">{moras.length}</span>
                         </div>
-                        <div className="info-item">
+                        <div className="info-item mora-summary-item config-summary-item active">
                           <span className="info-label">Configuraciones Activas</span>
                           <span className="info-value">
                             {moras.filter(m => m.activo).length}
                           </span>
                         </div>
-                        <div className="info-item">
+                        <div className="info-item mora-summary-item config-summary-item current">
                           <span className="info-label">Vigentes</span>
                           <span className="info-value">
                             {moras.filter(m => m.es_vigente).length}
@@ -3306,7 +3369,7 @@ const afiliadosFiltrados = useMemo(() => {
                           )}
                         </div>
                       ) : (
-                        <div className="table-container">
+                        <div className="table-container mora-table-section">
                           <table className="data-table config-table-mora">
                             <thead>
                               <tr>
@@ -3461,7 +3524,7 @@ const afiliadosFiltrados = useMemo(() => {
                       )}
 
                       {/* Información adicional */}
-                      <div className="alert alert-info">
+                      <div className="alert alert-info mora-important-info">
                         <AlertCircle size={18} />
                         <div>
                           <strong>Información importante:</strong>
@@ -3884,24 +3947,24 @@ const afiliadosFiltrados = useMemo(() => {
                   )}
 
                   {/* Información */}
-                  <div className="info-card">
-                    <div className="info-item">
+                  <div className="info-card mora-summary-card config-summary-card servicios-summary-card">
+                    <div className="info-item mora-summary-item config-summary-item total">
                       <span className="info-label">Total de Configuraciones</span>
                       <span className="info-value">{serviciosPermanentes.length}</span>
                     </div>
-                    <div className="info-item">
+                    <div className="info-item mora-summary-item config-summary-item active">
                       <span className="info-label">Configuraciones Activas</span>
                       <span className="info-value">
                         {serviciosPermanentes.filter(sp => sp.activo).length}
                       </span>
                     </div>
-                    <div className="info-item">
+                    <div className="info-item mora-summary-item config-summary-item current">
                       <span className="info-label">Vigentes</span>
                       <span className="info-value">
                         {serviciosPermanentes.filter(sp => sp.es_vigente).length}
                       </span>
                     </div>
-                    <div className="info-item">
+                    <div className="info-item mora-summary-item config-summary-item assignments">
                       <span className="info-label">Total Asignaciones</span>
                       <span className="info-value">
                         {serviciosPermanentes.reduce((sum, sp) => sum + (sp.total_asignaciones || 0), 0)}
@@ -3929,7 +3992,7 @@ const afiliadosFiltrados = useMemo(() => {
                       )}
                     </div>
                   ) : (
-                    <div className="table-container">
+                    <div className="table-container config-table-section">
                       <table className="data-table config-table-servicios">
                         <thead>
                           <tr>
@@ -3952,13 +4015,13 @@ const afiliadosFiltrados = useMemo(() => {
                                 )}
                               </td>
                               <td>
-                                <small style={{color: '#999'}}>
+                                <div className="service-price-cell">
                                   {sp.precio_override ? (
-                                    <>Precio: ${parseFloat(sp.precio_override).toFixed(2)}</>
+                                    <small>Precio: ${parseFloat(sp.precio_override).toFixed(2)}</small>
                                   ) : (
-                                    <>Precio base: ${sp.servicio_info?.precio_base ? parseFloat(sp.servicio_info.precio_base).toFixed(2) : '0.00'}</>
+                                    <small>Precio base: ${Number(sp.servicio_info?.precio_base || 0).toFixed(2)}</small>
                                   )}
-                                </small>
+                                </div>
                               </td>
                               <td className="text-center">
                                 <span className="badge badge-info">
@@ -4012,7 +4075,7 @@ const afiliadosFiltrados = useMemo(() => {
                                   )}
                                   {!sp.activo && permissions.canUpdate && (
                                     <button
-                                      className="btn-icon btn-success"
+                                      className="btn-icon btn-activate-config"
                                       onClick={() => handleActivarSP(sp.id_configuracion_sp, sp.nombre)}
                                       title="Activar Configuración"
                                     >
@@ -4060,7 +4123,7 @@ const afiliadosFiltrados = useMemo(() => {
                   )}
 
                   {/* Información adicional */}
-                  <div className="alert alert-info">
+                  <div className="alert alert-info config-important-info">
                     <AlertCircle size={18} />
                     <div>
                       <strong>Información importante:</strong>
@@ -4327,37 +4390,25 @@ const afiliadosFiltrados = useMemo(() => {
       
       <div className="modal-body" style={{maxHeight: '75vh', overflowY: 'auto'}}>
         {/* ========== SECCIÓN: ASIGNAR NUEVOS USUARIOS ========== */}
-        <div style={{
-          marginBottom: '1.5rem', 
-          padding: '1rem', 
-          backgroundColor: '#eff6ff', 
-          borderRadius: '8px', 
-          border: '1px solid #bfdbfe'
-        }}>
-          <h4 style={{
-            fontWeight: '600', 
-            color: '#1e293b', 
-            marginBottom: '0.75rem', 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.5rem'
-          }}>
-            <UserPlus size={20} style={{color: '#4f46e5'}} />
+        <div className="assignment-new-users-section">
+          <h4 className="assignment-section-title">
+            <span className="assignment-section-icon">
+              <UserPlus size={19} />
+            </span>
             Asignar Nuevos Usuarios
           </h4>
+          <p className="assignment-section-description">
+            Busca afiliados activos y prepara la asignación al servicio seleccionado.
+          </p>
 
           {/* Filtros y Búsqueda */}
-          <div style={{
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-            gap: '0.75rem',
-            marginBottom: '0.75rem'
-          }}>
+          <div className="assignment-search-grid">
             {/* Buscador */}
-            <div className="form-group" style={{marginBottom: 0}}>
+            <div className="search-container assignment-search-container">
+              <Search className="search-icon" />
               <input
                 type="text"
-                className="form-input"
+                className="search-input"
                 placeholder="🔍 Buscar por código, nombre, cédula..."
                 value={searchAfiliado}
                 onChange={(e) => setSearchAfiliado(e.target.value)}
@@ -4365,9 +4416,9 @@ const afiliadosFiltrados = useMemo(() => {
             </div>
 
             {/* Filtro por Sector */}
-            <div className="form-group" style={{marginBottom: 0}}>
+            <div className="form-group assignment-sector-control">
               <select
-                className="form-input"
+                className="form-input assignment-sector-filter"
                 value={filtroSector}
                 onChange={(e) => setFiltroSector(e.target.value)}
               >
@@ -4382,24 +4433,14 @@ const afiliadosFiltrados = useMemo(() => {
           </div>
 
           {/* Seleccionar Todos / Deseleccionar */}
-          <div style={{
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            marginBottom: '0.75rem',
-            padding: '0.5rem',
-            backgroundColor: '#fff',
-            borderRadius: '6px',
-            border: '1px solid #e5e7eb'
-          }}>
-            <span style={{fontSize: '0.875rem', color: '#6b7280'}}>
+          <div className="assignment-selection-bar">
+            <span>
               {usuariosSeleccionados.length} de {afiliadosFiltrados.length} seleccionados
             </span>
-            <div style={{display: 'flex', gap: '0.5rem'}}>
+            <div className="assignment-selection-actions">
               <button
                 type="button"
-                className="btn-secondary"
-                style={{padding: '0.25rem 0.75rem', fontSize: '0.875rem'}}
+                className="btn-secondary assignment-compact-btn"
                 onClick={() => {
                   const idsDisponibles = afiliadosFiltrados
                     .filter(afi => !asignaciones.some(asig => asig.id_usuario_afi === afi.id_usuario_afi && asig.activo))
@@ -4412,8 +4453,7 @@ const afiliadosFiltrados = useMemo(() => {
               </button>
               <button
                 type="button"
-                className="btn-secondary"
-                style={{padding: '0.25rem 0.75rem', fontSize: '0.875rem'}}
+                className="btn-secondary assignment-compact-btn"
                 onClick={() => setUsuariosSeleccionados([])}
                 disabled={usuariosSeleccionados.length === 0}
               >
@@ -4428,7 +4468,6 @@ const afiliadosFiltrados = useMemo(() => {
             overflowY: 'auto', 
             border: '1px solid #e5e7eb', 
             borderRadius: '8px', 
-            padding: '0.5rem', 
             backgroundColor: '#fff'
           }}>
             {loadingAfiliados ? (
@@ -4453,6 +4492,9 @@ const afiliadosFiltrados = useMemo(() => {
                 return (
                   <div
                     key={afi.id_usuario_afi}
+                    className={`affiliate-modal-item assignment-affiliate-item ${
+                      usuariosSeleccionados.includes(afi.id_usuario_afi) ? 'selected' : ''
+                    } ${yaAsignado ? 'disabled' : ''}`}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -4488,6 +4530,9 @@ const afiliadosFiltrados = useMemo(() => {
                       readOnly
                       style={{cursor: yaAsignado ? 'not-allowed' : 'pointer'}}
                     />
+                    <div className="avatar-circle">
+                      {`${afi.nombres?.[0] || ''}${afi.apellidos?.[0] || ''}`}
+                    </div>
                     <div style={{flex: 1}}>
                       <div style={{
                         fontWeight: '500', 
@@ -4554,14 +4599,16 @@ const afiliadosFiltrados = useMemo(() => {
             </h4>
 
             {/* Buscador de asignados */}
-            <input
-              type="text"
-              className="form-input"
-              style={{maxWidth: '300px', marginBottom: 0}}
-              placeholder="🔍 Buscar en asignados..."
-              value={searchAsignados}
-              onChange={(e) => setSearchAsignados(e.target.value)}
-            />
+            <div className="search-container assignment-search-container assigned-search-container">
+              <Search className="search-icon" />
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Buscar en asignados..."
+                value={searchAsignados}
+                onChange={(e) => setSearchAsignados(e.target.value)}
+              />
+            </div>
           </div>
 
           {loadingAsignaciones ? (

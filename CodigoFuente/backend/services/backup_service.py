@@ -35,9 +35,9 @@ class BackupService:
             r"C:\Program Files\PostgreSQL\17\bin\pg_dump.exe"
         )
         
-        # Directorio de backups
-        base_dir = Path(__file__).resolve().parent.parent
-        self.backup_dir = base_dir / os.getenv("BACKUP_DIR", "backups")
+        # Directorio de backups en la raiz del proyecto (junto a backend/frontend)
+        project_root = Path(__file__).resolve().parents[2]
+        self.backup_dir = project_root / os.getenv("BACKUP_DIR", "backups")
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         
         # Configuración de retención

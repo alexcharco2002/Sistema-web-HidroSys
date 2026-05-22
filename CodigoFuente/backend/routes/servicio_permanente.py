@@ -4,7 +4,7 @@ Endpoints para gestión de servicios permanentes en facturación
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, cast, String
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
@@ -116,6 +116,19 @@ def obtener_configuracion_activa(db: Session) -> Optional[ConfiguracionServicioP
     ).first()
 
 
+def medidores_por_afiliado_subquery(db: Session):
+    """Devuelve los numeros de medidor agrupados por afiliado para evitar duplicados."""
+    return (
+        db.query(
+            Medidor.id_usuario_afi.label("id_usuario_afi"),
+            func.string_agg(cast(Medidor.num_medidor, String), ", ").label("num_medidor")
+        )
+        .filter(Medidor.id_usuario_afi.isnot(None))
+        .group_by(Medidor.id_usuario_afi)
+        .subquery()
+    )
+
+
 def enriquecer_configuracion_con_info(config: ConfiguracionServicioPermanente, db: Session) -> dict:
     """Agrega información adicional a una configuración"""
     config_dict = {
@@ -197,21 +210,7 @@ def listar_configuraciones(
     # Enriquecer con contadores
     result = []
     for config in configuraciones:
-        config_dict = config.__dict__.copy()
-        
-        # Contar asignaciones
-        total_asignaciones = db.query(AsignacionServicioPermanente).filter(
-            AsignacionServicioPermanente.id_configuracion_sp == config.id_configuracion_sp
-        ).count()
-        
-        asignaciones_activas = db.query(AsignacionServicioPermanente).filter(
-            AsignacionServicioPermanente.id_configuracion_sp == config.id_configuracion_sp,
-            AsignacionServicioPermanente.activo == True
-        ).count()
-        
-        config_dict["total_asignaciones"] = total_asignaciones
-        config_dict["asignaciones_activas"] = asignaciones_activas
-        
+        config_dict = enriquecer_configuracion_con_info(config, db)
         result.append(ConfiguracionSPListResponse(**config_dict))
 
     return result
@@ -329,7 +328,7 @@ def get_reporte_afiliados(
     skip: int = 0,
     limit: int = 1000,
     search: Optional[str] = None,
-    sector: Optional[str] = None,
+    sector: Optional[int] = None,
     estado: Optional[str] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
@@ -338,14 +337,16 @@ def get_reporte_afiliados(
 ):
     """📊 Reporte completo de afiliados"""
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "reportes", "lectura")
+    require_permission(current_user, db, "configuracion", "lectura")
     
-    # Query optimizado sin subconsultas innecesarias
+    medidores_subquery = medidores_por_afiliado_subquery(db)
+
+    # Query optimizado agrupando medidores para no duplicar afiliados
     query = (
         db.query(
             UsuarioAfiliado.id_usuario_afi,
             UsuarioAfiliado.cod_usuario_afi,
-            UsuarioAfiliado.num_medidor,
+            medidores_subquery.c.num_medidor.label("num_medidor"),
             UsuarioAfiliado.fecha_afiliacion,
             UsuarioAfiliado.activo,
             UsuarioAfiliado.id_sector,
@@ -363,6 +364,10 @@ def get_reporte_afiliados(
             Sector,
             Sector.id_sector == UsuarioAfiliado.id_sector
         )
+        .outerjoin(
+            medidores_subquery,
+            medidores_subquery.c.id_usuario_afi == UsuarioAfiliado.id_usuario_afi
+        )
     )
     
     # Filtros
@@ -374,7 +379,7 @@ def get_reporte_afiliados(
                 UsuarioSistema.apellidos.ilike(search_term),
                 UsuarioSistema.cedula.ilike(search_term),
                 UsuarioAfiliado.cod_usuario_afi.ilike(search_term),
-                UsuarioAfiliado.num_medidor.ilike(search_term),
+                medidores_subquery.c.num_medidor.ilike(search_term),
                 # busQUEDA POR SECTOR 
                 Sector.nombre_sector.ilike(search_term)
             )
@@ -402,6 +407,13 @@ def get_reporte_afiliados(
     
     # Paginación
     results = query.offset(skip).limit(limit).all()
+    unique_results = []
+    seen_afiliados = set()
+    for row in results:
+        if row.id_usuario_afi in seen_afiliados:
+            continue
+        seen_afiliados.add(row.id_usuario_afi)
+        unique_results.append(row)
     
     return [
         {
@@ -416,7 +428,7 @@ def get_reporte_afiliados(
             "fecha_afiliacion": row.fecha_afiliacion.strftime('%d/%m/%Y') if row.fecha_afiliacion else None,
             "activo": row.activo,
         }
-        for row in results
+        for row in unique_results
     ]
 
 # ============================================================================
@@ -434,7 +446,7 @@ def get_reporte_sectores(
 ):
     """📊 Reporte de sectores geográficos"""
     current_user = get_current_user(payload, db)
-    require_permission(current_user, db, "reportes", "lectura")
+    require_permission(current_user, db, "configuracion", "lectura")
     
     # Query base
     query = db.query(Sector)
@@ -785,7 +797,6 @@ def eliminar_configuracion(
 # ============================================================================
 # ENDPOINTS - ASIGNACIONES
 # ============================================================================
-from sqlalchemy import cast, String
 
 @router.get("/{config_id}/asignaciones")
 def listar_asignaciones(
@@ -809,6 +820,8 @@ def listar_asignaciones(
             detail="Configuración no encontrada"
         )
 
+    medidores_subquery = medidores_por_afiliado_subquery(db)
+
     # Query optimizado seleccionando columnas específicas con joins
     query = (
         db.query(
@@ -825,7 +838,7 @@ def listar_asignaciones(
             
             # Datos del usuario afiliado
             UsuarioAfiliado.cod_usuario_afi,
-            UsuarioAfiliado.num_medidor,
+            medidores_subquery.c.num_medidor.label("num_medidor"),
             
             # Datos del usuario sistema
             UsuarioSistema.nombres,
@@ -847,6 +860,10 @@ def listar_asignaciones(
         .outerjoin(
             Sector,
             Sector.id_sector == UsuarioAfiliado.id_sector
+        )
+        .outerjoin(
+            medidores_subquery,
+            medidores_subquery.c.id_usuario_afi == UsuarioAfiliado.id_usuario_afi
         )
         .filter(AsignacionServicioPermanente.id_configuracion_sp == config_id)
     )

@@ -105,6 +105,7 @@ class ConfiguracionSPListResponse(BaseModel):
     aplicar_en_periodo: str
     precio_override: Optional[Decimal]
     fecha_creacion: datetime
+    servicio_info: Optional[dict] = None
     
     # Contadores
     total_asignaciones: Optional[int] = 0

@@ -419,6 +419,351 @@ button:disabled {
 }
 
 /* ========================================
+   PANEL DE SECCIONES DE CONFIGURACION
+   ======================================== */
+
+.roles-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 350px) minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 100%;
+}
+
+.actions-panel {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.roles-list-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 170px);
+  overflow: hidden;
+}
+
+.roles-list-panel .panel-title {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex-shrink: 0;
+  margin-bottom: 0.875rem;
+  padding-bottom: 0.875rem;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.roles-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.roles-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.roles-list::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.roles-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ========================================
+   RESUMEN DE MORA
+   ======================================== */
+
+.mora-summary-card,
+.config-summary-card {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.875rem;
+  padding: 0;
+  background: transparent;
+  margin-bottom: 1.75rem;
+  width: 100%;
+  max-width: 100%;
+}
+
+.mora-summary-item,
+.config-summary-item {
+  position: relative;
+  gap: 0.45rem;
+  min-height: 112px;
+  padding: 1.1rem 1.2rem;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  min-width: 0;
+}
+
+.mora-summary-item::before,
+.config-summary-item::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: #64748b;
+}
+
+.mora-summary-item.total::before {
+  background: #2563eb;
+}
+
+.mora-summary-item.active::before {
+  background: #16a34a;
+}
+
+.mora-summary-item.current::before {
+  background: #f59e0b;
+}
+
+.mora-summary-item.assignments::before,
+.config-summary-item.assignments::before {
+  background: #7c3aed;
+}
+
+.mora-summary-item .info-label,
+.config-summary-item .info-label {
+  position: relative;
+  z-index: 1;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.mora-summary-item .info-value,
+.config-summary-item .info-value {
+  position: relative;
+  z-index: 1;
+  color: #0f172a;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.config-summary-item.textual .info-value {
+  font-size: 1.05rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.config-toggle-card {
+  margin-bottom: 1.5rem;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.mora-table-section,
+.config-table-section {
+  margin-bottom: 2.25rem;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.mora-table-section .config-table-mora,
+.config-table-section .data-table {
+  min-width: 900px;
+}
+
+.config-table-section .config-table-limites {
+  min-width: 780px;
+}
+
+.config-table-section .config-table-iva {
+  min-width: 860px;
+}
+
+.config-table-section .config-table-servicios {
+  min-width: 940px;
+}
+
+.service-price-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.service-price-cell strong {
+  color: #0f172a;
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
+.service-price-cell small {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.mora-important-info,
+.config-important-info {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #e5e7eb;
+  max-width: 100%;
+}
+
+.config-notice-info {
+  margin-bottom: 1.5rem;
+}
+
+.mora-important-info > div,
+.config-important-info > div,
+.config-notice-info > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ========================================
+   ASIGNACIONES DE SERVICIOS PERMANENTES
+   ======================================== */
+
+.assignment-new-users-section {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.assignment-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0;
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.assignment-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #2563eb;
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.assignment-section-description {
+  margin: 0.45rem 0 0.9rem 2.75rem;
+  color: #64748b;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.assignment-search-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(180px, 260px);
+  gap: 0.75rem;
+  align-items: stretch;
+  margin-bottom: 0.85rem;
+}
+
+.assignment-search-container {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.assignment-search-container .search-input {
+  width: 100%;
+}
+
+.assignment-sector-control {
+  margin-bottom: 0;
+}
+
+.assignment-sector-filter {
+  height: 42px;
+  margin-bottom: 0;
+}
+
+.assignment-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.assignment-selection-bar span {
+  color: #475569;
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.assignment-selection-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.assignment-compact-btn {
+  padding: 0.35rem 0.75rem !important;
+  font-size: 0.84rem !important;
+}
+
+.assignment-affiliate-item {
+  min-height: 58px;
+}
+
+.assignment-affiliate-item.disabled {
+  cursor: not-allowed;
+  background: #f8fafc !important;
+}
+
+.assignment-affiliate-item input[type="checkbox"] {
+  flex-shrink: 0;
+}
+
+.assigned-search-container {
+  max-width: 320px;
+  margin-bottom: 0;
+}
+
+@media (max-width: 720px) {
+  .assignment-search-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .assignment-section-description {
+    margin-left: 0;
+  }
+
+  .assignment-selection-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .assignment-selection-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* ========================================
    LÍMITES GEOGRÁFICOS
    ======================================== */
 
@@ -544,6 +889,18 @@ button:disabled {
 
 .btn-icon.btn-success:hover {
   background-color: rgb(5, 150, 105);
+}
+
+.btn-icon.btn-activate-config {
+  background-color: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+.btn-icon.btn-activate-config:hover {
+  background-color: #d1fae5;
+  color: #047857;
+  border-color: #6ee7b7;
 }
 
 .btn-icon.btn-primary {
@@ -745,6 +1102,10 @@ button:disabled {
    ======================================== */
 
 @media (max-width: 1023px) {
+  .roles-layout {
+    grid-template-columns: 1fr;
+  }
+
   .sticky {
     position: static;
   }

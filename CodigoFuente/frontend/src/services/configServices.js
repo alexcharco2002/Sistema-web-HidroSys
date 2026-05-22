@@ -204,6 +204,27 @@ class ConfigService {
   }
 }
 
+  /**
+   * Obtener estadisticas resumidas de backups
+   */
+  async getBackupStats() {
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.backupStats);
+
+      return {
+        success: true,
+        data
+      };
+    } catch (error) {
+      console.error('Error obteniendo estadisticas de backups:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al obtener estadisticas de backups',
+        data: null
+      };
+    }
+  }
+
 
   /**
    * Crear un nuevo backup manual

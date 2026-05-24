@@ -91,7 +91,7 @@ import os
 # Obtener orígenes permitidos desde variable de entorno o usar valores por defecto
 allowed_origins = os.getenv(
     "ALLOWED_ORIGINS",
-    "https://localhost:3000,http://localhost:3000,https://HidroSyssanjapamba.netlify.app"
+    "https://localhost:3000,http://localhost:3000,https://hidrosyssanjapamba.netlify.app,https://tecnicobrosanjapamba.netlify.app"
 ).split(",")
 
 app.add_middleware(

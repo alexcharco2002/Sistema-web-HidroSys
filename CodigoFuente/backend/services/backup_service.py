@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from typing import Optional, Dict, Any
 import logging
+import shutil
 
 # Configurar logger
 logger = logging.getLogger(__name__)
@@ -32,12 +33,17 @@ class BackupService:
         # Rutas de herramientas PostgreSQL
         self.pg_dump_path = os.getenv(
             "PG_DUMP_PATH", 
-            r"C:\Program Files\PostgreSQL\17\bin\pg_dump.exe"
+            "pg_dump"
         )
         
         # Directorio de backups en la raiz del proyecto (junto a backend/frontend)
         project_root = Path(__file__).resolve().parents[2]
-        self.backup_dir = project_root / os.getenv("BACKUP_DIR", "backups")
+        backup_dir_config = Path(os.getenv("BACKUP_DIR", "backups"))
+        self.backup_dir = (
+            backup_dir_config
+            if backup_dir_config.is_absolute()
+            else project_root / backup_dir_config
+        )
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         
         # Configuración de retención
@@ -54,7 +60,13 @@ class BackupService:
             return  # Salir sin error
 
         
-        if not os.path.exists(self.pg_dump_path):
+        pg_dump_exists = (
+            os.path.exists(self.pg_dump_path)
+            if os.path.isabs(self.pg_dump_path) or os.path.dirname(self.pg_dump_path)
+            else shutil.which(self.pg_dump_path) is not None
+        )
+
+        if not pg_dump_exists:
             raise FileNotFoundError(
                 f"pg_dump no encontrado en: {self.pg_dump_path}\n"
                 "Configura PG_DUMP_PATH en tu archivo .env"
@@ -287,12 +299,17 @@ class BackupService:
             problemas.append("Directorio de backups no existe")
         
         # Verificar pg_dump
-        if not os.path.exists(self.pg_dump_path):
+        pg_dump_exists = (
+            os.path.exists(self.pg_dump_path)
+            if os.path.isabs(self.pg_dump_path) or os.path.dirname(self.pg_dump_path)
+            else shutil.which(self.pg_dump_path) is not None
+        )
+
+        if not pg_dump_exists:
             problemas.append("pg_dump no encontrado")
         
         # Verificar espacio en disco
         try:
-            import shutil
             stats = shutil.disk_usage(self.backup_dir)
             espacio_libre_gb = stats.free / (1024 ** 3)
             

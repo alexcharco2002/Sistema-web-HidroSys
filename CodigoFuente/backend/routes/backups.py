@@ -12,7 +12,6 @@ from datetime import datetime
 from pathlib import Path
 import os
 from dotenv import load_dotenv
-from pathlib import Path
 import subprocess
 
 from db.session import SessionLocal
@@ -51,12 +50,13 @@ DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT")
 
 # Rutas de herramientas PostgreSQL
-PG_DUMP_PATH = r"C:\Program Files\PostgreSQL\17\bin\pg_dump.exe"
-PG_RESTORE_PATH = r"C:\Program Files\PostgreSQL\17\bin\pg_restore.exe"
+PG_DUMP_PATH = os.getenv("PG_DUMP_PATH", "pg_dump")
+PG_RESTORE_PATH = os.getenv("PG_RESTORE_PATH", "pg_restore")
 
 # Directorio de backups
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-BACKUP_DIR = BASE_DIR / os.getenv("BACKUP_DIR", "backups")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+BACKUP_DIR_CONFIG = Path(os.getenv("BACKUP_DIR", "backups"))
+BACKUP_DIR = BACKUP_DIR_CONFIG if BACKUP_DIR_CONFIG.is_absolute() else PROJECT_ROOT / BACKUP_DIR_CONFIG
 
 # Crear carpeta si no existe
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)

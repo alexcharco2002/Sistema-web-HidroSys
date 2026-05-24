@@ -1,0 +1,56 @@
+name: hidrosys
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: hidrosys-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-jaap_sanjapamba}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-HidroSysLocal2026}
+      TZ: America/Guayaquil
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - hidrosys_postgres_data:/var/lib/postgresql/data
+      - ${BACKUPS_HOST_DIR:-./backups}:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-jaap_sanjapamba}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: hidrosys-backend:local
+    build:
+      context: ./backend
+    container_name: hidrosys-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-HidroSysLocal2026}@postgres:5432/${POSTGRES_DB:-jaap_sanjapamba}
+      DB_NAME: ${POSTGRES_DB:-jaap_sanjapamba}
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-HidroSysLocal2026}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      BACKUP_DIR: /app/backups
+      PG_DUMP_PATH: pg_dump
+      PG_RESTORE_PATH: pg_restore
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      MAX_BACKUPS: ${MAX_BACKUPS:-50}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,https://localhost:3000,https://tecnicobrosanjapamba.netlify.app}
+      TZ: America/Guayaquil
+    ports:
+      - "${BACKEND_HOST_PORT:-8000}:8000"
+    volumes:
+      - ${BACKUPS_HOST_DIR:-./backups}:/app/backups
+
+volumes:
+  hidrosys_postgres_data:

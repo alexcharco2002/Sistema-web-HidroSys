@@ -1,10 +1,10 @@
+venv/
 __pycache__/
 *.pyc
 *.pyo
 .env
-venv/
-backups/
 logs/
 uploads/
-*.dump
+backups/
 database_export.sql
+.git/

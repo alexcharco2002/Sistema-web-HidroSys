@@ -7,3 +7,11 @@ __pycache__/
 # Entornos virtuales
 venv/
 .env
+
+# Archivos generados en ejecucion
+backups/
+backend/backups/
+backend/logs/
+backend/uploads/
+*.dump
+backend/database_export.sql

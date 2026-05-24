@@ -17,8 +17,6 @@ const ProtectedRoute = ({ children }) => {
   // 1️⃣ Verificar autenticación
   // =====================================================
   if (!isAuthenticated) {
-    console.warn('⚠️ Usuario no autenticado, redirigiendo a login');
-    
     // Guardar la ruta intentada para redirigir después del login
     return (
       <Navigate 
@@ -62,29 +60,17 @@ const ProtectedRoute = ({ children }) => {
   // Si es administrador, permitir acceso a todo
   const isAdmin = authService.isAdmin();
   if (isAdmin) {
-    console.log('✅ Acceso de administrador concedido a:', currentPath);
     return children;
   }
   
   // Verificar si la ruta base coincide con el rol del usuario
   if (currentBase !== userBase) {
-    console.warn(`⚠️ Acceso denegado:`);
-    console.warn(`   Ruta intentada: ${currentPath}`);
-    console.warn(`   Ruta permitida: ${userRoleRoute}`);
-    console.warn(`   Rol: ${currentUser.rol.nombre_rol}`);
-    
     return <Navigate to={userRoleRoute} replace />;
   }
 
   // =====================================================
   // 4️⃣ Acceso concedido
   // =====================================================
-  console.log('✅ Acceso concedido:', {
-    usuario: currentUser.nombre_completo,
-    rol: currentUser.rol.nombre_rol,
-    ruta: currentPath
-  });
-
   return children;
 };
 

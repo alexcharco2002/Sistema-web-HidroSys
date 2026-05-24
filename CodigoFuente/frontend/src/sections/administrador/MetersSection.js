@@ -173,7 +173,7 @@ const MetersSection = () => {
       }
     } catch (err) {
       setError('Error al cargar medidores desde el servidor');
-      console.error('Error en fetchMeters:', err);
+      console.error('Error al cargar medidores:', err);
     } finally {
       setLoading(false);
     }

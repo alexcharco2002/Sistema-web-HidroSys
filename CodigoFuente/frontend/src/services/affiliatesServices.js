@@ -55,7 +55,6 @@ class AffiliatesService {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
@@ -84,11 +83,10 @@ class AffiliatesService {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
       return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en servicio de afiliados:', error);
 
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -117,11 +115,6 @@ class AffiliatesService {
     // Asegurar que sea un array válido
     if (!Array.isArray(affiliate.medidores)) {
       affiliate.medidores = [];
-    }
-
-    // Log para debugging
-    if (affiliate.medidores.length > 0) {
-      console.log(`📊 Afiliado ${affiliate.cod_usuario_afi} tiene ${affiliate.medidores.length} medidor(es)`);
     }
 
     return affiliate;
@@ -243,11 +236,6 @@ class AffiliatesService {
       const idSector = parseInt(affiliateData.id_sector, 10);
 
       if (isNaN(idUsuarioSistema) || isNaN(idSector)) {
-        console.error('❌ Valores inválidos:', {
-          id_usuario_sistema: affiliateData.id_usuario_sistema,
-          id_sector: affiliateData.id_sector,
-          convertidos: { idUsuarioSistema, idSector }
-        });
         throw new Error('Los IDs deben ser números válidos');
       }
       const payload = {
@@ -261,8 +249,6 @@ class AffiliatesService {
         payload.cod_usuario_afi = affiliateData.cod_usuario_afi.trim().toUpperCase();
       }
     
-      console.log('📤 Payload final:', payload);
-
       // ✅ CORRECCIÓN: pasar como objeto options
       const data = await this.makeRequest(
         API_CONFIG.endpoints.createAffiliate,
@@ -332,9 +318,6 @@ class AffiliatesService {
         `${API_CONFIG.endpoints.affiliates}/${affiliateId}`,
         { method: 'DELETE' }
       );
-
-      console.log("🔎 Respuesta del backend:", data);
-
       // Normalización de mensajes y campos comunes
       const backendMessage =
         data?.message ||
@@ -539,8 +522,6 @@ async downloadTemplate() {
   try {
     const token = authService.getToken('token');
     
-    console.log('📥 Iniciando descarga de plantilla...');
-    
     const response = await fetch(`${API_CONFIG.baseURL}/affiliates/template/download`, {
       method: 'GET',
       headers: {
@@ -555,8 +536,6 @@ async downloadTemplate() {
 
     // Obtener el blob
     const blob = await response.blob();
-    
-    console.log(`📦 Blob recibido: ${blob.size} bytes`);
     
     if (blob.size === 0) {
       throw new Error('El archivo descargado está vacío');
@@ -576,11 +555,8 @@ async downloadTemplate() {
         const writable = await handle.createWritable();
         await writable.write(blob);
         await writable.close();
-        
-        console.log('✅ Archivo guardado con File System API');
       } catch (fsError) {
         // Si el usuario cancela o hay error, usar método fallback
-        console.log('Usuario canceló o error en File System API, usando método fallback');
         throw fsError;
       }
     } else {
@@ -630,7 +606,7 @@ downloadBlobFallback(blob, filename) {
       document.body.removeChild(iframe);
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.warn('Error limpiando iframe:', e);
+      console.error('Error limpiando descarga temporal de plantilla:', e);
     }
   }, 2000);
   
@@ -691,13 +667,10 @@ downloadBlobFallback(blob, filename) {
             }
             
             afiliado.cod_usuario_afi = codigo;
-            console.log(`📋 Fila ${index + 1}: Código personalizado '${codigo}' será enviado al backend`);
           }
         }
         return afiliado;
       });
-
-      console.log('📤 Enviando afiliados al backend:', afiliadosValidados.length);
 
       const data = await this.makeRequest(`${API_CONFIG.endpoints.affiliates}/bulk`, {
         method: 'POST',
@@ -705,8 +678,6 @@ downloadBlobFallback(blob, filename) {
           affiliates: afiliadosValidados
         }
       });
-
-      console.log('📥 Respuesta del backend:', data);
 
       return {
         success: true,

@@ -57,7 +57,6 @@ class ServiciosService {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
@@ -86,11 +85,10 @@ class ServiciosService {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
       return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud de servicios:', error);
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
       }
@@ -131,7 +129,7 @@ class ServiciosService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo servicios:', error);
+      console.error('Error al obtener servicios:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener servicios'
@@ -152,7 +150,7 @@ class ServiciosService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo historial:', error);
+      console.error('Error al obtener historial del servicio:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener historial del servicio'
@@ -175,7 +173,7 @@ class ServiciosService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
+      console.error('Error al obtener estadisticas de servicios:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
@@ -196,7 +194,7 @@ class ServiciosService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo servicios activos:', error);
+      console.error('Error al obtener servicios activos:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener servicios activos'
@@ -215,7 +213,7 @@ class ServiciosService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo servicio:', error);
+      console.error('Error al obtener servicio:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener servicio'
@@ -249,7 +247,7 @@ class ServiciosService {
       };
 
     } catch (error) {
-      console.error('❌ Error creando servicio:', error);
+      console.error('Error al crear servicio:', error);
       let cleanMessage = 'Error al crear el servicio';
 
       const detail = error.response?.data?.detail;
@@ -299,7 +297,7 @@ class ServiciosService {
       };
 
     } catch (error) {
-      console.error('❌ Error actualizando precio:', error);
+      console.error('Error al actualizar precio del servicio:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar precio del servicio'
@@ -339,7 +337,7 @@ class ServiciosService {
       };
 
     } catch (error) {
-      console.error('❌ Error editando servicio:', error);
+      console.error('Error al editar servicio:', error);
       return {
         success: false,
         message: error.message || 'Error al editar servicio'
@@ -365,7 +363,7 @@ class ServiciosService {
       };
 
     } catch (error) {
-      console.error('❌ Error cambiando estado:', error);
+      console.error('Error al cambiar estado del servicio:', error);
       return {
         success: false,
         message: error.message || 'Error al cambiar estado del servicio'
@@ -425,7 +423,7 @@ class ServiciosService {
       };
 
     } catch (error) {
-      console.error('❌ Error eliminando servicio:', error);
+      console.error('Error al eliminar servicio:', error);
 
       return {
         success: false,

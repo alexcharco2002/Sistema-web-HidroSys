@@ -94,8 +94,6 @@ class ReportsServices {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
-      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
       
@@ -122,11 +120,10 @@ class ReportsServices {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
       return data;
       
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud de reportes:', error);
       
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -184,7 +181,7 @@ class ReportsServices {
         total: Array.isArray(data) ? data.length : 0
       };
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de usuarios:', error);
+      console.error('Error al obtener reporte de usuarios:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener reporte de usuarios',
@@ -217,7 +214,7 @@ class ReportsServices {
         total: Array.isArray(data) ? data.length : 0
       };
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de roles:', error);
+      console.error('Error al obtener reporte de roles:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener reporte de roles',
@@ -253,7 +250,7 @@ class ReportsServices {
         total: Array.isArray(data) ? data.length : 0
       };
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de afiliados:', error);
+      console.error('Error al obtener reporte de afiliados:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener reporte de afiliados',
@@ -288,7 +285,7 @@ class ReportsServices {
         total: Array.isArray(data) ? data.length : 0
       };
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de medidores:', error);
+      console.error('Error al obtener reporte de medidores:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener reporte de medidores',
@@ -321,7 +318,7 @@ class ReportsServices {
         total: Array.isArray(data) ? data.length : 0
       };
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de sectores:', error);
+      console.error('Error al obtener reporte de sectores:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener reporte de sectores',
@@ -361,7 +358,7 @@ class ReportsServices {
         total: Array.isArray(data) ? data.length : 0
       };
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de lecturas:', error);
+      console.error('Error al obtener reporte de lecturas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener reporte de lecturas',
@@ -376,14 +373,12 @@ class ReportsServices {
     try {
       const data = await this.makeRequest(API_CONFIG.endpoints.lecturasPeriodos);
       
-      console.log('📅 Periodos de lecturas cargados:', data);
-      
       return {
         success: true,
         data: Array.isArray(data) ? data : []
       };
     } catch (error) {
-      console.error('❌ Error obteniendo periodos de lecturas:', error);
+      console.error('Error al obtener periodos de lecturas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener periodos de lecturas',
@@ -413,11 +408,7 @@ async getReporteFacturas(filtros = {}) {
       ? `${API_CONFIG.endpoints.facturas}?${queryString}`
       : API_CONFIG.endpoints.facturas;
 
-    console.log('📡 Request URL:', url); // Debug
-
     const response = await this.makeRequest(url);
-    
-    console.log('✅ API Response:', response); // Debug
 
     // ✅ CORRECCIÓN: La API devuelve { success, data, total, estadisticas }
     if (response.success && response.data) {
@@ -456,7 +447,7 @@ async getReporteFacturas(filtros = {}) {
     };
 
   } catch (error) {
-    console.error('❌ Error obteniendo reporte de facturas:', error);
+    console.error('Error al obtener reporte de facturas:', error);
     return {
       success: false,
       message: error.message || 'Error al obtener reporte de facturas',
@@ -470,14 +461,12 @@ async getReporteFacturas(filtros = {}) {
     try {
       const data = await this.makeRequest(API_CONFIG.endpoints.facturasPeriodos);
       
-      console.log('📅 Periodos de facturas cargados:', data);
-      
       return {
         success: true,
         data: Array.isArray(data) ? data : []
       };
     } catch (error) {
-      console.error('❌ Error obteniendo periodos de facturas:', error);
+      console.error('Error al obtener periodos de facturas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener periodos de facturas',
@@ -538,7 +527,7 @@ async getReporteFacturas(filtros = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de pagos:', error);
+      console.error('Error al obtener reporte de pagos:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener reporte de pagos',
@@ -553,14 +542,12 @@ async getReporteFacturas(filtros = {}) {
     try {
       const data = await this.makeRequest(API_CONFIG.endpoints.pagosPeriodos);
       
-      console.log('📅 Periodos de pagos cargados:', data);
-      
       return {
         success: true,
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo periodos de pagos:', error);
+      console.error('Error al obtener periodos de pagos:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener periodos de pagos',
@@ -602,7 +589,7 @@ async getReporteFacturas(filtros = {}) {
         total: total
       };
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de multas:', error);
+      console.error('Error al obtener reporte de multas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener reporte de multas',
@@ -618,14 +605,12 @@ async getReporteFacturas(filtros = {}) {
     try {
       const data = await this.makeRequest(API_CONFIG.endpoints.multasAfiliadosPeriodos);
       
-      console.log('📅 Periodos de multas afiliados cargados:', data);
-      
       return {
         success: true,
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo periodos de multas afiliados:', error);
+      console.error('Error al obtener periodos de multas afiliados:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener periodos de multas afiliados',
@@ -669,7 +654,7 @@ async getReporteFacturas(filtros = {}) {
         total: total
       };
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de multas afiliados:', error);
+      console.error('Error al obtener reporte de multas afiliados:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener reporte de multas afiliados',
@@ -704,7 +689,7 @@ async getReporteFacturas(filtros = {}) {
         total: Array.isArray(data) ? data.length : 0
       };
     } catch (error) {
-      console.error('❌ Error obteniendo reporte de tarifas:', error);
+      console.error('Error al obtener reporte de tarifas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener reporte de tarifas',
@@ -772,7 +757,7 @@ async getReporteFacturas(filtros = {}) {
         total: Array.isArray(data) ? data.length : 0
       };
     } catch (error) {
-      console.error(`❌ Error obteniendo reporte de ${modulo}:`, error);
+      console.error(`Error al obtener reporte de ${modulo}:`, error);
       return {
         success: false,
         message: error.message || `Error al obtener reporte de ${modulo}`,
@@ -801,7 +786,7 @@ async getCajaMensual(filtros = {}) {
     const response = await this.makeRequest(url);
     return { success: true, data: response };
   } catch (error) {
-    console.error('❌ Error obteniendo caja mensual:', error);
+    console.error('Error al obtener caja mensual:', error);
     return { success: false, message: error.message, data: null };
   }
 }
@@ -819,7 +804,7 @@ async getCajaAnual(filtros = {}) {
     const response = await this.makeRequest(url);
     return { success: true, data: response };
   } catch (error) {
-    console.error('❌ Error obteniendo caja anual:', error);
+    console.error('Error al obtener caja anual:', error);
     return { success: false, message: error.message, data: null };
   }
 }
@@ -840,7 +825,7 @@ async getCajaDetalleDiario(filtros = {}) {
     const response = await this.makeRequest(url);
     return { success: true, data: response };
   } catch (error) {
-    console.error('❌ Error obteniendo detalle diario:', error);
+    console.error('Error al obtener detalle diario:', error);
     return { success: false, message: error.message, data: null };
   }
 }
@@ -858,7 +843,7 @@ async getCajaAniosDisponibles() {
       mesesPorAnio: response.meses_por_anio || {}
     };
   } catch (error) {
-    console.error('❌ Error obteniendo años disponibles:', error);
+    console.error('Error al obtener anios disponibles:', error);
     return { success: false, message: error.message, data: [], mesesPorAnio: {} };
   }
 }
@@ -907,7 +892,7 @@ async getReporteIndividualLecturas(codusuarioafi, filtros = {}) {
       total: response.total ?? 0,
     };
   } catch (error) {
-    console.error('❌ Error reporte individual lecturas:', error);
+    console.error('Error al obtener reporte individual de lecturas:', error);
     return { success: false, message: error.message, data: [], total: 0 };
   }
 }
@@ -936,7 +921,7 @@ async getReporteIndividualFacturas(codusuarioafi, filtros = {}) {
       total: response.total ?? 0,
     };
   } catch (error) {
-    console.error('❌ Error reporte individual facturas:', error);
+    console.error('Error al obtener reporte individual de facturas:', error);
     return { success: false, message: error.message, data: [], total: 0 };
   }
 }
@@ -965,7 +950,7 @@ async getReporteIndividualPagos(codusuarioafi, filtros = {}) {
       total: response.total ?? 0,
     };
   } catch (error) {
-    console.error('❌ Error reporte individual pagos:', error);
+    console.error('Error al obtener reporte individual de pagos:', error);
     return { success: false, message: error.message, data: [], total: 0 };
   }
 }
@@ -995,7 +980,7 @@ async getReporteIndividualMultasAfiliados(codusuarioafi, filtros = {}) {
       total: response.total ?? 0,
     };
   } catch (error) {
-    console.error('❌ Error reporte individual multas afiliados:', error);
+    console.error('Error al obtener reporte individual de multas afiliados:', error);
     return { success: false, message: error.message, data: [], total: 0 };
   }
 }
@@ -1084,7 +1069,7 @@ async getReporteIndividualMultasAfiliados(codusuarioafi, filtros = {}) {
         message: 'Reporte exportado exitosamente'
       };
     } catch (error) {
-      console.error('❌ Error exportando reporte:', error);
+      console.error('Error al exportar reporte:', error);
       return {
         success: false,
         message: error.message || 'Error al exportar reporte'

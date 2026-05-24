@@ -50,7 +50,6 @@ class AffiliateGeneralServices {
     };
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
@@ -77,11 +76,10 @@ class AffiliateGeneralServices {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
       return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud del afiliado:', error);
       
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -101,7 +99,7 @@ class AffiliateGeneralServices {
       const data = await this.makeRequest(API_CONFIG.endpoints.misMedidores);
       return { success: true, data };
     } catch (error) {
-      console.error('❌ Error obteniendo mis medidores:', error);
+      console.error('Error al obtener mis medidores:', error);
       return {  success: false, message: error.message || 'Error al obtener mis medidores' };
     }
   }
@@ -119,7 +117,7 @@ class AffiliateGeneralServices {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo periodos:', error);
+      console.error('Error al obtener periodos:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener periodos disponibles'
@@ -135,7 +133,7 @@ class AffiliateGeneralServices {
       const data = await this.makeRequest(API_CONFIG.endpoints.tarifasVigentes);
       return { success: true, data };
     } catch (error) {
-      console.error('Error obteniendo tarifas vigentes', error);
+      console.error('Error al obtener tarifas vigentes:', error);
       return { 
         success: false, 
         message: error.message || 'Error al obtener tarifas'
@@ -178,7 +176,7 @@ class AffiliateGeneralServices {
         data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo lecturas:', error);
+      console.error('Error al obtener lecturas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener tus lecturas'
@@ -203,7 +201,7 @@ class AffiliateGeneralServices {
         data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo consumo:', error);
+      console.error('Error al obtener consumo:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener consumo del periodo'
@@ -223,7 +221,7 @@ class AffiliateGeneralServices {
         data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
+      console.error('Error al obtener estadisticas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
@@ -254,8 +252,6 @@ class AffiliateGeneralServices {
       
       const queryString = params.toString();
       const url = `${API_CONFIG.baseURL}${API_CONFIG.endpoints.exportarLecturas}${queryString ? '?' + queryString : ''}`;
-      
-      console.log(`📥 Descargando CSV: ${url}`);
       
       // ⚠️ NO usar makeRequest porque necesitamos blob, no JSON
       const response = await fetch(url, {
@@ -296,15 +292,13 @@ class AffiliateGeneralServices {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
       
-      console.log(`✅ CSV descargado: ${filename}`);
-      
       return {
         success: true,
         filename
       };
       
     } catch (error) {
-      console.error('❌ Error exportando lecturas:', error);
+      console.error('Error al exportar lecturas:', error);
       return {
         success: false,
         message: error.message || 'Error al exportar las lecturas'
@@ -326,7 +320,7 @@ class AffiliateGeneralServices {
         data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo periodos de mis lecturas:', error);
+      console.error('Error al obtener periodos de mis lecturas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener periodos de lecturas'
@@ -347,7 +341,7 @@ class AffiliateGeneralServices {
         data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo información del medidor:', error);
+      console.error('Error al obtener informacion del medidor:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener información del medidor'

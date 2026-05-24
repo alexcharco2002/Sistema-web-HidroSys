@@ -120,7 +120,7 @@ const AffiliatesSection = () => {
       setSelectedExcel(file);
 
     } catch (error) {
-      console.error(error);
+      console.error('Error al leer archivo Excel de afiliados:', error);
       setError("Error al leer el archivo Excel");
       setExcelPreview([]);
       setExcelPreviewPage(1);
@@ -244,7 +244,7 @@ const AffiliatesSection = () => {
       }
 
     } catch (error) {
-      console.error('Error en carga masiva:', error);
+      console.error('Error en carga masiva de afiliados:', error);
       setError(error.message || "Error al enviar afiliados");
     } finally {
       setLoadingExcel(false);

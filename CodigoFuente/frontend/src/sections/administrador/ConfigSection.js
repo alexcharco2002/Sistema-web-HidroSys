@@ -157,7 +157,6 @@ const loadSectores = useCallback(async () => {
     
     if (result.success) {
       setSectoresDisponibles(result.data);
-      console.log('✅ Sectores cargados:', result.data.length);
     }
   } catch (err) {
     console.error('Error cargando sectores:', err);
@@ -218,13 +217,6 @@ const asignacionesFiltradas = useMemo(() => {
       canManageBackups
     });
 
-    console.log('🔐 Permisos del usuario en módulo Configuración:', {
-      canRead,
-      canCreate,
-      canUpdate,
-      canDelete,
-      canManageBackups
-    });
   };
 
   // Definición de secciones disponibles (solo backups)
@@ -288,7 +280,6 @@ const asignacionesFiltradas = useMemo(() => {
 
       if (result.success) {
         setBackups(result.data);
-        console.log('✅ Backups cargados:', result.data.length);
       } else {
         setError(result.message);
       }
@@ -297,7 +288,7 @@ const asignacionesFiltradas = useMemo(() => {
 
     } catch (err) {
       setError('Error al cargar la lista de backups');
-      console.error('Error:', err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoadingBackups(false);
     }
@@ -344,7 +335,7 @@ const asignacionesFiltradas = useMemo(() => {
     } catch (err) {
       window.alert("❌ Error inesperado al crear el backup.");
       setError("Error al crear el backup");
-      console.error("Error:", err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoading(false);
     }
@@ -384,7 +375,7 @@ const asignacionesFiltradas = useMemo(() => {
     } catch (err) {
       window.alert("❌ Error inesperado al restaurar el backup.");
       setError("Error al restaurar el backup");
-      console.error("Error:", err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoading(false);
     }
@@ -424,7 +415,7 @@ const asignacionesFiltradas = useMemo(() => {
     } catch (err) {
       window.alert("❌ Error inesperado al eliminar el backup.");
       setError("Error al eliminar el backup");
-      console.error("Error:", err);
+      console.error('Error en configuracion:', err);
     }
   };
 
@@ -447,7 +438,7 @@ const asignacionesFiltradas = useMemo(() => {
 
     } catch (err) {
       setError('Error al descargar el backup');
-      console.error('Error:', err);
+      console.error('Error en configuracion:', err);
     }
   };
 
@@ -469,13 +460,12 @@ const asignacionesFiltradas = useMemo(() => {
         );
 
         setLimites(limitesOrdenados);
-        console.log('✅ Límites cargados:', limitesOrdenados.length);
       } else {
         setError(result.message);
       }
     } catch (err) {
       setError('Error al cargar la lista de límites');
-      console.error('Error:', err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoadingLimites(false);
     }
@@ -617,7 +607,7 @@ const asignacionesFiltradas = useMemo(() => {
     } catch (err) {
       window.alert("❌ Error inesperado al guardar el límite.");
       setError("Error al guardar el límite");
-      console.error("Error:", err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoading(false);
     }
@@ -653,7 +643,7 @@ const asignacionesFiltradas = useMemo(() => {
     } catch (err) {
       window.alert("❌ Error inesperado al activar el límite.");
       setError("Error al activar el límite");
-      console.error("Error:", err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoading(false);
     }
@@ -691,7 +681,7 @@ const asignacionesFiltradas = useMemo(() => {
     } catch (err) {
       window.alert("❌ Error inesperado al eliminar el límite.");
       setError("Error al eliminar el límite");
-      console.error("Error:", err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoading(false); // ✅ Agregado para desactivar loading
     }
@@ -734,17 +724,14 @@ const asignacionesFiltradas = useMemo(() => {
               if (estadoToggle.success) {
                   setAplicarIVA(estadoToggle.aplicar_iva);
                   setIvaActivo(estadoToggle.iva_activo);
-                  console.log('✅ Estado toggle IVA:', estadoToggle.aplicar_iva ? 'ACTIVADO' : 'DESACTIVADO');
               }
               
-              console.log('✅ IVAs cargados:', ivasOrdenados.length);
-              console.log('✅ IVAs aplicables:', aplicables.length);
           } else {
               setError(result.message);
           }
       } catch (err) {
           setError('Error al cargar la lista de IVAs');
-          console.error('Error:', err);
+          console.error('Error en configuracion:', err);
       } finally {
           setLoadingIVAs(false);
       }
@@ -812,7 +799,7 @@ const asignacionesFiltradas = useMemo(() => {
           } catch (err) {
               window.alert("❌ Error inesperado al activar IVA.");
               setError("Error al cambiar configuración de IVA");
-              console.error("Error:", err);
+              console.error('Error en configuracion:', err);
           } finally {
               setLoading(false);
           }
@@ -852,7 +839,7 @@ const asignacionesFiltradas = useMemo(() => {
           } catch (err) {
               window.alert("❌ Error inesperado al desactivar IVAs.");
               setError("Error al cambiar configuración de IVA");
-              console.error("Error:", err);
+              console.error('Error en configuracion:', err);
           } finally {
               setLoading(false);
           }
@@ -960,7 +947,7 @@ const asignacionesFiltradas = useMemo(() => {
       } catch (err) {
           window.alert("❌ Error inesperado al guardar el IVA.");
           setError("Error al guardar el IVA");
-          console.error("Error:", err);
+          console.error('Error en configuracion:', err);
       } finally {
           setLoading(false);
       }
@@ -1014,7 +1001,7 @@ const asignacionesFiltradas = useMemo(() => {
       } catch (err) {
           window.alert("❌ Error inesperado al activar el IVA.");
           setError("Error al activar el IVA");
-          console.error("Error:", err);
+          console.error('Error en configuracion:', err);
       } finally {
           setLoading(false);
       }
@@ -1076,7 +1063,7 @@ const asignacionesFiltradas = useMemo(() => {
       } catch (err) {
           window.alert("❌ Error inesperado al desactivar el IVA.");
           setError("Error al desactivar el IVA");
-          console.error("Error:", err);
+          console.error('Error en configuracion:', err);
       } finally {
           setLoading(false);
       }
@@ -1165,7 +1152,7 @@ const asignacionesFiltradas = useMemo(() => {
       } catch (err) {
           window.alert("❌ Error inesperado al eliminar el IVA.");
           setError("Error al eliminar el IVA");
-          console.error("Error:", err);
+          console.error('Error en configuracion:', err);
       } finally {
           setLoading(false);
       }
@@ -1207,16 +1194,14 @@ const asignacionesFiltradas = useMemo(() => {
         if (estadoMora.success) {
           setAplicarMora(estadoMora.aplicar_mora);
           setMoraActiva(estadoMora.configuracion_activa);
-          console.log('✅ Estado mora:', estadoMora.aplicar_mora ? 'ACTIVADO' : 'DESACTIVADO');
         }
 
-        console.log('✅ Configuraciones de mora cargadas:', morasOrdenadas.length);
       } else {
         setError(result.message);
       }
     } catch (err) {
       setError('Error al cargar las configuraciones de mora');
-      console.error('Error:', err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoadingMoras(false);
     }
@@ -1289,7 +1274,7 @@ const asignacionesFiltradas = useMemo(() => {
       } catch (err) {
         window.alert("❌ Error inesperado al activar mora.");
         setError("Error al cambiar configuración de mora");
-        console.error("Error:", err);
+        console.error('Error en configuracion:', err);
       } finally {
         setLoading(false);
       }
@@ -1327,7 +1312,7 @@ const asignacionesFiltradas = useMemo(() => {
       } catch (err) {
         window.alert("❌ Error inesperado al desactivar mora.");
         setError("Error al cambiar configuración de mora");
-        console.error("Error:", err);
+        console.error('Error en configuracion:', err);
       } finally {
         setLoading(false);
       }
@@ -1479,7 +1464,7 @@ const asignacionesFiltradas = useMemo(() => {
     } catch (err) {
       window.alert("❌ Error inesperado al guardar la configuración de mora.");
       setError("Error al guardar la configuración de mora");
-      console.error("Error:", err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoading(false);
     }
@@ -1523,7 +1508,7 @@ const asignacionesFiltradas = useMemo(() => {
     } catch (err) {
       window.alert("❌ Error inesperado al activar la configuración de mora.");
       setError("Error al activar la configuración de mora");
-      console.error("Error:", err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoading(false);
     }
@@ -1561,7 +1546,7 @@ const asignacionesFiltradas = useMemo(() => {
     } catch (err) {
       window.alert("❌ Error inesperado al desactivar la configuración de mora.");
       setError("Error al desactivar la configuración de mora");
-      console.error("Error:", err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoading(false);
     }
@@ -1620,7 +1605,7 @@ const asignacionesFiltradas = useMemo(() => {
     } catch (err) {
       window.alert("❌ Error inesperado al eliminar la configuración de mora.");
       setError("Error al eliminar la configuración de mora");
-      console.error("Error:", err);
+      console.error('Error en configuracion:', err);
     } finally {
       setLoading(false);
     }
@@ -1653,38 +1638,33 @@ const loadServiciosPermanentes = useCallback(async () => {
                 setSPActiva(estadoSP.configuracion_activa);
             }
 
-            console.log('✅ Servicios permanentes cargados:', spOrdenados.length);
         } else {
             setError(result.message);
         }
     } catch (err) {
         setError('Error al cargar servicios permanentes');
-        console.error('Error:', err);
+        console.error('Error en configuracion:', err);
     } finally {
         setLoadingSP(false);
     }
 }, []);
 
 const loadServicios = useCallback(async () => {
-    console.log('📥 Cargando servicios...');
-    setLoadingServicios(true);
+        setLoadingServicios(true);
     try {
         const result = await serviciosPermanentesService.getServicios({ 
             activo: true, 
             vigente: true 
         });
         
-        console.log('📦 Respuesta getServicios:', result);
-        
+                
         if (result.success) {
-            console.log('✅ Servicios cargados:', result.data.length);
-            console.log('📋 Primer servicio:', result.data[0]);
-            setServiciosDisponibles(result.data);
+                                    setServiciosDisponibles(result.data);
         } else {
-            console.error('❌ Error al cargar servicios:', result.message);
+            console.error('Error al cargar servicios:', result.message);
         }
     } catch (err) {
-        console.error('❌ Excepción cargando servicios:', err);
+        console.error('Error inesperado al cargar servicios:', err);
     } finally {
         setLoadingServicios(false);
     }
@@ -1703,13 +1683,9 @@ useEffect(() => {
 const handleServicioChange = (e) => {
     const servicioId = e.target.value;
     
-    console.log('🔍 === DEBUG SELECCIÓN SERVICIO ===');
-    console.log('📋 Valor seleccionado:', servicioId, 'Tipo:', typeof servicioId);
-    console.log('📋 Servicios disponibles:', serviciosDisponibles);
-    
+                
     if (!servicioId || servicioId === '') {
-        console.log('⚠️ Servicio deseleccionado');
-        setSPFormData(prev => ({
+                setSPFormData(prev => ({
             ...prev,
             id_servicio: '',
             nombre: ''
@@ -1722,30 +1698,18 @@ const handleServicioChange = (e) => {
         s => String(s.id_servicio) === String(servicioId)
     );
     
-    console.log('🔍 Servicio encontrado:', servicioSeleccionado);
-    
+        
     if (servicioSeleccionado) {
         const nuevoNombre = servicioSeleccionado.nombre || '';
-        const nuevoPrecio = servicioSeleccionado.precio_base || '';
-        
-        console.log('✅ Actualizando formulario:');
-        console.log('  - ID:', servicioId);
-        console.log('  - Nombre:', nuevoNombre);
-        console.log('  - Precio base:', nuevoPrecio);
-        
+                                        
         setSPFormData(prev => ({
             ...prev,
             id_servicio: servicioId,
             nombre: nuevoNombre
         }));
     } else {
-        console.error('❌ NO SE ENCONTRÓ EL SERVICIO');
-        console.log('IDs disponibles:', serviciosDisponibles.map(s => ({
-            id: s.id_servicio, 
-            tipo: typeof s.id_servicio,
-            nombre: s.nombre
-        })));
-        
+        console.error('Servicio seleccionado no encontrado');
+                
         // Aún así guardar el ID por si acaso
         setSPFormData(prev => ({
             ...prev,
@@ -1761,8 +1725,7 @@ const handleServicioChange = (e) => {
 // ✅ FUNCIONES HELPER CORREGIDAS
 const getPrecioBaseServicio = () => {
     if (!spFormData.id_servicio) {
-        console.log('⚠️ getPrecioBaseServicio: No hay id_servicio');
-        return null;
+                return null;
     }
     
     const servicio = serviciosDisponibles.find(
@@ -1770,19 +1733,16 @@ const getPrecioBaseServicio = () => {
     );
     
     if (!servicio) {
-        console.log('⚠️ getPrecioBaseServicio: Servicio no encontrado');
-        return null;
+                return null;
     }
     
     const precio = parseFloat(servicio.precio_base);
-    console.log('💰 Precio base encontrado:', precio);
-    return precio;
+        return precio;
 };
 
 const getInfoServicioSeleccionado = () => {
     if (!spFormData.id_servicio) {
-        console.log('⚠️ getInfoServicioSeleccionado: No hay id_servicio');
-        return null;
+                return null;
     }
     
     const servicio = serviciosDisponibles.find(
@@ -1790,10 +1750,7 @@ const getInfoServicioSeleccionado = () => {
     );
     
     if (!servicio) {
-        console.log('⚠️ getInfoServicioSeleccionado: Servicio no encontrado');
-        console.log('Buscando ID:', spFormData.id_servicio, 'Tipo:', typeof spFormData.id_servicio);
-        console.log('IDs disponibles:', serviciosDisponibles.map(s => s.id_servicio));
-    }
+                            }
     
     return servicio || null;
 };
@@ -1802,12 +1759,9 @@ const getInfoServicioSeleccionado = () => {
 
 // ✅ AGREGAR LOG EN openSPModal
 const openSPModal = (sp = null) => {
-    console.log('🔵 === ABRIENDO MODAL ===');
-    console.log('Servicios disponibles:', serviciosDisponibles.length);
-    
+            
     if (sp) {
-        console.log('✏️ Modo EDICIÓN:', sp);
-        setEditingSP(sp);
+                setEditingSP(sp);
         setSPFormData({
             nombre: sp.nombre || '',
             descripcion: sp.descripcion || '',
@@ -1820,8 +1774,7 @@ const openSPModal = (sp = null) => {
             observaciones: sp.observaciones || ''
         });
     } else {
-        console.log('➕ Modo CREACIÓN');
-        setEditingSP(null);
+                setEditingSP(null);
         const hoy = new Date().toISOString().split('T')[0];
         setSPFormData({
             nombre: '',
@@ -1848,9 +1801,7 @@ const handleSaveSP = async (e) => {
      e.preventDefault();
     
     // ✅ DEBUG COMPLETO
-    console.log('📋 Estado completo spFormData:', spFormData);
-    console.log('🔍 id_servicio:', spFormData.id_servicio, 'Tipo:', typeof spFormData.id_servicio);
-    
+            
     if (!permissions.canCreate && !editingSP) {
         window.alert("❌ No tienes permiso para crear configuraciones.");
         return;
@@ -1864,7 +1815,6 @@ const handleSaveSP = async (e) => {
     const idServicioValue = spFormData.id_servicio;
     
     if (!idServicioValue || idServicioValue === '' || idServicioValue === 'undefined') {
-        console.error('❌ id_servicio vacío o inválido:', idServicioValue);
         window.alert("❌ Debe seleccionar un servicio válido");
         return;
     }
@@ -1872,7 +1822,6 @@ const handleSaveSP = async (e) => {
     const idServicioNum = parseInt(idServicioValue, 10);
     
     if (isNaN(idServicioNum) || idServicioNum <= 0) {
-        console.error('❌ Conversión falló. Original:', idServicioValue, 'Convertido:', idServicioNum);
         window.alert(`❌ El ID del servicio no es válido (recibido: ${idServicioValue})`);
         return;
     }
@@ -1893,8 +1842,7 @@ const handleSaveSP = async (e) => {
             observaciones: spFormData.observaciones.trim() || null
         };
 
-        console.log('📤 Enviando datos:', dataToSend);
-
+        
         let result;
         if (editingSP) {
             result = await serviciosPermanentesService.updateConfiguracion(editingSP.id_configuracion_sp, dataToSend);
@@ -1922,7 +1870,7 @@ const handleSaveSP = async (e) => {
     } catch (err) {
         window.alert("❌ Error inesperado al guardar.");
         setError("Error al guardar");
-        console.error("Error:", err);
+        console.error('Error en configuracion:', err);
     } finally {
         setLoading(false);
     }
@@ -1958,7 +1906,7 @@ const handleSaveSP = async (e) => {
       } catch (err) {
           window.alert("❌ Error inesperado al activar.");
           setError("Error al activar");
-          console.error("Error:", err);
+          console.error('Error en configuracion:', err);
       } finally {
           setLoading(false);
       }
@@ -1988,7 +1936,7 @@ const handleSaveSP = async (e) => {
           }
       } catch (err) {
           window.alert("❌ Error inesperado al desactivar.");
-          console.error("Error:", err);
+          console.error('Error en configuracion:', err);
       } finally {
           setLoading(false);
       }
@@ -2030,7 +1978,7 @@ const handleSaveSP = async (e) => {
           }
       } catch (err) {
           window.alert("❌ Error inesperado al eliminar.");
-          console.error("Error:", err);
+          console.error('Error en configuracion:', err);
       } finally {
           setLoading(false);
       }
@@ -2067,8 +2015,7 @@ const openAsignacionesModal = async (config) => {
           const result = await serviciosPermanentesService.listAsignaciones(configId);
           if (result.success) {
               setAsignaciones(result.data);
-              console.log('✅ Asignaciones cargadas:', result.data.length);
-          }
+                        }
       } catch (err) {
           console.error('Error cargando asignaciones:', err);
       } finally {
@@ -2085,8 +2032,7 @@ const openAsignacionesModal = async (config) => {
                 new Map(result.data.map(afi => [afi.id_usuario_afi, afi])).values()
               );
               setAfiliadosDisponibles(afiliadosUnicos);
-              console.log('✅ Afiliados cargados:', result.data.length);
-          }
+                        }
       } catch (err) {
           console.error('Error cargando afiliados:', err);
       } finally {
@@ -2132,7 +2078,7 @@ const openAsignacionesModal = async (config) => {
           }
       } catch (err) {
           window.alert("❌ Error al asignar usuarios");
-          console.error(err);
+          console.error('Error en configuracion:', err);
       } finally {
           setLoading(false);
       }
@@ -2160,7 +2106,7 @@ const openAsignacionesModal = async (config) => {
           }
       } catch (err) {
           window.alert("❌ Error al eliminar asignación");
-          console.error(err);
+          console.error('Error en configuracion:', err);
       } finally {
           setLoading(false);
       }

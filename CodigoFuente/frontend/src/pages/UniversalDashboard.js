@@ -270,7 +270,6 @@ const toggleSidebar = () => {
     const currentUser = authService.getCurrentUser();
     
     if (!currentUser || !authService.isAuthenticated()) {
-      console.log('❌ Usuario no autenticado');
       navigate('/login');
       return;
     }
@@ -280,7 +279,6 @@ const toggleSidebar = () => {
     setUserPermissions(permissions);
 
     if (currentUser.primer_login === true || currentUser.primer_login === 1) {
-      console.log('🔐 Primer login detectado');
       setShowChangePasswordModal(true);
     }
     
@@ -293,14 +291,6 @@ const toggleSidebar = () => {
     });
     setExpandedCategories(initialExpanded);
     
-    console.log('✅ Dashboard cargado:', {
-      usuario: currentUser.nombres,
-      rol: currentUser.rol?.nombre_rol,
-      rolePath: roleBasePath,
-      permisos: permissions.length,
-      categorias: modules.length
-    });
-
     const verifySession = async () => {
       const result = await authService.verifySession();
       if (!result.success) {
@@ -385,46 +375,8 @@ const toggleSidebar = () => {
       const roleName = user?.rol?.nombre_rol?.toLowerCase() || 'administrador';
       setDashboardStats(mockStats[roleName] || mockStats.administrador);
 
-      //  Si tienes permisos para ver usuarios, cargar datos reales
-      if (authService.hasPermission('usuarios', 'lectura')) {
-        try {
-          const result = await userService.getUsers({ limit: 1000 });
-          
-          if (result.success) {
-            const usersData = Array.isArray(result.data) 
-              ? result.data 
-              : result.data.usuarios || [];
-
-            const totalUsers = usersData.length;
-            const activeUsers = usersData.filter(u => u.activo).length;
-            const inactiveUsers = totalUsers - activeUsers;
-
-            const usersByRole = usersData.reduce((acc, user) => {
-              const rol = user.rol?.nombre_rol.toLowerCase() || 'sin_rol';
-              acc[rol] = (acc[rol] || 0) + 1;
-              return acc;
-            }, {
-              administrador: 0,
-              cliente: 0,
-              lector: 0,
-              cajero: 0
-            });
-
-            setDashboardStats(prev => ({
-              ...prev,
-              totalUsers,
-              activeUsers,
-              inactiveUsers,
-              usersByRole
-            }));
-          }
-        } catch (error) {
-          console.error('Error cargando usuarios:', error);
-        }
-      }
-
     } catch (error) {
-      console.error('❌ Error cargando datos:', error);
+      console.error('Error cargando datos del panel general:', error);
     } finally {
       setDataLoading(false);
     }
@@ -495,7 +447,6 @@ const toggleSidebar = () => {
 
 
   const handleMarkAsRead = (notificationId) => {
-    console.log('Marcar como leída:', notificationId);
   };
   
   const handleViewAllNotifications = () => {
@@ -521,8 +472,6 @@ const toggleSidebar = () => {
   };
 
   const handlePasswordChangeSuccess = async () => {
-    console.log('✅ Contraseña cambiada exitosamente');
-    
     setUser(prevUser => ({
       ...prevUser,
       primer_login: false

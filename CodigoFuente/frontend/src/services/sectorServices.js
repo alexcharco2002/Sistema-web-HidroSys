@@ -52,7 +52,6 @@ class SectorsService {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
@@ -81,11 +80,10 @@ class SectorsService {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
       return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud de sectores:', error);
 
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -127,7 +125,7 @@ class SectorsService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo sectores:', error);
+      console.error('Error al obtener sectores:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener sectores'
@@ -148,7 +146,7 @@ class SectorsService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo sector:', error);
+      console.error('Error al obtener sector:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener sector'
@@ -182,7 +180,7 @@ class SectorsService {
       };
 
     } catch (error) {
-      console.error('❌ Error creando sector:', error);
+      console.error('Error al crear sector:', error);
 
       let cleanMessage = 'Error al crear el sector';
 
@@ -239,7 +237,7 @@ class SectorsService {
       };
 
     } catch (error) {
-      console.error('❌ Error actualizando sector:', error);
+      console.error('Error al actualizar sector:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar sector'
@@ -276,7 +274,7 @@ class SectorsService {
       };
 
     } catch (error) {
-      console.error('❌ Error eliminando sector:', error);
+      console.error('Error al eliminar sector:', error);
 
       return {
         success: false,
@@ -305,7 +303,7 @@ class SectorsService {
       };
 
     } catch (error) {
-      console.error('❌ Error cambiando estado:', error);
+      console.error('Error al cambiar estado del sector:', error);
       return {
         success: false,
         message: error.message || 'Error al cambiar estado del sector'
@@ -351,7 +349,7 @@ class SectorsService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
+      console.error('Error al obtener estadisticas de sectores:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'

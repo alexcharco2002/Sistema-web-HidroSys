@@ -315,7 +315,6 @@ const PaymentsSection = () => {
 
   const cargarFacturasPendientesAfiliado = useCallback(async (idUsuarioAfi, idMedidor) => {
     if (!idUsuarioAfi || !idMedidor || !periodoSeleccionado) {
-      console.warn('⚠️ No hay periodo seleccionado');
       return null;
     }
 
@@ -324,14 +323,11 @@ const PaymentsSection = () => {
     
     // ✅ Verificar caché sin causar re-renders
     if (facturasPendientesCache.current[cacheKey]) {
-      console.log('💾 Usando facturas pendientes desde caché');
       return facturasPendientesCache.current[cacheKey];
     }
 
     setLoadingFacturasPendientes(true);
     try {
-      console.log(`🔍 Cargando facturas pendientes para afiliado ${idUsuarioAfi}, periodo: ${periodoStr}`);
-      
       const result = await paymentsServices.getFacturasPendientesAfiliado(
         idUsuarioAfi,
         periodoStr,
@@ -353,7 +349,7 @@ const PaymentsSection = () => {
       }
       return null;
     } catch (error) {
-      console.error(`❌ Error cargando facturas pendientes:`, error);
+      console.error('Error al cargar facturas pendientes:', error);
       return null;
     } finally {
       setLoadingFacturasPendientes(false);
@@ -364,7 +360,6 @@ const PaymentsSection = () => {
   const fetchFacturasPeriodo = useCallback(async () => {
     //  Validación temprana
     if (!periodoSeleccionado) {
-      console.warn('⚠️ No hay periodo seleccionado');
       return;
     }
 
@@ -373,8 +368,6 @@ const PaymentsSection = () => {
 
     try {
       const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
-      
-      console.log(`📅 Cargando facturas del periodo: ${periodoStr}`);
       
       const pageLimit = 100;
       let skip = 0;
@@ -403,7 +396,6 @@ const PaymentsSection = () => {
       result = { ...result, data: facturasPeriodo };
 
       if (result.success && result.data) {
-        console.log('📦 Facturas cargadas:', result.data.length);
         setFacturas(result.data);
 
         // ✅ FILTRAR SOLO FACTURAS PENDIENTES/VENCIDAS ANTES DE CARGAR ADEUDOS
@@ -411,8 +403,6 @@ const PaymentsSection = () => {
           f => f.estado_factura === 'pendiente' || f.estado_factura === 'vencida'
         );
         
-        console.log(`🔍 Facturas pendientes/vencidas: ${facturasPendientesOVencidas.length} de ${result.data.length}`);
-
         // ✅ Extraer afiliados únicos SOLO de facturas pendientes/vencidas
         const paresUnicos = [
             ...new Map(
@@ -431,9 +421,6 @@ const PaymentsSection = () => {
         );
         await Promise.all(promesas);
 
-        
-        console.log('✅ Adeudos cargados solo para afiliados con deuda activa');
-        
         // 🔥 ACTUALIZAR EL PERIODO CON LOS DATOS REALES
         const montoTotal = result.data.reduce((sum, f) => 
           sum + parseFloat(f.total || 0), 0
@@ -466,12 +453,17 @@ const PaymentsSection = () => {
         }, 0);
         
         // Actualizar periodo con estadísticas
-        setPeriodos(prevPeriodos => 
+        if (filterStatus === 'all') {
+          setPeriodos(prevPeriodos => 
           prevPeriodos.map(p => 
             p.mes === periodoSeleccionado.mes && p.anio === periodoSeleccionado.anio 
               ? {
                   ...p,
                   total_facturas: result.data.length,
+                  total_pagadas: result.data.filter(f => f.estado_factura === 'pagada').length,
+                  total_pendientes: result.data.filter(f => f.estado_factura === 'pendiente').length,
+                  total_vencidas: result.data.filter(f => f.estado_factura === 'vencida').length,
+                  total_anuladas: result.data.filter(f => f.estado_factura === 'anulada').length,
                   monto_total: montoTotal,
                   monto_cobrado: montoCobrado,
                   monto_pendiente: montoPendiente,
@@ -482,22 +474,15 @@ const PaymentsSection = () => {
                 }
               : p
           )
-        );
-        
-        console.log('📊 Estadísticas actualizadas:', {
-          total_facturas: result.data.length,
-          monto_total: montoTotal,
-          monto_cobrado: montoCobrado,
-          monto_pendiente: montoPendiente
-        });
-        
+          );
+        }
       } else {
         setError('No se pudieron cargar las facturas');
         setFacturas([]);
       }
     } catch (err) {
       setError('Error al cargar facturas');
-      console.error('❌ Error en fetchFacturasPeriodo:', err);
+      console.error('Error al cargar facturas:', err);
       setFacturas([]);
     } finally {
       setLoading(false);
@@ -784,12 +769,6 @@ const PaymentsSection = () => {
       try {
         const result = await paymentsServices.getFacturaDetalle(idFacturaDetalle);
         if (result.success && result.data) {
-          console.log('Detalle factura cargado para modal de pagos:', {
-            idFactura: idFacturaDetalle,
-            detalles_backend: result.data?.detalles?.length || 0,
-            detalles_lista: pago?.detalles?.length || 0,
-            data: result.data
-          });
           setSelectedPago(prev => normalizarFacturaDetalle(result.data, prev || pago));
         }
       } catch (error) {
@@ -815,38 +794,21 @@ const openAdeudosModal = async (factura, datosAdeudo) => {
     alert('ℹ️ No hay adeudos pendientes anteriores para mostrar');
     return;
   }
-  
-  console.log('📊 Abriendo modal de adeudos:', {
-    meses: datosAdeudo.meses_adeudo,
-    total: datosAdeudo.total_adeudado,
-    facturas: datosAdeudo.facturas?.length
-  });
-  
   // ✅ CARGAR RESUMEN DE LA FACTURA ACTUAL
   setLoadingResumen(true);
   
   try {
-    console.log('📊 Cargando resumen de factura actual:', factura.id_factura);
     const resultado = await paymentsServices.calcularResumenPago(factura.id_factura);
     
     if (resultado.success) {
       setResumenPago(resultado.data);
-      console.log('✅ Resumen de factura actual cargado:', resultado.data);
-      
-      // Validar estructura
-      if (!resultado.data.totales) {
-        console.warn('⚠️ Falta propiedad "totales" en el resumen');
-      }
-      if (!resultado.data.desglose) {
-        console.warn('⚠️ Falta propiedad "desglose" en el resumen');
-      }
     } else {
-      console.error('❌ Error al cargar resumen:', resultado.message);
+      console.error('Error al cargar resumen de factura:', resultado.message);
       setResumenPago(null);
       alert('⚠️ No se pudo cargar el desglose de la factura actual. Continuando con datos básicos.');
     }
   } catch (error) {
-    console.error('❌ Error al calcular resumen:', error);
+    console.error('Error al calcular resumen:', error);
     setResumenPago(null);
     alert('⚠️ Error al calcular desglose. Mostrando solo totales.');
   } finally {
@@ -940,12 +902,6 @@ const closePagoMultipleModal = () => {
         
         // Usar el total calculado por el backend (incluye mora)
         totalAdeudado = facturasPendientes.total_adeudado;
-        
-        console.log(' Facturas pendientes cargadas:', {
-          total: facturasOrdenadas.length,
-          meses_adeudo: facturasPendientes.meses_adeudo,
-          total_adeudado: totalAdeudado
-        });
       } else {
         // Si no hay facturas pendientes, solo usar la factura actual
         facturasOrdenadas = [{
@@ -967,10 +923,9 @@ const closePagoMultipleModal = () => {
 
       //  4. Validar y guardar resumen de pago
       if (resultado.success) {
-        console.log(' Resumen de pago cargado:', resultado.data);
         setResumenPago(resultado.data);
       } else {
-        console.error('❌ Error al cargar resumen:', resultado.message);
+        console.error('Error al cargar resumen de pago:', resultado.message);
         setResumenPago(null);
       }
 
@@ -989,7 +944,7 @@ const closePagoMultipleModal = () => {
       setShowCreateModal(true);
 
     } catch (error) {
-      console.error('❌ Error al abrir modal de pago:', error);
+      console.error('Error al abrir modal de pago:', error);
       alert('Error al cargar información de pago: ' + error.message);
       setResumenPago(null);
     } finally {
@@ -1113,8 +1068,6 @@ const closePagoMultipleModal = () => {
         incluir_consumos: itemsAPagar.consumos
       };
 
-      console.log('💰 Registrando pago...', pagoData);
-
       // 🚀 PASO 1: CREAR EL PAGO (operación crítica)
       const result = await paymentsServices.createPago(pagoData);
       
@@ -1123,7 +1076,6 @@ const closePagoMultipleModal = () => {
       }
 
       const pagoCreado = result.data;
-      console.log('✅ Pago registrado:', pagoCreado.id_pago);
 
       // ✅ CALCULAR CORRECTAMENTE considerando pagos ANTERIORES
       const montoPagadoAnterior = parseFloat(selectedFactura.monto_pagado) || 0;
@@ -1135,15 +1087,6 @@ const closePagoMultipleModal = () => {
       const estadoReal = nuevoSaldoPendiente <= 0.01 ? 'pagada' : 
                         nuevoMontoPagado > 0 ? 'parcial' : 
                         selectedFactura.estado_factura;
-
-      console.log('📊 Cálculo optimista:', {
-        total_factura: totalFactura,
-        pagado_anterior: montoPagadoAnterior,
-        pago_nuevo: montoAPagar,
-        nuevo_total_pagado: nuevoMontoPagado,
-        nuevo_saldo: nuevoSaldoPendiente,
-        nuevo_estado: estadoReal
-      });
 
       // Crear factura actualizada con los valores correctos
       const facturaOptimista = {
@@ -1196,16 +1139,13 @@ const closePagoMultipleModal = () => {
         // Generar y guardar PDF
         await (async () => {
           try {
-            console.log('📄 Generando comprobante PDF...');
             const pdfFile = await generatePaymentPDF(pagoCreado, facturaOptimista);
             
             if (pdfFile && pdfFile.size > 0) {
-              console.log('☁️ Subiendo comprobante...');
               await paymentsServices.uploadComprobante(pagoCreado.id_pago, pdfFile);
-              console.log('✅ Comprobante guardado');
             }
           } catch (pdfError) {
-            console.error('⚠️ Error con comprobante:', pdfError);
+            console.error('Error al generar o subir comprobante:', pdfError);
             // No mostramos error al usuario, el pago ya se registró
           }
         })();
@@ -1213,7 +1153,6 @@ const closePagoMultipleModal = () => {
         // Recargar datos del servidor (verificar valores reales)
         await (async () => {
           try {
-            console.log('🔄 Recargando datos del servidor...');
             await fetchFacturasPeriodo();
             await fetchStats();
             
@@ -1231,18 +1170,14 @@ const closePagoMultipleModal = () => {
                 return rest;
               });
             }
-            
-            console.log('✅ Datos recargados del servidor');
           } catch (err) {
-            console.error('⚠️ Error al recargar datos:', err);
+            console.error('Error al recargar datos despues del pago:', err);
           }
         })();
-        console.log('Todas las operaciones completadas');
         } catch (backgroundError) {
           console.error('Error en operaciones en segundo plano:', backgroundError);
         }
       })();
-        console.log('🎉 Todas las operaciones completadas');
       // Preparar datos para mostrar comprobante
       setPagoRegistrado(pagoCreado);
       setFacturaDelPago(facturaOptimista);
@@ -1253,7 +1188,7 @@ const closePagoMultipleModal = () => {
       }, 300);
 
     } catch (error) {
-      console.error('❌ Error al registrar pago:', error);
+      console.error('Error al registrar pago:', error);
       setError(error.message || 'Error al registrar el pago');
       alert(`Error al registrar pago:\n${error.message || 'Error desconocido'}`);
     } finally {
@@ -1326,9 +1261,6 @@ const closePagoMultipleModal = () => {
     setLoading(true);
 
     try {
-      console.log('🔄 Anulando pago...');
-      console.log(`   Regenerar factura: ${regenerarFactura ? 'SÍ' : 'NO'}`);
-
       // ✅ Llamar al servicio con el flag de regeneración
       const result = await paymentsServices.anularPagoConRegeneracion(
         pagoAAnular.id_pago,
@@ -1361,12 +1293,11 @@ const closePagoMultipleModal = () => {
 
         // Recargar datos
         await Promise.all([fetchFacturasPeriodo(), fetchStats()]);
-        console.log('✅ Datos recargados');
       } else {
         alert(`❌ Error: ${result.message}`);
       }
     } catch (error) {
-      console.error('❌ Error al anular pago:', error);
+      console.error('Error al anular pago:', error);
       alert(`❌ Error al anular pago: ${error.message || 'Error desconocido'}`);
     } finally {
       setLoading(false);
@@ -1417,7 +1348,6 @@ const closePagoMultipleModal = () => {
 
     try {
       const currentUser = authService.getCurrentUser();
-      console.log('👤 currentUser completo:', JSON.stringify(currentUser));
       const idCajero = parseInt(
         currentUser?.id_usuario_sistema ?? currentUser?.idusuariosistema ?? 0,
         10
@@ -1469,10 +1399,6 @@ const pagoMultipleData = {
   observaciones: nuevoPago.observaciones || null,
 };
 
-// 🔍 Log para verificar (puedes quitarlo después)
-console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, null, 2));
-      console.log('💰 Procesando pago múltiple...', pagoMultipleData);
-
       // 🚀 PASO 1: CREAR EL PAGO (operación crítica)
       const result = await paymentsServices.createPagoMultiple(pagoMultipleData);
 
@@ -1481,7 +1407,6 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
       }
 
       const response = result.data;
-      console.log('✅ Pago múltiple registrado:', response.pagos_creados);
 
       // ✅ ACTUALIZACIÓN OPTIMISTA - Actualizar facturas inmediatamente
       const facturasIds = facturasSeleccionadasPago.map(f => f.id_factura ?? f.idfactura);
@@ -1528,8 +1453,6 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
         // Generar y guardar PDF EN TODOS LOS PAGOS
         (async () => {
           try {
-            console.log('📄 Generando comprobante múltiple...');
-            
             // ✅ INCLUIR TODOS LOS IDs
             const comprobanteData = {
               id_pago: response.pagos_creados[0],  // ID principal
@@ -1551,26 +1474,21 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
             );
 
             if (pdfFile && pdfFile.size > 0) {
-              console.log(`☁️ Subiendo comprobante a ${response.pagos_creados.length} pagos...`);
-              
               // ✅ SUBIR A TODOS LOS PAGOS
               const uploadPromises = response.pagos_creados.map(async (idPago) => {
                 try {
                   await paymentsServices.uploadComprobante(idPago, pdfFile);
-                  console.log(`✅ Comprobante guardado en pago ${idPago}`);
                   return { idPago, success: true };
                 } catch (error) {
-                  console.error(`❌ Error en pago ${idPago}:`, error);
+                  console.error(`Error al subir comprobante del pago ${idPago}:`, error);
                   return { idPago, success: false };
                 }
               });
 
-              const resultados = await Promise.all(uploadPromises);
-              const exitosos = resultados.filter(r => r.success).length;
-              console.log(`✅ Comprobantes guardados: ${exitosos}/${response.pagos_creados.length}`);
+              await Promise.all(uploadPromises);
             }
           } catch (pdfError) {
-            console.error('⚠️ Error con comprobante:', pdfError);
+            console.error('Error al generar o subir comprobante multiple:', pdfError);
           }
         })(),
 
@@ -1578,7 +1496,6 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
         // Recargar datos del servidor
         (async () => {
           try {
-            console.log('🔄 Recargando datos del servidor...');
             await fetchFacturasPeriodo();
             await fetchStats();
             
@@ -1596,15 +1513,11 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                 return rest;
               });
             }
-            
-            console.log('✅ Datos recargados del servidor');
           } catch (err) {
-            console.error('⚠️ Error al recargar datos:', err);
+            console.error('Error al recargar datos despues del pago multiple:', err);
           }
         })()
-      ]).then(() => {
-        console.log('🎉 Todas las operaciones completadas');
-      });
+      ]);
 
       // ✅ PREPARAR Y MOSTRAR COMPROBANTE
       const comprobanteDataModal = {
@@ -1648,7 +1561,7 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
       }, 300);
 
     } catch (error) {
-      console.error('❌ Error al procesar pago múltiple:', error);
+      console.error('Error al procesar pago multiple:', error);
       setError(error.message || 'Error al procesar pago múltiple');
       alert(`Error al procesar pago múltiple:\n${error.message || 'Error desconocido'}`);
     } finally {
@@ -1734,6 +1647,12 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
     return `${meses[mes - 1]} ${anio}`;
   };
 
+  const calcularPorcentajeFacturasCobradas = (periodo) => {
+    const totalFacturas = Number(periodo?.total_facturas || 0);
+    const totalPagadas = Number(periodo?.total_pagadas || 0);
+    return totalFacturas > 0 ? (totalPagadas / totalFacturas) * 100 : 0;
+  };
+
   // ============================================================
   // RENDERIZADO - VERIFICACIÓN DE PERMISOS
   // ============================================================
@@ -1817,8 +1736,7 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                 return periodosRecientes.map(periodo => {
                   const tieneFacturas  = periodo.tiene_facturas;
                   const esMesActual    = periodo.mes === mesActual && periodo.anio === anioActual;
-                  const pctCobrado     = periodo.porcentaje_cobrado   ?? 0;
-                  //const pctPendiente   = periodo.porcentaje_pendiente ?? 0;
+                  const pctCobrado     = calcularPorcentajeFacturasCobradas(periodo);
                   const todoCobrado    = pctCobrado >= 100;
 
                   return (
@@ -1840,7 +1758,7 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                       {/* INFO PRINCIPAL / BARRA DE PROGRESO ÚNICA — Estilo Lectura */}
                       <div className="periodo-progress-container">
                         <div className="periodo-card-info">
-                          {periodo.total_pagadas || 0} / {periodo.total_facturas || 0} facturas cobradas
+                          {periodo.total_pagadas || 0} / {periodo.total_facturas || 0} facturas pagadas
                         </div>
                         <div className="periodo-progress-bar">
                           <div
@@ -1956,14 +1874,14 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                                 key={`${periodo.mes}-${periodo.anio}`}
                                 className="historial-mes-chip completo"
                                 onClick={() => handlePeriodoChange(periodo.mes, periodo.anio)}
-                                title={`${Math.round(periodo.porcentaje_cobrado ?? 0)}% recaudado (${periodo.total_pagos} pagos)`}
+                                title={`${Math.round(calcularPorcentajeFacturasCobradas(periodo))}% recaudado (${periodo.total_facturas || 0} facturas)`}
                               >
                                 <span className="historial-mes-dot completo" />
                                 <span className="historial-mes-nombre">
                                   {nombresMeses[periodo.mes]}
                                 </span>
                                 <span className="historial-mes-pct">
-                                  {Math.round(periodo.porcentaje_cobrado ?? 0)}%
+                                  {Math.round(calcularPorcentajeFacturasCobradas(periodo))}%
                                 </span>
                               </button>
                             ))}
@@ -4349,9 +4267,8 @@ console.log('📦 Payload pago múltiple:', JSON.stringify(pagoMultipleData, nul
                 comprobanteData.id_pago, 
                 comprobanteData.pdf_base64
               );
-              console.log('✅ Comprobante guardado en base de datos');
             } catch (error) {
-              console.error('Error guardando comprobante:', error);
+              console.error('Error al guardar comprobante:', error);
             }
           }}
         />

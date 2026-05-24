@@ -45,7 +45,7 @@ const HomeSection = ({ user, stats, dataLoading }) => {
         }
         setWeatherLoading(false);
       } catch (error) {
-        console.error('Error clima:', error);
+        console.error('Error cargando clima del panel general:', error);
         setWeatherLoading(false);
       }
     };
@@ -72,15 +72,10 @@ const HomeSection = ({ user, stats, dataLoading }) => {
     const buildAvailableModules = () => {
       const modules = [];
       const userPermissions = authService.getUserPermissions() || [];
-      console.log('🔍 HomeSection - Analizando permisos:', {
-        total: userPermissions.length,
-        permisos: userPermissions.map(p => p.nombre_accion)
-      });
 
       Object.entries(MODULE_DEFINITIONS).forEach(([key, module]) => {
         if (module.alwaysVisible) {
           modules.push(module);
-          console.log('✅ Módulo siempre visible:', module.label);
           return;
         }
 
@@ -94,14 +89,10 @@ const HomeSection = ({ user, stats, dataLoading }) => {
 
         if (hasPermission) {
           modules.push(module);
-          console.log('✅ Módulo con permiso:', module.label);
-        } else {
-          console.log('❌ Sin permiso para:', module.label, '(key:', key, ')');
         }
       });
 
       modules.sort((a, b) => a.order - b.order);
-      console.log('📦 Módulos disponibles en HomeSection:', modules.length, modules.map(m => m.label));
       return modules;
     };
 
@@ -112,11 +103,8 @@ const HomeSection = ({ user, stats, dataLoading }) => {
   }, [user]);
 
   const handleModuleClick = (module) => {
-    console.log('🎯 Navegando al módulo:', module.label);
     const rolePath = user?.rol?.nombre_rol?.toLowerCase() || 'usuario';
     const targetPath = `/${rolePath}/${module.path}`;
-    console.log('📍 Ruta dinámica:', targetPath);
-    console.log('👤 Rol del usuario:', user?.rol?.nombre_rol);
     navigate(targetPath);
   };
 

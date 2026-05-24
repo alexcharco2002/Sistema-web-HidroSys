@@ -54,8 +54,7 @@ class LimitesService {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
-      
+            
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
@@ -68,8 +67,7 @@ class LimitesService {
 
       // ✅ Manejar 204 No Content (sin body) - DEBE IR ANTES de response.ok
       if (response.status === 204) {
-        console.log(`✅ API Response: 204 No Content`);
-        return null;
+                return null;
       }
 
       if (!response.ok) {
@@ -90,11 +88,10 @@ class LimitesService {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
-      return data;
+            return data;
       
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud API:', error);
       
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -134,7 +131,7 @@ class LimitesService {
         data: Array.isArray(data) ? data : []
       };
     } catch (error) {
-      console.error('❌ Error listando límites:', error);
+      console.error('Error listando límites:', error);
       return {
         success: false,
         message: error.message || 'Error al listar límites geográficos',
@@ -155,7 +152,7 @@ class LimitesService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo límite:', error);
+      console.error('Error obteniendo límite:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener el límite geográfico'
@@ -175,7 +172,7 @@ class LimitesService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo límite activo:', error);
+      console.error('Error obteniendo límite activo:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener el límite activo'
@@ -204,7 +201,7 @@ class LimitesService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error creando límite:', error);
+      console.error('Error creando límite:', error);
       return {
         success: false,
         message: error.message || 'Error al crear el límite geográfico'
@@ -231,7 +228,7 @@ class LimitesService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error actualizando límite:', error);
+      console.error('Error actualizando límite:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar el límite geográfico'
@@ -256,7 +253,7 @@ class LimitesService {
         message: 'Límite geográfico eliminado exitosamente'
       };
     } catch (error) {
-      console.error('❌ Error eliminando límite:', error);
+      console.error('Error eliminando límite:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar el límite geográfico'
@@ -282,7 +279,7 @@ class LimitesService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error activando límite:', error);
+      console.error('Error activando límite:', error);
       return {
         success: false,
         message: error.message || 'Error al activar el límite geográfico'
@@ -308,7 +305,7 @@ class LimitesService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error validando coordenadas:', error);
+      console.error('Error validando coordenadas:', error);
       return {
         success: false,
         message: error.message || 'Error al validar las coordenadas'

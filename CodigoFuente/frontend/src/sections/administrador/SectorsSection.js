@@ -66,12 +66,6 @@ const SectorsSection = () => {
       canToggleStatus
     });
 
-    console.log('🔐 Permisos del usuario en módulo Sectores:', {
-      canCreate,
-      canRead,
-      canUpdate,
-      canDelete
-    });
   };
 
   // Fetch sectors
@@ -92,14 +86,13 @@ const fetchSectors = useCallback(async () => {
 
     if (result.success) {
       setSectors(result.data);
-      console.log('✅ Sectores cargados:', result.data.length);
     } else {
       setError(result.message);
       console.error('Error al cargar sectores:', result.message);
     }
   } catch (err) {
     setError('Error al cargar sectores desde el servidor');
-    console.error('Error en fetchSectors:', err);
+    console.error('Error al cargar sectores desde el servidor:', err);
   } finally {
     setLoading(false);
   }
@@ -108,7 +101,6 @@ const fetchSectors = useCallback(async () => {
 // ✅ SOLO UN useEffect - se ejecuta al montar y cuando cambian los permisos
 useEffect(() => {
   if (permissions.canRead) {
-    console.log('🔄 Cargando sectores inicialmente...');
     fetchSectors();
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,7 +111,6 @@ useEffect(() => {
   if (!permissions.canRead) return;
   
   const timeoutId = setTimeout(() => {
-    console.log('🔍 Aplicando búsqueda:', debouncedSearchTerm);
     fetchSectors();
   }, 300); // 300ms de debounce
 

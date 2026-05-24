@@ -1165,7 +1165,7 @@ const ReportsSection = () => {
           }
         } catch (err) {
           setError('Error al generar el reporte');
-          console.error('❌ Error:', err);
+          console.error('Error al generar reporte:', err);
           setReporteData([]);
         } finally {
           setLoading(false);
@@ -1639,10 +1639,6 @@ const toggleTodasColumnas = (seleccionar) => {
       } else if (selectedModulo === 'MultasAfiliados') {
         result = await reportsServices.getReporteIndividualMultasAfiliados(codusuarioafi, filtrosPeriodo);
       }
-
-      console.log('📊 Resultado individual:', result);
-      console.log('📊 Total:', result?.total);
-      console.log('📊 Data[0]:', result?.data?.[0]);
 
       if (result.success) {
         setReporteData(result.data);

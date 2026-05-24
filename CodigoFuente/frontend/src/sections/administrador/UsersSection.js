@@ -156,7 +156,7 @@ const UsersSection = () => {
       setLoadingExcel(false);
 
     } catch (error) {
-      console.error(error);
+      console.error('Error al leer archivo Excel de usuarios:', error);
       setError("Error al leer el archivo Excel");
       setLoadingExcel(false);
     }
@@ -282,7 +282,7 @@ const UsersSection = () => {
       }
 
     } catch (error) {
-      console.error("Error en carga masiva:", error);
+      console.error("Error en carga masiva de usuarios:", error);
 
       setError(
         error.message ||
@@ -390,12 +390,6 @@ const UsersSection = () => {
       canToggleStatus
     });
 
-    console.log('🔐 Permisos del usuario en módulo Usuarios:', {
-      canCreate,
-      canRead,
-      canUpdate,
-      canDelete
-    });
   };
 
   // ==================== FUNCIONES DE CARGA DE DATOS ====================
@@ -408,7 +402,6 @@ const UsersSection = () => {
       const result = await usersService.getRoles();
       if (result.success) {
         setRoles(result.data);
-        console.log('✅ Roles cargados:', result.data);
       } else {
         console.error('Error cargando roles:', result.message);
       }

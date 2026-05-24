@@ -250,7 +250,6 @@ const GeolocationSection = () => {
         accuracy: pos.coords.accuracy,
       }),
       (err) => {
-        console.warn('No se pudo obtener ubicación:', err.message);
         setLocationError(err.message);
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -409,7 +408,7 @@ const handleCreateMedidor = async (e) => {
       setCreateError(result.message || 'Error al crear el medidor');
     }
   } catch (err) {
-    console.error('Error completo:', err);
+    console.error('Error al crear medidor desde geolocalizacion:', err);
     setCreateError('Error de conexión al crear el medidor');
   } finally {
     setCreateSaving(false);

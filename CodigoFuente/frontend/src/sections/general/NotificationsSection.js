@@ -97,8 +97,6 @@ useEffect(() => {
                  authService.hasPermission('notificaciones', 'operaciones crud');
 
   setPermissions({ canCreate, canRead, canUpdate, canDelete });
-
-  console.log('🔐 Permisos en módulo Notificaciones:', { canCreate, canRead, canUpdate, canDelete });
 }, []);
 
   // ==================== HANDLERS MEMORIZADOS ====================
@@ -129,24 +127,20 @@ const loadNotifications = useCallback(async () => {
 
   setLoading(true);
   setError('');
-  
-  console.log('📡 Cargando notificaciones...');
 
   try {
     const result = await notificationsService.getNotifications();
-    console.log('📦 Resultado del servicio:', result);
     
     if (result.success) {
       const transformed = notificationsService.transformNotifications(result.data);
-      console.log('✅ Notificaciones transformadas:', transformed);
       setNotifications(transformed);
       setSelectedNotificationIds([]);
     } else {
-      console.error('❌ Error del servicio:', result.message);
+      console.error('Error del servicio:', result.message);
       setError(result.message);
     }
   } catch (error) {
-    console.error('💥 Error al cargar notificaciones:', error);
+    console.error('Error al cargar notificaciones:', error);
     setError('Error al cargar notificaciones');
   } finally {
     setLoading(false);
@@ -328,20 +322,11 @@ const resetForm = () => {
 
   // ==================== HANDLERS ====================
   const handleUserSelection = (userId) => {
-      console.log('🔵 Clic en usuario:', userId);
-      console.log('📋 Estado actual:', selectedUsers);
-      
       setSelectedUsers(prev => {
           if (prev.includes(userId)) {
-              // Remover
-              const newState = prev.filter(id => id !== userId);
-              console.log('❌ Removiendo:', newState);
-              return newState;
+              return prev.filter(id => id !== userId);
           } else {
-              // Agregar
-              const newState = [...prev, userId];
-              console.log('✅ Agregando:', newState);
-              return newState;
+              return [...prev, userId];
           }
       });
   };
@@ -445,8 +430,6 @@ const handleSubmit = async (e) => {
     idusuariosistema: null
   };
 
-  console.log('📤 Enviando mantenimiento:', payload);
-
   const result = await notificationsService.createMaintenance(payload);
   
   if (result.success) {
@@ -460,7 +443,7 @@ const handleSubmit = async (e) => {
   }
 }
   } catch (error) {
-    console.error('❌ Error al crear notificación:', error);
+    console.error('Error al crear notificación:', error);
     setError('Error al crear la notificación');
   }
 };
@@ -1182,10 +1165,7 @@ return (
                                 <div 
                                   key={user.id} 
                                   className="notif-user-item"
-                                  onClick={() => {
-                                    console.log('🔵 Clic en usuario ID:', user.id);
-                                    handleUserSelection(user.id);
-                                  }}
+                                  onClick={() => handleUserSelection(user.id)}
                                 >
                                   <input
                                     type="checkbox"

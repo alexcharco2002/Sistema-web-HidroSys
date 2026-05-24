@@ -58,8 +58,6 @@ class InvoicesServices {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
-      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
       
@@ -88,11 +86,10 @@ class InvoicesServices {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
       return data;
       
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud de facturas:', error);
       
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -143,7 +140,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error obteniendo facturas:', error);
+      console.error('Error al obtener facturas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener facturas'
@@ -164,7 +161,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error obteniendo factura:', error);
+      console.error('Error al obtener factura:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener factura'
@@ -193,7 +190,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error aplicando descuento:', error);
+      console.error('Error al aplicar descuento:', error);
       return {
         success: false,
         message: error.message || 'Error al aplicar descuento'
@@ -226,7 +223,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
+      console.error('Error al obtener estadisticas de facturas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
@@ -274,7 +271,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error creando factura:', error);
+      console.error('Error al crear factura:', error);
       return {
         success: false,
         message: error.message || 'Error al crear factura'
@@ -315,7 +312,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error actualizando factura:', error);
+      console.error('Error al actualizar factura:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar factura'
@@ -348,7 +345,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error anulando factura:', error);
+      console.error('Error al anular factura:', error);
       return {
         success: false,
         message: error.message || 'Error al anular factura'
@@ -378,7 +375,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error marcando vencidas:', error);
+      console.error('Error al marcar facturas vencidas:', error);
       return {
         success: false,
         message: error.message || 'Error al marcar facturas vencidas'
@@ -403,7 +400,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error obteniendo detalles:', error);
+      console.error('Error al obtener detalles de factura:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener detalles'
@@ -438,7 +435,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error creando detalle:', error);
+      console.error('Error al crear detalle de factura:', error);
       return {
         success: false,
         message: error.message || 'Error al crear detalle'
@@ -476,7 +473,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error actualizando detalle:', error);
+      console.error('Error al actualizar detalle de factura:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar detalle'
@@ -505,7 +502,7 @@ class InvoicesServices {
       };
       
     } catch (error) {
-      console.error('❌ Error eliminando detalle:', error);
+      console.error('Error al eliminar detalle de factura:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar detalle'
@@ -547,7 +544,7 @@ async getPeriodosDisponibles() {
       data
     };
   } catch (error) {
-    console.error('❌ Error obteniendo periodos de facturas:', error);
+    console.error('Error al obtener periodos de facturas:', error);
     return {
       success: false,
       message: error.message || 'Error al obtener periodos disponibles'
@@ -567,13 +564,12 @@ async getPeriodosDisponibles() {
         { method: 'GET' }
       );
       
-      console.log('✅ Servicios activos cargados:', data);
       return {
         success: true,
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo servicios activos:', error);
+      console.error('Error al obtener servicios activos:', error);
       return {
         success: false,
         data: [],
@@ -605,7 +601,7 @@ async getPeriodosDisponibles() {
         message: data.message || 'Servicios aplicados correctamente'
       };
     } catch (error) {
-      console.error('❌ Error aplicando servicios:', error);
+      console.error('Error al aplicar servicios:', error);
       return {
         success: false,
         message: error.message || 'Error al aplicar servicios'
@@ -634,7 +630,7 @@ async getPeriodosDisponibles() {
         ...result
       };
     } catch (error) {
-      console.error('❌ Error aplicando servicios masivo:', error);
+      console.error('Error al aplicar servicios masivamente:', error);
       return {
         success: false,
         message: error.message || 'Error al aplicar servicios'

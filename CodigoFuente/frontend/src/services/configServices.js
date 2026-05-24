@@ -57,8 +57,7 @@ class ConfigService {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
-      const controller = new AbortController();
+            const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
       const response = await fetch(url, {
@@ -86,11 +85,10 @@ class ConfigService {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
-      return data;
+            return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud API:', error);
 
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -132,7 +130,7 @@ class ConfigService {
       };
 
     } catch (error) {
-      console.error('❌ Error cambiando contraseña:', error);
+      console.error('Error cambiando contraseña:', error);
       
       let cleanMessage = 'Error al cambiar la contraseña';
       
@@ -195,7 +193,7 @@ class ConfigService {
     };
 
   } catch (error) {
-    console.error('❌ Error listando backups:', error);
+    console.error('Error listando backups:', error);
     return {
       success: false,
       message: error.message || 'Error al listar backups',
@@ -246,7 +244,7 @@ class ConfigService {
       };
 
     } catch (error) {
-      console.error('❌ Error creando backup:', error);
+      console.error('Error creando backup:', error);
       return {
         success: false,
         message: error.message || 'Error al crear el backup'
@@ -279,7 +277,7 @@ class ConfigService {
       };
 
     } catch (error) {
-      console.error('❌ Error restaurando backup:', error);
+      console.error('Error restaurando backup:', error);
       return {
         success: false,
         message: error.message || 'Error al restaurar el backup'
@@ -309,7 +307,7 @@ class ConfigService {
       };
 
     } catch (error) {
-      console.error('❌ Error eliminando backup:', error);
+      console.error('Error eliminando backup:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar el backup'
@@ -332,8 +330,7 @@ async downloadBackup(filename) {
     const token = authService.getToken('token');
     if (!token) throw new Error('Usuario no autenticado');
 
-    console.log(`📥 Iniciando descarga del backup: ${filename}`);
-
+    
     const response = await fetch(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.downloadBackup(filename)}`, {
       method: 'GET',
       headers: {
@@ -348,8 +345,7 @@ async downloadBackup(filename) {
 
     // Obtener el blob
     const blob = await response.blob();
-    console.log(`📦 Blob recibido: ${blob.size} bytes`);
-
+    
     if (blob.size === 0) {
       throw new Error('El archivo descargado está vacío');
     }
@@ -368,10 +364,8 @@ async downloadBackup(filename) {
         const writable = await handle.createWritable();
         await writable.write(blob);
         await writable.close();
-        console.log('✅ Backup guardado con File System API');
-      } catch (fsError) {
-        console.log('Usuario canceló o error en File System API, usando fallback');
-        throw fsError;
+              } catch (fsError) {
+                throw fsError;
       }
     } else {
       // ✅ Fallback para navegadores que no soportan File System API
@@ -381,8 +375,7 @@ async downloadBackup(filename) {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      console.log('✅ Backup descargado con fallback');
-    }
+          }
 
     return {
       success: true,
@@ -397,7 +390,7 @@ async downloadBackup(filename) {
       };
     }
 
-    console.error('❌ Error descargando backup:', error);
+    console.error('Error descargando backup:', error);
     return {
       success: false,
       message: error.message || 'Error al descargar el backup'

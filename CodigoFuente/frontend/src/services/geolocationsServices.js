@@ -98,7 +98,6 @@ class GeolocalizacionService {
     } else {
       const cached = this._getCache(CACHE_KEY);
       if (cached) {
-        console.log('📦 GEO: usando caché de medidores');
         return { success: true, data: cached, fromCache: true };
       }
     }
@@ -109,10 +108,9 @@ class GeolocalizacionService {
       if (lista.length > 0) this._setCache(CACHE_KEY, lista);
       return { success: true, data: lista, fromCache: false };
     } catch (error) {
-      console.error('❌ Error obteniendo medidores geo:', error);
+      console.error('Error al obtener medidores de geolocalizacion:', error);
       const stale = this._cache[CACHE_KEY]?.data;
       if (stale) {
-        console.warn('⚠️ GEO: usando caché expirado como fallback');
         return { success: true, data: stale, fromCache: true, stale: true };
       }
       return { success: false, message: error.message, data: [] };

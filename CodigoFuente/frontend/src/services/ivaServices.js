@@ -54,8 +54,7 @@ class IVAService {
         }
 
         try {
-            console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
-            
+                        
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
             
@@ -68,8 +67,7 @@ class IVAService {
 
             // ✅ Manejar 204 No Content (sin body) - DEBE IR ANTES de response.ok
             if (response.status === 204) {
-                console.log(`✅ API Response: 204 No Content`);
-                return null;
+                                return null;
             }
 
             if (!response.ok) {
@@ -90,11 +88,10 @@ class IVAService {
             }
 
             const data = await response.json();
-            console.log(`✅ API Response:`, data);
-            return data;
+                        return data;
 
         } catch (error) {
-            console.error(`❌ API Error:`, error);
+            console.error('Error en solicitud API:', error);
             
             if (error.name === 'AbortError') {
                 throw new Error('La petición tardó demasiado tiempo');
@@ -133,7 +130,7 @@ class IVAService {
                 data: Array.isArray(data) ? data : []
             };
         } catch (error) {
-            console.error('❌ Error listando IVAs:', error);
+            console.error('Error listando IVAs:', error);
             return {
                 success: false,
                 message: error.message || 'Error al listar IVAs',
@@ -154,7 +151,7 @@ class IVAService {
                 data: Array.isArray(data) ? data : []
             };
         } catch (error) {
-            console.error('❌ Error obteniendo opciones de IVA:', error);
+            console.error('Error obteniendo opciones de IVA:', error);
             return {
                 success: false,
                 message: error.message || 'Error al obtener opciones de IVA',
@@ -175,7 +172,7 @@ class IVAService {
                 data: data
             };
         } catch (error) {
-            console.error('❌ Error obteniendo IVA activo:', error);
+            console.error('Error obteniendo IVA activo:', error);
             return {
                 success: false,
                 message: error.message || 'Error al obtener el IVA activo',
@@ -196,7 +193,7 @@ class IVAService {
                 data: data
             };
         } catch (error) {
-            console.error('❌ Error obteniendo estadísticas de IVA:', error);
+            console.error('Error obteniendo estadísticas de IVA:', error);
             return {
                 success: false,
                 message: error.message || 'Error al obtener estadísticas'
@@ -216,7 +213,7 @@ class IVAService {
                 data: data
             };
         } catch (error) {
-            console.error('❌ Error obteniendo IVA:', error);
+            console.error('Error obteniendo IVA:', error);
             return {
                 success: false,
                 message: error.message || 'Error al obtener el IVA'
@@ -250,7 +247,7 @@ class IVAService {
                 data: data
             };
         } catch (error) {
-            console.error('❌ Error creando IVA:', error);
+            console.error('Error creando IVA:', error);
             return {
                 success: false,
                 message: error.message || 'Error al crear el IVA'
@@ -282,7 +279,7 @@ class IVAService {
                 data: data
             };
         } catch (error) {
-            console.error('❌ Error actualizando IVA:', error);
+            console.error('Error actualizando IVA:', error);
             return {
                 success: false,
                 message: error.message || 'Error al actualizar el IVA'
@@ -312,7 +309,7 @@ class IVAService {
                 message: 'IVA eliminado exitosamente'
             };
         } catch (error) {
-            console.error('❌ Error eliminando IVA:', error);
+            console.error('Error eliminando IVA:', error);
             return {
                 success: false,
                 message: error.message || 'Error al eliminar el IVA'
@@ -343,7 +340,7 @@ class IVAService {
                 data: data
             };
         } catch (error) {
-            console.error('❌ Error activando IVA:', error);
+            console.error('Error activando IVA:', error);
             return {
                 success: false,
                 message: error.message || 'Error al activar el IVA'
@@ -370,7 +367,7 @@ class IVAService {
                 data: data
             };
         } catch (error) {
-            console.error('❌ Error desactivando IVA:', error);
+            console.error('Error desactivando IVA:', error);
             return {
                 success: false,
                 message: error.message || 'Error al desactivar el IVA'
@@ -396,7 +393,7 @@ class IVAService {
                 data: data
             };
         } catch (error) {
-            console.error('❌ Error en toggle de IVA:', error);
+            console.error('Error en toggle de IVA:', error);
             return {
                 success: false,
                 message: error.message || 'Error al cambiar estado del IVA'
@@ -463,7 +460,7 @@ class IVAService {
             }
             return false;
         } catch (error) {
-            console.error('❌ Error verificando IVA activo:', error);
+            console.error('Error verificando IVA activo:', error);
             return false;
         }
     }
@@ -479,15 +476,14 @@ class IVAService {
             // Si hay un IVA activo con es_aplicable=true, el toggle está ON
             const aplicarIva = result.success && result.data && result.data.es_aplicable === true;
             
-            console.log(`🎯 Estado toggle IVA: ${aplicarIva ? 'ACTIVADO' : 'DESACTIVADO'}`);
-            
+                        
             return {
                 success: true,
                 aplicar_iva: aplicarIva,
                 iva_activo: result.data
             };
         } catch (error) {
-            console.error('❌ Error obteniendo estado toggle:', error);
+            console.error('Error obteniendo estado toggle:', error);
             return {
                 success: true, // No fallar, solo asumir desactivado
                 aplicar_iva: false,
@@ -502,13 +498,12 @@ class IVAService {
      */
     async manejarToggleIVA(activar) {
         try {
-            console.log(`🔄 Manejando toggle IVA: ${activar ? 'ACTIVAR' : 'DESACTIVAR'}`);
-            
+                        
             // Usar el endpoint toggle del backend
             return await this.toggleIVA(activar);
             
         } catch (error) {
-            console.error('❌ Error manejando toggle de IVA:', error);
+            console.error('Error manejando toggle de IVA:', error);
             return {
                 success: false,
                 message: error.message || 'Error al cambiar el estado del IVA'

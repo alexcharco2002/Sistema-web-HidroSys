@@ -127,7 +127,7 @@ const AffiliateBillingSection = () => {
       }
       return [];
     } catch (error) {
-      console.error('❌ Error obteniendo medidores:', error);
+      console.error('Error al obtener medidores:', error);
       return [];
     }
   }, []);
@@ -147,7 +147,7 @@ const AffiliateBillingSection = () => {
       }
       return null;
     } catch (error) {
-      console.error('❌ Error obteniendo periodos:', error);
+      console.error('Error al obtener periodos:', error);
       return null;
     }
   }, []);
@@ -194,7 +194,6 @@ const AffiliateBillingSection = () => {
   useEffect(() => {
       const cargarFacturas = async () => {
           if (!permissions.canRead || !isInitialized) return;
-          const t0 = performance.now();
           
           setLoading(true);
           setError(null);
@@ -211,7 +210,7 @@ const AffiliateBillingSection = () => {
                   setError(result.message);
               }
           } catch (err) {
-              console.error(`❌ [FACTURAS] Error a los ${Math.round(performance.now() - t0)}ms`, err);
+              console.error('Error al cargar facturas:', err);
               setError('Error al cargar tus facturas');
           } finally {
               setLoading(false);

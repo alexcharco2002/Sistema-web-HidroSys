@@ -77,13 +77,6 @@ const ServiciosSection = () => {
       canViewHistory
     });
 
-    console.log('🔐 Permisos del usuario en módulo Servicios:', {
-      canCreate,
-      canRead,
-      canUpdate,
-      canDelete,
-      canViewHistory
-    });
   };
 
   const fetchServicios = useCallback(async () => {
@@ -105,9 +98,6 @@ const ServiciosSection = () => {
       } else if (filterVigencia === 'vencidas') {
         filters.es_vigente = false;
       }
-      
-      // 🔍 AGREGAR ESTE CONSOLE.LOG
-
       const result = await serviciosService.getServicios(filters);
       
       if (result.success) {
@@ -118,7 +108,7 @@ const ServiciosSection = () => {
       }
     } catch (err) {
       setError('Error al cargar servicios desde el servidor');
-      console.error('Error en fetchServicios:', err);
+      console.error('Error al cargar servicios:', err);
     } finally {
       setLoading(false);
     }
@@ -140,7 +130,6 @@ const ServiciosSection = () => {
 
   useEffect(() => {
     if (permissions.canRead) {
-      console.log('🔄 Componente montado, cargando servicios...');
       fetchServicios();
       fetchStats();
     }

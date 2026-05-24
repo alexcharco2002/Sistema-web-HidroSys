@@ -53,8 +53,6 @@ class RolesService {
     };
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
-      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
       
@@ -81,12 +79,11 @@ class RolesService {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
 
       return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud de roles:', error);
       
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -134,7 +131,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo roles:', error);
+      console.error('Error al obtener roles:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener roles',
@@ -160,7 +157,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo rol:', error);
+      console.error('Error al obtener rol:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener rol'
@@ -195,7 +192,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error creando rol:', error);
+      console.error('Error al crear rol:', error);
       return {
         success: false,
         message: error.message || 'Error al crear rol'
@@ -236,7 +233,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error actualizando rol:', error);
+      console.error('Error al actualizar rol:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar rol'
@@ -267,7 +264,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error eliminando rol:', error);
+      console.error('Error al eliminar rol:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar rol'
@@ -298,7 +295,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error cambiando estado del rol:', error);
+      console.error('Error al cambiar estado del rol:', error);
       return {
         success: false,
         message: error.message || 'Error al cambiar estado del rol'
@@ -327,7 +324,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo acciones del rol:', error);
+      console.error('Error al obtener acciones del rol:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener acciones del rol',
@@ -364,7 +361,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error creando acción:', error);
+      console.error('Error al crear accion:', error);
       return {
         success: false,
         message: error.message || 'Error al crear acción'
@@ -402,7 +399,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error actualizando acción:', error);
+      console.error('Error al actualizar accion:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar acción'
@@ -430,7 +427,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error eliminando acción:', error);
+      console.error('Error al eliminar accion:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar acción'
@@ -458,7 +455,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error cambiando estado de la acción:', error);
+      console.error('Error al cambiar estado de la accion:', error);
       return {
         success: false,
         message: error.message || 'Error al cambiar estado de la acción'
@@ -560,7 +557,7 @@ class RolesService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
+      console.error('Error al obtener estadisticas de roles:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
@@ -585,7 +582,7 @@ class RolesService {
       );
 
     } catch (error) {
-      console.error('❌ Error verificando permiso:', error);
+      console.error('Error al verificar permiso del rol:', error);
       return false;
     }
   }

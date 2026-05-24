@@ -25,8 +25,6 @@ const createFetchInterceptor = () => {
         const forceLogout = response.headers.get('X-Force-Logout') || 
                            response.headers.get('x-force-logout');
         
-        console.warn("⚠️ 401 detectado en interceptor global");
-        
         // Limpiar datos de sesión
         sessionStorage.removeItem('auth_token');
         sessionStorage.removeItem('session_token');
@@ -36,12 +34,10 @@ const createFetchInterceptor = () => {
         
         // ✅ Emitir evento diferente según el tipo de cierre
         if (forceLogout === 'true' || forceLogout === true) {
-          console.log('🚨 Logout forzado: Sesión iniciada en otro dispositivo');
           window.dispatchEvent(new CustomEvent("sessionForceLogout", {
             detail: { reason: 'concurrent_login' }
           }));
         } else {
-          console.log('⏰ Sesión expirada por tiempo');
           window.dispatchEvent(new Event("sessionExpired"));
         }
         
@@ -68,7 +64,6 @@ const createFetchInterceptor = () => {
  */
 export const initializeFetchInterceptor = () => {
   createFetchInterceptor();
-  console.log('✅ Fetch interceptor inicializado con detección de logout forzado');
 };
 
 

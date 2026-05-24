@@ -126,12 +126,6 @@ const RolesSection = () => {
       canToggleStatus
     });
 
-    console.log('🔐 Permisos del usuario en módulo Roles:', {
-      canCreate,
-      canRead,
-      canUpdate,
-      canDelete
-    });
   };
 
   
@@ -152,13 +146,12 @@ const RolesSection = () => {
       
       if (result.success) {
         setRoles(result.data);
-        console.log('✅ Roles cargados:', result.data);
       } else {
         setError(result.message);
       }
     } catch (err) {
       setError('Error al cargar roles');
-      console.error(err);
+      console.error('Error al cargar roles:', err);
     } finally {
       setLoading(false);
     }
@@ -190,13 +183,12 @@ const RolesSection = () => {
       
       if (result.success) {
         setRoleActions(result.data);
-        console.log('✅ Acciones cargadas:', result.data);
       } else {
         setError(result.message);
       }
     } catch (err) {
       setError('Error al cargar acciones');
-      console.error(err);
+      console.error('Error al cargar acciones del rol:', err);
     } finally {
       setLoadingActions(false);
     }
@@ -218,7 +210,6 @@ const RolesSection = () => {
       return;
     }
 
-    console.log('openModal llamado con:', { type, item });
     setModalType(type);
     setError(null);
     
@@ -231,7 +222,6 @@ const RolesSection = () => {
       });
       setShowModal(true);
     } else if (type === 'edit-role' && item) {
-      console.log('Abriendo modal de edición para rol:', item);
       setEditingRoleId(item.id_rol);
       setRoleFormData({
         nombre_rol: item.nombre_rol,
@@ -338,10 +328,6 @@ const RolesSection = () => {
     e.preventDefault();
     setError(null);
     
-    console.log('🔍 Modal Type:', modalType);
-    console.log('🔍 Editing Role ID:', editingRoleId);
-    console.log('🔍 Form Data:', roleFormData);
-    
     try {
       let result;
 
@@ -360,7 +346,6 @@ const RolesSection = () => {
           setError('No hay un rol seleccionado para editar');
           return;
         }
-        console.log('📝 Actualizando rol con ID:', editingRoleId);
         result = await rolesService.updateRole(editingRoleId, roleFormData);
       }
 
@@ -379,7 +364,7 @@ const RolesSection = () => {
         setError(result.message);
       }
     } catch (error) {
-      console.error('❌ Error al guardar rol:', error);
+      console.error('Error al guardar rol:', error);
       setError(error.message);
     }
   };

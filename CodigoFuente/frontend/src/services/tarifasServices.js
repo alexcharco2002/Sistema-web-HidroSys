@@ -59,7 +59,6 @@ class TarifasService {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
@@ -88,11 +87,10 @@ class TarifasService {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
       return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud de tarifas:', error);
 
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -135,7 +133,7 @@ class TarifasService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo tarifas:', error);
+      console.error('Error al obtener tarifas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener tarifas'
@@ -156,7 +154,7 @@ class TarifasService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo historial:', error);
+      console.error('Error al obtener historial de tarifa:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener historial de la tarifa'
@@ -179,7 +177,7 @@ class TarifasService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
+      console.error('Error al obtener estadisticas de tarifas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
@@ -202,7 +200,7 @@ class TarifasService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo tipos:', error);
+      console.error('Error al obtener tipos de tarifa:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener tipos de tarifa'
@@ -231,7 +229,7 @@ class TarifasService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo tarifas por tipo:', error);
+      console.error('Error al obtener tarifas por tipo:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener tarifas por tipo'
@@ -252,7 +250,7 @@ class TarifasService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo tarifa:', error);
+      console.error('Error al obtener tarifa:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener tarifa'
@@ -296,7 +294,7 @@ class TarifasService {
       };
 
     } catch (error) {
-      console.error('❌ Error creando tarifa:', error);
+      console.error('Error al crear tarifa:', error);
 
       let cleanMessage = 'Error al crear la tarifa';
 
@@ -357,7 +355,7 @@ class TarifasService {
       };
 
     } catch (error) {
-      console.error('❌ Error actualizando tarifa:', error);
+      console.error('Error al actualizar tarifa:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar tarifa'
@@ -383,7 +381,7 @@ class TarifasService {
       };
 
     } catch (error) {
-      console.error('❌ Error finalizando vigencia:', error);
+      console.error('Error al finalizar vigencia de tarifa:', error);
       return {
         success: false,
         message: error.message || 'Error al finalizar vigencia'
@@ -417,7 +415,7 @@ class TarifasService {
       };
 
     } catch (error) {
-      console.error('❌ Error eliminando tarifa:', error);
+      console.error('Error al eliminar tarifa:', error);
 
       return {
         success: false,
@@ -444,7 +442,7 @@ class TarifasService {
       };
 
     } catch (error) {
-      console.error('❌ Error cambiando estado:', error);
+      console.error('Error al cambiar estado de la tarifa:', error);
       return {
         success: false,
         message: error.message || 'Error al cambiar estado de la tarifa'

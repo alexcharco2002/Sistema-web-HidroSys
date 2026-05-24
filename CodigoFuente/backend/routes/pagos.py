@@ -305,11 +305,11 @@ def obtener_estadisticas_pagos_enriquecidas(db: Session, periodos_str: list[str]
                 case((Factura.estado_factura == "pagada", 1), else_=0)
             ).label("total_pagadas"),
             func.sum(
-                case(
-                    (Factura.estado_factura.in_(["pendiente", "vencida"]), 1),
-                    else_=0
-                )
+                case((Factura.estado_factura == "pendiente", 1), else_=0)
             ).label("total_pendientes"),
+            func.sum(
+                case((Factura.estado_factura == "vencida", 1), else_=0)
+            ).label("total_vencidas"),
             func.sum(
                 case((Factura.estado_factura == "anulada", 1), else_=0)
             ).label("total_anuladas"),
@@ -366,6 +366,7 @@ def obtener_estadisticas_pagos_enriquecidas(db: Session, periodos_str: list[str]
             "total_facturas":   int(row.total_facturas  or 0),
             "total_pagadas":    int(row.total_pagadas   or 0),
             "total_pendientes": int(row.total_pendientes or 0),
+            "total_vencidas":   int(row.total_vencidas or 0),
             "total_anuladas":   int(row.total_anuladas  or 0),
             "monto_total":      monto_total,
             "monto_cobrado":    monto_cobrado,
@@ -444,6 +445,7 @@ def obtener_periodos_pagos_disponibles(
             "total_facturas":   stats.get("total_facturas", 0),
             "total_pagadas":    stats.get("total_pagadas", 0),
             "total_pendientes": stats.get("total_pendientes", 0),
+            "total_vencidas":   stats.get("total_vencidas", 0),
             "total_anuladas":   stats.get("total_anuladas", 0),
 
             # Montos de facturas

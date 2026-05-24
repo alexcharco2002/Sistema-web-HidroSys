@@ -56,7 +56,6 @@ class MetersService {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
@@ -92,11 +91,10 @@ class MetersService {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
       return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud de medidores:', error);
 
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -171,7 +169,7 @@ class MetersService {
       };
 
     } catch (error) {
-      console.error('❌ Error validando ubicación:', error);
+      console.error('Error al validar ubicacion del medidor:', error);
       return {
         success: false,
         message: error.message || 'Error al validar ubicación'
@@ -192,7 +190,7 @@ class MetersService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo sectores disponibles:', error);
+      console.error('Error al obtener sectores disponibles:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener sectores disponibles'
@@ -228,7 +226,7 @@ class MetersService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo medidores:', error);
+      console.error('Error al obtener medidores:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener medidores',
@@ -250,7 +248,7 @@ class MetersService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo medidor:', error);
+      console.error('Error al obtener medidor:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener medidor'
@@ -279,7 +277,7 @@ class MetersService {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo afiliados disponibles:', error);
+      console.error('Error al obtener afiliados disponibles:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener afiliados disponibles',
@@ -316,9 +314,7 @@ async createMeter(meterData) {
     };
 
   } catch (error) {
-    console.error("❌ Error creando medidor:", error);
-    console.log("🔍 Backend completo:", error.backend);
-    console.log("🔍 Backend detail:", error.backendDetail);
+    console.error('Error al crear medidor:', error);
     // Manejo de errores geográficos
     return this.handleGeoError(error);
   }
@@ -368,9 +364,7 @@ async updateMeter(meterId, meterData) {
     };
 
   } catch (error) {
-    console.error("❌ Error actualizando medidor:", error);
-    console.log("🔍 Backend completo:", error.backend);
-    console.log("🔍 Backend detail:", error.backendDetail);
+    console.error('Error al actualizar medidor:', error);
     // Manejo de errores geográficos
     return this.handleGeoError(error);
   }
@@ -457,7 +451,7 @@ handleGeoError(error) {
       };
 
     } catch (error) {
-      console.error('❌ Error eliminando medidor:', error);
+      console.error('Error al eliminar medidor:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar medidor'
@@ -481,7 +475,7 @@ handleGeoError(error) {
       };
 
     } catch (error) {
-      console.error('❌ Error cambiando estado:', error);
+      console.error('Error al cambiar estado del medidor:', error);
       return {
         success: false,
         message: error.message || 'Error al cambiar estado del medidor'
@@ -502,7 +496,7 @@ handleGeoError(error) {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
+      console.error('Error al obtener estadisticas de medidores:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'

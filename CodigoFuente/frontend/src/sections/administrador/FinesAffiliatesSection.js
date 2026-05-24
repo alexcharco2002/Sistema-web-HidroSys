@@ -207,21 +207,21 @@ const FinesAffiliatesSection = () => {
         mes:  periodoSeleccionado.mes,
       });
       if (result.success) setStats(result.data);
-    } catch (e) { console.error('Error stats:', e); }
+    } catch (e) { console.error('Error al cargar estadisticas de multas a afiliados:', e); }
   }, [periodoSeleccionado]);
 
   const loadTiposMulta = async () => {
     try {
       const r = await fineService.getTiposMulta({ activo: true, esvigente: true });
       if (r.success) setTiposMulta(r.data);
-    } catch (e) { console.error('Error tipos multa:', e); }
+    } catch (e) { console.error('Error al cargar tipos de multa:', e); }
   };
 
   const loadAffiliates = async () => {
     try {
       const r = await finesAffiliatesServices.getAvailableAffiliates();
       if (r.success) setAffiliates(r.data);
-    } catch (e) { console.error('Error afiliados:', e); }
+    } catch (e) { console.error('Error al cargar afiliados para multas:', e); }
   };
 
   // ════════════════════════════════════════════════════════════

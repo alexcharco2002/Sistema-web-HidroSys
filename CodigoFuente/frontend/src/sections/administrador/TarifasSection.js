@@ -91,13 +91,6 @@ const TarifasSection = () => {
       canViewHistory
     });
 
-    console.log('🔐 Permisos del usuario en módulo Tarifas:', {
-      canCreate,
-      canRead,
-      canUpdate,
-      canDelete,
-      canViewHistory
-    });
   };
 
   // Fetch tarifas con filtro de vigencia
@@ -122,18 +115,15 @@ const TarifasSection = () => {
       }
       // ❌ NO hacer esto: else { filters.es_vigente = 'all'; }
 
-      console.log('🔍 Filtros enviados:', filters); // Debe mostrar {search: ''} sin es_vigente
-
       const result = await tarifasService.getTarifas(filters);
       if (result.success) {
         setTarifas(result.data);
-        console.log('✅ Tarifas cargadas:', result.data.length);
       } else {
         setError(result.message);
       }
     } catch (err) {
       setError('Error al cargar tarifas desde el servidor');
-      console.error('Error en fetchTarifas:', err);
+      console.error('Error al cargar tarifas:', err);
     } finally {
       setLoading(false);
     }
@@ -156,7 +146,6 @@ const TarifasSection = () => {
 
   useEffect(() => {
     if (permissions.canRead) {
-      console.log('🔄 Componente montado, cargando tarifas...');
       fetchTarifas();
       fetchStats();
     }

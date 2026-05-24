@@ -120,11 +120,12 @@ const getEstadoBadge = (estado) => {
       if (result.success) {
         setUser(result.data);
         setProfileData(result.data);
+        console.info('Informacion de perfil cargada');
       } else {
         setError(result.message || 'Error al cargar el perfil');
       }
     } catch (err) {
-      console.error('Error cargando perfil:', err);
+      console.error('Error cargando informacion de perfil:', err);
       setError(err.message || 'Error al cargar el perfil');
     } finally {
       setLoading(false);
@@ -204,12 +205,13 @@ const getEstadoBadge = (estado) => {
         setProfileData(result.data);
         setEditingProfile(false);
         authService.updateUserInfo(result.data);
+        console.info('Informacion de perfil actualizada');
         alert('✅ Perfil actualizado correctamente');
       } else {
         throw new Error(result.message || 'Error al actualizar el perfil');
       }
     } catch (error) {
-      console.error('❌ Error al actualizar perfil:', error);
+      console.error('Error actualizando informacion de perfil:', error);
       setError(error.message);
       alert('Error al actualizar el perfil: ' + error.message);
     } finally {
@@ -256,12 +258,13 @@ const getEstadoBadge = (estado) => {
         setUser(updatedUser);
         setProfileData(updatedUser);
         authService.updateUserInfo(updatedUser);
+        console.info('Foto de perfil actualizada');
         alert('✅ Foto actualizada correctamente');
       } else {
         throw new Error(result.message || 'Error al subir la foto');
       }
     } catch (error) {
-      console.error('❌ Error al subir foto:', error);
+      console.error('Error actualizando foto de perfil:', error);
       alert('Error al subir la foto: ' + error.message);
     } finally {
       setUploadingPhoto(false);

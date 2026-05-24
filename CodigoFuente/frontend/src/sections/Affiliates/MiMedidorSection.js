@@ -23,14 +23,13 @@ const MiMedidorSection = () => {
     try {
       const result = await affiliateGeneralServices.getMiMedidor();
       if (result.success) {
-        console.log('✅ Datos del medidor:', result.data);
         setMedidorData(result.data);
         setMedidorActivo(0);
       } else {
         setError(result.message);
       }
     } catch (err) {
-      console.error('❌ Error cargando información del medidor:', err);
+      console.error('Error al cargar informacion del medidor:', err);
       setError('Error al cargar la información de tu medidor');
     } finally {
       setLoading(false);

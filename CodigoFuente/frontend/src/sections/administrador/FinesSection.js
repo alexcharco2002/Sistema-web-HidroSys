@@ -97,14 +97,6 @@ const FinesSection = () => {
       canToggleStatus,
       canViewHistory 
     });
-    console.log('🔐 Permisos del usuario en módulo Multas:', {
-      canCreate,
-      canRead,
-      canUpdate,
-      canDelete,
-      canToggleStatus,
-      canViewHistory,
-    });
   };
 
   // FETCH TIPOS DE MULTA
@@ -131,14 +123,13 @@ const FinesSection = () => {
 
       if (result.success) {
         setTiposMulta(result.data);
-        console.log('✅ Tipos de multa cargados:', result.data.length);
       } else {
         setError(result.message);
         console.error('Error al cargar tipos de multa:', result.message);
       }
     } catch (err) {
       setError('Error al cargar tipos de multa desde el servidor');
-      console.error('Error en fetchTiposMulta:', err);
+      console.error('Error al cargar tipos de multa:', err);
     } finally {
       setLoading(false);
     }
@@ -159,7 +150,6 @@ const FinesSection = () => {
 
   useEffect(() => {
     if (permissions.canRead) {
-      console.log('🔄 Componente Multas montado, cargando datos...');
       fetchTiposMulta();
       fetchStats();
     }

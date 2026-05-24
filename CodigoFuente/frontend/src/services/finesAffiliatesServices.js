@@ -58,7 +58,6 @@ class FinesAffiliatesServices {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
@@ -87,11 +86,10 @@ class FinesAffiliatesServices {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
       return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud de multas a afiliados:', error);
 
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -113,7 +111,7 @@ class FinesAffiliatesServices {
       data: Array.isArray(data) ? data : []
     };
   } catch (error) {
-    console.error('❌ Error obteniendo tipos de multa:', error);
+    console.error('Error al obtener tipos de multa:', error);
     return {
       success: false,
       message: error.message || 'Error al obtener tipos de multa',
@@ -130,7 +128,7 @@ class FinesAffiliatesServices {
       );
       return { success: true, data };
     } catch (error) {
-      console.error('Error obteniendo resumen del período:', error);
+      console.error('Error al obtener resumen del periodo:', error);
       return { success: false, data: null, message: error.message };
     }
   }
@@ -147,7 +145,7 @@ class FinesAffiliatesServices {
         data,
       };
     } catch (error) {
-      console.error('❌ Error cargando afiliados para multas:', error);
+      console.error('Error al cargar afiliados para multas:', error);
       return {
         success: false,
         data: [],
@@ -167,7 +165,7 @@ class FinesAffiliatesServices {
               data: Array.isArray(data) ? data : []
           };
       } catch (error) {
-          console.error('❌ Error obteniendo años:', error);
+          console.error('Error al obtener anios:', error);
           return {
               success: false,
               message: error.message || 'Error al obtener años',
@@ -187,7 +185,7 @@ class FinesAffiliatesServices {
               data: Array.isArray(data) ? data : []
           };
       } catch (error) {
-          console.error('❌ Error obteniendo meses:', error);
+          console.error('Error al obtener meses:', error);
           return {
               success: false,
               message: error.message || 'Error al obtener meses',
@@ -233,7 +231,7 @@ class FinesAffiliatesServices {
               data: Array.isArray(data) ? data : []
           };
       } catch (error) {
-          console.error('❌ Error obteniendo multas:', error);
+          console.error('Error al obtener multas:', error);
           return {
               success: false,
               message: error.message || 'Error al obtener multas',
@@ -255,7 +253,7 @@ class FinesAffiliatesServices {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo multa:', error);
+      console.error('Error al obtener multa:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener multa'
@@ -290,7 +288,7 @@ async getMultasStats(filters = {}) {
             data: data
         };
     } catch (error) {
-        console.error('❌ Error obteniendo estadísticas:', error);
+        console.error('Error al obtener estadisticas de multas:', error);
         return {
             success: false,
             message: error.message || 'Error al obtener estadísticas'
@@ -329,7 +327,7 @@ async getMultasStats(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error creando multa:', error);
+      console.error('Error al crear multa:', error);
       return {
         success: false,
         message: error.message || 'Error al crear multa'
@@ -378,7 +376,7 @@ async getMultasStats(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error actualizando multa:', error);
+      console.error('Error al actualizar multa:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar multa'
@@ -410,7 +408,7 @@ async getMultasStats(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error registrando pago:', error);
+      console.error('Error al registrar pago de multa:', error);
       return {
         success: false,
         message: error.message || 'Error al registrar pago'
@@ -443,7 +441,7 @@ async getMultasStats(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error anulando multa:', error);
+      console.error('Error al anular multa:', error);
       return {
         success: false,
         message: error.message || 'Error al anular multa'
@@ -472,7 +470,7 @@ async getMultasStats(filters = {}) {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error eliminando multa:', error);
+      console.error('Error al eliminar multa:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar multa'

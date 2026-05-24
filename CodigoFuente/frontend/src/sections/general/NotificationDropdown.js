@@ -142,8 +142,6 @@ const NotificationDropdown = ({ onViewAll }) => {
         if (moduleDef) {
           const roleBase = getRoleBasePath();
           const fullRoute = `${roleBase}/${moduleDef.path}`;
-          
-          console.log(`✅ Dropdown - Coincidencia: "${keyword}" → Módulo: ${moduleKey} → Ruta: ${fullRoute}`);
           return fullRoute;
         }
       }
@@ -152,8 +150,6 @@ const NotificationDropdown = ({ onViewAll }) => {
     // Si no encuentra nada, ir a notificaciones
     const roleBase = getRoleBasePath();
     const fallbackRoute = `${roleBase}/notifications`;
-    
-    console.log('⚠️ Dropdown - No se encontró coincidencia, redirigiendo a:', fallbackRoute);
     return fallbackRoute;
   };
 
@@ -162,8 +158,6 @@ const NotificationDropdown = ({ onViewAll }) => {
   // ========================================
   const handleNotificationClick = async (notification) => {
     try {
-      console.log('📌 Dropdown - Click en notificación:', notification);
-
       // Si no está leída, marcarla como leída
       if (!notification.read) {
         const result = await notificationsService.markAsRead(notification.id_notificacion);
@@ -195,8 +189,6 @@ const NotificationDropdown = ({ onViewAll }) => {
             const moduleSegment = parts[1].split('/')[0];
             const roleBase = getRoleBasePath();
             targetRoute = `${roleBase}/${moduleSegment}`;
-            
-            console.log(`🔄 Dropdown - Ruta adaptada del backend: ${notification.route} → ${targetRoute}`);
           }
         } else {
           targetRoute = notification.route;
@@ -208,7 +200,6 @@ const NotificationDropdown = ({ onViewAll }) => {
         targetRoute = getRouteForNotification(notification);
       }
 
-      console.log("✅ Dropdown - Navegando a:", targetRoute);
       navigate(targetRoute);
       
     } catch (error) {

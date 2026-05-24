@@ -50,7 +50,6 @@ class PaymentsServices {
    */
   async makeRequest(endpoint, options = {}) {
     const url = `${API_CONFIG.baseURL}${endpoint}`;
-    const requestStart = performance.now();
     
     const defaultOptions = {
       method: 'GET',
@@ -77,8 +76,6 @@ class PaymentsServices {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
-      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
       
@@ -86,7 +83,6 @@ class PaymentsServices {
         ...finalOptions,
         signal: controller.signal,
       });
-      console.log(`[PAYMENTS API] fetch ${finalOptions.method} ${endpoint}: ${((performance.now() - requestStart) / 1000).toFixed(3)}s`);
       
       clearTimeout(timeoutId);
 
@@ -108,14 +104,10 @@ class PaymentsServices {
       }
 
       const data = await response.json();
-      console.log(`[PAYMENTS API] parse json ${finalOptions.method} ${endpoint}: ${((performance.now() - requestStart) / 1000).toFixed(3)}s`);
-      console.log(`✅ API Response:`, data);
       return data;
       
     } catch (error) {
-      console.error(`❌ API Error:`, error);
-      
-      console.error(`[PAYMENTS API] error ${finalOptions.method} ${endpoint}: ${((performance.now() - requestStart) / 1000).toFixed(3)}s`);
+      console.error('Error en solicitud de pagos:', error);
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
       }
@@ -144,7 +136,6 @@ class PaymentsServices {
         ? `${API_CONFIG.endpoints.facturasPeriodo}?${queryString}` 
         : API_CONFIG.endpoints.facturasPeriodo;
 
-      console.log('🔍 Fetching facturas desde:', endpoint); 
       const data = await this.makeRequest(endpoint);
       
       return { 
@@ -152,7 +143,7 @@ class PaymentsServices {
         data: data 
       };
     } catch (error) {
-      console.error('❌ Error obteniendo facturas del periodo:', error);
+      console.error('Error al obtener facturas del periodo:', error);
       return { 
         success: false, 
         message: error.message || 'Error al obtener facturas' 
@@ -170,7 +161,7 @@ class PaymentsServices {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo montos de factura:', error);
+      console.error('Error al obtener montos de factura:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener montos'
@@ -182,7 +173,6 @@ class PaymentsServices {
  async getFacturasPendientesAfiliado(idUsuarioAfi, periodoActual, aplicarMora, idMedidor) {
     // ✅ Validación de parámetros
     if (!idUsuarioAfi) {
-      console.error('❌ idUsuarioAfi es requerido');
       return { 
         success: false, 
         message: 'ID de afiliado es requerido' 
@@ -190,21 +180,15 @@ class PaymentsServices {
     }
 
     if (!periodoActual) {
-      console.error('❌ periodoActual es requerido');
       return { 
         success: false, 
         message: 'Periodo actual es requerido' 
       };
     }
 
-    if (!idMedidor) {
-        console.warn(`getFacturasPendientesAfiliado: sin id_medidor para afiliado ${idUsuarioAfi} — puede mezclar datos`);
-    }
-
     // ✅ Validar formato del periodo (YYYY-MM)
     const periodoRegex = /^\d{4}-(0[1-9]|1[0-2])$/;
     if (!periodoRegex.test(periodoActual)) {
-      console.error('❌ Formato de periodo inválido:', periodoActual);
       return { 
         success: false, 
         message: 'Formato de periodo inválido. Use YYYY-MM (ej: 2026-01)' 
@@ -224,35 +208,14 @@ class PaymentsServices {
       
       const endpoint = `/pagos/afiliado/${idUsuarioAfi}/facturas-pendientes?${params.toString()}`;
       
-      console.log('🔍 Consultando facturas pendientes:', {
-        idUsuarioAfi,
-        periodoActual,
-        aplicarMora,
-        idMedidor,
-        endpoint
-      });
-      
       const data = await this.makeRequest(endpoint);
-      
-      console.log('✅ Facturas pendientes obtenidas:', {
-        afiliado: idUsuarioAfi,
-        medidor: idMedidor,
-        tiene_deuda: data.tiene_deuda,
-        meses_adeudo: data.meses_adeudo,
-        total_adeudado: data.total_adeudado,
-        facturas: data.total_facturas_pendientes
-      });
       
       return { 
         success: true, 
         data: data 
       };
     } catch (error) {
-      console.error('❌ Error obteniendo facturas pendientes del afiliado:', {
-        idUsuarioAfi,
-        periodoActual,
-        error: error.message
-      });
+      console.error('Error al obtener facturas pendientes del afiliado:', error);
       
       return { 
         success: false, 
@@ -313,7 +276,7 @@ class PaymentsServices {
       };
       
     } catch (error) {
-      console.error('❌ Error obteniendo pagos:', error);
+      console.error('Error al obtener pagos:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener pagos'
@@ -334,7 +297,7 @@ class PaymentsServices {
       };
       
     } catch (error) {
-      console.error('❌ Error obteniendo pago:', error);
+      console.error('Error al obtener pago:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener pago'
@@ -355,7 +318,7 @@ class PaymentsServices {
       };
       
     } catch (error) {
-      console.error('❌ Error obteniendo pagos de factura:', error);
+      console.error('Error al obtener pagos de factura:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener pagos'
@@ -406,7 +369,7 @@ class PaymentsServices {
       };
       
     } catch (error) {
-      console.error('❌ Error obteniendo pagos del afiliado:', error);
+      console.error('Error al obtener pagos del afiliado:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener pagos'
@@ -439,7 +402,7 @@ class PaymentsServices {
       };
       
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
+      console.error('Error al obtener estadisticas de pagos:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
@@ -462,7 +425,7 @@ class PaymentsServices {
       };
       
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas del periodo:', error);
+      console.error('Error al obtener estadisticas del periodo:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
@@ -485,7 +448,7 @@ class PaymentsServices {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error calculando resumen de pago:', error);
+      console.error('Error al calcular resumen de pago:', error);
       return {
         success: false,
         message: error.message || 'Error al calcular el resumen',
@@ -498,15 +461,8 @@ class PaymentsServices {
    * Registrar un nuevo pago
    */
   async createPago(pagoData) {
-    const t0 = performance.now();
     try {
       const montoPago = Number.parseFloat(Number(pagoData.monto_pago || 0).toFixed(2));
-      console.log('[PAGO IND FRONT] 1 preparar payload:', {
-        segundos: ((performance.now() - t0) / 1000).toFixed(3),
-        id_factura: pagoData.id_factura,
-        id_usuario_afi: pagoData.id_usuario_afi,
-        monto_pago: montoPago
-      });
       const data = await this.makeRequest(API_CONFIG.endpoints.pagos, {
         method: 'POST',
         body: {
@@ -523,20 +479,9 @@ class PaymentsServices {
           incluir_consumos: pagoData.incluir_consumos !== undefined ? pagoData.incluir_consumos : true
         }
       });
-      console.log(`[PAGO IND FRONT] 2 backend respondio: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
-
-      console.log('📤 Datos enviados al backend:', {
-        monto_pago: montoPago,
-        incluir_multas: pagoData.incluir_multas,
-        incluir_mora: pagoData.incluir_mora,
-        incluir_consumos: pagoData.incluir_consumos,
-        id_factura: pagoData.id_factura
-      });
-
       // Limpiar cachés
       this.cachedPagos = null;
       this.cachedStats = null;
-      console.log(`[PAGO IND FRONT] TOTAL: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
 
       return {
         success: true,
@@ -545,7 +490,7 @@ class PaymentsServices {
       };
       
     } catch (error) {
-      console.error('❌ Error registrando pago:', error);
+      console.error('Error al registrar pago:', error);
       return {
         success: false,
         message: error.message || 'Error al registrar pago'
@@ -590,7 +535,7 @@ class PaymentsServices {
       };
       
     } catch (error) {
-      console.error('❌ Error actualizando pago:', error);
+      console.error('Error al actualizar pago:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar pago'
@@ -620,7 +565,7 @@ class PaymentsServices {
       };
       
     } catch (error) {
-      console.error('❌ Error anulando pago:', error);
+      console.error('Error al anular pago:', error);
       return {
         success: false,
         message: error.message || 'Error al anular pago'
@@ -661,7 +606,7 @@ class PaymentsServices {
         data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo periodos de pagos:', error);
+      console.error('Error al obtener periodos de pagos:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener periodos disponibles'
@@ -673,11 +618,7 @@ class PaymentsServices {
  * Subir comprobante PDF para un pago
  */
 async uploadComprobante(idPago, file) {
-  const t0 = performance.now();
   try {
-    console.log(`📤 Subiendo comprobante para pago ${idPago}...`);
-    console.log('📄 Archivo:', file.name, `(${(file.size / 1024).toFixed(2)} KB)`);
-
     // Validar archivo
     if (!file) {
       throw new Error('No se proporcionó ningún archivo');
@@ -696,10 +637,7 @@ async uploadComprobante(idPago, file) {
     const formData = new FormData();
     formData.append('comprobante', file); // ✅ CAMBIAR DE 'file' A 'comprobante'
 
-    console.log(`[COMP FRONT] 1 formData pago=${idPago}: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
     const url = `${API_CONFIG.baseURL}/pagos/${idPago}/comprobante`;
-    
-    console.log('🌐 Enviando a:', url);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -710,14 +648,10 @@ async uploadComprobante(idPago, file) {
       body: formData
     });
 
-    console.log('📡 Response status:', response.status);
-
-    console.log(`[COMP FRONT] 2 fetch pago=${idPago}: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
     if (!response.ok) {
       let errorMessage = 'Error al subir comprobante';
       try {
         const errorData = await response.json();
-        console.error('❌ Error del servidor:', errorData);
         errorMessage = errorData.detail || errorData.message || errorMessage;
       } catch (e) {
         errorMessage = `Error HTTP ${response.status}`;
@@ -726,9 +660,6 @@ async uploadComprobante(idPago, file) {
     }
 
     const data = await response.json();
-    console.log(`[COMP FRONT] 3 parse json pago=${idPago}: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
-    console.log(`[COMP FRONT] TOTAL pago=${idPago}: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
-    console.log('✅ Respuesta del servidor:', data);
     
     return {
       success: true,
@@ -737,8 +668,7 @@ async uploadComprobante(idPago, file) {
     };
     
   } catch (error) {
-    console.error(`[COMP FRONT] ERROR pago=${idPago}: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
-    console.error('❌ Error subiendo comprobante:', error);
+    console.error('Error al subir comprobante:', error);
     throw error; // ✅ Lanzar el error para que handleCreatePago lo capture
   }
 }
@@ -748,8 +678,6 @@ async uploadComprobante(idPago, file) {
  */
 async downloadComprobante(idPago) {
   try {
-    console.log(`📥 Descargando comprobante del pago ${idPago}...`);
-    
     const url = `${API_CONFIG.baseURL}/pagos/${idPago}/comprobante`;
     
     const response = await fetch(url, {
@@ -781,12 +709,6 @@ async downloadComprobante(idPago) {
     // Convertir la respuesta a blob
     const blob = await response.blob();
 
-    console.log('📄 Blob recibido:', {
-      size: blob.size,
-      type: blob.type,
-      filename: filename
-    });
-
     if (blob.size === 0) {
       throw new Error('El PDF está vacío');
     }
@@ -807,8 +729,6 @@ async downloadComprobante(idPago) {
       window.URL.revokeObjectURL(blobUrl);
     }, 1000);
 
-    console.log('✅ Descarga iniciada:', filename);
-
     return {
       success: true,
       message: 'Comprobante descargado exitosamente',
@@ -816,7 +736,7 @@ async downloadComprobante(idPago) {
     };
     
   } catch (error) {
-    console.error('❌ Error descargando comprobante:', error);
+    console.error('Error al descargar comprobante:', error);
     return {
       success: false,
       message: error.message || 'No se pudo descargar el comprobante'
@@ -827,7 +747,6 @@ async downloadComprobante(idPago) {
 
 // 
 async createPagoMultiple(pagoMultipleData) {
-  const t0 = performance.now();
   try {
     // ✅ El payload ya viene bien formado desde handlePagoMultiple,
     //    solo aseguramos los tipos críticos que Pydantic valida como integer > 0
@@ -853,15 +772,6 @@ async createPagoMultiple(pagoMultipleData) {
       ...f,
       monto_a_pagar: Number.parseFloat(Number(f.monto_a_pagar || 0.01).toFixed(2)),
     }));
-    console.log('[PAGO MULT FRONT] 1 preparar payload:', {
-      segundos: ((performance.now() - t0) / 1000).toFixed(3),
-      cantidad_facturas: body.facturas.length,
-      id_usuario_afi: body.id_usuario_afi,
-      id_cajero: body.id_cajero
-    });
-
-    // 🔍 Verificar antes de enviar
-    console.log('📤 Body enviado al backend:', JSON.stringify(body, null, 2));
 
     // Validación previa — detectar IDs inválidos antes de que falle Pydantic
     body.facturas.forEach((f, i) => {
@@ -877,11 +787,9 @@ async createPagoMultiple(pagoMultipleData) {
       `${API_CONFIG.endpoints.pagos}/multiple`,
       { method: 'POST', body }
     );
-    console.log(`[PAGO MULT FRONT] 2 backend respondio: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
 
     this.cachedPagos = null;
     this.cachedStats = null;
-    console.log(`[PAGO MULT FRONT] TOTAL: ${((performance.now() - t0) / 1000).toFixed(3)}s`);
 
     return {
       success: true,
@@ -890,7 +798,7 @@ async createPagoMultiple(pagoMultipleData) {
     };
 
   } catch (error) {
-    console.error('❌ Error registrando pago múltiple:', error);
+    console.error('Error al registrar pago multiple:', error);
     // ✅ Re-lanzar para que handlePagoMultiple lo capture en su try/catch
     throw error;
   }
@@ -902,8 +810,6 @@ async createPagoMultiple(pagoMultipleData) {
  */
 async deleteComprobante(idPago) {
   try {
-    console.log(`🗑️ Eliminando comprobante del pago ${idPago}...`);
-    
     const url = `${API_CONFIG.baseURL}/pagos/${idPago}/comprobante`;
     
     const response = await fetch(url, {
@@ -920,7 +826,6 @@ async deleteComprobante(idPago) {
     }
 
     const data = await response.json();
-    console.log('✅ Comprobante eliminado');
 
     return {
       success: true,
@@ -929,7 +834,7 @@ async deleteComprobante(idPago) {
     };
     
   } catch (error) {
-    console.error('❌ Error eliminando comprobante:', error);
+    console.error('Error al eliminar comprobante:', error);
     throw error;
   }
 }

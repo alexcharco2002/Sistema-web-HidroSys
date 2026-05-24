@@ -51,8 +51,7 @@ class MoraService {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
-      const controller = new AbortController();
+            const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
       const response = await fetch(url, {
@@ -64,8 +63,7 @@ class MoraService {
 
       // ✅ Manejar 204 No Content (sin body)
       if (response.status === 204) {
-        console.log(`✅ API Response: 204 No Content`);
-        return null;
+                return null;
       }
 
       if (!response.ok) {
@@ -86,10 +84,9 @@ class MoraService {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
-      return data;
+            return data;
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud API:', error);
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
       }
@@ -128,7 +125,7 @@ class MoraService {
         data: Array.isArray(data) ? data : []
       };
     } catch (error) {
-      console.error('❌ Error listando configuraciones de mora:', error);
+      console.error('Error listando configuraciones de mora:', error);
       return {
         success: false,
         message: error.message || 'Error al listar configuraciones de mora',
@@ -148,7 +145,7 @@ class MoraService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo configuración vigente:', error);
+      console.error('Error obteniendo configuración vigente:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener la configuración vigente',
@@ -168,7 +165,7 @@ class MoraService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas de mora:', error);
+      console.error('Error obteniendo estadísticas de mora:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
@@ -187,7 +184,7 @@ class MoraService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo configuración de mora:', error);
+      console.error('Error obteniendo configuración de mora:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener la configuración'
@@ -221,7 +218,7 @@ class MoraService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error creando configuración de mora:', error);
+      console.error('Error creando configuración de mora:', error);
       return {
         success: false,
         message: error.message || 'Error al crear la configuración de mora'
@@ -253,7 +250,7 @@ class MoraService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error actualizando configuración de mora:', error);
+      console.error('Error actualizando configuración de mora:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar la configuración'
@@ -282,7 +279,7 @@ class MoraService {
         message: 'Configuración de mora eliminada exitosamente'
       };
     } catch (error) {
-      console.error('❌ Error eliminando configuración de mora:', error);
+      console.error('Error eliminando configuración de mora:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar la configuración'
@@ -313,7 +310,7 @@ class MoraService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error activando configuración de mora:', error);
+      console.error('Error activando configuración de mora:', error);
       return {
         success: false,
         message: error.message || 'Error al activar la configuración'
@@ -339,7 +336,7 @@ class MoraService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error desactivando configuración de mora:', error);
+      console.error('Error desactivando configuración de mora:', error);
       return {
         success: false,
         message: error.message || 'Error al desactivar la configuración'
@@ -520,15 +517,14 @@ getDescripcionPeriodo(config) {
       const result = await this.getConfiguracionVigente();
       const aplicarMora = result.success && result.data && result.data.aplicar_mora === true;
       
-      console.log(`🎯 Estado mora: ${aplicarMora ? 'ACTIVADO' : 'DESACTIVADO'}`);
-      
+            
       return {
         success: true,
         aplicar_mora: aplicarMora,
         configuracion_activa: result.data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo estado de mora:', error);
+      console.error('Error obteniendo estado de mora:', error);
       return {
         success: true, // No fallar, solo asumir desactivado
         aplicar_mora: false,

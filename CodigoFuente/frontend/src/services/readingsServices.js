@@ -60,7 +60,6 @@ class ReadingsServices {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
@@ -89,11 +88,10 @@ class ReadingsServices {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
       return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en solicitud de lecturas:', error);
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
       }
@@ -128,7 +126,7 @@ class ReadingsServices {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo periodos:', error);
+      console.error('Error al obtener periodos:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener periodos disponibles'
@@ -152,7 +150,7 @@ class ReadingsServices {
         data: result.data.periodo_actual
       };
     } catch (error) {
-      console.error('❌ Error obteniendo periodo sugerido:', error);
+      console.error('Error al obtener periodo sugerido:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener periodo sugerido'
@@ -207,7 +205,7 @@ class ReadingsServices {
       };
 
     } catch (error) {
-      console.error('❌ Error importando Excel con periodo:', error);
+      console.error('Error al importar Excel con periodo:', error);
       return {
         success: false,
         message: error.message || 'Error al importar lecturas desde Excel'
@@ -258,7 +256,7 @@ class ReadingsServices {
       };
 
     } catch (error) {
-      console.error('❌ Error validando periodo:', error);
+      console.error('Error al validar periodo:', error);
       return {
         success: false,
         message: error.message || 'Error al validar periodo'
@@ -306,12 +304,8 @@ async getMedidoresParaLecturas(mes = null, anio = null, incluirConLectura = fals
       endpoint += `?${params.toString()}`;
     }
     
-    console.log('📋 Solicitando afiliados:', endpoint);
-    
     // 🔥 Pasar solo el endpoint, makeRequest agregará el baseURL
     const data = await this.makeRequest(endpoint);
-    
-    console.log('📊 Respuesta del servidor:', data);
     
     // Validar estructura
     if (data && data.afiliados && Array.isArray(data.afiliados)) {
@@ -334,7 +328,7 @@ async getMedidoresParaLecturas(mes = null, anio = null, incluirConLectura = fals
     };
     
   } catch (error) {
-    console.error('❌ Error obteniendo afiliados:', error);
+    console.error('Error al obtener afiliados:', error);
     return {
       success: false,
       message: error.message || 'Error al obtener afiliados',
@@ -356,7 +350,7 @@ async getMedidoresParaLecturas(mes = null, anio = null, incluirConLectura = fals
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
+      console.error('Error al obtener estadisticas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
@@ -410,7 +404,7 @@ async getLecturas(filters = {}) {
       data: data
     };
   } catch (error) {
-    console.error('❌ Error obteniendo lecturas:', error);
+    console.error('Error al obtener lecturas:', error);
     return {
       success: false,
       message: error.message || 'Error al obtener lecturas'
@@ -431,7 +425,7 @@ async getLecturas(filters = {}) {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo lectura:', error);
+      console.error('Error al obtener lectura:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener lectura'
@@ -472,7 +466,7 @@ async getLecturas(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error creando lectura:', error);
+      console.error('Error al crear lectura:', error);
       return {
         success: false,
         message: error.message || 'Error al crear la lectura'
@@ -526,7 +520,7 @@ async getLecturas(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error actualizando lectura:', error);
+      console.error('Error al actualizar lectura:', error);
       
       // Solo llegaremos aquí si hay error de red, 404, 500, etc
       return {
@@ -565,7 +559,7 @@ async getLecturas(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error eliminando lectura:', error);
+      console.error('Error al eliminar lectura:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar lectura'
@@ -593,7 +587,7 @@ async getLecturas(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error cambiando estado:', error);
+      console.error('Error al cambiar estado de la lectura:', error);
       return {
         success: false,
         message: error.message || 'Error al cambiar estado de la lectura'
@@ -618,8 +612,6 @@ async getLecturas(filters = {}) {
       if (params.toString()) {
         endpoint += `?${params.toString()}`;
       }
-      
-      console.log('📥 Descargando plantilla:', endpoint);
       
       // 🔥 Construir URL completa solo para fetch directo (no usa makeRequest)
       const url = `${API_CONFIG.baseURL}${endpoint}`;
@@ -656,7 +648,7 @@ async getLecturas(filters = {}) {
     };
 
   } catch (error) {
-    console.error('❌ Error exportando plantilla:', error);
+    console.error('Error al exportar plantilla de lecturas:', error);
     return {
       success: false,
       message: error.message || 'Error al exportar plantilla'
@@ -689,7 +681,7 @@ async getLecturas(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error importando Excel:', error);
+      console.error('Error al importar Excel:', error);
       return {
         success: false,
         message: error.message || 'Error al importar lecturas desde Excel'
@@ -739,7 +731,7 @@ async getLecturas(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error exportando lecturas:', error);
+      console.error('Error al exportar lecturas:', error);
       return {
         success: false,
         message: error.message || 'Error al exportar lecturas'
@@ -771,7 +763,7 @@ async getLecturas(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas:', error);
+      console.error('Error al obtener estadisticas de lecturas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
@@ -921,7 +913,7 @@ async getLecturas(filters = {}) {
           };
 
       } catch (error) {
-          console.error('❌ Error verificando medidores sin lectura:', error);
+          console.error('Error al verificar medidores sin lectura:', error);
           return {
               success: false,
               message: error.message || 'Error al verificar medidores sin lectura'
@@ -970,7 +962,7 @@ async getLecturas(filters = {}) {
       };
 
     } catch (error) {
-      console.error('❌ Error obteniendo mis lecturas:', error);
+      console.error('Error al obtener mis lecturas:', error);
 
       return {
         success: false,

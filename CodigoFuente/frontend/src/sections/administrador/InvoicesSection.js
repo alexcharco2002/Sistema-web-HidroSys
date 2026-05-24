@@ -200,7 +200,6 @@ const InvoicesSection = () => {
       });
 
       if (result.success && result.data) {
-        console.log('📦 Facturas cargadas:', result.data.length);
         setFacturas(result.data);
         
         // 🔥 ACTUALIZAR EL PERIODO CON LOS DATOS REALES
@@ -237,7 +236,7 @@ const InvoicesSection = () => {
       
     } catch (err) {
       setError('Error al cargar facturas del periodo');
-      console.error(err);
+      console.error('Error al cargar facturas del periodo:', err);
       setFacturas([]);
     } finally {
       setLoading(false);
@@ -278,19 +277,15 @@ const InvoicesSection = () => {
   useEffect(() => {
     const fetchServicios = async () => {
       try {
-        console.log('🔄 Cargando servicios activos...');
         const response = await invoicesServices.getServiciosActivos();
-        console.log('📦 Respuesta servicios:', response);
         
         if (response.success && response.data) {
-          console.log(`✅ ${response.data.length} servicios cargados`);
           setServiciosDisponibles(response.data);
         } else {
-          console.warn('⚠️ No se cargaron servicios:', response.message);
           setServiciosDisponibles([]);
         }
       } catch (error) {
-        console.error('❌ Error cargando servicios:', error);
+        console.error('Error al cargar servicios activos:', error);
         setServiciosDisponibles([]);
       }
     };
@@ -716,8 +711,6 @@ const handleConfirmarAnulacion = async (e) => {
         validar_duplicados: true // ✅ Flag para backend
       };
       
-      console.log('📤 Enviando:', data);
-      
       const result = await invoicesServices.aplicarServiciosMasivo(data);
       
       if (result.success) {
@@ -824,8 +817,6 @@ const handleConfirmarAnulacion = async (e) => {
         marcar_como_pagada: false  // ❌ NO marcar como pagada
       };
 
-      console.log('📤 Aplicando descuento:', descuentoData);
-
       const result = await invoicesServices.aplicarDescuento(
         paymentData.factura.id_factura,
         descuentoData
@@ -853,7 +844,7 @@ const handleConfirmarAnulacion = async (e) => {
       }
 
     } catch (error) {
-      console.error('❌ Error al aplicar descuento:', error);
+      console.error('Error al aplicar descuento:', error);
       setError('Error al aplicar descuento');
       alert('❌ Error al aplicar descuento. Intenta nuevamente.');
     } finally {

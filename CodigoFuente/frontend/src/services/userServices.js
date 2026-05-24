@@ -86,7 +86,6 @@ class UsersService {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
@@ -122,11 +121,10 @@ class UsersService {
       }
 
       const data = await response.json();
-      console.log(`✅ API Response:`, data);
       return data;
 
     } catch (error) {
-      console.error(`❌ API Error:`, error);
+      console.error('Error en servicio de usuarios:', error);
 
       if (error.name === 'AbortError') {
         throw new Error('La carga tardó demasiado tiempo. Intente con menos filas o verifique que el servidor siga procesando la importación.');
@@ -317,8 +315,6 @@ class UsersService {
         };
       });
 
-      console.log('📤 Enviando usuarios al backend:', usuariosValidados.length);
-
       // Enviar al endpoint bulk
       const data = await this.makeRequest(`${API_CONFIG.endpoints.users}/bulk`, {
         method: 'POST',
@@ -327,8 +323,6 @@ class UsersService {
           users: usuariosValidados
         }
       });
-
-      console.log('📥 Respuesta del backend:', data);
 
       return {
         success: true,
@@ -721,8 +715,6 @@ class UsersService {
 
       sessionStorage.setItem('user_data', JSON.stringify(updatedUser));
 
-      console.log('✅ Usuario actualizado en sessionStorage');
-      
       return { success: true, data: updatedUser };
     } catch (error) {
       console.error('❌ Error actualizando usuario:', error);

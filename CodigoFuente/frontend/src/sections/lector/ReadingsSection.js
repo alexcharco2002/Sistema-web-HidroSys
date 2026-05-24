@@ -470,13 +470,12 @@ const fetchReadingsByPeriodo = useCallback(async () => {
     });
 
     if (result.success) {
-      console.log(`✅ Lecturas del periodo ${periodoSeleccionado.mes}/${periodoSeleccionado.anio}:`, result.data.length);
       setReadings(result.data);  
     } else {
       setError(result.message);
     }
   } catch (err) {
-    console.error('❌ Error:', err);
+    console.error('Error al cargar lecturas del periodo:', err);
     setError('Error al cargar lecturas del periodo');
   } finally {
     setLoading(false);
@@ -521,14 +520,11 @@ const fetchReadingsByPeriodo = useCallback(async () => {
   // Fetch meters con filtro de periodo
 const fetchMeters = useCallback(async () => {
   if (!periodoSeleccionado?.mes || !periodoSeleccionado?.anio) {
-    console.log('⚠️ No hay periodo seleccionado');
     return;
   }
   
   try {
     setLoadingMeters(true);
-    
-    console.log(`🔍 Cargando medidores para ${periodoSeleccionado.mes}/${periodoSeleccionado.anio}`);
     
     const result = await readingsServices.getMedidoresParaLecturas(
       periodoSeleccionado.mes,
@@ -536,16 +532,7 @@ const fetchMeters = useCallback(async () => {
       false // No incluir medidores con lectura
     );
     
-    console.log('✅ Resultado:', result);
-    
     if (result.success) {
-      console.log(`✅ Medidores disponibles: ${result.data.length}`);
-      
-      // Mostrar información del filtrado
-      if (result.periodo?.filtrado && result.periodo?.excluidos > 0) {
-        console.log(`⚠️ Excluidos ${result.periodo.excluidos} medidores con lectura en el periodo`);
-      }
-      
       setMeters(result.data);
       
       // Mensaje informativo si no hay medidores
@@ -560,7 +547,7 @@ const fetchMeters = useCallback(async () => {
       setMeters([]);
     }
   } catch (error) {
-    console.error('❌ Error en fetchMeters:', error);
+    console.error('Error al cargar medidores para lecturas:', error);
     setError("Error al cargar medidores");
     setMeters([]);
   } finally {
@@ -911,7 +898,7 @@ const handleDownloadTemplate = async () => {
       alert('❌ Error: ' + result.message);
     }
   } catch (error) {
-    console.error('❌ Error:', error);
+    console.error('Error al descargar plantilla de lecturas:', error);
     alert('❌ Error al descargar plantilla');
   } finally {
     setLoading(false);
@@ -1069,10 +1056,8 @@ const handleDownloadTemplate = async () => {
     if (debeAdvertir) {
       const confirmar = window.confirm(mensajeAdvertencia);
       if (!confirmar) {
-        console.log('❌ Usuario canceló la importación por período no coincidente');
         return;
       }
-      console.log('✅ Usuario confirmó importar en período diferente');
     }
 
     setLoadingExcel(true);
@@ -1138,7 +1123,7 @@ const handleDownloadTemplate = async () => {
         setError(result.message || "Error al procesar lecturas");
       }
     } catch (error) {
-      console.error('❌ Error en handleExcelUpload:', error);
+      console.error('Error al importar lecturas desde Excel:', error);
       setError(error.message || "Error al enviar lecturas");
     } finally {
       setLoadingExcel(false);

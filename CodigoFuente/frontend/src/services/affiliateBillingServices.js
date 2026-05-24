@@ -34,8 +34,6 @@ class AffiliateBillingServices {
  async makeRequest(endpoint, options = {}) {
     const url = `${API_CONFIG.baseURL}${endpoint}`;
     const method = options.method || 'GET';
-    const t0 = performance.now();
-    console.log(`🌐 [START] ${method} ${endpoint}`);
 
     const defaultOptions = {
         method,
@@ -66,9 +64,6 @@ class AffiliateBillingServices {
 
         clearTimeout(timeoutId);
 
-        const t1 = performance.now();
-        console.log(`✅ [${Math.round(t1 - t0)}ms] ${method} ${endpoint} → HTTP ${response.status}`);
-
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             let errorMessage = '';
@@ -85,18 +80,14 @@ class AffiliateBillingServices {
         }
 
         const data = await response.json();
-        console.log(`📦 [${Math.round(performance.now() - t0)}ms total] ${endpoint} → ${Array.isArray(data) ? data.length + ' items' : 'object'}`);
         return data;
 
     } catch (error) {
-        const t1 = performance.now();
-
         if (error.name === 'AbortError') {
-            console.error(`⏰ [TIMEOUT ${Math.round(t1 - t0)}ms] ${endpoint}`);
             throw new Error('La petición tardó demasiado tiempo');
         }
 
-        console.error(`❌ [${Math.round(t1 - t0)}ms] FAIL ${method} ${endpoint} →`, error.message);
+        console.error('Error en solicitud de facturas y pagos:', error);
 
         if (error.message.includes('Failed to fetch')) {
             throw new Error('No se pudo conectar con el servidor');
@@ -123,7 +114,7 @@ class AffiliateBillingServices {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo periodos de facturas:', error);
+      console.error('Error al obtener periodos de facturas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener periodos disponibles'
@@ -174,7 +165,7 @@ class AffiliateBillingServices {
         data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo facturas:', error);
+      console.error('Error al obtener facturas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener tus facturas'
@@ -196,7 +187,7 @@ class AffiliateBillingServices {
         data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo detalle de factura:', error);
+      console.error('Error al obtener detalle de factura:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener el detalle de la factura'
@@ -216,7 +207,7 @@ class AffiliateBillingServices {
         data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas de facturas:', error);
+      console.error('Error al obtener estadisticas de facturas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas'
@@ -297,7 +288,7 @@ class AffiliateBillingServices {
       const data = await response.json();
       return { success: true, data };
     } catch (error) {
-      console.error('❌ Error guardando comprobante:', error);
+      console.error('Error al guardar comprobante:', error);
       return {
         success: false,
         message: error.message || 'Error al guardar el comprobante'
@@ -312,8 +303,6 @@ class AffiliateBillingServices {
   async descargarFacturaPDF(idFactura) {
     try {
       const url = `${API_CONFIG.baseURL}${API_CONFIG.endpoints.descargarFactura}/${idFactura}`;
-      
-      console.log(`📥 Descargando PDF de factura #${idFactura}`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -349,15 +338,13 @@ class AffiliateBillingServices {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
       
-      console.log(`✅ PDF descargado: ${filename}`);
-      
       return {
         success: true,
         filename
       };
       
     } catch (error) {
-      console.error('❌ Error descargando PDF:', error);
+      console.error('Error al descargar PDF:', error);
       return {
         success: false,
         message: error.message || 'Error al descargar la factura'
@@ -393,7 +380,7 @@ class AffiliateBillingServices {
         data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo pagos:', error);
+      console.error('Error al obtener pagos:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener tus pagos'
@@ -445,8 +432,6 @@ class AffiliateBillingServices {
 
       const url = `${API_CONFIG.baseURL}${API_CONFIG.endpoints.subirComprobante}`;
       
-      console.log(`📤 Subiendo comprobante para factura #${idFactura}`);
-
       // Usar XMLHttpRequest para tener progreso de subida
       const xhr = new XMLHttpRequest();
       
@@ -464,7 +449,6 @@ class AffiliateBillingServices {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const response = JSON.parse(xhr.responseText);
-              console.log('✅ Comprobante subido exitosamente');
               resolve({
                 success: true,
                 data: response
@@ -501,7 +485,7 @@ class AffiliateBillingServices {
       });
 
     } catch (error) {
-      console.error('❌ Error subiendo comprobante:', error);
+      console.error('Error al subir comprobante:', error);
       return {
         success: false,
         message: error.message || 'Error al subir el comprobante'
@@ -516,8 +500,6 @@ class AffiliateBillingServices {
   async descargarComprobante(idPago) {
     try {
       const url = `${API_CONFIG.baseURL}/afiliados/comprobante/${idPago}`;
-      
-      console.log(`📥 Descargando comprobante del pago #${idPago}`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -553,15 +535,13 @@ class AffiliateBillingServices {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
       
-      console.log(`✅ Comprobante descargado: ${filename}`);
-      
       return {
         success: true,
         filename
       };
       
     } catch (error) {
-      console.error('❌ Error descargando comprobante:', error);
+      console.error('Error al descargar comprobante:', error);
       return {
         success: false,
         message: error.message || 'Error al descargar el comprobante'

@@ -53,7 +53,6 @@ class MultasService {
     }
 
     try {
-      console.log(`🌐 API Request: ${finalOptions.method} ${url}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
 
@@ -82,10 +81,9 @@ class MultasService {
       }
 
       const data = await response.json();
-      console.log('✅ API Response:', data);
       return data;
     } catch (error) {
-      console.error('❌ API Error:', error);
+      console.error('Error en solicitud de multas:', error);
 
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -125,7 +123,7 @@ class MultasService {
         data,
       };
     } catch (error) {
-      console.error('❌ Error obteniendo tipos de multa:', error);
+      console.error('Error al obtener tipos de multa:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener tipos de multa',
@@ -142,7 +140,7 @@ class MultasService {
         data,
       };
     } catch (error) {
-      console.error('❌ Error obteniendo historial de multas:', error);
+      console.error('Error al obtener historial de multas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener historial de la multa',
@@ -160,7 +158,7 @@ class MultasService {
         data,
       };
     } catch (error) {
-      console.error('❌ Error obteniendo estadísticas de multas:', error);
+      console.error('Error al obtener estadisticas de multas:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener estadísticas de multas',
@@ -177,7 +175,7 @@ class MultasService {
         data,
       };
     } catch (error) {
-      console.error('❌ Error obteniendo tipo de multa:', error);
+      console.error('Error al obtener tipo de multa:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener tipo de multa',
@@ -216,7 +214,7 @@ class MultasService {
         message: 'Tipo de multa creado exitosamente',
       };
     } catch (error) {
-      console.error('❌ Error creando tipo de multa:', error);
+      console.error('Error al crear tipo de multa:', error);
       let cleanMessage = 'Error al crear el tipo de multa';
 
       if (error.message) {
@@ -273,7 +271,7 @@ class MultasService {
         message: 'Nueva versión de tipo de multa creada exitosamente',
       };
     } catch (error) {
-      console.error('❌ Error actualizando tipo de multa:', error);
+      console.error('Error al actualizar tipo de multa:', error);
       return {
         success: false,
         message: error.message || 'Error al actualizar tipo de multa',
@@ -296,7 +294,7 @@ class MultasService {
         message: 'Estado del tipo de multa actualizado',
       };
     } catch (error) {
-      console.error('❌ Error cambiando estado de tipo de multa:', error);
+      console.error('Error al cambiar estado del tipo de multa:', error);
       return {
         success: false,
         message: error.message || 'Error al cambiar estado del tipo de multa',
@@ -359,7 +357,7 @@ class MultasService {
         accion: response.accion || 'eliminado'
       };
     } catch (error) {
-      console.error('❌ Error eliminando tipo de multa:', error);
+      console.error('Error al eliminar tipo de multa:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar tipo de multa'

@@ -60,8 +60,6 @@ class NotificationsService {
     }
 
     try {
-      console.log(`🔔 Notifications API: ${finalOptions.method} ${url}`);
-      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
       
@@ -95,11 +93,10 @@ class NotificationsService {
       }
 
       const data = await response.json();
-      console.log(`✅ Notifications Response:`, data);
       return data;
       
     } catch (error) {
-      console.error(`❌ Notifications Error:`, error);
+      console.error('Error en servicio de notificaciones:', error);
       
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -131,15 +128,12 @@ class NotificationsService {
         user.bloqueado_permanente === false &&
         !user.bloqueado_hasta
       );
-
-      console.log(`✅ Usuarios activos obtenidos: ${filteredUsers.length}`);
-
       return {
         success: true,
         data: filteredUsers
       };
     } catch (error) {
-      console.error('❌ Error obteniendo usuarios:', error);
+      console.error('Error obteniendo usuarios:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener usuarios'
@@ -170,7 +164,7 @@ class NotificationsService {
         message: 'Notificación creada exitosamente'
       };
     } catch (error) {
-      console.error('❌ Error creando notificación:', error);
+      console.error('Error creando notificación:', error);
       return {
         success: false,
         message: error.message || 'Error al crear notificación'
@@ -197,7 +191,7 @@ class NotificationsService {
         message: data.message || 'Mantenimiento programado creado exitosamente'
       };
     } catch (error) {
-      console.error('❌ Error creando mantenimiento:', error);
+      console.error('Error creando mantenimiento:', error);
       return {
         success: false,
         message: error.message || 'Error al crear mantenimiento programado'
@@ -226,7 +220,7 @@ class NotificationsService {
         data: data
       };
     } catch (error) {
-      console.error('❌ Error obteniendo notificaciones:', error);
+      console.error('Error obteniendo notificaciones:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener notificaciones'
@@ -247,7 +241,7 @@ class NotificationsService {
         data: this.unreadCount
       };
     } catch (error) {
-      console.error('❌ Error obteniendo contador:', error);
+      console.error('Error obteniendo contador:', error);
       return {
         success: false,
         message: error.message || 'Error al obtener contador'
@@ -283,7 +277,7 @@ class NotificationsService {
         message: 'Notificación marcada como leída'
       };
     } catch (error) {
-      console.error('❌ Error marcando como leída:', error);
+      console.error('Error marcando como leída:', error);
       return {
         success: false,
         message: error.message || 'Error al marcar notificación'
@@ -310,7 +304,7 @@ class NotificationsService {
         message: data.message || 'Todas las notificaciones fueron marcadas como leídas'
       };
     } catch (error) {
-      console.error('❌ Error marcando todas como leídas:', error);
+      console.error('Error marcando todas como leídas:', error);
       return {
         success: false,
         message: error.message || 'Error al marcar todas las notificaciones'
@@ -339,7 +333,7 @@ class NotificationsService {
         message: 'Notificación eliminada correctamente'
       };
     } catch (error) {
-      console.error('❌ Error eliminando notificación:', error);
+      console.error('Error eliminando notificación:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar notificación'
@@ -369,7 +363,7 @@ class NotificationsService {
         message: data?.message || 'Notificaciones eliminadas correctamente'
       };
     } catch (error) {
-      console.error('âŒ Error eliminando notificaciones:', error);
+      console.error('Error eliminando notificaciones:', error);
       return {
         success: false,
         message: error.message || 'Error al eliminar notificaciones'
@@ -470,8 +464,6 @@ transformNotifications(notifications) {
         callback(result.data);
       }
     }, intervalSeconds * 1000);
-
-    console.log(`🔔 Polling iniciado (cada ${intervalSeconds}s)`);
   }
 
   /**

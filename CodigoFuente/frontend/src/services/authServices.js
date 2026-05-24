@@ -22,8 +22,6 @@ api.interceptors.response.use(
     response => response,
     error => {
         if (error.response && error.response.status === 401) {
-            console.warn("⚠️ 401 detectado - Sesión inválida");
-
             // Verificar si el backend forzó el cierre de sesión
             const forceLogout = error.response.headers['x-force-logout'];
 
@@ -166,8 +164,6 @@ class AuthService {
     };
 
     try {
-      console.log(`🔒 Request: ${finalOptions.method} ${url}`);
-      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), finalOptions.timeout);
       
@@ -198,7 +194,7 @@ class AuthService {
       return data;
 
     } catch (error) {
-      console.error(`❌ Error:`, error);
+      console.error('Error en petición de autenticación:', error);
       
       if (error.name === 'AbortError') {
         throw new Error('La petición tardó demasiado tiempo');
@@ -246,7 +242,6 @@ class AuthService {
    */
   getRoleBasePath() {
     if (!this.user || !this.user.rol) {
-      console.warn('⚠️ Usuario sin rol definido');
       return '/dashboard';
     }
 
@@ -439,7 +434,6 @@ clearLocalData() {
       }
 
       this.clearLocalData();
-      console.log('✅ Logout exitoso');
       return { success: true, message: 'Sesión cerrada correctamente' };
 
     } catch (error) {
@@ -507,7 +501,6 @@ clearLocalData() {
     try {
       const currentUser = this.getCurrentUser();
       if (!currentUser) {
-        console.warn('⚠️ No hay usuario en sesión para actualizar');
         return false;
       }
 
@@ -518,7 +511,6 @@ clearLocalData() {
 
       this.user = updatedUser;
       sessionStorage.setItem('user_data', JSON.stringify(updatedUser));
-      console.log('✅ Información del usuario actualizada');
       return true;
 
     } catch (error) {
@@ -553,7 +545,6 @@ clearLocalData() {
    */
   hasPermission(moduleName, actionType = null) {
     if (!this.permissions || this.permissions.length === 0) {
-      console.warn('⚠️ No hay permisos cargados');
       return false;
     }
 
@@ -586,7 +577,6 @@ clearLocalData() {
       return false;
     });
 
-    console.log(`🔐 Verificando permiso: ${moduleName}${actionType ? '.' + actionType : '.*'} = ${hasAccess}`);
     return hasAccess;
   }
 

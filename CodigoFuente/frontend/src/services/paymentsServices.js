@@ -6,8 +6,24 @@
 
 import authService from './authServices';
 
+const getApiBaseUrl = () => {
+  const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+  if (
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'https:' &&
+    baseUrl.startsWith('http://') &&
+    !baseUrl.includes('localhost') &&
+    !baseUrl.includes('127.0.0.1')
+  ) {
+    return baseUrl.replace('http://', 'https://');
+  }
+
+  return baseUrl;
+};
+
 const API_CONFIG = {
-baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
+baseURL: getApiBaseUrl(),
   endpoints: {
     pagos: '/pagos',                         
     stats: '/pagos/stats/resumen',             

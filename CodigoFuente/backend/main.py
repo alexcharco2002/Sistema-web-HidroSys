@@ -178,6 +178,11 @@ async def root():
         "secure": "HTTPS Enabled"
     }
 
+@app.get("/ping")
+async def ping():
+    """Endpoint liviano para monitoreo externo y keep-alive."""
+    return {"status": "ok"}
+
 @app.get("/health")
 async def health_check():
     """Health check detallado de la aplicación"""

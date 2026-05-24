@@ -5,7 +5,7 @@ Punto de entrada principal de la aplicación FastAPI
 Configuración de middleware, routers y eventos de ciclo de vida
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
@@ -178,10 +178,10 @@ async def root():
         "secure": "HTTPS Enabled"
     }
 
-@app.get("/ping")
+@app.api_route("/ping", methods=["GET", "HEAD"])
 async def ping():
     """Endpoint liviano para monitoreo externo y keep-alive."""
-    return {"status": "ok"}
+    return Response(status_code=200)
 
 @app.get("/health")
 async def health_check():

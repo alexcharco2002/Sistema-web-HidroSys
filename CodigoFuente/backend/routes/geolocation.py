@@ -658,7 +658,94 @@ def actualizar_coordenadas(
         )
     
 # ============================================================================
-# ENDPOINT 8: DELETE /geo/medidores/{id_medidor}
+# ENDPOINT 8: PATCH /geo/medidores/{id_medidor}/activar
+# Activa un medidor inactivo desde el modulo de geolocalizacion.
+# ============================================================================
+
+@router.patch("/medidores/{id_medidor}/activar", status_code=status.HTTP_200_OK)
+def activar_medidor_geo(
+    id_medidor: int,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token),
+):
+    """
+    Activa un medidor desde geolocalizacion.
+    Requiere permiso: medidores.actualizar o geolocalizacion.actualizar/crud.
+    """
+    current_user = get_current_user(payload, db)
+    require_any_permission(
+        current_user, db,
+        [("medidores", "actualizar"), ("geolocalizacion", "actualizar"), ("geolocalizacion", "crud")],
+    )
+
+    medidor = (
+        db.query(Medidor)
+        .options(
+            joinedload(Medidor.sector),
+            joinedload(Medidor.usuario_afiliado).joinedload(
+                UsuarioAfiliado.usuario_sistema
+            ),
+        )
+        .filter(Medidor.id_medidor == id_medidor)
+        .first()
+    )
+
+    if not medidor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Medidor no encontrado",
+        )
+
+    if medidor.activo:
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": f"El medidor '{medidor.num_medidor}' ya esta activo.",
+                "medidor": medidor.to_dict(),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    medidor.activo = True
+
+    try:
+        db.commit()
+        db.refresh(medidor)
+
+        registrar_auditoria(
+            db=db,
+            accion="UPDATE",
+            descripcion=f"Medidor '{medidor.num_medidor}' activado desde geolocalizacion por '{payload['sub']}'",
+            id_usuario=current_user.id_usuario_sistema,
+        )
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Medidor activado",
+            mensaje=f"El medidor '{medidor.num_medidor}' fue activado correctamente.",
+            tipo="info",
+        )
+
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": f"El medidor '{medidor.num_medidor}' fue activado correctamente.",
+                "medidor": medidor.to_dict(),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error al activar medidor desde geo: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al activar el medidor",
+        )
+
+
+# ============================================================================
+# ENDPOINT 9: DELETE /geo/medidores/{id_medidor}
 # Elimina un medidor desde el modulo de geolocalizacion.
 # Si tiene relaciones, conserva el historial y lo desactiva.
 # ============================================================================

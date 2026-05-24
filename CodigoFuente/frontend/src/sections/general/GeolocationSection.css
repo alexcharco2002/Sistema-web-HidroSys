@@ -201,6 +201,12 @@
   color: #1d4ed8;
 }
 
+.geo-card-icon-btn.activate:hover {
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+  color: #047857;
+}
+
 .geo-card-icon-btn.delete:hover {
   background: #fef2f2;
   border-color: #fca5a5;

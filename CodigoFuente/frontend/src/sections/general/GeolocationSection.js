@@ -126,6 +126,7 @@ const GeolocationSection = () => {
   const [savingCoords,  setSavingCoords]  = useState(false);  // petición en curso
   const [toastGeo,      setToastGeo]      = useState(null);   // {tipo, msg}
   const [deletingMedidorId, setDeletingMedidorId] = useState(null);
+  const [activatingMedidorId, setActivatingMedidorId] = useState(null);
 
   // Limites geográficos
   const [limitesGeo, setLimitesGeo] = useState([]);
@@ -487,6 +488,44 @@ const eliminarMedidor = async (medidor, e) => {
 };
 
 
+const activarMedidor = async (medidor, e) => {
+  e.stopPropagation();
+  if (!medidor || medidor.activo || activatingMedidorId) return;
+
+  const confirmar = window.confirm(`Activar el medidor ${medidor.num_medidor}?`);
+  if (!confirmar) return;
+
+  setActivatingMedidorId(medidor.id_medidor);
+  try {
+    const result = await geolocalizacionService.activarMedidor(medidor.id_medidor);
+
+    if (!result.success) {
+      setToastGeo({ tipo: 'error', msg: result.message || 'No se pudo activar el medidor' });
+      return;
+    }
+
+    const medidorActualizado = result.data?.medidor;
+    setMedidores(prev => prev.map(m =>
+      m.id_medidor === medidor.id_medidor
+        ? { ...m, activo: true, ...(medidorActualizado || {}) }
+        : m
+    ));
+
+    if (selectedMedidor?.id_medidor === medidor.id_medidor) {
+      setSelectedMedidor(prev => prev ? { ...prev, activo: true, ...(medidorActualizado || {}) } : prev);
+    }
+
+    shouldFitBoundsRef.current = true;
+    setToastGeo({ tipo: 'exito', msg: result.message || 'Medidor activado' });
+    await fetchData(true);
+  } catch {
+    setToastGeo({ tipo: 'error', msg: 'Error de conexion al activar medidor' });
+  } finally {
+    setActivatingMedidorId(null);
+    setTimeout(() => setToastGeo(null), 4500);
+  }
+};
+
 
 
   const fetchAffiliates = useCallback(async () => {
@@ -828,6 +867,23 @@ const limiteStyleHover = {
                             aria-label={isModoActivo ? 'Cancelar actualización de ubicación' : 'Actualizar ubicación en el mapa'}
                           >
                             {isModoActivo ? <X size={15} /> : <Move size={15} />}
+                          </button>
+                        )}
+
+                        {permissions.canUpdate && !medidor.activo && (
+                          <button
+                            type="button"
+                            className="geo-card-icon-btn activate"
+                            onClick={(e) => activarMedidor(medidor, e)}
+                            disabled={activatingMedidorId === medidor.id_medidor}
+                            title="Activar medidor"
+                            aria-label="Activar medidor"
+                          >
+                            {activatingMedidorId === medidor.id_medidor ? (
+                              <Loader2 size={15} className="spin" />
+                            ) : (
+                              <CheckCircle size={15} />
+                            )}
                           </button>
                         )}
 

@@ -285,6 +285,29 @@ class GeolocalizacionService {
     }
   }
 
+  async activarMedidor(medidorId) {
+    try {
+      const data = await this.makeRequest(
+        `${API_CONFIG.endpoints.baseGeoMedidores}/${medidorId}/activar`,
+        { method: 'PATCH', cache: 'no-store' }
+      );
+
+      this.clearCacheAndInflight('medidores_geo', API_CONFIG.endpoints.medidoresGeo);
+      this.clearCacheAndInflight('mis_medidores', API_CONFIG.endpoints.misMedidores);
+
+      return {
+        success: Boolean(data?.success),
+        data,
+        message: data?.message || 'Medidor activado',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Error al activar medidor',
+      };
+    }
+  }
+
   // ── Helpers ──────────────────────────────────────────────────────────
   validarCoordenadas(lat, lng) {
     const la = parseFloat(lat), ln = parseFloat(lng);

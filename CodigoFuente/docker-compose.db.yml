@@ -45,7 +45,7 @@ services:
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
       MAX_BACKUPS: ${MAX_BACKUPS:-50}
       ENVIRONMENT: ${ENVIRONMENT:-production}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,https://localhost:3000,https://tecnicobrosanjapamba.netlify.app}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,https://localhost:3000,https://tecnicobrosanjapamba.netlify.app,https://hidrosyssanjapamba.netlify.app,https://seas-endless-enhancement-strip.trycloudflare.com}
       TZ: America/Guayaquil
     ports:
       - "${BACKEND_HOST_PORT:-8000}:8000"

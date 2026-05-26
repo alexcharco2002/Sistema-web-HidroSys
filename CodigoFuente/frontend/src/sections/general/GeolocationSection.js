@@ -97,6 +97,7 @@ const mapOptions = {
 // ════════════════════════════════════════════════════════════════════════════
 const GeolocationSection = () => {
   const mapRef             = useRef(null);
+  const mapSectionRef      = useRef(null);
   const shouldFitBoundsRef = useRef(true);
   const medidorItemRefs    = useRef({});
 
@@ -196,7 +197,7 @@ const GeolocationSection = () => {
         limitesResult,
       ] = await Promise.all([
         geolocalizacionService.getSectores(),
-        geolocalizacionService.getEstadisticasGeo(force, medidoresResult.success ? medidoresResult.data : null),
+        geolocalizacionService.getEstadisticasGeo(force),
         geolocalizacionService.getMisMedidores(force),    // ✅ pasa force
         geolocalizacionService.getLimitesGeograficos(),
       ]);
@@ -400,6 +401,7 @@ const handleCreateMedidor = async (e) => {
       // Limpia caché y fuerza la recarga de los datos
       geolocalizacionService.clearCacheAndInflight('medidores_geo', '/geo/medidores');
       geolocalizacionService.clearCacheAndInflight('mis_medidores', '/geo/medidores/mis-medidores');
+      geolocalizacionService.clearCacheAndInflight('estadisticas_geo', '/geo/estadisticas');
       setToastGeo({ tipo: 'exito', msg: `Medidor ${payload.num_medidor} creado correctamente` });
       cancelarModoCrearMedidor();
       shouldFitBoundsRef.current = true;
@@ -549,6 +551,15 @@ const activarMedidor = async (medidor, e) => {
     cancelarModoUbicacion();
     setModoCrearMedidor(true);
     setCoordNuevoMedidor(null);
+
+    if (window.matchMedia('(max-width: 1024px)').matches) {
+      window.requestAnimationFrame(() => {
+        mapSectionRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+    }
   };
 
   const cancelarModoCrearMedidor = () => {
@@ -966,6 +977,7 @@ const limiteStyleHover = {
 
         {/* ── MAPA ────────────────────────────────────────────────────── */}
         <div
+          ref={mapSectionRef}
           className="geo-map-container"
           style={{
             position: 'relative',

@@ -59,6 +59,8 @@
   z-index: 1000;
   border: 1px solid var(--border-color);
   animation: slideIn 0.2s ease-out;
+  display: flex;
+  flex-direction: column;
 }
 
 @keyframes slideIn {
@@ -147,6 +149,7 @@
   max-height: 380px;
   overflow-y: auto;
   background: #f9fafb;
+  min-height: 0;
 }
 
 /* Scrollbar personalizado */
@@ -429,49 +432,72 @@
    ======================================== */
 @media (max-width: 768px) {
   .notification-container .notification-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    left: auto;
     width: min(340px, calc(100vw - 24px));
-    max-height: calc(100dvh - 96px);
-  }
-
-  .notification-container .notification-header {
-    padding: 14px 16px;
-  }
-
-  .notification-container .notification-list {
-    max-height: calc(100dvh - 220px);
-  }
-
-  .notification-container .notification-item {
-    padding: 12px 44px 12px 14px;
-  }
-}
-
-@media (max-width: 480px) {
-  .notification-container .notification-dropdown {
-    position: fixed;
-    top: 72px;
-    left: 12px;
-    right: 12px;
-    width: auto;
-    max-height: calc(100dvh - 92px);
+    max-height: min(460px, calc(100dvh - 120px));
     border-radius: 10px;
   }
 
   .notification-container .notification-header {
     padding: 12px 14px;
+    flex-shrink: 0;
   }
 
   .notification-container .notification-header h3 {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .notification-container .notification-list {
-    max-height: calc(100dvh - 208px);
+    flex: 1 1 auto;
+    max-height: none;
+  }
+
+  .notification-container .notification-item {
+    padding: 12px 44px 12px 14px;
+  }
+
+  .notification-container .notification-footer {
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .notification-container .notification-dropdown {
+    top: calc(100% + 8px);
+    right: -4px;
+    left: auto;
+    width: min(310px, calc(100vw - 20px));
+    max-height: min(420px, calc(100dvh - 112px));
+    border-radius: 8px;
+  }
+
+  .notification-container .notification-header {
+    padding: 10px 12px;
+  }
+
+  .notification-container .notification-header .w-full {
+    gap: 8px;
+  }
+
+  .notification-container .notification-header h3 {
+    font-size: 13px;
+  }
+
+  .notification-container .notification-count {
+    padding: 2px 7px;
+    font-size: 11px;
+  }
+
+  .notification-container .notification-list {
+    max-height: none;
   }
 
   .notification-container .notification-item {
     gap: 10px;
-    padding: 10px 42px 10px 12px;
+    padding: 10px 38px 10px 10px;
   }
 
   .notification-container .notification-icon-wrapper {
@@ -490,18 +516,28 @@
     font-size: 12px;
   }
 
+  .notification-container .notification-title {
+    line-height: 1.25;
+  }
+
+  .notification-container .notification-message {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    line-height: 1.3;
+  }
+
   .notification-container .notification-time {
     font-size: 10px;
   }
 
   .notification-container .notification-dot {
-    top: 16px;
-    right: 36px;
+    top: 14px;
+    right: 32px;
   }
 
   .notification-container .notification-delete {
     top: 10px;
-    right: 10px;
+    right: 8px;
     opacity: 1;
   }
 

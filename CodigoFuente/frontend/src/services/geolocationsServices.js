@@ -175,23 +175,33 @@ class GeolocalizacionService {
   }
 
   // ── Estadísticas — ✅ acepta force para no usar cache viejo ──────────
-  async getEstadisticasGeo(force = false, medidores = null) {
-    // ✅ pasa force al getMedidoresGeo para que ambos usen el mismo flujo
-    const result = medidores
-      ? { success: true, data: medidores }
-      : await this.getMedidoresGeo(force);
-    if (!result.success) return result;
-    const meds  = result.data;
-    const stats = {
-      total_medidores:     meds.length,
-      medidores_con_geo:   meds.length,
-      medidores_activos:   meds.filter(m => m.activo).length,
-      medidores_inactivos: meds.filter(m => !m.activo).length,
-      medidores_asignados: meds.filter(m => m.id_usuario_afi).length,
-      sectores_unicos:     new Set(meds.map(m => m.id_sector).filter(Boolean)).size,
-      cobertura_geo:       '100.0',
-    };
-    return { success: true, data: stats };
+  async getEstadisticasGeo(force = false) {
+    const CACHE_KEY = 'estadisticas_geo';
+
+    if (force) {
+      delete this._cache[CACHE_KEY];
+      delete this._inflight[`GET::${API_CONFIG.baseURL}${API_CONFIG.endpoints.estadisticas}`];
+    } else {
+      const cached = this._getCache(CACHE_KEY);
+      if (cached) return { success: true, data: cached, fromCache: true };
+    }
+
+    try {
+      const data = await this.makeRequest(API_CONFIG.endpoints.estadisticas, { forceRefresh: force });
+      const stats = {
+        ...data,
+        cobertura_geo: data.cobertura_geo_pct ?? data.cobertura_geo ?? 0,
+      };
+      this._setCache(CACHE_KEY, stats);
+      return { success: true, data: stats, fromCache: false };
+    } catch (error) {
+      console.error('Error al obtener estadísticas de geolocalizacion:', error);
+      const stale = this._cache[CACHE_KEY]?.data;
+      if (stale) {
+        return { success: true, data: stale, fromCache: true, stale: true };
+      }
+      return { success: false, data: null, message: error.message };
+    }
   }
 
   // ── Medidores cercanos ───────────────────────────────────────────────
@@ -249,6 +259,7 @@ class GeolocalizacionService {
       // ✅ Limpia cache Y inflight para garantizar fetch fresco en el próximo getMedidoresGeo(force)
       this.clearCacheAndInflight('medidores_geo', API_CONFIG.endpoints.medidoresGeo);
       this.clearCacheAndInflight('mis_medidores', API_CONFIG.endpoints.misMedidores);
+      this.clearCacheAndInflight('estadisticas_geo', API_CONFIG.endpoints.estadisticas);
 
       return { success: true, data, message: data.message || 'Coordenadas actualizadas' };
     } catch (error) {
@@ -268,6 +279,7 @@ class GeolocalizacionService {
 
       this.clearCacheAndInflight('medidores_geo', API_CONFIG.endpoints.medidoresGeo);
       this.clearCacheAndInflight('mis_medidores', API_CONFIG.endpoints.misMedidores);
+      this.clearCacheAndInflight('estadisticas_geo', API_CONFIG.endpoints.estadisticas);
 
       return {
         success: Boolean(data?.success),
@@ -292,6 +304,7 @@ class GeolocalizacionService {
 
       this.clearCacheAndInflight('medidores_geo', API_CONFIG.endpoints.medidoresGeo);
       this.clearCacheAndInflight('mis_medidores', API_CONFIG.endpoints.misMedidores);
+      this.clearCacheAndInflight('estadisticas_geo', API_CONFIG.endpoints.estadisticas);
 
       return {
         success: Boolean(data?.success),

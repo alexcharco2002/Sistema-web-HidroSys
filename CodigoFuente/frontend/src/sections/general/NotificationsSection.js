@@ -74,7 +74,7 @@ const NotificationsSection = () => {
   mensaje: 'Se realizará un mantenimiento programado para mejorar el rendimiento y estabilidad del sistema. Durante este período, el acceso al sistema estará temporalmente suspendido.',
   fecha_inicio_mantenimiento: '',
   fecha_fin_mantenimiento: '',
-  duracion_estimada: '2 horas',
+  duracion_estimada: '',
   modulos_afectados: 'Facturación, Lecturas, Pagos',
   enviar_email: false,
   prioridad: 'alta'
@@ -171,13 +171,19 @@ useEffect(() => {
         duracion_estimada: '' 
       }));
     } else {
-      setMaintenanceData(prev => ({ 
-        ...prev, 
-        duracion_estimada: duracion 
-      }));
+      setMaintenanceData(prev => (
+        prev.duracion_estimada === duracion
+          ? prev
+          : { ...prev, duracion_estimada: duracion }
+      ));
     }
+  } else if (maintenanceData.duracion_estimada) {
+    setMaintenanceData(prev => ({
+      ...prev,
+      duracion_estimada: ''
+    }));
   }
-}, [maintenanceData.fecha_inicio_mantenimiento, maintenanceData.fecha_fin_mantenimiento]);
+}, [maintenanceData.fecha_inicio_mantenimiento, maintenanceData.fecha_fin_mantenimiento, maintenanceData.duracion_estimada]);
 
 
   async function loadUsers() {
@@ -310,7 +316,7 @@ const resetForm = () => {
     mensaje: 'Se realizará un mantenimiento programado para mejorar el rendimiento y estabilidad del sistema. Durante este período, el acceso al sistema estará temporalmente suspendido.',
     fecha_inicio_mantenimiento: '',
     fecha_fin_mantenimiento: '',
-    duracion_estimada: '2 horas',
+    duracion_estimada: '',
     modulos_afectados: 'Facturación, Lecturas, Pagos',
     enviar_email: false,
     prioridad: 'alta'
@@ -358,8 +364,7 @@ const handleSubmit = async (e) => {
       }
 
       if (sendToAll) {
-        const payload = { ...formData, idusuariosistema: null };
-        const result = await notificationsService.createNotification(payload);
+        const result = await notificationsService.createNotificationBulk(formData, null);
         
         if (result.success) {
           setSuccessMessage('Notificación enviada a todos los usuarios');
@@ -371,21 +376,11 @@ const handleSubmit = async (e) => {
           setError(result.message);
         }
       } else {
-        let successCount = 0;
-        let errorCount = 0;
+        const bulkResult = await notificationsService.createNotificationBulk(formData, selectedUsers);
+        const successCount = bulkResult.success ? (bulkResult.count || selectedUsers.length) : 0;
+        const errorCount = bulkResult.success ? 0 : selectedUsers.length;
 
-        for (const userId of selectedUsers) {
-          const payload = { ...formData, idusuariosistema: userId };
-          const result = await notificationsService.createNotification(payload);
-          
-          if (result.success) {
-            successCount++;
-          } else {
-            errorCount++;
-          }
-        }
-
-        if (errorCount === 0) {
+        if (bulkResult.success) {
           setSuccessMessage(`Notificación enviada a ${successCount} usuarios`);
           setTimeout(() => {
             closeModal();
@@ -427,7 +422,7 @@ const handleSubmit = async (e) => {
     enviar_email: maintenanceData.enviar_email,
     prioridad: maintenanceData.prioridad,
     tipo: 'mantenimiento',
-    idusuariosistema: null
+    id_usuario_sistema: null
   };
 
   const result = await notificationsService.createMaintenance(payload);
@@ -1164,7 +1159,7 @@ return (
                               {filteredUsers.map(user => (
                                 <div 
                                   key={user.id} 
-                                  className="notif-user-item"
+                                  className={`notif-user-item ${selectedUsers.includes(user.id) ? 'selected' : ''}`}
                                   onClick={() => handleUserSelection(user.id)}
                                 >
                                   <input
@@ -1265,7 +1260,7 @@ return (
                         <Clock className="w-4 h-4 text-gray-400" />
                         <input
                           type="text"
-                          value={maintenanceData.duracionestimada || 'Ingresa fecha inicio y fin'}
+                          value={maintenanceData.duracion_estimada || 'Ingresa fecha inicio y fin'}
                           readOnly
                           disabled
                           className="input-readonly"
@@ -1282,6 +1277,7 @@ return (
                     <div className="form-group">
                       <label>Prioridad</label>
                       <select
+                        name="prioridad"
                         value={maintenanceData.prioridad}
                         onChange={handleMaintenanceChange}
                       >
@@ -1308,6 +1304,7 @@ return (
                       <label className="checkbox-label">
                         <input
                           type="checkbox"
+                          name="enviar_email"
                           checked={maintenanceData.enviar_email}
                           onChange={handleMaintenanceChange}
 

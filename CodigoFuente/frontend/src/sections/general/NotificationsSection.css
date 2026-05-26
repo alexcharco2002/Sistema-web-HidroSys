@@ -878,25 +878,56 @@
   flex: 1;
 }
 
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #2563eb;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.checkbox-label svg {
+  color: #2563eb;
+  flex: 0 0 auto;
+}
+
 /* ==================== BUSCADOR DE USUARIOS ==================== */
 .notif-user-search-container {
   width: 100%;
+  margin-top: 2px;
 }
 
 .notif-user-search-wrapper {
   position: relative;
   display: flex;
   align-items: center;
-  background: white;
-  border: 2px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 0 12px;
-  transition: all 0.3s ease;
+  height: 40px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0 10px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .notif-user-search-wrapper:focus-within {
   border-color: #3b82f6;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
 
 .notif-user-search-wrapper svg:first-child {
@@ -905,9 +936,11 @@
 
 .notif-user-search-wrapper input {
   flex: 1;
+  min-width: 0;
+  height: 100%;
   border: none;
   outline: none;
-  padding: 12px 8px;
+  padding: 0 8px;
   font-size: 14px;
   color: #1f2937;
   background: transparent;
@@ -921,11 +954,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
-  background: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
   border: none;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 6px;
   transition: all 0.2s ease;
 }
 
@@ -969,10 +1004,10 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 10px 12px;
   background: #f9fafb;
-  border-radius: 10px;
-  margin-bottom: 16px;
+  border-radius: 8px;
+  margin-bottom: 10px;
   border: 1px solid #e5e7eb;
 }
 
@@ -995,10 +1030,10 @@
 }
 
 .notif-selected-count {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #6b7280;
-  padding: 6px 12px;
+  padding: 5px 10px;
   background: white;
   border-radius: 6px;
   border: 1px solid #e5e7eb;
@@ -1006,12 +1041,12 @@
 
 /* ==================== LISTA DE USUARIOS ==================== */
 .notif-users-list {
-  max-height: 400px;
+  max-height: min(360px, 44vh);
   overflow-y: auto;
-  padding: 8px;
+  padding: 6px;
   background: #f9fafb;
-  border-radius: 12px;
-  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
 }
 
 .notif-users-list::-webkit-scrollbar {
@@ -1037,13 +1072,13 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 10px 12px;
   background: white;
-  border: 2px solid #e5e7eb;
-  border-radius: 10px;
-  margin-bottom: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 6px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
   -webkit-user-select: none;
   -ms-user-select: none;
   user-select: none;
@@ -1051,17 +1086,22 @@
 
 .notif-user-item:hover {
   border-color: #3b82f6;
-  transform: translateX(4px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-  background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.12);
+  background: #f8fbff;
+}
+
+.notif-user-item.selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #2563eb;
 }
 
 /* Checkbox dentro del item */
 .notif-user-item input[type="checkbox"] {
   -webkit-appearance: none;
   appearance: none;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border: 2px solid #cbd5e1;
   border-radius: 6px;
   background: white;
@@ -1080,8 +1120,8 @@
 .notif-user-item input[type="checkbox"]:checked::after {
   content: '';
   position: absolute;
-  top: 2px;
-  left: 6px;
+  top: 1px;
+  left: 5px;
   width: 5px;
   height: 10px;
   border: solid white;
@@ -1099,7 +1139,7 @@
 }
 
 .notif-user-name {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #1f2937;
   display: flex;
@@ -1115,7 +1155,7 @@
 }
 
 .notif-user-email {
-  font-size: 13px;
+  font-size: 12px;
   color: #6b7280;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1151,22 +1191,22 @@
   }
   
   .notif-users-list {
-    max-height: 300px;
+    max-height: min(300px, 42vh);
   }
   
   .notif-user-item {
-    padding: 12px;
+    padding: 10px;
   }
   
   .notif-users-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
+    gap: 8px;
+    align-items: center;
   }
   
   .notif-btn-link,
   .notif-selected-count {
     text-align: center;
+    white-space: nowrap;
   }
 }
 
@@ -1176,11 +1216,20 @@
   }
   
   .notif-user-name {
-    font-size: 14px;
+    font-size: 13px;
   }
   
   .notif-user-email {
-    font-size: 12px;
+    font-size: 11px;
+  }
+
+  .notif-users-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .notif-users-list {
+    max-height: min(260px, 38vh);
   }
   
   .notif-user-search-wrapper input {

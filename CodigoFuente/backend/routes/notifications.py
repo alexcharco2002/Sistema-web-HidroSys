@@ -1,6 +1,6 @@
 # routes/notifications.py
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, status
 from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -11,6 +11,7 @@ from models.notification import Notificacion
 from models.user import UsuarioSistema
 from routes.user import user_to_response
 from schemas.notification import (
+    NotificacionBulkCreate,
     NotificacionCreate,
     NotificacionResponse,
     NotificacionUpdate,
@@ -32,6 +33,67 @@ router = APIRouter(
     prefix="/notifications",
     tags=["Notificaciones"]
 )
+
+
+def enviar_emails_mantenimiento_background(
+    notificacion_ids: List[int],
+    destinatarios: List[str],
+    titulo: str,
+    mensaje: str,
+    fecha_inicio: datetime,
+    fecha_fin: Optional[datetime],
+    duracion: Optional[str],
+    modulos_afectados: Optional[str],
+):
+    if not destinatarios:
+        return
+
+    db = SessionLocal()
+    try:
+        html = email_service.build_mantenimiento_html(
+            titulo=titulo,
+            mensaje=mensaje,
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_fin,
+            duracion=duracion,
+            modulos_afectados=modulos_afectados,
+        )
+        enviados, fallidos = email_service.send_bulk_email(
+            destinatarios,
+            f"Mantenimiento Programado: {titulo}",
+            html,
+        )
+
+        if enviados:
+            db.query(Notificacion).filter(
+                Notificacion.id_notificacion.in_(notificacion_ids[:enviados])
+            ).update(
+                {
+                    Notificacion.email_enviado: True,
+                    Notificacion.fecha_envio_email: datetime.now(ECUADOR_TZ),
+                },
+                synchronize_session=False,
+            )
+            db.commit()
+
+        maintenance_logger.log_email_enviado(
+            id_notificacion=notificacion_ids[0] if notificacion_ids else 0,
+            titulo=titulo,
+            destinatarios_count=len(destinatarios),
+            exitoso=fallidos == 0,
+            error=None if fallidos == 0 else f"{fallidos} correos fallaron",
+        )
+    except Exception as e:
+        db.rollback()
+        maintenance_logger.log_email_enviado(
+            id_notificacion=notificacion_ids[0] if notificacion_ids else 0,
+            titulo=titulo,
+            destinatarios_count=len(destinatarios),
+            exitoso=False,
+            error=str(e),
+        )
+    finally:
+        db.close()
 
 # ========================================
 # DEPENDENCIA DE BASE DE DATOS
@@ -119,7 +181,7 @@ def crear_notificacion(
                     prioridad=notificacion.prioridad,
                     estado="no_leido",
                     es_mantenimiento=False,
-                    fecha_creacion=datetime.nonow(ECUADOR_TZ)  
+                    fecha_creacion=datetime.now(ECUADOR_TZ)
                 )
                 
                 db.add(nueva)
@@ -160,6 +222,71 @@ def crear_notificacion(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear notificación: {str(e)}"
+        )
+
+# ========================================
+# CREAR NOTIFICACIONES EN BULK
+# ========================================
+
+@router.post("/bulk-create", status_code=status.HTTP_201_CREATED)
+def crear_notificaciones_masivo(
+    request: NotificacionBulkCreate,
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Crea una misma notificacion para varios usuarios en una sola transaccion.
+    - ids_usuarios_sistema = None crea para todos los usuarios activos.
+    - ids_usuarios_sistema = [...] crea solo para esos usuarios activos.
+    """
+    try:
+        get_current_user(payload, db)
+
+        query = db.query(UsuarioSistema).filter(UsuarioSistema.activo == True)
+        if request.ids_usuarios_sistema is not None:
+            query = query.filter(
+                UsuarioSistema.id_usuario_sistema.in_(request.ids_usuarios_sistema)
+            )
+
+        usuarios = query.all()
+        if not usuarios:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No hay usuarios activos para notificar"
+            )
+
+        ahora = datetime.now(ECUADOR_TZ)
+        notificaciones = [
+            Notificacion(
+                id_usuario_sistema=usuario.id_usuario_sistema,
+                titulo=request.titulo,
+                mensaje=request.mensaje,
+                tipo=request.tipo,
+                prioridad=request.prioridad,
+                estado="no_leido",
+                es_mantenimiento=False,
+                fecha_creacion=ahora,
+            )
+            for usuario in usuarios
+        ]
+
+        db.bulk_save_objects(notificaciones)
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Notificacion creada para {len(notificaciones)} usuarios",
+            "count": len(notificaciones),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error creando notificaciones masivamente: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al crear notificaciones: {str(e)}"
         )
 
 # ========================================
@@ -215,6 +342,7 @@ def get_users(
 @router.post("/mantenimiento", response_model=dict, status_code=status.HTTP_201_CREATED)
 def crear_mantenimiento_programado(
     mantenimiento: MantenimientoCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
@@ -262,6 +390,7 @@ def crear_mantenimiento_programado(
         
         # Crear notificaciones para cada usuario
         notificaciones_creadas = []
+        destinatarios_email = []
         emails_enviados = 0
         emails_fallidos = 0
         
@@ -289,6 +418,11 @@ def crear_mantenimiento_programado(
             
             notificaciones_creadas.append(nueva_notificacion)
             
+            if mantenimiento.enviar_email and usuario.email:
+                destinatarios_email.append(usuario.email)
+
+            continue
+
             # Enviar email si está habilitado
             if mantenimiento.enviar_email and usuario.email:
                 try:
@@ -329,6 +463,19 @@ def crear_mantenimiento_programado(
         
         # Commit de todas las notificaciones
         db.commit()
+
+        if mantenimiento.enviar_email and destinatarios_email:
+            background_tasks.add_task(
+                enviar_emails_mantenimiento_background,
+                [n.id_notificacion for n in notificaciones_creadas],
+                destinatarios_email,
+                mantenimiento.titulo,
+                mantenimiento.mensaje,
+                mantenimiento.fecha_inicio_mantenimiento,
+                mantenimiento.fecha_fin_mantenimiento,
+                mantenimiento.duracion_estimada,
+                mantenimiento.modulos_afectados,
+            )
         
         # Registrar en logs
         maintenance_logger.log_mantenimiento_creado(
@@ -349,6 +496,7 @@ def crear_mantenimiento_programado(
                 "usuarios_notificados": len(usuarios),
                 "emails_enviados": emails_enviados,
                 "emails_fallidos": emails_fallidos,
+                "emails_en_cola": len(destinatarios_email) if mantenimiento.enviar_email else 0,
                 "fecha_inicio": mantenimiento.fecha_inicio_mantenimiento.isoformat(),
                 "horas_anticipacion": round(horas_anticipacion, 1)
             }

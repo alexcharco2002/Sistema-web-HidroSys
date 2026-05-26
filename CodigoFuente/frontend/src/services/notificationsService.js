@@ -16,6 +16,7 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
     unreadCount: '/notifications/no-leidas/count',
     createMaintenance: '/notifications/mantenimiento',
     createNotification: '/notifications',
+    createNotificationBulk: '/notifications/bulk-create',
     users: '/notifications/usuarios', 
   }
 };
@@ -337,6 +338,38 @@ class NotificationsService {
       return {
         success: false,
         message: error.message || 'Error al eliminar notificación'
+      };
+    }
+  }
+
+  async createNotificationBulk(notificationData, userIds = null) {
+    try {
+      const payload = {
+        titulo: notificationData.titulo,
+        mensaje: notificationData.mensaje,
+        tipo: notificationData.tipo || 'info',
+        prioridad: notificationData.prioridad || 'media',
+        ids_usuarios_sistema: Array.isArray(userIds) ? userIds : null
+      };
+
+      const data = await this.makeRequest(API_CONFIG.endpoints.createNotificationBulk, {
+        method: 'POST',
+        body: payload
+      });
+
+      this.cachedNotifications = null;
+
+      return {
+        success: true,
+        data,
+        count: data?.count || 0,
+        message: data?.message || 'Notificacion creada exitosamente'
+      };
+    } catch (error) {
+      console.error('Error creando notificaciones masivas:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al crear notificaciones'
       };
     }
   }

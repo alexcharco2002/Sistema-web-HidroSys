@@ -463,7 +463,7 @@ class PaymentsServices {
   async createPago(pagoData) {
     try {
       const montoPago = Number.parseFloat(Number(pagoData.monto_pago || 0).toFixed(2));
-      const data = await this.makeRequest(API_CONFIG.endpoints.pagos, {
+      const data = await this.makeRequest(`${API_CONFIG.endpoints.pagos}/`, {
         method: 'POST',
         body: {
           id_factura: pagoData.id_factura ? parseInt(pagoData.id_factura) : null,

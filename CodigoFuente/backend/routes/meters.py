@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import Integer, func, or_, cast, String
 from psycopg2.errors import ForeignKeyViolation, UniqueViolation
 from typing import List, Optional
+from datetime import date
 
 
 from models.HistorialMedidor import HistorialMedidor
@@ -442,6 +443,8 @@ def listar_afiliados_disponibles(
     search: Optional[str] = Query(None, description="Búsqueda por nombre, cédula o código"),
     id_sector: Optional[int] = Query(None, description="Filtrar por sector"),
     activo: Optional[bool] = Query(True, description="Filtrar por estado"),
+    skip: int = Query(0, ge=0, description="Registros a saltar en cada grupo"),
+    limit: int = Query(1000, ge=1, le=5000, description="Maximo de registros por grupo"),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
 ):
@@ -496,7 +499,37 @@ def listar_afiliados_disponibles(
     afiliados = (
         query
         .order_by(UsuarioAfiliado.cod_usuario_afi)
-        .limit(100)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    afiliados_ids_usuarios = [
+        row[0]
+        for row in db.query(UsuarioAfiliado.id_usuario_sistema)
+            .filter(UsuarioAfiliado.activo == True)
+            .all()
+    ]
+
+    usuarios_query = db.query(UsuarioSistema).filter(
+        UsuarioSistema.activo == True,
+        ~UsuarioSistema.id_usuario_sistema.in_(afiliados_ids_usuarios)
+        if afiliados_ids_usuarios else True
+    )
+
+    if search:
+        search_filter = f"%{search}%"
+        usuarios_query = usuarios_query.filter(
+            UsuarioSistema.nombres.ilike(search_filter) |
+            UsuarioSistema.apellidos.ilike(search_filter) |
+            UsuarioSistema.cedula.ilike(search_filter)
+        )
+
+    usuarios_no_afiliados = (
+        usuarios_query
+        .order_by(UsuarioSistema.nombres)
+        .offset(skip)
+        .limit(limit)
         .all()
     )
 
@@ -525,9 +558,10 @@ def listar_afiliados_disponibles(
     # ============================================
     # CONSTRUIR RESPUESTA
     # ============================================
-    return [
+    resultado = [
         AfiliadoDisponible(
             id_usuario_afi=a.id_usuario_afi,
+            id_usuario_sistema=None,
             cod_usuario_afi=a.cod_usuario_afi,
             nombre_afiliado=a.nombre_afiliado.strip() if a.nombre_afiliado else None,
             cedula=a.cedula,
@@ -536,10 +570,31 @@ def listar_afiliados_disponibles(
             nombre_sector=a.nombre_sector,
             total_medidores=conteos_medidores.get(a.id_usuario_afi, {}).get("total_medidores", 0),
             medidores_activos=conteos_medidores.get(a.id_usuario_afi, {}).get("medidores_activos", 0),
+            es_afiliado=True,
             activo=a.activo
         )
         for a in afiliados
     ]
+
+    resultado.extend([
+        AfiliadoDisponible(
+            id_usuario_afi=None,
+            id_usuario_sistema=u.id_usuario_sistema,
+            cod_usuario_afi=None,
+            nombre_afiliado=f"{u.nombres or ''} {u.apellidos or ''}".strip() or u.usuario,
+            cedula=u.cedula,
+            fecha_afiliacion=None,
+            id_sector=None,
+            nombre_sector=None,
+            total_medidores=0,
+            medidores_activos=0,
+            es_afiliado=False,
+            activo=u.activo
+        )
+        for u in usuarios_no_afiliados
+    ])
+
+    return resultado
 
 
 @router.get("/{id_medidor}", response_model=MedidorCompleto)
@@ -716,6 +771,7 @@ def actualizar_medidor(
 
     # ✅ Solo se calcula UNA vez
     datos_actualizacion = medidor_update.model_dump(exclude_unset=True)
+    id_usuario_sistema_nuevo = datos_actualizacion.pop("id_usuario_sistema_nuevo", None)
 
     # ========================================================================
     # VALIDACIÓN GEOGRÁFICA
@@ -757,6 +813,49 @@ def actualizar_medidor(
         ).first():
             raise HTTPException(status_code=400,
                 detail=f"Ya existe otro medidor con el número '{medidor_update.num_medidor}'")
+
+    if id_usuario_sistema_nuevo and not datos_actualizacion.get("id_usuario_afi"):
+        usuario_nuevo = db.query(UsuarioSistema).filter(
+            UsuarioSistema.id_usuario_sistema == id_usuario_sistema_nuevo,
+            UsuarioSistema.activo == True
+        ).first()
+
+        if not usuario_nuevo:
+            raise HTTPException(status_code=404, detail="Usuario seleccionado no encontrado o inactivo")
+
+        afiliado_existente = db.query(UsuarioAfiliado).filter(
+            UsuarioAfiliado.id_usuario_sistema == id_usuario_sistema_nuevo,
+            UsuarioAfiliado.activo == True
+        ).first()
+
+        if afiliado_existente:
+            datos_actualizacion["id_usuario_afi"] = afiliado_existente.id_usuario_afi
+        else:
+            sector_para_afiliar = datos_actualizacion.get("id_sector") or medidor.id_sector
+            if not sector_para_afiliar:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El usuario no afiliado necesita un sector para crear la afiliacion"
+                )
+
+            ultimo_codigo = db.query(UsuarioAfiliado.cod_usuario_afi).order_by(
+                UsuarioAfiliado.cod_usuario_afi.desc()
+            ).first()
+            try:
+                codigo_afiliado = int(ultimo_codigo[0]) + 1 if ultimo_codigo else 1
+            except (TypeError, ValueError):
+                codigo_afiliado = (db.query(func.count(UsuarioAfiliado.id_usuario_afi)).scalar() or 0) + 1
+
+            nuevo_afiliado = UsuarioAfiliado(
+                cod_usuario_afi=codigo_afiliado,
+                fecha_afiliacion=date.today(),
+                id_sector=sector_para_afiliar,
+                id_usuario_sistema=id_usuario_sistema_nuevo,
+                activo=True
+            )
+            db.add(nuevo_afiliado)
+            db.flush()
+            datos_actualizacion["id_usuario_afi"] = nuevo_afiliado.id_usuario_afi
 
     # ========================================================================
     # TRACKING DE CAMBIOS

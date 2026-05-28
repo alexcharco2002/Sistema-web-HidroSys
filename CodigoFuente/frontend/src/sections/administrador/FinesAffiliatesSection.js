@@ -93,6 +93,32 @@ const FinesAffiliatesSection = () => {
     return n[mes] || '';
   };
 
+  const getPeriodoKey = (anio, mes) => `${anio}-${mes}`;
+
+  const buildPeriodoFromDate = (date) => {
+    const mes = date.getMonth() + 1;
+    const anio = date.getFullYear();
+    return {
+      anio,
+      mes,
+      mes_nombre: getMesNombre(mes)
+    };
+  };
+
+  const buildPeriodosRecientes = () => {
+    const hoy = new Date();
+    return [-2, -1, 0, 1, 2].map(offset => (
+      buildPeriodoFromDate(new Date(hoy.getFullYear(), hoy.getMonth() + offset, 1))
+    ));
+  };
+
+  const calcularDiferenciaMeses = (mes, anio) => {
+    const hoy = new Date();
+    const mesActual = hoy.getMonth() + 1;
+    const anioActual = hoy.getFullYear();
+    return (anio - anioActual) * 12 + (mes - mesActual);
+  };
+
   // Texto + color por estado
   const estadoConfig = {
     pendiente:  { label: 'Pendiente',  color: '#d97706', bg: '#fef3c7', icon: Clock },
@@ -135,30 +161,41 @@ const FinesAffiliatesSection = () => {
   const loadPeriodosData = async () => {
     setLoadingPeriodos(true);
     try {
+      const periodosRecientesBase = buildPeriodosRecientes();
       const aniosResult = await finesAffiliatesServices.getAnios();
-      if (!aniosResult.success || !aniosResult.data.length) { setLoadingPeriodos(false); return; }
 
       const todosLosPeriodos = [];
 
-      for (const anio of aniosResult.data) {
-        const mesesResult = await finesAffiliatesServices.getMesesPorAnio(anio);
-        if (!mesesResult.success) continue;
+      if (aniosResult.success && aniosResult.data.length) {
+        for (const anio of aniosResult.data) {
+          const mesesResult = await finesAffiliatesServices.getMesesPorAnio(anio);
+          if (!mesesResult.success) continue;
 
-        for (const mes of mesesResult.data) {
-          todosLosPeriodos.push({ anio, mes: mes.mes, mes_nombre: mes.mes_nombre });
+          for (const mes of mesesResult.data) {
+            todosLosPeriodos.push({ anio, mes: mes.mes, mes_nombre: mes.mes_nombre });
+          }
         }
       }
 
-      setPeriodosData(todosLosPeriodos);
+      const periodosMap = new Map();
+      [...todosLosPeriodos, ...periodosRecientesBase].forEach((periodo) => {
+        periodosMap.set(getPeriodoKey(periodo.anio, periodo.mes), {
+          ...periodo,
+          mes_nombre: periodo.mes_nombre || getMesNombre(periodo.mes)
+        });
+      });
+
+      const periodosCompletos = Array.from(periodosMap.values());
+      setPeriodosData(periodosCompletos);
 
       // Cargar resúmenes de cada período en paralelo
       const resumenes = {};
       await Promise.all(
-        todosLosPeriodos.map(async (p) => {
+        periodosCompletos.map(async (p) => {
           try {
             const r = await finesAffiliatesServices.getResumenPeriodo(p.anio, p.mes);
             if (r.success) {
-              resumenes[`${p.anio}-${p.mes}`] = r.data;
+              resumenes[getPeriodoKey(p.anio, p.mes)] = r.data;
             }
           } catch (_) { /* silencioso */ }
         })
@@ -172,7 +209,7 @@ const FinesAffiliatesSection = () => {
     }
   };
 
-  const getResumen = (anio, mes) => resumenPeriodos[`${anio}-${mes}`] || null;
+  const getResumen = (anio, mes) => resumenPeriodos[getPeriodoKey(anio, mes)] || null;
 
   // ════════════════════════════════════════════════════════════
   //  FETCH MULTAS (con filtro tipo_multa al backend)
@@ -231,6 +268,7 @@ const FinesAffiliatesSection = () => {
     loadUserPermissions();
     loadTiposMulta();
     loadPeriodosData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -360,7 +398,16 @@ const FinesAffiliatesSection = () => {
       let r;
       if (modalType === 'create') {
         r = await finesAffiliatesServices.createMulta(formData);
-        if (r.success) { alert(`✅ Multa creada. ID: ${r.data.id_multa_afi}`); await fetchMultas(); await fetchStats(); closeModal(); }
+        if (r.success) {
+          const tipoSeleccionado = tiposMulta.find(t => t.id_tipo_multa === formData.id_tipo_multa);
+          const nombreAfiliado = selectedAffiliateInfo
+            ? `${selectedAffiliateInfo.nombres || ''} ${selectedAffiliateInfo.apellidos || ''}`.trim()
+            : 'el afiliado seleccionado';
+          const nombreMulta = tipoSeleccionado?.nombre_multa || 'multa';
+
+          alert(`✅ Multa de ${nombreMulta} por ${formatCurrency(formData.monto)} registrada para ${nombreAfiliado}`);
+          await fetchMultas(); await fetchStats(); closeModal();
+        }
         else setError(r.message || 'Error al crear');
       } else if (modalType === 'edit') {
         r = await finesAffiliatesServices.updateMulta(selectedMulta.id_multa_afi, formData);
@@ -447,10 +494,12 @@ const FinesAffiliatesSection = () => {
                   const hoy = new Date();
                   const mesActual  = hoy.getMonth() + 1;
                   const anioActual = hoy.getFullYear();
-                  const diff = (mes, anio) => (anio - anioActual) * 12 + (mes - mesActual);
 
                   const recientes = periodosData
-                    .filter(p => diff(p.mes, p.anio) >= -2 && diff(p.mes, p.anio) <= 2)
+                    .filter(p => {
+                      const diff = calcularDiferenciaMeses(p.mes, p.anio);
+                      return diff >= -2 && diff <= 2;
+                    })
                     .sort((a, b) => a.anio !== b.anio ? b.anio - a.anio : b.mes - a.mes);
 
                   if (!recientes.length) return (
@@ -523,12 +572,7 @@ const FinesAffiliatesSection = () => {
             </div>
 
             {(() => {
-              const hoy = new Date();
-              const mesActual  = hoy.getMonth() + 1;
-              const anioActual = hoy.getFullYear();
-              const diff = (mes, anio) => (anio - anioActual) * 12 + (mes - mesActual);
-
-              const historial = periodosData.filter(p => diff(p.mes, p.anio) < -2);
+              const historial = periodosData.filter(p => calcularDiferenciaMeses(p.mes, p.anio) < -2);
 
               if (!historial.length) return (
                 <div className="periodo-historial-empty">

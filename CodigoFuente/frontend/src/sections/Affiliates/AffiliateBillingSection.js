@@ -79,6 +79,7 @@ const AffiliateBillingSection = () => {
   const [paypalReceipt, setPaypalReceipt] = useState(null);
   const [showPaypalModal, setShowPaypalModal] = useState(false);
   const [paypalFactura, setPaypalFactura] = useState(null);
+  const [downloadingComprobanteId, setDownloadingComprobanteId] = useState(null);
 
   // ============================================================
   // ESTADÍSTICAS
@@ -612,11 +613,15 @@ const AffiliateBillingSection = () => {
   };
 
   const descargarComprobante = async (idPago, nombreArchivo = null) => {
+    if (!idPago || downloadingComprobanteId === idPago) return;
+    setDownloadingComprobanteId(idPago);
     try {
       const result = await affiliateBillingServices.descargarComprobante(idPago);
       if (!result.success) alert(`❌ ${result.message}`);
     } catch (error) {
       alert('Error al descargar el comprobante');
+    } finally {
+      setDownloadingComprobanteId(null);
     }
   };
 
@@ -1423,9 +1428,10 @@ const AffiliateBillingSection = () => {
               ) : pagosConComprobantes.length === 1 ? (
                 <button
                   className="fc-comp-dl"
+                  disabled={downloadingComprobanteId === pagosConComprobantes[0].id_pago}
                   onClick={(e) => { e.stopPropagation(); descargarComprobante(pagosConComprobantes[0].id_pago, pagosConComprobantes[0].nombre_archivo); }}
                 >
-                  <FileCheck className="w-3.5 h-3.5" />Descargar
+                  <FileCheck className="w-3.5 h-3.5" />{downloadingComprobanteId === pagosConComprobantes[0].id_pago ? 'Descargando...' : 'Descargar'}
                 </button>
               ) : (
                 <button
@@ -1732,8 +1738,9 @@ const AffiliateBillingSection = () => {
                         {pago.tiene_comprobante && (
                           <div className="historial-pago-comprobante-btn">
                             <button className="btn-secondary"
+                              disabled={downloadingComprobanteId === pago.id_pago}
                               onClick={(e) => { e.stopPropagation(); descargarComprobante(pago.id_pago, pago.nombre_archivo); }}>
-                              <FileCheck className="w-4 h-4 mr-2" />Descargar Comprobante
+                              <FileCheck className="w-4 h-4 mr-2" />{downloadingComprobanteId === pago.id_pago ? 'Descargando...' : 'Descargar Comprobante'}
                             </button>
                           </div>
                         )}

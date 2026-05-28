@@ -9,7 +9,8 @@ import './ReportsSection.css';
 import { FileText, Calendar, Search, BarChart3, Users, Droplet, 
   DollarSign, AlertCircle, CheckCircle, RefreshCw, Loader, Settings, 
   Database, MapPin, CreditCard, Shield, Activity, Clock, ArrowLeft, 
-  Eraser, XCircle, User, TrendingUp, FileSpreadsheet, Printer, FileDown, ChevronDown, Wallet, X
+  Eraser, XCircle, User, TrendingUp, FileSpreadsheet, Printer, FileDown, ChevronDown, Wallet, X,
+  Banknote, ArrowRightLeft, FileCheck, AlertTriangle
 } from 'lucide-react'
 
 
@@ -325,15 +326,6 @@ const ReportsSection = () => {
         const totalConsumo = consumos.reduce((sum, c) => sum + c, 0);
         const promedioConsumo = reporteData.length > 0 ? (totalConsumo / reporteData.length) : 0;
         const consumoMax = consumos.length > 0 ? Math.max(...consumos) : 0;
-        const consumoMin = consumos.length > 0 ? Math.min(...consumos) : 0;
-        
-        // Mediana de consumo
-        const consumosOrdenados = [...consumos].sort((a, b) => a - b);
-        const mediana = consumosOrdenados.length > 0 
-          ? consumosOrdenados.length % 2 === 0
-            ? (consumosOrdenados[consumosOrdenados.length / 2 - 1] + consumosOrdenados[consumosOrdenados.length / 2]) / 2
-            : consumosOrdenados[Math.floor(consumosOrdenados.length / 2)]
-          : 0;
         
         // Tipos de lectura
         const reales = reporteData.filter(l => l.tipo_lectura === 'Real' || l.es_estimada === false || l.es_estimada === 'No').length;
@@ -348,9 +340,7 @@ const ReportsSection = () => {
           { label: 'Medidores', value: medidoresUnicos, icon: 'Activity', color: 'text-indigo-600' },
           { label: 'Consumo Total', value: `${totalConsumo.toFixed(2)} m³`, icon: 'Droplet', color: 'text-blue-600' },
           { label: 'Consumo Promedio', value: `${promedioConsumo.toFixed(2)} m³`, icon: 'TrendingUp', color: 'text-green-600' },
-          { label: 'Consumo Mediano', value: `${mediana.toFixed(2)} m³`, icon: 'TrendingUp', color: 'text-teal-600' },
           { label: 'Consumo Máximo', value: `${consumoMax.toFixed(2)} m³`, icon: 'AlertCircle', color: 'text-red-600' },
-          { label: 'Consumo Mínimo', value: `${consumoMin.toFixed(2)} m³`, icon: 'CheckCircle', color: 'text-green-700' },
           { label: 'Lecturas Reales', value: `${reales} (${(100 - parseFloat(porcentajeEstimadas)).toFixed(1)}%)`, icon: 'CheckCircle', color: 'text-green-600' },
           { label: 'Lecturas Estimadas', value: `${estimadas} (${porcentajeEstimadas}%)`, icon: 'Clock', color: 'text-orange-600' }
         );
@@ -442,24 +432,32 @@ const ReportsSection = () => {
         break;
 
       case 'Pagos':
+        const getMontoPago = (p) => parseFloat(p.monto_pagado || p.monto || p.valor || 0) || 0;
+        const getMetodoPago = (p) => String(p.metodo_pago || p.metodopago || '').toLowerCase();
+        const esMetodoPago = (p, metodo) => {
+          const value = getMetodoPago(p);
+          if (metodo === 'paypal') return value.includes('paypal') || value.includes('pay pal');
+          if (metodo === 'transferencia') return value.includes('transferencia') || value.includes('transf');
+          return value.includes(metodo);
+        };
         // 💰 MONTOS Y PROMEDIOS
-        const totalRecaudado = reporteData.reduce((sum, p) => sum + (parseFloat(p.monto_pagado) || 0), 0);
+        const totalRecaudado = reporteData.reduce((sum, p) => sum + getMontoPago(p), 0);
         const promedioPago = reporteData.length > 0 ? (totalRecaudado / reporteData.length).toFixed(2) : 0;
-        const pagoMayor = Math.max(...reporteData.map(p => parseFloat(p.monto_pagado) || 0));
+        const pagoMayor = Math.max(...reporteData.map(getMontoPago), 0);
         
         // 💳 MÉTODOS DE PAGO
-        const efectivo = reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('efectivo')).length;
-        const transferencia = reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('transferencia')).length;
+        const pagosEfectivo = reporteData.filter(p => esMetodoPago(p, 'efectivo'));
+        const pagosTransferencia = reporteData.filter(p => esMetodoPago(p, 'transferencia'));
+        const pagosPaypal = reporteData.filter(p => esMetodoPago(p, 'paypal'));
+        const efectivo = pagosEfectivo.length;
+        const transferencia = pagosTransferencia.length;
+        const paypal = pagosPaypal.length;
         
         // 🧾 COMPROBANTES
-        const conComprobante = reporteData.filter(p => p.tiene_comprobante === true).length;
-        const sinComprobante = reporteData.filter(p => p.tiene_comprobante === false).length;
         
         // ✅ PAGOS COMPLETOS
-        const pagosParciales = reporteData.filter(p => p.pago_completo === false).length;
         
         // 💵 SALDOS
-        const saldoPendiente = reporteData.reduce((sum, p) => sum + (parseFloat(p.saldo) || 0), 0);
         
         // 🎯 PORCENTAJES
         const porcentajeEfectivo = reporteData.length > 0 
@@ -468,20 +466,13 @@ const ReportsSection = () => {
         const porcentajeTransferencia = reporteData.length > 0 
           ? ((transferencia / reporteData.length) * 100).toFixed(1) 
           : 0;
-        const porcentajeComprobantes = reporteData.length > 0 
-          ? ((conComprobante / reporteData.length) * 100).toFixed(1) 
+        const porcentajePaypal = reporteData.length > 0 
+          ? ((paypal / reporteData.length) * 100).toFixed(1) 
           : 0;
 
         // 🚨 ESTADÍSTICAS DE MORA EN PAGOS
-        const pagosMora = reporteData.filter(p => p.tiene_mora === true).length;
+        const pagosMora = reporteData.filter(p => (parseFloat(p.valor_mora) || 0) > 0 || p.tiene_mora === true).length;
         const totalMoraPagos = reporteData.reduce((sum, p) => sum + (parseFloat(p.valor_mora) || 0), 0);
-        const porcentajePagosMora = reporteData.length > 0 
-          ? ((pagosMora / reporteData.length) * 100).toFixed(1) 
-          : 0;
-        const totalFacturadoConMora = reporteData.reduce((sum, p) => sum + (parseFloat(p.total_con_mora) || 0), 0);
-        const promedioMesesAdeudoPagos = pagosMora > 0
-          ? (reporteData.filter(p => p.tiene_mora).reduce((sum, p) => sum + (parseInt(p.meses_adeudo) || 0), 0) / pagosMora).toFixed(1)
-          : 0;
 
         stats.push(
           { 
@@ -503,42 +494,28 @@ const ReportsSection = () => {
             value: `${efectivo} (${porcentajeEfectivo}%)`, 
             icon: 'Banknote', 
             color: 'text-purple-600',
-            subtitle: `$${reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('efectivo')).reduce((sum, p) => sum + parseFloat(p.monto_pagado || 0), 0).toFixed(2)}`
+            subtitle: `$${pagosEfectivo.reduce((sum, p) => sum + getMontoPago(p), 0).toFixed(2)}`
           },
           { 
             label: 'Transferencia', 
             value: `${transferencia} (${porcentajeTransferencia}%)`, 
             icon: 'ArrowRightLeft', 
             color: 'text-indigo-600',
-            subtitle: `$${reporteData.filter(p => p.metodo_pago?.toLowerCase().includes('transferencia')).reduce((sum, p) => sum + parseFloat(p.monto_pagado || 0), 0).toFixed(2)}`
+            subtitle: `$${pagosTransferencia.reduce((sum, p) => sum + getMontoPago(p), 0).toFixed(2)}`
           },
           { 
-            label: 'Con Comprobante', 
-            value: `${conComprobante} (${porcentajeComprobantes}%)`, 
-            icon: 'FileCheck', 
-            color: 'text-emerald-600',
-            subtitle: `Sin: ${sinComprobante}`
-          },
-          { 
-            label: 'Saldo Pendiente', 
-            value: `$${saldoPendiente.toFixed(2)}`, 
-            icon: 'AlertCircle', 
-            color: 'text-orange-600',
-            subtitle: `${pagosParciales} parciales`
-          },
-          { 
-            label: 'Pagos con Mora', 
-            value: `${pagosMora} (${porcentajePagosMora}%)`, 
-            icon: 'AlertTriangle', 
-            color: 'text-red-600',
-            subtitle: `Promedio: ${promedioMesesAdeudoPagos} meses`
+            label: 'PayPal', 
+            value: `${paypal} (${porcentajePaypal}%)`, 
+            icon: 'Wallet', 
+            color: 'text-sky-600',
+            subtitle: `$${pagosPaypal.reduce((sum, p) => sum + getMontoPago(p), 0).toFixed(2)}`
           },
           { 
             label: 'Total Mora', 
             value: `$${totalMoraPagos.toFixed(2)}`, 
             icon: 'DollarSign', 
             color: 'text-red-700',
-            subtitle: `Total con mora: $${totalFacturadoConMora.toFixed(2)}`
+            subtitle: `${pagosMora} pagos con mora`
           }
         );
         break;
@@ -772,7 +749,7 @@ const ReportsSection = () => {
     const icons = {
       CheckCircle, XCircle, User, Activity, AlertCircle, MapPin, 
       Droplet, TrendingUp, DollarSign, Clock, CreditCard, Database,
-      Calendar, FileText
+      Calendar, FileText, Wallet, Banknote, ArrowRightLeft, FileCheck, AlertTriangle
     };
     return icons[iconName] || Database;
   };
@@ -1463,7 +1440,8 @@ const toggleTodasColumnas = (seleccionar) => {
       'num_factura': 'N° Factura',
       'metodo_pago': 'Método',
       'estado_factura': 'Estado',
-      'tipo_lectura': 'Tipo'
+      'tipo_lectura': 'Tipo',
+      'iva': 'IVA'
     };
     
     return specialNames[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -1493,7 +1471,8 @@ const toggleTodasColumnas = (seleccionar) => {
       key.includes('monto') || 
       key.includes('valor') ||
       key.includes('precio') ||
-      key.includes('exceso')
+      key.includes('exceso') ||
+      key === 'iva'
     ) {
       return 'col-numeric';
     }
@@ -1550,7 +1529,8 @@ const toggleTodasColumnas = (seleccionar) => {
       key.includes('valor') ||
       key.includes('precio') ||
       key.includes('descuento') ||
-      key.includes('impuesto') 
+      key.includes('impuesto') ||
+      key === 'iva'
 
     ) {
       const num = parseFloat(value);

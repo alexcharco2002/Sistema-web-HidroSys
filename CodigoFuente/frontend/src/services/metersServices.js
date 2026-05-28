@@ -263,6 +263,7 @@ class MetersService {
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
+      params.append('limit', '5000');
       
       const queryString = params.toString();
       const endpoint = queryString 
@@ -337,6 +338,7 @@ async updateMeter(meterId, meterData) {
       id_usuario_afi: meterData.id_usuario_afi,
       id_sector: meterData.id_sector,
       activo: meterData.activo,
+      id_usuario_sistema_nuevo: meterData.id_usuario_sistema_nuevo,
       costo_cambio: meterData.costo_cambio,
       motivo_cambio: meterData.motivo_cambio,
       observaciones_cambio: meterData.observaciones_cambio

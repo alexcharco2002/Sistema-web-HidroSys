@@ -268,21 +268,24 @@ const TablesView = ({ data, moduloInfo }) => {
 const BarChart = ({ data }) => {
   const maxValue = Math.max(...data.map(d => d.value));
   const chartHeight = 200;
+  const topPadding = 28;
+  const bottomPadding = 40;
   const barWidth = 40;
   const spacing = 20;
+  const svgHeight = chartHeight + topPadding + bottomPadding;
   
   return (
     <div className="chart-container">
       <svg 
         width="100%" 
-        height={chartHeight + 40}
-        viewBox={`0 0 ${(barWidth + spacing) * data.length} ${chartHeight + 40}`}
+        height={svgHeight}
+        viewBox={`0 0 ${(barWidth + spacing) * data.length} ${svgHeight}`}
         preserveAspectRatio="xMidYMid meet"
       >
         {data.map((item, idx) => {
           const barHeight = (item.value / maxValue) * chartHeight;
           const x = idx * (barWidth + spacing);
-          const y = chartHeight - barHeight;
+          const y = topPadding + chartHeight - barHeight;
           
           return (
             <g key={idx}>
@@ -299,18 +302,18 @@ const BarChart = ({ data }) => {
               {/* Valor */}
               <text
                 x={x + barWidth / 2}
-                y={y - 5}
+                y={Math.max(12, y - 6)}
                 textAnchor="middle"
                 fontSize="12"
                 fill="#374151"
                 fontWeight="600"
               >
-                {item.value}
+                {item.displayValue || item.value}
               </text>
               {/* Label */}
               <text
                 x={x + barWidth / 2}
-                y={chartHeight + 20}
+                y={topPadding + chartHeight + 20}
                 textAnchor="middle"
                 fontSize="11"
                 fill="#6b7280"
@@ -487,7 +490,9 @@ const LineChart = ({ data }) => {
   const range = maxValue - minValue || 1;
   
   const points = data.map((item, idx) => {
-    const x = padding + (idx / (data.length - 1)) * (chartWidth - 2 * padding);
+    const x = data.length === 1
+      ? chartWidth / 2
+      : padding + (idx / (data.length - 1)) * (chartWidth - 2 * padding);
     const y = chartHeight - padding - ((item.value - minValue) / range) * (chartHeight - 2 * padding);
     return { x, y, ...item };
   });
@@ -568,6 +573,19 @@ const DistributionChart = ({ data }) => {
 };
 
 // Gráfico de Área (ideal para tendencias de consumo)
+const shortenPersonName = (name) => {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+
+  if (parts.length >= 3) return `${parts[0]} ${parts[2]}`;
+  if (parts.length >= 2) return `${parts[0]} ${parts[1]}`;
+  return parts[0] || 'N/A';
+};
+
+const truncateChartLabel = (label, maxLength = 18) => {
+  const value = String(label || 'N/A').trim();
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
+};
+
 const AreaChart = ({ data }) => {
   const chartWidth = 400;
   const chartHeight = 200;
@@ -766,9 +784,11 @@ const HorizontalBarChart = ({ data }) => {
         {data.map((item, idx) => {
           const barWidth = ((item.value / maxValue) * (chartWidth - padding.left - padding.right));
           const y = padding.top + idx * (barHeight + barSpacing);
+          const label = truncateChartLabel(item.label);
           
           return (
             <g key={idx}>
+              <title>{item.fullLabel || item.label}</title>
               {/* Fondo de la barra (guía) */}
               <rect
                 x={padding.left}
@@ -799,7 +819,7 @@ const HorizontalBarChart = ({ data }) => {
                 fill="#374151"
                 dominantBaseline="middle"
               >
-                {item.label}
+                {label}
               </text>
               
               {/* Valor (derecha de la barra) */}
@@ -1076,12 +1096,16 @@ const calculateLecturasCharts = (data) => {
   const topConsumos = [...data]
     .sort((a, b) => (parseFloat(b.consumo_m3 || b.consumo) || 0) - (parseFloat(a.consumo_m3 || a.consumo) || 0))
     .slice(0, 10)
-    .map(l => ({
-      label: l.Nombre || l.nombres || l.Nombres || l.num_medidor || 'N/A',
-      value: parseFloat(l.consumo_m3 || l.consumo) || 0,
-      color: '#3b82f6',
-      subtitle: `Medidor: ${l.num_medidor || 'N/A'}`
-    }));
+    .map(l => {
+      const fullLabel = l.Nombre || l.nombres || l.Nombres || l.num_medidor || 'N/A';
+      return {
+        label: shortenPersonName(fullLabel),
+        fullLabel,
+        value: parseFloat(l.consumo_m3 || l.consumo) || 0,
+        color: '#3b82f6',
+        subtitle: `Medidor: ${l.num_medidor || 'N/A'}`
+      };
+    });
   
   // ✅ NUEVO: Consumo Promedio por Sector (Barras Verticales)
   const consumoPorSector = {};
@@ -1270,12 +1294,16 @@ const calculateFacturasCharts = (data) => {
   const topFacturas = [...data]
     .sort((a, b) => (parseFloat(b.total_factura || b.total) || 0) - (parseFloat(a.total_factura || a.total) || 0))
     .slice(0, 10)
-    .map(f => ({
-      label: f.Nombres || f.nombres || f.Nombre || f.num_factura || 'N/A',
-      value: parseFloat(f.total_factura || f.total) || 0,
-      color: f.tiene_mora ? '#ef4444' : '#3b82f6',
-      subtitle: `${f.num_factura}${f.tiene_mora ? ' (CON MORA)' : ''}`
-    }));
+    .map(f => {
+      const fullLabel = f.Nombres || f.nombres || f.Nombre || f.num_factura || 'N/A';
+      return {
+        label: shortenPersonName(fullLabel),
+        fullLabel,
+        value: parseFloat(f.total_factura || f.total) || 0,
+        color: f.tiene_mora ? '#ef4444' : '#3b82f6',
+        subtitle: `${f.num_factura}${f.tiene_mora ? ' (CON MORA)' : ''}`
+      };
+    });
   
   // Facturación mensual - Ordenar por fecha correctamente
   const facturasPorMes = {};
@@ -1452,32 +1480,76 @@ const calculateFacturasCharts = (data) => {
   };
 };
 
+const getPaymentAmount = (p) => parseFloat(p.monto_pagado || p.monto || p.valor || 0) || 0;
+
+const getPaymentMora = (p) => parseFloat(p.valor_mora || 0) || 0;
+
+const paymentHasMora = (p) => getPaymentMora(p) > 0 || p.tiene_mora === true;
+
+const getPaymentMethod = (p) => String(p.metodo_pago || p.metodopago || '').trim();
+
+const normalizePaymentMethod = (method) => {
+  const normalized = String(method || '').toLowerCase();
+
+  if (normalized.includes('efectivo')) return 'Efectivo';
+  if (normalized.includes('transferencia') || normalized.includes('transf')) return 'Transferencia';
+  if (normalized.includes('tarjeta') || normalized.includes('credito') || normalized.includes('debito')) return 'Tarjeta';
+  if (normalized.includes('paypal') || normalized.includes('pay pal')) return 'PayPal';
+  return 'Otros';
+};
+
+const parsePaymentDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+  const str = String(value).trim();
+  if (!str) return null;
+
+  if (str.includes('/')) {
+    const [datePart, timePart = ''] = str.split(/\s+/);
+    const [day, month, year] = datePart.split('/').map(Number);
+
+    if (day && month && year) {
+      const [hour = 0, minute = 0] = timePart.split(':').map(Number);
+      const parsed = new Date(year, month - 1, day, hour || 0, minute || 0);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+  }
+
+  const parsed = new Date(str);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const parsePaymentPeriodDate = (p) => {
+  const periodo = String(p.periodo || p.periodo_consumo || '').trim();
+
+  if (/^\d{4}-\d{2}$/.test(periodo)) {
+    const [year, month] = periodo.split('-').map(Number);
+    return new Date(year, month - 1, 1);
+  }
+
+  return parsePaymentDate(p.fecha_pago || p.fecha);
+};
+
 const calculatePagosCharts = (data) => {
   // Métodos de pago
-  const efectivo = data.filter(p => 
-    p.metodo_pago?.toLowerCase().includes('efectivo') || p.metodopago?.toLowerCase().includes('efectivo')
-  );
-  const transferencia = data.filter(p => 
-    p.metodo_pago?.toLowerCase().includes('transferencia') || p.metodopago?.toLowerCase().includes('transferencia')
-  );
-  const tarjeta = data.filter(p => 
-    p.metodo_pago?.toLowerCase().includes('tarjeta') || p.metodopago?.toLowerCase().includes('tarjeta')
-  );
-  const otros = data.filter(p => {
-    const metodo = (p.metodo_pago || p.metodopago || '').toLowerCase();
-    return !metodo.includes('efectivo') && !metodo.includes('transferencia') && !metodo.includes('tarjeta') && metodo !== '';
-  });
+  const efectivo = data.filter(p => normalizePaymentMethod(getPaymentMethod(p)) === 'Efectivo');
+  const transferencia = data.filter(p => normalizePaymentMethod(getPaymentMethod(p)) === 'Transferencia');
+  const tarjeta = data.filter(p => normalizePaymentMethod(getPaymentMethod(p)) === 'Tarjeta');
+  const paypal = data.filter(p => normalizePaymentMethod(getPaymentMethod(p)) === 'PayPal');
+  const otros = data.filter(p => normalizePaymentMethod(getPaymentMethod(p)) === 'Otros');
   
   // Calcular montos (usar monto_pagado del backend)
-  const montoEfectivo = efectivo.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
-  const montoTransferencia = transferencia.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
-  const montoTarjeta = tarjeta.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
-  const montoOtros = otros.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
+  const montoEfectivo = efectivo.reduce((sum, p) => sum + getPaymentAmount(p), 0);
+  const montoTransferencia = transferencia.reduce((sum, p) => sum + getPaymentAmount(p), 0);
+  const montoTarjeta = tarjeta.reduce((sum, p) => sum + getPaymentAmount(p), 0);
+  const montoPaypal = paypal.reduce((sum, p) => sum + getPaymentAmount(p), 0);
+  const montoOtros = otros.reduce((sum, p) => sum + getPaymentAmount(p), 0);
   
   // 🚨 ESTADÍSTICAS DE MORA EN PAGOS
-  const pagosConMora = data.filter(p => p.tiene_mora === true);
-  const pagosSinMora = data.filter(p => !p.tiene_mora);
-  const totalMoraPagos = pagosConMora.reduce((sum, p) => sum + (parseFloat(p.valor_mora) || 0), 0);
+  const pagosConMora = data.filter(paymentHasMora);
+  const pagosSinMora = data.filter(p => !paymentHasMora(p));
+  const totalMoraPagos = pagosConMora.reduce((sum, p) => sum + getPaymentMora(p), 0);
   
   // Meses de adeudo en pagos
   const mesesAdeudoPagosData = {};
@@ -1492,54 +1564,79 @@ const calculatePagosCharts = (data) => {
   
   // ✅ Top 10 pagos más altos - CON NOMBRE DE AFILIADO
   const topPagos = [...data]
-    .sort((a, b) => (parseFloat(b.monto_pagado || b.monto || b.valor) || 0) - (parseFloat(a.monto_pagado || a.monto || a.valor) || 0))
+    .sort((a, b) => getPaymentAmount(b) - getPaymentAmount(a))
     .slice(0, 10)
-    .map(p => ({
-      label: p.Nombre || p.nombres || p.Nombres || p.num_factura || 'N/A',
-      value: parseFloat(p.monto_pagado || p.monto || p.valor) || 0,
-      color: p.tiene_mora ? '#ef4444' : '#10b981', // Rojo si tiene mora, verde si no
-      subtitle: `${p.num_factura || 'N/A'}${p.tiene_mora ? ' (CON MORA)' : ''}`
-    }));
+    .map(p => {
+      const fullLabel = p.Nombre || p.nombres || p.Nombres || p.num_factura || 'N/A';
+      return {
+        label: shortenPersonName(fullLabel),
+        fullLabel,
+        value: getPaymentAmount(p),
+        color: paymentHasMora(p) ? '#ef4444' : '#10b981', // Rojo si tiene mora, verde si no
+        subtitle: `${p.num_factura || 'N/A'}${paymentHasMora(p) ? ' (CON MORA)' : ''}`
+      };
+    });
   
-  // Recaudación mensual (últimos 6 meses) - Para AreaChart
+  // Facturas cobradas por mes (mes actual del reporte + 3 anteriores)
   const pagosPorMes = {};
+  const periodosPago = [];
   data.forEach(p => {
-    if (p.fecha_pago || p.fecha) {
-      const fecha = new Date(p.fecha_pago || p.fecha);
-      const mes = fecha.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
-      pagosPorMes[mes] = (pagosPorMes[mes] || 0) + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0);
+    const fecha = parsePaymentPeriodDate(p);
+    if (fecha) {
+      periodosPago.push(fecha);
+      const key = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+      if (!pagosPorMes[key]) {
+        pagosPorMes[key] = {
+          label: fecha.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' }),
+          value: 0
+        };
+      }
+      pagosPorMes[key].value += 1;
     }
   });
+
+  const mesBase = periodosPago.length > 0
+    ? new Date(Math.max(...periodosPago.map(fecha => fecha.getTime())))
+    : new Date();
   
-  const recaudacionMensual = Object.entries(pagosPorMes)
-    .slice(-6)
-    .map(([label, value]) => ({
-      label,
-      value: Math.round(value)
-    }));
+  const facturasCobradasMensual = Array.from({ length: 4 }, (_, idx) => {
+    const fecha = new Date(mesBase.getFullYear(), mesBase.getMonth() - (3 - idx), 1);
+    const key = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+
+    return {
+      label: fecha.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' }),
+      value: pagosPorMes[key]?.value || 0
+    };
+  });
   
   // Comparación de métodos por rango de monto - Para GroupedBarChart
   const rangos = [
-    { min: 0, max: 50, label: '$0-50' },
-    { min: 50, max: 100, label: '$50-100' },
-    { min: 100, max: 200, label: '$100-200' },
-    { min: 200, max: 500, label: '$200-500' },
-    { min: 500, max: Infinity, label: '$500+' }
+    { min: 0, max: 10, label: '$0-10' },
+    { min: 10, max: 20, label: '$10-20' },
+    { min: 20, max: 30, label: '$20-30' },
+    { min: 30, max: 40, label: '$30-40' },
+    { min: 40, max: 50, label: '$40-50' },
+    { min: 50, max: Infinity, label: '$50+' }
   ];
   
   const rangoData = rangos.map(rango => {
     const efectivoEnRango = efectivo.filter(p => {
-      const monto = parseFloat(p.monto_pagado || p.monto || p.valor) || 0;
+      const monto = getPaymentAmount(p);
       return monto >= rango.min && monto < rango.max;
     }).length;
     
     const transferenciaEnRango = transferencia.filter(p => {
-      const monto = parseFloat(p.monto_pagado || p.monto || p.valor) || 0;
+      const monto = getPaymentAmount(p);
       return monto >= rango.min && monto < rango.max;
     }).length;
     
     const tarjetaEnRango = tarjeta.filter(p => {
-      const monto = parseFloat(p.monto_pagado || p.monto || p.valor) || 0;
+      const monto = getPaymentAmount(p);
+      return monto >= rango.min && monto < rango.max;
+    }).length;
+
+    const paypalEnRango = paypal.filter(p => {
+      const monto = getPaymentAmount(p);
       return monto >= rango.min && monto < rango.max;
     }).length;
     
@@ -1548,22 +1645,25 @@ const calculatePagosCharts = (data) => {
       series: [
         { name: 'Efectivo', value: efectivoEnRango, color: '#10b981' },
         { name: 'Transferencia', value: transferenciaEnRango, color: '#6366f1' },
-        { name: 'Tarjeta', value: tarjetaEnRango, color: '#f59e0b' }
+        { name: 'Tarjeta', value: tarjetaEnRango, color: '#f59e0b' },
+        { name: 'PayPal', value: paypalEnRango, color: '#0ea5e9' }
       ]
     };
   });
   
-  // Recaudación por día de la semana
+  // Facturas cobradas por día de la semana
   const pagosPorDia = {
     'Lun': 0, 'Mar': 0, 'Mié': 0, 'Jue': 0, 'Vie': 0, 'Sáb': 0, 'Dom': 0
   };
   const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
   
   data.forEach(p => {
-    if (p.fecha_pago || p.fecha) {
-      const fecha = new Date(p.fecha_pago || p.fecha);
+    const fecha = parsePaymentDate(p.fecha_pago || p.fecha);
+    if (fecha) {
       const dia = dias[fecha.getDay()];
-      pagosPorDia[dia] = (pagosPorDia[dia] || 0) + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0);
+      if (dia) {
+        pagosPorDia[dia] = (pagosPorDia[dia] || 0) + 1;
+      }
     }
   });
   
@@ -1571,7 +1671,8 @@ const calculatePagosCharts = (data) => {
     .filter(([_, value]) => value > 0)
     .map(([label, value]) => ({
       label,
-      value: Math.round(value),
+      value,
+      displayValue: value,
       color: '#3b82f6'
     }));
   
@@ -1586,6 +1687,7 @@ const calculatePagosCharts = (data) => {
         { label: 'Efectivo', value: efectivo.length, color: '#10b981' },
         { label: 'Transferencia', value: transferencia.length, color: '#6366f1' },
         { label: 'Tarjeta', value: tarjeta.length, color: '#f59e0b' },
+        { label: 'PayPal', value: paypal.length, color: '#0ea5e9' },
         { label: 'Otros', value: otros.length, color: '#8b5cf6' }
       ].filter(item => item.value > 0)
     },
@@ -1595,12 +1697,13 @@ const calculatePagosCharts = (data) => {
         { label: 'Efectivo', value: Math.round(montoEfectivo), color: '#10b981' },
         { label: 'Transferencia', value: Math.round(montoTransferencia), color: '#6366f1' },
         { label: 'Tarjeta', value: Math.round(montoTarjeta), color: '#f59e0b' },
+        { label: 'PayPal', value: Math.round(montoPaypal), color: '#0ea5e9' },
         { label: 'Otros', value: Math.round(montoOtros), color: '#8b5cf6' }
       ].filter(item => item.value > 0)
     },
     areaChart: {
-      title: 'Recaudación Mensual ($)',
-      data: recaudacionMensual.length > 0 ? recaudacionMensual : [
+      title: 'Facturas Cobradas por Mes (Últimos 4 Meses)',
+      data: facturasCobradasMensual.length > 0 ? facturasCobradasMensual : [
         { label: 'Sin datos', value: 0 }
       ]
     },
@@ -1610,11 +1713,12 @@ const calculatePagosCharts = (data) => {
       series: [
         { name: 'Efectivo', color: '#10b981' },
         { name: 'Transferencia', color: '#6366f1' },
-        { name: 'Tarjeta', color: '#f59e0b' }
+        { name: 'Tarjeta', color: '#f59e0b' },
+        { name: 'PayPal', color: '#0ea5e9' }
       ]
     },
     barChart: diasData.length > 0 ? {
-      title: 'Recaudación por Día de la Semana',
+      title: 'Facturas Cobradas por Día de la Semana',
       data: diasData
     } : null,
     // 🚨 GRÁFICOS DE MORA EN PAGOS
@@ -1628,7 +1732,7 @@ const calculatePagosCharts = (data) => {
     pieChartMoraMonto: pagosConMora.length > 0 ? {
       title: 'Monto Total vs Mora ($)',
       data: [
-        { label: 'Pagado', value: Math.round(data.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto) || 0), 0)), color: '#10b981' },
+        { label: 'Pagado', value: Math.round(data.reduce((sum, p) => sum + getPaymentAmount(p), 0)), color: '#10b981' },
         { label: 'Mora', value: Math.round(totalMoraPagos), color: '#ef4444' }
       ]
     } : null,
@@ -1685,7 +1789,8 @@ const calculateMultasCharts = (data) => {
     .sort((a, b) => b.monto - a.monto)
     .slice(0, 10)
     .map(a => ({
-      label: a.nombre,
+      label: shortenPersonName(a.nombre),
+      fullLabel: a.nombre,
       value: Math.round(a.monto),
       color: a.pendientes > 0 ? '#ef4444' : '#10b981',
       subtitle: `${a.sector} - ${a.medidor}`
@@ -2328,29 +2433,22 @@ const generatePagosTable = (data) => {
   const tables = [];
   
   // Filtrar por método
-  const efectivo = data.filter(p => 
-    p.metodo_pago?.toLowerCase().includes('efectivo') || p.metodopago?.toLowerCase().includes('efectivo')
-  );
-  const transferencia = data.filter(p => 
-    p.metodo_pago?.toLowerCase().includes('transferencia') || p.metodopago?.toLowerCase().includes('transferencia')
-  );
-  const tarjeta = data.filter(p => 
-    p.metodo_pago?.toLowerCase().includes('tarjeta') || p.metodopago?.toLowerCase().includes('tarjeta')
-  );
-  const otros = data.filter(p => {
-    const metodo = (p.metodo_pago || p.metodopago || '').toLowerCase();
-    return !metodo.includes('efectivo') && !metodo.includes('transferencia') && !metodo.includes('tarjeta') && metodo !== '';
-  });
+  const efectivo = data.filter(p => normalizePaymentMethod(getPaymentMethod(p)) === 'Efectivo');
+  const transferencia = data.filter(p => normalizePaymentMethod(getPaymentMethod(p)) === 'Transferencia');
+  const tarjeta = data.filter(p => normalizePaymentMethod(getPaymentMethod(p)) === 'Tarjeta');
+  const paypal = data.filter(p => normalizePaymentMethod(getPaymentMethod(p)) === 'PayPal');
+  const otros = data.filter(p => normalizePaymentMethod(getPaymentMethod(p)) === 'Otros');
   
-  const montoEfectivo = efectivo.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
-  const montoTransferencia = transferencia.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
-  const montoTarjeta = tarjeta.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
-  const montoOtros = otros.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
-  const totalRecaudado = montoEfectivo + montoTransferencia + montoTarjeta + montoOtros;
+  const montoEfectivo = efectivo.reduce((sum, p) => sum + getPaymentAmount(p), 0);
+  const montoTransferencia = transferencia.reduce((sum, p) => sum + getPaymentAmount(p), 0);
+  const montoTarjeta = tarjeta.reduce((sum, p) => sum + getPaymentAmount(p), 0);
+  const montoPaypal = paypal.reduce((sum, p) => sum + getPaymentAmount(p), 0);
+  const montoOtros = otros.reduce((sum, p) => sum + getPaymentAmount(p), 0);
+  const totalRecaudado = montoEfectivo + montoTransferencia + montoTarjeta + montoPaypal + montoOtros;
   
   // 🚨 CALCULAR DATOS DE MORA
-  const pagosConMora = data.filter(p => p.tiene_mora === true);
-  const totalMoraPagos = pagosConMora.reduce((sum, p) => sum + (parseFloat(p.valor_mora) || 0), 0);
+  const pagosConMora = data.filter(paymentHasMora);
+  const totalMoraPagos = pagosConMora.reduce((sum, p) => sum + getPaymentMora(p), 0);
   
   // ============================================
   // TABLA 1: Resumen por Método de Pago
@@ -2379,6 +2477,13 @@ const generatePagosTable = (data) => {
         `$${montoTarjeta.toFixed(2)}`,
         `$${(montoTarjeta / (tarjeta.length || 1)).toFixed(2)}`,
         `${totalRecaudado > 0 ? ((montoTarjeta / totalRecaudado) * 100).toFixed(1) : 0}%`
+      ],
+      [
+        'PayPal',
+        paypal.length,
+        `$${montoPaypal.toFixed(2)}`,
+        `$${(montoPaypal / (paypal.length || 1)).toFixed(2)}`,
+        `${totalRecaudado > 0 ? ((montoPaypal / totalRecaudado) * 100).toFixed(1) : 0}%`
       ],
       [
         'Otros',
@@ -2438,11 +2543,11 @@ const generatePagosTable = (data) => {
   
   const rangosRows = rangos.map(rango => {
     const pagos = data.filter(p => {
-      const monto = parseFloat(p.monto_pagado || p.monto || p.valor) || 0;
+      const monto = getPaymentAmount(p);
       return monto >= rango.min && monto < rango.max;
     });
     const porcentaje = data.length > 0 ? ((pagos.length / data.length) * 100).toFixed(1) : '0.0';
-    const montoTotal = pagos.reduce((sum, p) => sum + (parseFloat(p.monto_pagado || p.monto || p.valor) || 0), 0);
+    const montoTotal = pagos.reduce((sum, p) => sum + getPaymentAmount(p), 0);
     
     return [
       rango.label,
@@ -2469,8 +2574,8 @@ const generatePagosTable = (data) => {
         idx + 1,
         p.num_factura || 'N/A',
         p.Nombre || p.nombres || 'N/A',
-        `$${(parseFloat(p.monto_pagado) || 0).toFixed(2)}`,
-        `$${(parseFloat(p.valor_mora) || 0).toFixed(2)}`,
+        `$${getPaymentAmount(p).toFixed(2)}`,
+        `$${getPaymentMora(p).toFixed(2)}`,
         p.meses_adeudo || 0,
         p.metodo_pago || 'N/A'
       ]);
@@ -2486,14 +2591,14 @@ const generatePagosTable = (data) => {
   // TABLA 5: Top 10 Pagos Más Altos
   // ============================================
   const topPagos = [...data]
-    .sort((a, b) => (parseFloat(b.monto_pagado || b.monto || b.valor) || 0) - (parseFloat(a.monto_pagado || a.monto || a.valor) || 0))
+    .sort((a, b) => getPaymentAmount(b) - getPaymentAmount(a))
     .slice(0, 10)
     .map((p, idx) => [
       idx + 1,
       p.num_factura || p.numero_recibo || 'N/A',
       p.Nombre || p.nombres || 'N/A',
-      `$${(parseFloat(p.monto_pagado || p.monto || p.valor) || 0).toFixed(2)}`,
-      p.tiene_mora ? `$${(parseFloat(p.valor_mora) || 0).toFixed(2)}` : '-',
+      `$${getPaymentAmount(p).toFixed(2)}`,
+      paymentHasMora(p) ? `$${getPaymentMora(p).toFixed(2)}` : '-',
       p.metodo_pago || p.metodopago || 'N/A',
       p.fecha_pago || p.fecha || 'N/A'
     ]);
@@ -2509,56 +2614,57 @@ const generatePagosTable = (data) => {
   // ============================================
   const meses = {};
   data.forEach(p => {
-    const fechaStr = p.fecha_pago || p.fecha;
-    if (fechaStr) {
+    const fecha = parsePaymentDate(p.fecha_pago || p.fecha);
+    if (fecha) {
       try {
-        let fecha;
-        if (fechaStr.includes('/')) {
-          const [dia, mes, anio] = fechaStr.split('/');
-          fecha = new Date(anio, mes - 1, dia);
-        } else {
-          fecha = new Date(fechaStr);
+        const key = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+        
+        if (!meses[key]) {
+          meses[key] = {
+            label: fecha.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
+            count: 0,
+            monto: 0,
+            mora: 0,
+            efectivo: 0,
+            transferencia: 0,
+            tarjeta: 0,
+            paypal: 0
+          };
         }
         
-        if (!isNaN(fecha.getTime())) {
-          const mes = fecha.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-          
-          if (!meses[mes]) {
-            meses[mes] = { count: 0, monto: 0, mora: 0, efectivo: 0, transferencia: 0, tarjeta: 0 };
-          }
-          
-          meses[mes].count++;
-          meses[mes].monto += (parseFloat(p.monto_pagado || p.monto || p.valor) || 0);
-          meses[mes].mora += (parseFloat(p.valor_mora) || 0);
-          
-          const metodo = (p.metodo_pago || p.metodopago || '').toLowerCase();
-          if (metodo.includes('efectivo')) meses[mes].efectivo++;
-          else if (metodo.includes('transferencia')) meses[mes].transferencia++;
-          else if (metodo.includes('tarjeta')) meses[mes].tarjeta++;
-        }
+        meses[key].count++;
+        meses[key].monto += getPaymentAmount(p);
+        meses[key].mora += getPaymentMora(p);
+        
+        const metodo = normalizePaymentMethod(getPaymentMethod(p));
+        if (metodo === 'Efectivo') meses[key].efectivo++;
+        else if (metodo === 'Transferencia') meses[key].transferencia++;
+        else if (metodo === 'Tarjeta') meses[key].tarjeta++;
+        else if (metodo === 'PayPal') meses[key].paypal++;
       } catch (e) {
-        console.error('Error al parsear fecha:', fechaStr);
+        console.error('Error al procesar pago mensual:', p);
       }
     }
   });
   
   const mesesRows = Object.entries(meses)
-    .sort((a, b) => new Date(b[0]) - new Date(a[0]))
+    .sort(([a], [b]) => b.localeCompare(a))
     .slice(0, 6)
-    .map(([mes, stats]) => [
-      mes,
+    .map(([, stats]) => [
+      stats.label,
       stats.count,
       `$${stats.monto.toFixed(2)}`,
       stats.mora > 0 ? `$${stats.mora.toFixed(2)}` : '-',
       stats.efectivo,
       stats.transferencia,
-      stats.tarjeta
+      stats.tarjeta,
+      stats.paypal
     ]);
   
   if (mesesRows.length > 0) {
     tables.push({
       title: 'Recaudación por Mes (Últimos 6 Meses)',
-      headers: ['Mes', 'Total', 'Monto', 'Mora', 'Efectivo', 'Transf.', 'Tarjeta'],
+      headers: ['Mes', 'Total', 'Monto', 'Mora', 'Efectivo', 'Transf.', 'Tarjeta', 'PayPal'],
       rows: mesesRows
     });
   }
@@ -2574,23 +2680,13 @@ const generatePagosTable = (data) => {
   });
   
   data.forEach(p => {
-    const fechaStr = p.fecha_pago || p.fecha;
-    if (fechaStr) {
+    const fecha = parsePaymentDate(p.fecha_pago || p.fecha);
+    if (fecha) {
       try {
-        let fecha;
-        if (fechaStr.includes('/')) {
-          const [dia, mes, anio] = fechaStr.split('/');
-          fecha = new Date(anio, mes - 1, dia);
-        } else {
-          fecha = new Date(fechaStr);
-        }
-        
-        if (!isNaN(fecha.getTime())) {
-          const dia = diasNombres[fecha.getDay()];
-          if (diasSemana[dia]) {
-            diasSemana[dia].count++;
-            diasSemana[dia].monto += (parseFloat(p.monto_pagado || p.monto || p.valor) || 0);
-          }
+        const dia = diasNombres[fecha.getDay()];
+        if (diasSemana[dia]) {
+          diasSemana[dia].count++;
+          diasSemana[dia].monto += getPaymentAmount(p);
         }
       } catch (error) {
         console.warn('Fecha inválida en pago:', p);
@@ -2619,7 +2715,7 @@ const generatePagosTable = (data) => {
   // ============================================
   // TABLA 8: Estadísticas Generales
   // ============================================
-  const montos = data.map(p => parseFloat(p.monto_pagado || p.monto || p.valor) || 0).filter(m => m > 0);
+  const montos = data.map(getPaymentAmount).filter(m => m > 0);
   const montoPromedio = montos.length > 0 ? montos.reduce((a, b) => a + b, 0) / montos.length : 0;
   const montoMax = montos.length > 0 ? Math.max(...montos) : 0;
   const montoMin = montos.length > 0 ? Math.min(...montos.filter(m => m > 0)) : 0;
@@ -2635,6 +2731,7 @@ const generatePagosTable = (data) => {
     'Efectivo': efectivo.length,
     'Transferencia': transferencia.length,
     'Tarjeta': tarjeta.length,
+    'PayPal': paypal.length,
     'Otros': otros.length
   };
   const metodoMasUsado = Object.entries(metodosCount)
@@ -2659,7 +2756,8 @@ const generatePagosTable = (data) => {
       ['Pagos Parciales', `${pagosParciales} (${((pagosParciales / data.length) * 100).toFixed(1)}%)`],
       ['Efectivo Promedio', `$${(montoEfectivo / (efectivo.length || 1)).toFixed(2)}`],
       ['Transferencia Promedio', `$${(montoTransferencia / (transferencia.length || 1)).toFixed(2)}`],
-      ['Tarjeta Promedio', `$${(montoTarjeta / (tarjeta.length || 1)).toFixed(2)}`]
+      ['Tarjeta Promedio', `$${(montoTarjeta / (tarjeta.length || 1)).toFixed(2)}`],
+      ['PayPal Promedio', `$${(montoPaypal / (paypal.length || 1)).toFixed(2)}`]
     ]
   });
   

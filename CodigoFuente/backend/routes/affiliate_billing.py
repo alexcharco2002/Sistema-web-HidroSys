@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import and_, desc, func, or_, case, text
 from typing import List, Optional, Dict
@@ -1293,28 +1293,35 @@ def descargar_comprobante_afiliado(
 ):
     afiliado = _get_afiliado_by_username(payload["sub"], db)
 
-    pago = db.query(Pago).filter(Pago.id_pago == id_pago).first()
-    if not pago:
-        raise HTTPException(status_code=404, detail=f"Pago {id_pago} no encontrado")
-
-    factura = (
-        db.query(Factura.id_usuario_afi)
-        .filter(Factura.id_factura == pago.id_factura)
+    comprobante = (
+        db.query(
+            Pago.comprobante_pdf,
+            Pago.nombre_archivo,
+            Pago.tipo_mime,
+        )
+        .join(Factura, Pago.id_factura == Factura.id_factura)
+        .filter(
+            Pago.id_pago == id_pago,
+            Factura.id_usuario_afi == afiliado.id_usuario_afi,
+        )
         .first()
     )
-    if not factura or factura.id_usuario_afi != afiliado.id_usuario_afi:
-        raise HTTPException(status_code=403, detail="Sin permiso para este comprobante")
+    if not comprobante:
+        raise HTTPException(status_code=404, detail=f"Pago {id_pago} no encontrado")
 
-    if not pago.comprobante_pdf:
+    if not comprobante.comprobante_pdf:
         raise HTTPException(status_code=404, detail="Este pago no tiene comprobante")
 
-    return Response(
-        content=pago.comprobante_pdf,
-        media_type=pago.tipo_mime or "application/pdf",
+    pdf_bytes = comprobante.comprobante_pdf
+    filename = comprobante.nombre_archivo or f"comprobante_{id_pago}.pdf"
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type=comprobante.tipo_mime or "application/pdf",
         headers={
-            "Content-Disposition": (
-                f"attachment; filename={pago.nombre_archivo or f'comprobante_{id_pago}.pdf'}"
-            ),
-            "Cache-Control": "no-cache",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(pdf_bytes)),
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
         },
     )

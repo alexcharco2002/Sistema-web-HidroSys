@@ -5,6 +5,141 @@ import * as XLSX from 'xlsx-js-style';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+const isLecturasReport = (moduleName = '') =>
+  String(moduleName).toLowerCase().includes('lectura');
+
+const isFacturasReport = (moduleName = '') =>
+  String(moduleName).toLowerCase().includes('factura');
+
+const isPagosReport = (moduleName = '') =>
+  String(moduleName).toLowerCase().includes('pago');
+
+const isCompactFinancialReport = (moduleName = '') =>
+  isFacturasReport(moduleName) || isPagosReport(moduleName);
+
+const getLecturasTakenBy = (data = []) => {
+  const lectores = data
+    .map(row => row?.lector)
+    .filter(value => value !== null && value !== undefined && String(value).trim())
+    .map(value => String(value).trim());
+
+  const unicos = [...new Set(lectores)];
+  if (unicos.length === 0) return 'Sin lector';
+  if (unicos.length === 1) return unicos[0];
+  return unicos.join(', ');
+};
+
+const sanitizePdfText = (value) => {
+  return String(value ?? '')
+    .replace(/[\uD800-\uDFFF]/g, '')
+    .replace(/[\uFE00-\uFE0F\u200D]/g, '')
+    .replace(/[\u2600-\u27BF]/g, '')
+    .replace(/[^\x20-\x7E\u00A0-\u00FF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const formatCellValue = (value, { forPdf = false } = {}) => {
+  let formatted;
+
+  if (value === null || value === undefined) {
+    formatted = 'N/A';
+  } else if (typeof value === 'boolean') {
+    formatted = value ? 'Si' : 'No';
+  } else if (Array.isArray(value)) {
+    formatted = value.length > 0 ? value.join(', ') : 'N/A';
+  } else if (typeof value === 'object') {
+    formatted = JSON.stringify(value);
+  } else {
+    formatted = String(value);
+  }
+
+  return forPdf ? sanitizePdfText(formatted) : formatted;
+};
+
+const prepareReportRows = (data, moduleName) => {
+  const shouldRemoveLector = isLecturasReport(moduleName);
+
+  return data.map(row => {
+    if (!shouldRemoveLector) return row;
+
+    const { lector, ...rowWithoutLector } = row;
+    return rowWithoutLector;
+  });
+};
+
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+const buildPdfColumnStyles = (rawHeaders, moduleName, includeRowNumber) => {
+  const offset = includeRowNumber ? 1 : 0;
+  const styles = {};
+
+  if (includeRowNumber) {
+    styles[0] = { cellWidth: 9, halign: 'center' };
+  }
+
+  rawHeaders.forEach((header, index) => {
+    const key = String(header).toLowerCase();
+    const columnIndex = index + offset;
+
+    if (['observacion', 'observaciones'].includes(key)) {
+      styles[columnIndex] = {
+        cellWidth: 58,
+        overflow: 'linebreak',
+        valign: 'top'
+      };
+      return;
+    }
+
+    if (!isCompactFinancialReport(moduleName)) return;
+
+    if (key === 'periodo') {
+      styles[columnIndex] = { cellWidth: 16, halign: 'center' };
+    } else if (key === 'nombres' || key === 'nombre' || key === 'afiliado') {
+      styles[columnIndex] = { cellWidth: isPagosReport(moduleName) ? 36 : 42, overflow: 'linebreak', valign: 'top' };
+    } else if (key === 'conceptos_facturacion') {
+      styles[columnIndex] = { cellWidth: 28, overflow: 'linebreak', valign: 'top' };
+    } else if (key === 'observaciones') {
+      styles[columnIndex] = { cellWidth: 24, overflow: 'linebreak', valign: 'top' };
+    } else if (key === 'metodo_pago' || key === 'estado_factura') {
+      styles[columnIndex] = { cellWidth: 16, overflow: 'linebreak', halign: 'center' };
+    } else if (key === 'sector') {
+      styles[columnIndex] = { cellWidth: 18, overflow: 'linebreak' };
+    } else if (key === 'cedula' || key === 'fecha_emision' || key === 'fecha_pago') {
+      styles[columnIndex] = { cellWidth: 15, halign: 'center' };
+    } else if (key === 'num_factura') {
+      styles[columnIndex] = { cellWidth: 22, halign: 'center' };
+    } else if (key === 'estado') {
+      styles[columnIndex] = { cellWidth: 14, halign: 'center' };
+    } else if (key === 'cod_usuario_afi' || key === 'cod_afiliado' || key === 'num_medidor') {
+      styles[columnIndex] = { cellWidth: 14, halign: 'center' };
+    } else if (key.includes('_m3')) {
+      styles[columnIndex] = { cellWidth: 13, halign: 'right' };
+    } else if (key === 'tiene_mora' || key === 'tiene_comprobante' || key === 'pago_completo') {
+      styles[columnIndex] = { cellWidth: 14, halign: 'center' };
+    } else if (
+      key.includes('valor') ||
+      key.includes('total') ||
+      key.includes('subtotal') ||
+      key.includes('descuento') ||
+      key.includes('monto') ||
+      key.includes('impuesto') ||
+      key === 'iva' ||
+      key.includes('saldo')
+    ) {
+      styles[columnIndex] = { cellWidth: isPagosReport(moduleName) ? 16 : 17, halign: 'right' };
+    }
+  });
+
+  return styles;
+};
+
 /**
  * Componente para exportación de reportes a Excel e impresión
  */
@@ -19,6 +154,12 @@ export const ReportExport = {
     }
 
     try {
+      const preparedData = prepareReportRows(data, moduleName);
+      const lecturaTomadaPor = isLecturasReport(moduleName)
+        ? getLecturasTakenBy(data)
+        : null;
+      const includeRowNumber = !isCompactFinancialReport(moduleName);
+
       const doc = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
@@ -33,22 +174,19 @@ export const ReportExport = {
         minute: '2-digit'
       });
 
-      const headers = Object.keys(data[0]).map(h =>
+      const rawHeaders = Object.keys(preparedData[0]);
+      const headers = rawHeaders.map(h =>
         h.replace(/_/g, ' ').toUpperCase()
       );
 
-      const dataRows = data.map((row, index) => [
-        index + 1,
-        ...Object.values(row).map(v =>
-          v === null || v === undefined ? 'N/A' :
-          typeof v === 'boolean' ? (v ? 'Sí' : 'No') :
-          Array.isArray(v) ? (v.length > 0 ? v.join(', ') : 'N/A') :
-          typeof v === 'object' ? JSON.stringify(v) :
-          String(v)
-        )
-      ]);
+      const dataRows = preparedData.map((row, index) => {
+        const values = Object.values(row).map(v => formatCellValue(v, { forPdf: true }));
+        return includeRowNumber ? [index + 1, ...values] : values;
+      });
 
       // Título principal
+      const columnStyles = buildPdfColumnStyles(rawHeaders, moduleName, includeRowNumber);
+
       doc.setFontSize(18);
       doc.setTextColor(31, 71, 136);
       doc.text('JAAP - SANJAPAMBA', 148.5, 15, { align: 'center' });
@@ -71,25 +209,33 @@ export const ReportExport = {
       // Tabla de datos
       autoTable(doc, {
         startY: 45,
-        head: [['#', ...headers]],
+        head: [includeRowNumber ? ['#', ...headers] : headers],
         body: dataRows,
         theme: 'grid',
         headStyles: {
           fillColor: [68, 114, 196],
           textColor: [255, 255, 255],
-          fontSize: 9,
+          fontSize: isCompactFinancialReport(moduleName) ? 6.5 : 9,
           halign: 'center',
           valign: 'middle'
         },
         bodyStyles: {
-          fontSize: 8,
+          fontSize: isCompactFinancialReport(moduleName) ? 6.2 : 8,
           textColor: [50, 50, 50],
-          valign: 'middle'
+          valign: 'middle',
+          overflow: 'linebreak',
+          minCellHeight: 6
         },
+        styles: {
+          overflow: 'linebreak',
+          cellPadding: isCompactFinancialReport(moduleName) ? 1 : 1.8,
+          lineWidth: 0.1
+        },
+        columnStyles,
         alternateRowStyles: {
           fillColor: [248, 249, 250]
         },
-        margin: { top: 45, bottom: 20 },
+        margin: { top: 12, bottom: 20 },
         didDrawPage: (data) => {
           // Footer
           const str = `Página ${doc.internal.getNumberOfPages()}`;
@@ -99,6 +245,18 @@ export const ReportExport = {
           doc.text('Sistema web de Facturación HidroSys', 15, 200);
         }
       });
+
+      if (lecturaTomadaPor) {
+        const finalY = doc.lastAutoTable?.finalY || 45;
+        const pageHeight = doc.internal.pageSize.getHeight();
+        if (finalY > pageHeight - 28) {
+          doc.addPage();
+        }
+        const y = finalY > pageHeight - 28 ? 18 : finalY + 9;
+        doc.setFontSize(10);
+        doc.setTextColor(50, 50, 50);
+        doc.text(`Lecturas tomadas por: ${sanitizePdfText(lecturaTomadaPor)}`, 15, y);
+      }
 
       const fechaArchivo = new Date().toISOString().split('T')[0];
       const filename = `JAAP_${moduleName}_${fechaArchivo}.pdf`;
@@ -122,6 +280,10 @@ export const ReportExport = {
     }
 
     try {
+      const preparedData = prepareReportRows(data, moduleName);
+      const lecturaTomadaPor = isLecturasReport(moduleName)
+        ? getLecturasTakenBy(data)
+        : null;
       const wb = XLSX.utils.book_new();
       
       // ==================== PREPARAR DATOS ====================
@@ -133,20 +295,16 @@ export const ReportExport = {
         minute: '2-digit'
       });
       
-      const headers = Object.keys(data[0]).map(h => 
+      const headers = Object.keys(preparedData[0]).map(h => 
         h.replace(/_/g, ' ').toUpperCase()
       );
       
-      const dataRows = data.map(row => 
-        Object.values(row)
-        .map(v =>
-          v === null || v === undefined ? 'N/A' :
-          typeof v === 'boolean' ? (v ? 'Sí' : 'No') :
-          Array.isArray(v) ? (v.length > 0 ? v.join(', ') : 'N/A') :
-          typeof v === 'object' ? JSON.stringify(v) :
-          String(v)
-        )
+      const dataRows = preparedData.map(row => 
+        Object.values(row).map(v => formatCellValue(v))
       );
+      const footerRows = lecturaTomadaPor
+        ? [[], [`Lecturas tomadas por: ${lecturaTomadaPor}`]]
+        : [];
 
       // ==================== CONSTRUIR HOJA ====================
       const wsData = [
@@ -169,7 +327,10 @@ export const ReportExport = {
         headers,
         
         // Filas 7+: Datos
-        ...dataRows
+        ...dataRows,
+
+        // Nota inferior especifica para lecturas
+        ...footerRows
       ];
 
       const ws = XLSX.utils.aoa_to_sheet(wsData);
@@ -276,13 +437,20 @@ export const ReportExport = {
       const range = XLSX.utils.decode_range(ws['!ref']);
       
       // Fusionar celdas para el encabezado
-      const numCols = headers.length;
+      const numCols = Math.max(headers.length, 1);
       ws['!merges'] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: numCols - 1 } }, // Fila 1: Título
         { s: { r: 1, c: 0 }, e: { r: 1, c: numCols - 1 } }, // Fila 2: Ubicación
         { s: { r: 2, c: 0 }, e: { r: 2, c: numCols - 1 } }, // Fila 3: Reporte
         { s: { r: 3, c: 0 }, e: { r: 3, c: numCols - 1 } }  // Fila 4: Fecha
       ];
+
+      if (lecturaTomadaPor) {
+        ws['!merges'].push({
+          s: { r: 7 + dataRows.length, c: 0 },
+          e: { r: 7 + dataRows.length, c: numCols - 1 }
+        });
+      }
 
       // Aplicar estilos a encabezado institucional
       for (let C = 0; C < numCols; C++) {
@@ -326,7 +494,7 @@ export const ReportExport = {
       const colWidths = headers.map((h, idx) => {
         const maxLen = Math.max(
           h.length,
-          ...data.map(row => {
+          ...preparedData.map(row => {
             const val = Object.values(row)[idx];
             return String(val || '').length;
           })
@@ -343,7 +511,8 @@ export const ReportExport = {
         { hpx: 20 },  // Fila 4: Fecha
         { hpx: 10 },  // Fila 5: Separador
         { hpx: 28 },  // Fila 6: Headers
-        ...dataRows.map(() => ({ hpx: 22 })) // Filas de datos
+        ...dataRows.map(() => ({ hpx: 22 })),
+        ...footerRows.map(row => ({ hpx: row.length ? 24 : 10 }))
       ];
 
       // ==================== GUARDAR ARCHIVO ====================
@@ -383,7 +552,12 @@ export const ReportExport = {
         return;
         }
 
-        const headers = Object.keys(data[0]).map(h => h.replace(/_/g, ' ').toUpperCase());
+        const preparedData = prepareReportRows(data, moduleName);
+        const lecturaTomadaPor = isLecturasReport(moduleName)
+        ? getLecturasTakenBy(data)
+        : null;
+        const includeRowNumber = !isCompactFinancialReport(moduleName);
+        const headers = Object.keys(preparedData[0]).map(h => h.replace(/_/g, ' ').toUpperCase());
         const usuario = localStorage.getItem('usuario') || 'Sistema';
         const fechaGeneracion = new Date().toLocaleString('es-EC', {
         year: 'numeric',
@@ -488,6 +662,17 @@ export const ReportExport = {
                 font-size: 11px;
             }
 
+            .compact-financial-report table {
+                table-layout: fixed;
+                font-size: 9px;
+            }
+
+            .compact-financial-report th,
+            .compact-financial-report td {
+                padding: 6px 4px;
+                line-height: 1.25;
+            }
+
             thead {
                 background: linear-gradient(135deg, #4472C4 0%, #5B8FDB 100%);
                 color: white;
@@ -507,6 +692,8 @@ export const ReportExport = {
                 padding: 9px 8px;
                 border: 1px solid #ddd;
                 word-break: break-word;
+                overflow-wrap: anywhere;
+                vertical-align: top;
             }
 
             tbody tr:nth-child(even) {
@@ -560,6 +747,14 @@ export const ReportExport = {
                 margin-bottom: 4px;
             }
 
+            .reader-note {
+                margin-top: 18px;
+                padding-top: 12px;
+                border-top: 1px solid #ddd;
+                font-size: 12px;
+                color: #333;
+            }
+
             @media print {
                 body {
                 background: white;
@@ -576,25 +771,25 @@ export const ReportExport = {
             </style>
         </head>
         <body>
-            <div class="report-container">
+            <div class="report-container ${isCompactFinancialReport(moduleName) ? 'compact-financial-report' : ''}">
             <!-- ENCABEZADO -->
             <div class="report-header">
                 <div class="header-left">
-                <h1>${moduleName}</h1>
-                <p>${moduleDescription}</p>
+	                <h1>${escapeHtml(moduleName)}</h1>
+	                <p>${escapeHtml(moduleDescription)}</p>
                 </div>
                 <div class="header-right">
                 <div class="info-row">
                     <span class="info-label">Generado por:</span>
-                    <span class="info-value">${usuario}</span>
+	                    <span class="info-value">${escapeHtml(usuario)}</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Fecha:</span>
-                    <span class="info-value">${fechaGeneracion}</span>
+	                    <span class="info-value">${escapeHtml(fechaGeneracion)}</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Total de registros:</span>
-                    <span class="info-value">${data.length}</span>
+	                    <span class="info-value">${preparedData.length}</span>
                 </div>
                 </div>
             </div>
@@ -603,14 +798,14 @@ export const ReportExport = {
             <table>
                 <thead>
                 <tr>
-                    <th width="5%">#</th>
-                    ${headers.map(h => `<th>${h}</th>`).join('')}
+                    ${includeRowNumber ? '<th width="5%">#</th>' : ''}
+	                    ${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}
                 </tr>
                 </thead>
                 <tbody>
-                ${data.map((row, index) => `
+	                ${preparedData.map((row, index) => `
                     <tr>
-                    <td class="text-center font-bold">${index + 1}</td>
+                    ${includeRowNumber ? `<td class="text-center font-bold">${index + 1}</td>` : ''}
                     ${Object.entries(row).map(([key, value]) => {
                         let cellContent = 'N/A';
                         let cellClass = '';
@@ -624,12 +819,18 @@ export const ReportExport = {
                         }
                         }
                         
-                        return `<td class="${cellClass}">${cellContent}</td>`;
+	                        return `<td class="${cellClass}">${escapeHtml(cellContent)}</td>`;
                     }).join('')}
                     </tr>
                 `).join('')}
                 </tbody>
             </table>
+
+            ${lecturaTomadaPor ? `
+            <div class="reader-note">
+                <strong>Lecturas tomadas por:</strong> ${escapeHtml(lecturaTomadaPor)}
+            </div>
+            ` : ''}
 
             <!-- FOOTER -->
             <div class="report-footer">

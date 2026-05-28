@@ -351,11 +351,12 @@ class ReportsServices {
         : API_CONFIG.endpoints.lecturas;
 
       const data = await this.makeRequest(url);
+      const rows = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
 
       return {
-        success: true,
-        data: Array.isArray(data) ? data : [],
-        total: Array.isArray(data) ? data.length : 0
+        success: data?.success ?? true,
+        data: rows,
+        total: data?.total ?? rows.length
       };
     } catch (error) {
       console.error('Error al obtener reporte de lecturas:', error);

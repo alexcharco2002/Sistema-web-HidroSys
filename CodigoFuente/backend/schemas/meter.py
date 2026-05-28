@@ -69,6 +69,7 @@ class MedidorUpdate(BaseModel):
     altitud: Optional[Decimal] = None
     id_sector: Optional[int] = None
     id_usuario_afi: Optional[int] = None
+    id_usuario_sistema_nuevo: Optional[int] = None
     activo: Optional[bool] = None
     costo_cambio: Optional[Decimal] = Field(None, description="Costo del cambio de medidor")
     motivo_cambio: Optional[str] = Field(None, max_length=255)
@@ -113,8 +114,9 @@ class MedidorStats(BaseModel):
 
 class AfiliadoDisponible(BaseModel):
     """Afiliados que pueden recibir un medidor adicional (o sin medidores activos)"""
-    id_usuario_afi: int
-    cod_usuario_afi: str
+    id_usuario_afi: Optional[int] = None
+    id_usuario_sistema: Optional[int] = None
+    cod_usuario_afi: Optional[str] = None
     nombre_afiliado: Optional[str] = None
     cedula: Optional[str] = None
     fecha_afiliacion: Optional[date] = None
@@ -122,6 +124,7 @@ class AfiliadoDisponible(BaseModel):
     nombre_sector: Optional[str] = None
     total_medidores: int = 0
     medidores_activos: int = 0
+    es_afiliado: bool = True
     activo: bool
     model_config = {"from_attributes": True}
 

@@ -2,7 +2,9 @@
 # funciones de control y de 
 import locale
 import time
+import io
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload, load_only
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Tuple as TypingTuple  
@@ -62,6 +64,13 @@ def obtener_nombre_afiliado_factura(db: Session, factura: Factura) -> str:
     if not factura or not factura.id_usuario_afi:
         return "usuario sin identificar"
 
+    return obtener_nombre_afiliado_por_id(db, factura.id_usuario_afi)
+
+
+def obtener_nombre_afiliado_por_id(db: Session, id_usuario_afi: int | None) -> str:
+    if not id_usuario_afi:
+        return "usuario sin identificar"
+
     nombre = (
         db.query(
             func.concat(
@@ -71,7 +80,7 @@ def obtener_nombre_afiliado_factura(db: Session, factura: Factura) -> str:
             )
         )
         .join(UsuarioAfiliado, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
-        .filter(UsuarioAfiliado.id_usuario_afi == factura.id_usuario_afi)
+        .filter(UsuarioAfiliado.id_usuario_afi == id_usuario_afi)
         .scalar()
     )
 
@@ -2525,6 +2534,17 @@ def crear_pago(
         # Guardar el ID ANTES del commit para no depender de refresh
         id_pago_nuevo = nuevo_pago.id_pago
         monto_pago_nuevo = nuevo_pago.monto_pago
+        fecha_pago_nuevo = nuevo_pago.fecha_pago
+        observaciones_pago_nuevo = nuevo_pago.observaciones
+        id_usuario_afi_factura = factura.id_usuario_afi if factura else None
+        numero_factura = factura.num_factura if factura else f"#{pago.id_factura or 'sin factura'}"
+        factura_response = (
+            {
+                "id_factura": factura.id_factura,
+                "num_factura": factura.num_factura,
+            }
+            if factura else None
+        )
         
         # ✅ Commit limpio — sin refresh dentro de la transacción con locks
         db.commit()
@@ -2532,8 +2552,7 @@ def crear_pago(
         
         t1 = time.perf_counter()
         # ✅ Auditoría y notificación DESPUÉS del commit — nueva transacción limpia
-        nombre_afiliado = obtener_nombre_afiliado_factura(db, factura) if factura else "usuario sin identificar"
-        numero_factura = factura.num_factura if factura else f"#{pago.id_factura or 'sin factura'}"
+        nombre_afiliado = obtener_nombre_afiliado_por_id(db, id_usuario_afi_factura)
         monto_formateado = formatear_monto_notificacion(monto_total_cobrar)
         desc_auditoria = (
             f"Pago #{id_pago_nuevo} registrado para {nombre_afiliado} "
@@ -2582,9 +2601,26 @@ def crear_pago(
         _log_pago_tiempo("PAGO IND", "9 auditoria/notificacion", t1)
         _log_pago_tiempo("PAGO IND", "TOTAL", t0)
 
-        # ✅ Query nueva y limpia para retornar el pago — sin locks
-        pago_final = db.query(Pago).filter(Pago.id_pago == id_pago_nuevo).first()
-        return pago_final
+        return {
+            "id_pago": id_pago_nuevo,
+            "id_factura": pago.id_factura,
+            "monto_pago": monto_pago_nuevo,
+            "fecha_pago": fecha_pago_nuevo,
+            "metodo_pago": pago.metodo_pago,
+            "id_usuario_afi": pago.id_usuario_afi,
+            "id_cajero": pago.id_cajero,
+            "observaciones": observaciones_pago_nuevo,
+            "motivo_anulacion": None,
+            "fecha_anulacion": None,
+            "activo": True,
+            "estado_pago": "REGISTRADO",
+            "tiene_comprobante": False,
+            "nombre_archivo": None,
+            "tipo_mime": "application/pdf",
+            "factura": factura_response,
+            "usuario_afiliado": None,
+            "cajero": None,
+        }
         
     except IntegrityError as e:
         db.rollback()
@@ -3895,32 +3931,41 @@ def descargar_comprobante(
     """
     Descargar comprobante PDF de un pago
     """
-    from fastapi.responses import Response
-    
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "pagos", "lectura")
     
-    # Buscar el pago
-    pago = db.query(Pago).filter(Pago.id_pago == id_pago).first()
-    if not pago:
+    comprobante = (
+        db.query(
+            Pago.comprobante_pdf,
+            Pago.nombre_archivo,
+            Pago.tipo_mime,
+        )
+        .filter(Pago.id_pago == id_pago)
+        .first()
+    )
+    if not comprobante:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Pago con ID {id_pago} no encontrado"
         )
     
-    # Verificar que tenga comprobante
-    if not pago.comprobante_pdf:
+    if not comprobante.comprobante_pdf:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Este pago no tiene comprobante PDF"
         )
-    
-    # Retornar el PDF
-    return Response(
-        content=pago.comprobante_pdf,
-        media_type=pago.tipo_mime or "application/pdf",
+
+    pdf_bytes = comprobante.comprobante_pdf
+    filename = comprobante.nombre_archivo or f"comprobante_{id_pago}.pdf"
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type=comprobante.tipo_mime or "application/pdf",
         headers={
-            "Content-Disposition": f"attachment; filename={pago.nombre_archivo or f'comprobante_{id_pago}.pdf'}"
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(pdf_bytes)),
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
         }
     )
 

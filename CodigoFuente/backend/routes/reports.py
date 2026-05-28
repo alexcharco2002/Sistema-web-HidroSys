@@ -711,34 +711,43 @@ def get_reporte_lecturas(
         Lectura.periodo_consumo.desc(),
         Lectura.fecha_lectura.desc()
     )
+    total_count = query.count()
     lecturas = query.offset(skip).limit(limit).all()
     
-    return [
-        {
-            "cod_usuario_afi": l.cod_usuario_afi,
-            "nombres": (
-                f"{l.afiliado_nombres or ''} {l.afiliado_apellidos or ''}".strip()
-                if l.afiliado_nombres or l.afiliado_apellidos
-                else "Sin afiliado"
-            ),
-            "num_medidor": l.num_medidor,
-            "sector": l.nombre_sector or "Sin sector",
-            "lectura_anterior": l.lectura_anterior,
-            "lectura_actual": l.lectura_actual,
-            "consumo_m3": l.consumo_m3,
-            "fecha_lectura": l.fecha_lectura.strftime("%d/%m/%Y") if l.fecha_lectura else None,
-            "periodo_consumo": l.periodo_consumo,
-            "tipo_lectura": "Estimada" if l.es_estimada else "Real",
-            "lector": (
-                f"{l.lector_nombres or ''} {l.lector_apellidos or ''}".strip()
-                if l.lector_nombres or l.lector_apellidos
-                else "Sin lector"
-            ),
-            "observacion": l.observacion,
-            "activo": l.activo
-        }
-        for l in lecturas
-    ]
+    return {
+        "success": True,
+        "total": total_count,
+        "data": [
+            {
+                # Afiliado
+                "cod_usuario_afi": l.cod_usuario_afi,
+                "nombres": (
+                    f"{l.afiliado_nombres or ''} {l.afiliado_apellidos or ''}".strip()
+                    if l.afiliado_nombres or l.afiliado_apellidos
+                    else "Sin afiliado"
+                ),
+
+                # Medidor
+                "num_medidor": l.num_medidor,
+                "sector": l.nombre_sector or "Sin sector",
+
+                # Lectura
+                "periodo_consumo": l.periodo_consumo,
+                "fecha_lectura": l.fecha_lectura.strftime("%d/%m/%Y") if l.fecha_lectura else None,
+                "lectura_anterior": l.lectura_anterior,
+                "lectura_actual": l.lectura_actual,
+                "consumo_m3": l.consumo_m3,
+                "tipo_lectura": "Estimada" if l.es_estimada else "Real",
+                "lector": (
+                    f"{l.lector_nombres or ''} {l.lector_apellidos or ''}".strip()
+                    if l.lector_nombres or l.lector_apellidos
+                    else "Sin lector"
+                ),
+                "observacion": l.observacion,
+            }
+            for l in lecturas
+        ],
+    }
 
 
 # ============================================================================
@@ -963,35 +972,27 @@ def get_reporte_facturas(
 
             facturas_formateadas.append({
                 "num_factura":           f.num_factura,
+                "periodo":               f.periodo,
                 "cod_usuario_afi":       f.cod_usuario_afi,
-                "num_medidor":           f.num_medidor or "N/A",  # ← ahora sí existe
-                "cedula":                f.cedula,
-                "Nombres":               nombre_completo,
-                "direccion":             f.direccion,
-                "telefono":              f.telefono,
-                "email":                 f.email,
-                "sector":                f.nombre_sector or "Sin sector",
+                "num_medidor":           f.num_medidor or "N/A",
+                "nombres":               nombre_completo,
                 "consumo_m3":            f.consumo_m3 or 0,
                 "exceso_m3":             f.exceso_m3 or 0,
                 "valor_consumo":         float(f.valor_consumo)  if f.valor_consumo  else 0.0,
                 "valor_exceso":          float(f.valor_exceso)   if f.valor_exceso   else 0.0,
-                "descuento":             float(f.descuento)       if f.descuento      else 0.0,
                 "subtotal":              float(f.subtotal)        if f.subtotal       else 0.0,
-                "impuesto":              float(f.impuesto)        if f.impuesto       else 0.0,
+                "iva":                   float(f.impuesto)        if f.impuesto       else 0.0,
                 "total_factura":         total_factura,
-                "tiene_mora":            tiene_mora,
-                "meses_adeudo":          meses_adeudo,
                 "valor_mora":            valor_mora,
-                "total_con_mora":        total_con_mora,
+                "total_con_mora":        round(total_con_mora, 2),
                 "fecha_emision":         f.fecha_emision.strftime("%d/%m/%Y") if f.fecha_emision else None,
-                "estado":                f.estado_factura,
-                "conceptos_facturacion": conceptos_texto
+                "estado_factura":        f.estado_factura,
             })
 
         return {
             "success": True,
-            "data": facturas_formateadas,
             "total": total_count,
+            "data": facturas_formateadas,
             "skip": skip, "limit": limit,
             "pages": (total_count + limit - 1) // limit,
             "estadisticas": {
@@ -1296,33 +1297,27 @@ def get_reporte_pagos(
                 total_mora_acumulado += valor_mora
             
             resultado.append({
-                "cod_afiliado": p.cod_usuario_afi,
-                "num_medidor": p.num_medidor or "N/A",
-                "cedula": p.cedula,
-                "Nombre": nombre_completo,
-                "direccion": p.direccion,
-                "telefono": p.telefono,
-                "email": p.email,
+                # Identificación
                 "num_factura": p.num_factura,
-                "fecha_emision": p.fecha_emision.strftime("%d/%m/%Y") if p.fecha_emision else None,
+                "periodo": p.periodo,
+                "cod_usuario_afi": p.cod_usuario_afi,
+                "num_medidor": p.num_medidor or "N/A",
+                "nombres": nombre_completo,
+
+                # Valores económicos
                 "total_factura": total_factura,
-                "tiene_mora": tiene_mora,
-                "meses_adeudo": meses_adeudo,
+                "monto_pagado": float(p.monto_pago) if p.monto_pago else 0.0,
+                "saldo": round(float(p.total or 0) - float(p.monto_pago or 0), 2),
+
+                # Mora
                 "valor_mora": valor_mora,
-                "total_con_mora": total_con_mora,
-                "monto_pagado": float(p.monto_pago),
+                "total_con_mora": round(total_con_mora, 2),
+
+                # Estad
+
+                # Información del pago
                 "fecha_pago": p.fecha_pago.strftime("%d/%m/%Y") if p.fecha_pago else None,
                 "metodo_pago": p.metodo_pago or "No especificado",
-                "estado_factura": p.estado_factura,
-                "estado_pago": p.estado_pago,
-                "observaciones": p.observaciones,
-                "conceptos_facturacion": conceptos_texto,
-                "descuento": float(p.descuento) if p.descuento else 0.0,
-                "impuesto": float(p.impuesto) if p.impuesto else 0.0,
-                "tiene_comprobante": p.tiene_comprobante,
-                "cajero": cajero_nombre or "Sin cajero",
-                "saldo": total_con_mora - float(p.monto_pago),
-                "pago_completo": float(p.monto_pago) >= total_con_mora
             })
         
         print(f"✅ Reporte generado: {len(resultado)} de {total_registros} pagos")
@@ -1331,8 +1326,8 @@ def get_reporte_pagos(
         # ✅ RESPUESTA CON ESTADÍSTICAS DE MORA
         return {
             "success": True,
-            "data": resultado,
             "total": total_registros,
+            "data": resultado,
             "skip": skip,
             "limit": limit,
             "pages": (total_registros + limit - 1) // limit,
@@ -1712,19 +1707,20 @@ def get_reporte_multas_afiliados(
         # FORMATEAR RESPUESTA
         multas_formateadas = [
             {
-                "medidor":         get_num_medidor(m.usuario),          # ← corregido
                 "cod_usuario_afi": m.usuario.cod_usuario_afi if m.usuario else None,
-                "nombres":         m.usuario.usuario_sistema.nombres if m.usuario and m.usuario.usuario_sistema else "N/A",
-                "apellidos":       m.usuario.usuario_sistema.apellidos if m.usuario and m.usuario.usuario_sistema else "",
                 "cedula":          m.usuario.usuario_sistema.cedula if m.usuario and m.usuario.usuario_sistema else None,
+                "nombre_completo": (
+                    f"{m.usuario.usuario_sistema.nombres} {m.usuario.usuario_sistema.apellidos}"
+                    if m.usuario and m.usuario.usuario_sistema
+                    else "N/A"
+                ),
                 "sector":          m.usuario.sector.nombre_sector if m.usuario and m.usuario.sector else None,
                 "nombre_multa":    m.tipo_multa.nombre_multa if m.tipo_multa else "N/A",
                 "monto":           float(m.monto),
                 "fecha_multa":     m.fecha_multa.isoformat() if m.fecha_multa else None,
-                "fecha_pago":      m.fecha_pago.isoformat()  if m.fecha_pago  else None,
+                "fecha_pago":      m.fecha_pago.isoformat() if m.fecha_pago else None,
                 "observaciones":   m.observaciones,
                 "estado":          m.estado,
-                "facturado":       m.facturado,
                 "activo":          m.activo,
             }
             for m in multas
@@ -1952,6 +1948,9 @@ def exportar_reporte(
     )
     
     # Procesar según formato
+    if isinstance(data, dict) and isinstance(data.get("data"), list):
+        data = data["data"]
+
     if formato == "csv":
         return export_to_csv(data, f"reporte_{modulo}_{datetime.now().strftime('%Y%m%d')}")
     else:
@@ -2636,7 +2635,6 @@ def reporte_individual_lecturas(
                 if l.lector else "Sin lector"
             ),
             "observacion":     l.observacion,
-            "activo":          l.activo,
         }
 
     return {
@@ -2677,6 +2675,12 @@ def reporte_individual_facturas(
     query = (
         db.query(
             Factura,
+            UsuarioAfiliado.cod_usuario_afi,
+            Medidor.num_medidor,
+            UsuarioSistema.cedula,
+            UsuarioSistema.nombres,
+            UsuarioSistema.apellidos,
+            Sector.nombre_sector,
             morasubquery.c.meses_adeudo,
             morasubquery.c.total_mora,
         )
@@ -2702,31 +2706,57 @@ def reporte_individual_facturas(
 
     total = query.count()
     filas = query.order_by(Factura.fecha_emision.desc()).offset(skip).limit(limit).all()   
+    ids_facturas = [f.id_factura for f, *_ in filas]
+    detalles_por_factura = {}
+    if ids_facturas:
+        detalles_query = (
+            db.query(
+                DetalleFactura.id_factura,
+                DetalleFactura.tipo_detalle,
+                DetalleFactura.subtotal_detalle
+            )
+            .filter(DetalleFactura.id_factura.in_(ids_facturas))
+            .order_by(DetalleFactura.id_factura)
+            .all()
+        )
+        for d in detalles_query:
+            detalles_por_factura.setdefault(d.id_factura, []).append({
+                "tipo": d.tipo_detalle,
+                "monto": float(d.subtotal_detalle) if d.subtotal_detalle else 0.0
+            })
 
     return {
         "success": True,
         "total":   total,
         "data": [
             {
-                "num_factura":    f.num_factura,                                              
-                "cod_usuario_afi": codusuarioafi,
-                "periodo":        f.periodo,
-                "fecha_emision":  f.fecha_emision.strftime("%d/%m/%Y") if f.fecha_emision else None,   
-                "consumo_m3":     f.consumo_m3,                                               
-                "exceso_m3":      f.exceso_m3 or 0,                                          
-                "valor_consumo":  float(f.valor_consumo) if f.valor_consumo else 0.0,        
-                "valor_exceso":   float(f.valor_exceso)  if f.valor_exceso  else 0.0,         
-                "descuento":      float(f.descuento)     if f.descuento     else 0.0,
-                "subtotal":       float(f.subtotal)      if f.subtotal      else 0.0,
-                "impuesto":       float(f.impuesto)      if f.impuesto      else 0.0,
-                "total":          float(f.total)         if f.total         else 0.0,
-                "estado_factura": f.estado_factura,                                          
-                "tiene_mora":     meses_adeudo is not None and meses_adeudo > 0,
-                "meses_adeudo":   int(meses_adeudo) if meses_adeudo else 0,
-                "valor_mora":     float(total_mora) if total_mora else 0.0,
-                "total_con_mora": round(float(f.total or 0) + float(total_mora or 0), 2),    
+                # Identificación
+                "num_factura":           f.num_factura,
+                "periodo":               f.periodo,
+                "cod_usuario_afi":       cod_afi,
+                "num_medidor":           num_medidor or "N/A",
+                "nombres":               f"{nombres or ''} {apellidos or ''}".strip() or "Sin afiliado",
+
+                # Consumo
+                "consumo_m3":            f.consumo_m3 or 0,
+                "exceso_m3":             f.exceso_m3 or 0,
+
+                # Valores económicos
+                "valor_consumo":         float(f.valor_consumo) if f.valor_consumo else 0.0,
+                "valor_exceso":          float(f.valor_exceso)  if f.valor_exceso  else 0.0,
+                "subtotal":              float(f.subtotal)      if f.subtotal      else 0.0,
+                "iva":                   float(f.impuesto)      if f.impuesto      else 0.0,
+                "total_factura":         float(f.total)         if f.total         else 0.0,
+
+                # Mora
+                "valor_mora":            float(total_mora) if total_mora else 0.0,
+                "total_con_mora":        round(float(f.total or 0) + float(total_mora or 0), 2),
+
+                # Estado
+                "fecha_emision":         f.fecha_emision.strftime("%d/%m/%Y") if f.fecha_emision else None,
+                "estado_factura":        f.estado_factura,
             }
-            for f, meses_adeudo, total_mora in filas
+            for f, cod_afi, num_medidor, cedula, nombres, apellidos, nombre_sector, meses_adeudo, total_mora in filas
         ],
     }
 
@@ -2776,7 +2806,14 @@ def reporte_individual_pagos(
             Pago.comprobante_pdf,
             Factura.num_factura,
             Factura.periodo,
+            Factura.fecha_emision,
+            Factura.estado_factura,
             Factura.total.label("total_factura"),
+            UsuarioAfiliado.cod_usuario_afi,
+            Medidor.num_medidor,
+            UsuarioSistema.cedula,
+            UsuarioSistema.nombres,
+            UsuarioSistema.apellidos,
             Cajero.nombres.label("cajero_nombres"),
             Cajero.apellidos.label("cajero_apellidos"),
             morasubquery.c.meses_adeudo,
@@ -2815,24 +2852,38 @@ def reporte_individual_pagos(
         "total": total,
         "data": [
             {
-                "num_factura":       row.num_factura,
-                "periodo":           row.periodo,
-                "cod_usuario_afi":   codusuarioafi,
-                "fecha_pago":        row.fecha_pago.strftime("%d/%m/%Y %H:%M") if row.fecha_pago else None,
-                "monto_pagado":      float(row.monto_pago)    if row.monto_pago    else 0.0,
-                "total_factura":     float(row.total_factura) if row.total_factura else 0.0,
-                "saldo":             round(float(row.total_factura or 0) - float(row.monto_pago or 0), 2),
-                "pago_completo":     float(row.monto_pago or 0) >= float(row.total_factura or 0),
-                "metodo_pago":       row.metodo_pago,
-                "estado_pago":       row.estado_pago,
-                "tiene_comprobante": bool(row.comprobante_pdf),
-                "cajero":            f"{row.cajero_nombres} {row.cajero_apellidos}"
-                                     if row.cajero_nombres else "Sin cajero",
-                "observaciones":     row.observaciones,
-                "tiene_mora":        row.meses_adeudo is not None and row.meses_adeudo > 0,
-                "meses_adeudo":      int(row.meses_adeudo) if row.meses_adeudo else 0,
-                "valor_mora":        float(row.total_mora) if row.total_mora else 0.0,
-                "total_con_mora":    round(float(row.total_factura or 0) + float(row.total_mora or 0), 2),
+                # Identificación
+                "num_factura":     row.num_factura,
+                "periodo":         row.periodo,
+                "cod_usuario_afi": row.cod_usuario_afi,
+                "num_medidor":     row.num_medidor or "N/A",
+                "nombres":         f"{row.nombres or ''} {row.apellidos or ''}".strip() or "Sin afiliado",
+
+                # Valores económicos
+                "total_factura":   float(row.total_factura) if row.total_factura else 0.0,
+                "monto_pagado":    float(row.monto_pago) if row.monto_pago else 0.0,
+                "saldo":           round(
+                                        float(row.total_factura or 0)
+                                        - float(row.monto_pago or 0),
+                                        2
+                                    ),
+
+                # Mora
+                "valor_mora":      float(row.total_mora) if row.total_mora else 0.0,
+                "total_con_mora":  round(
+                                        float(row.total_factura or 0)
+                                        + float(row.total_mora or 0),
+                                        2
+                                    ),
+
+                # Estado
+                "pago_completo":   float(row.monto_pago or 0)
+                                    >= float(row.total_factura or 0),
+
+                # Información del pago
+                "fecha_pago":      row.fecha_pago.strftime("%d/%m/%Y %H:%M")
+                                    if row.fecha_pago else None,
+                "metodo_pago":     row.metodo_pago,
             }
             for row in filas
         ],

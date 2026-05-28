@@ -49,6 +49,7 @@ const MetersSection = () => {
   const [loadingServices, setLoadingServices] = useState(false);
   const [transferFormData, setTransferFormData] = useState({
     nuevoAfiliadoId: null,
+    idUsuarioSistemaNuevo: null,
     servicioId: null,
     nombreServicio: 'Cambio de Medidor',
     montoServicio: 0,
@@ -97,9 +98,20 @@ const MetersSection = () => {
     return (
       a.cod_usuario_afi?.toLowerCase().includes(term) ||
       a.nombre_afiliado?.toLowerCase().includes(term) ||
-      a.cedula?.toLowerCase().includes(term)
+      a.cedula?.toLowerCase().includes(term) ||
+      a.nombre_sector?.toLowerCase().includes(term)
     );
   });
+
+  const getAffiliateCandidateKey = (affiliate) => (
+    affiliate.es_afiliado === false
+      ? `usuario-${affiliate.id_usuario_sistema}`
+      : `afiliado-${affiliate.id_usuario_afi}`
+  );
+
+  const getAffiliateInitials = (name = '') => (
+    String(name || 'NA').split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase()
+  );
 
   // ============================================================================
   // EFECTOS Y CARGA INICIAL
@@ -456,6 +468,8 @@ const MetersSection = () => {
     setSelectedMeter(null);
 
     setSelectedMeterForTransfer(meter);
+    setAffiliateSearchTerm('');
+    setSelectedAffiliateInfo(null);
     setLoadingServices(true);
     setShowTransferModal(true);
 
@@ -477,6 +491,7 @@ const MetersSection = () => {
         if (cambioService) {
           setTransferFormData({
             nuevoAfiliadoId: null,
+            idUsuarioSistemaNuevo: null,
             servicioId: cambioService.id_servicio,
             nombreServicio: cambioService.nombre,
             montoServicio: parseFloat(cambioService.precio_base || 0),
@@ -486,6 +501,7 @@ const MetersSection = () => {
           const firstService = result.data[0];
           setTransferFormData({
             nuevoAfiliadoId: null,
+            idUsuarioSistemaNuevo: null,
             servicioId: firstService.id_servicio,
             nombreServicio: firstService.nombre,
             montoServicio: parseFloat(firstService.precio_base || 0),
@@ -495,6 +511,7 @@ const MetersSection = () => {
       } else {
         setTransferFormData({
           nuevoAfiliadoId: null,
+          idUsuarioSistemaNuevo: null,
           servicioId: null,
           nombreServicio: 'Cambio de Medidor',
           montoServicio: 0,
@@ -505,6 +522,7 @@ const MetersSection = () => {
       console.error('Error cargando servicios:', error);
       setTransferFormData({
         nuevoAfiliadoId: null,
+        idUsuarioSistemaNuevo: null,
         servicioId: null,
         nombreServicio: 'Cambio de Medidor',
         montoServicio: 0,
@@ -520,8 +538,11 @@ const MetersSection = () => {
     setSelectedMeterForTransfer(null);
     setAvailableServices([]);
     setAvailableAffiliates([]);
+    setAffiliateSearchTerm('');
+    setSelectedAffiliateInfo(null);
     setTransferFormData({
       nuevoAfiliadoId: null,
+      idUsuarioSistemaNuevo: null,
       servicioId: null,
       nombreServicio: 'Cambio de Medidor',
       montoServicio: 0,
@@ -530,8 +551,8 @@ const MetersSection = () => {
   };
 
   const handleTransferSubmit = async () => {
-    if (!transferFormData.nuevoAfiliadoId) {
-      alert('Debe seleccionar un nuevo afiliado');
+    if (!transferFormData.nuevoAfiliadoId && !transferFormData.idUsuarioSistemaNuevo) {
+      alert('Debe seleccionar un nuevo afiliado o usuario');
       return;
     }
 
@@ -544,6 +565,8 @@ const MetersSection = () => {
       // 🆕 Enviar datos completos del cambio
       const dataToSend = {
         id_usuario_afi: transferFormData.nuevoAfiliadoId,
+        id_usuario_sistema_nuevo: transferFormData.idUsuarioSistemaNuevo,
+        id_sector: selectedMeterForTransfer.id_sector || null,
         costo_cambio: transferFormData.montoServicio,
         motivo_cambio: transferFormData.nombreServicio,
         observaciones_cambio: transferFormData.observaciones || 
@@ -1220,7 +1243,7 @@ const MetersSection = () => {
                             </div>
                           </div>
 
-                          {filteredAffiliates.map((affiliate) => (
+                          {filteredAffiliates.filter(affiliate => affiliate.es_afiliado !== false).map((affiliate) => (
                             <div 
                               key={affiliate.id_usuario_afi}
                               className={`affiliate-modal-item ${formData.id_usuario_afi === affiliate.id_usuario_afi ? 'selected' : ''}`}
@@ -1241,7 +1264,7 @@ const MetersSection = () => {
                             </div>
                           ))}
 
-                          {filteredAffiliates.length === 0 && affiliateSearchTerm && (
+                          {filteredAffiliates.filter(affiliate => affiliate.es_afiliado !== false).length === 0 && affiliateSearchTerm && (
                             <div className="p-4 text-center text-gray-500">
                               <p className="text-xs">No se encontraron afiliados para "{affiliateSearchTerm}"</p>
                             </div>
@@ -1376,27 +1399,92 @@ const MetersSection = () => {
 
                 {/* Selección de nuevo afiliado */}
                 <div className="form-group form-group-full">
-                  <label>Nuevo Afiliado *</label>
-                  <select
-                    value={transferFormData.nuevoAfiliadoId || ''}
-                    onChange={(e) => setTransferFormData({
-                      ...transferFormData,
-                      nuevoAfiliadoId: e.target.value ? parseInt(e.target.value) : null
-                    })}
-                    required
-                  >
-                    <option value="">Seleccione un afiliado</option>
-                    {availableAffiliates
+                  <label>Nuevo Afiliado o Usuario *</label>
+
+                  <div className="meter-search-container mb-3">
+                    <div className="meter-search-input-wrapper">
+                      <Search className="w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar por nombre, codigo, cedula o sector..."
+                        value={affiliateSearchTerm}
+                        onChange={(e) => setAffiliateSearchTerm(e.target.value)}
+                      />
+                      {affiliateSearchTerm && (
+                        <button
+                          type="button"
+                          onClick={() => setAffiliateSearchTerm('')}
+                          className="meter-search-clear-btn"
+                        >
+                          <X className="w-4 h-4 text-gray-400" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="affiliates-modal-list" style={{ maxHeight: '240px' }}>
+                    {filteredAffiliates
                       .filter(a => a.id_usuario_afi !== selectedMeterForTransfer.id_usuario_afi)
-                      .map(affiliate => (
-                        <option key={affiliate.id_usuario_afi} value={affiliate.id_usuario_afi}>
-                          {affiliate.cod_usuario_afi} - {affiliate.nombre_afiliado} - Sector: {affiliate.nombre_sector || 'N/A'}
-                        </option>
-                      ))}
-                  </select>
-                  <small className="text-gray-500 mt-1">
-                    Solo se muestran afiliados sin medidor asignado
-                  </small>
+                      .map((affiliate) => {
+                        const isSelected = affiliate.es_afiliado === false
+                          ? transferFormData.idUsuarioSistemaNuevo === affiliate.id_usuario_sistema
+                          : transferFormData.nuevoAfiliadoId === affiliate.id_usuario_afi;
+
+                        return (
+                          <div
+                            key={getAffiliateCandidateKey(affiliate)}
+                            className={`affiliate-modal-item ${isSelected ? 'selected' : ''}`}
+                            onClick={() => {
+                              setTransferFormData({
+                                ...transferFormData,
+                                nuevoAfiliadoId: affiliate.es_afiliado === false ? null : affiliate.id_usuario_afi,
+                                idUsuarioSistemaNuevo: affiliate.es_afiliado === false ? affiliate.id_usuario_sistema : null
+                              });
+                              setSelectedAffiliateInfo(affiliate);
+                            }}
+                          >
+                            <div className="avatar-circle">
+                              {getAffiliateInitials(affiliate.nombre_afiliado)}
+                            </div>
+                            <div className="affiliate-info">
+                              <div className="flex justify-between items-start">
+                                <p className="affiliate-name">{affiliate.nombre_afiliado}</p>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${affiliate.es_afiliado === false ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                  {affiliate.es_afiliado === false ? 'Usuario' : 'Afiliado'}
+                                </span>
+                              </div>
+                              <p className="affiliate-meta">
+                                {affiliate.es_afiliado === false
+                                  ? `CI: ${affiliate.cedula || 'N/A'} | Se afiliara al sector del medidor`
+                                  : `Cod: ${affiliate.cod_usuario_afi || 'S/C'} | ${affiliate.nombre_sector || 'Sin sector'} | Medidores: ${affiliate.total_medidores || 0}`}
+                              </p>
+                            </div>
+                            {isSelected && <CheckCircle className="w-4 h-4 text-blue-600" />}
+                          </div>
+                        );
+                      })}
+
+                    {filteredAffiliates.filter(a => a.id_usuario_afi !== selectedMeterForTransfer.id_usuario_afi).length === 0 && (
+                      <div className="p-6 text-center text-gray-500">
+                        <Search className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                        <p className="text-sm">No se encontraron usuarios con "{affiliateSearchTerm}"</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedAffiliateInfo && (
+                    <div className="selected-affiliate-card mt-3 py-2 px-3 animate-fadeIn">
+                      <div className="avatar-circle" style={{ width: '28px', height: '28px', fontSize: '10px' }}>OK</div>
+                      <div className="affiliate-info">
+                        <p className="affiliate-name" style={{ fontSize: '13px' }}>{selectedAffiliateInfo.nombre_afiliado}</p>
+                        <p className="affiliate-meta">
+                          {selectedAffiliateInfo.es_afiliado === false
+                            ? 'Usuario sin afiliacion: se creara como afiliado al confirmar'
+                            : `Afiliado ${selectedAffiliateInfo.cod_usuario_afi || 'S/C'}`}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Lista de servicios disponibles */}

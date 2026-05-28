@@ -514,6 +514,9 @@ class AffiliateBillingServices {
       }
       
       const blob = await response.blob();
+      if (blob.size === 0) {
+        throw new Error('El PDF está vacío');
+      }
       
       const contentDisposition = response.headers.get('Content-Disposition');
       let filename = `comprobante_${idPago}.pdf`;
@@ -533,7 +536,7 @@ class AffiliateBillingServices {
       link.click();
       
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
+      setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
       
       return {
         success: true,

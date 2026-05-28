@@ -321,10 +321,12 @@ const handleConfirmarEstimada = async (reading) => {
       const numMedidor = afiliado.num_medidor?.toLowerCase() || '';
       const nombreCompleto = afiliado.nombre_completo?.toLowerCase() || '';
       const codigoAfiliado = String(afiliado.cod_usuario_afi || '').toLowerCase();
+      const sector = String(afiliado.nombre_sector || afiliado.sector || '').toLowerCase();
       
       return numMedidor.includes(searchLower) || 
             nombreCompleto.includes(searchLower) || 
-            codigoAfiliado.includes(searchLower);
+            codigoAfiliado.includes(searchLower) ||
+            sector.includes(searchLower);
     });
   }, [meters, meterSearchTerm]);
 
@@ -2433,7 +2435,7 @@ return (
                                   </span>
                                 </div>
                                 <p className="affiliate-meta">
-                                  Cód: {afiliado.cod_usuario_afi || 'S/C'} | {afiliado.nombre_sector || 'Sin sector'}
+                                  Cód: {afiliado.cod_usuario_afi || 'S/C'} | {afiliado.nombre_sector || afiliado.sector || 'Sin sector'}
                                 </p>
                               </div>
                             </div>

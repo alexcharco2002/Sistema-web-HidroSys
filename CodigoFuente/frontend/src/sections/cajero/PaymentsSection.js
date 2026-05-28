@@ -1009,6 +1009,73 @@ const closePagoMultipleModal = () => {
     });
   };
 
+  const isRecoverablePagoError = (message = '') => {
+    const normalized = String(message).toLowerCase();
+    return (
+      normalized.includes('conectar') ||
+      normalized.includes('tard') ||
+      normalized.includes('failed to fetch') ||
+      normalized.includes('empty_response') ||
+      normalized.includes('servidor')
+    );
+  };
+
+  const getPagoTimestamp = (pago) => {
+    const timestamp = new Date(pago?.fecha_pago || pago?.created_at || 0).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  };
+
+  const findPagoRegistradoEnFactura = (pagos = [], pagoData, montoAPagar) => {
+    const now = Date.now();
+    const metodoEsperado = String(pagoData.metodo_pago || '').toUpperCase();
+
+    return pagos
+      .filter((pago) => {
+        const montoPago = Number(pago?.monto_pago ?? pago?.monto ?? 0);
+        const metodoPago = String(pago?.metodo_pago || '').toUpperCase();
+        const estadoPago = String(pago?.estado_pago || 'REGISTRADO').toUpperCase();
+        const fechaPago = getPagoTimestamp(pago);
+        const esReciente = !fechaPago || Math.abs(now - fechaPago) <= 10 * 60 * 1000;
+
+        return (
+          Math.abs(montoPago - montoAPagar) <= 0.01 &&
+          metodoPago === metodoEsperado &&
+          estadoPago === 'REGISTRADO' &&
+          esReciente
+        );
+      })
+      .sort((a, b) => {
+        if (Boolean(a?.tiene_comprobante) !== Boolean(b?.tiene_comprobante)) {
+          return a?.tiene_comprobante ? 1 : -1;
+        }
+        return (getPagoTimestamp(b) || Number(b?.id_pago || 0)) - (getPagoTimestamp(a) || Number(a?.id_pago || 0));
+      })[0] || null;
+  };
+
+  const recuperarPagoRegistrado = async (pagoData, montoAPagar) => {
+    const resultDetalle = await paymentsServices.getFacturaDetalle(pagoData.id_factura);
+    if (!resultDetalle.success || !resultDetalle.data) return null;
+
+    const facturaDetalle = normalizarFacturaDetalle(resultDetalle.data, selectedFactura || {});
+    const pagoRecuperado = findPagoRegistradoEnFactura(facturaDetalle.pagos || [], pagoData, montoAPagar);
+
+    if (!pagoRecuperado?.id_pago) return null;
+
+    return {
+      pago: {
+        ...pagoRecuperado,
+        id_factura: pagoData.id_factura,
+        id_usuario_afi: pagoData.id_usuario_afi,
+        id_cajero: pagoData.id_cajero,
+        monto_pago: Number(pagoRecuperado.monto_pago ?? montoAPagar),
+        metodo_pago: pagoRecuperado.metodo_pago || pagoData.metodo_pago,
+        estado_pago: pagoRecuperado.estado_pago || 'REGISTRADO',
+        observaciones: pagoRecuperado.observaciones ?? pagoData.observaciones,
+      },
+      factura: facturaDetalle
+    };
+  };
+
   // ============================================================
   // FUNCIÓN PARA CREAR PAGO 
   // ============================================================
@@ -1070,50 +1137,71 @@ const closePagoMultipleModal = () => {
 
       // 🚀 PASO 1: CREAR EL PAGO (operación crítica)
       const result = await paymentsServices.createPago(pagoData);
-      
-      if (!result.success) {
+
+      let pagoCreado = null;
+      let facturaRecuperada = null;
+      let pagoRecuperadoTrasError = false;
+
+      if (result.success) {
+        pagoCreado = result.data;
+      } else if (isRecoverablePagoError(result.message)) {
+        const recovered = await recuperarPagoRegistrado(pagoData, montoAPagar);
+        if (!recovered?.pago) {
+          throw new Error(result.message || 'Error al crear el pago');
+        }
+
+        pagoCreado = recovered.pago;
+        facturaRecuperada = recovered.factura;
+        pagoRecuperadoTrasError = true;
+      } else {
         throw new Error(result.message || 'Error al crear el pago');
       }
 
-      const pagoCreado = result.data;
+      const facturaBase = facturaRecuperada || selectedFactura;
 
       // ✅ CALCULAR CORRECTAMENTE considerando pagos ANTERIORES
-      const montoPagadoAnterior = parseFloat(selectedFactura.monto_pagado) || 0;
+      const montoPagadoAnterior = pagoRecuperadoTrasError
+        ? Math.max(0, (parseFloat(facturaBase.monto_pagado) || 0) - montoAPagar)
+        : parseFloat(facturaBase.monto_pagado) || 0;
       const nuevoMontoPagado = montoPagadoAnterior + montoAPagar;
-      const totalFactura = parseFloat(selectedFactura.total) || 0;
+      const totalFactura = parseFloat(facturaBase.total) || 0;
       const nuevoSaldoPendiente = Math.max(0, totalFactura - nuevoMontoPagado);
       
       // Determinar estado correcto
       const estadoReal = nuevoSaldoPendiente <= 0.01 ? 'pagada' : 
                         nuevoMontoPagado > 0 ? 'parcial' : 
-                        selectedFactura.estado_factura;
+                        facturaBase.estado_factura;
 
       // Crear factura actualizada con los valores correctos
       const facturaOptimista = {
-        ...selectedFactura,
+        ...facturaBase,
         estado_factura: estadoReal,
         saldo_pendiente: nuevoSaldoPendiente,
         monto_pagado: nuevoMontoPagado,
         esta_totalmente_pagada: nuevoSaldoPendiente <= 0.01,
         // Agregar el nuevo pago a la lista de pagos
-        pagos: [
-          ...(selectedFactura.pagos || []),
-          {
-            id_pago: pagoCreado.id_pago,
-            monto_pago: montoAPagar,
-            fecha_pago: new Date().toISOString(),
-            metodo_pago: pagoData.metodo_pago,
-            estado_pago: 'REGISTRADO',
-            cajero: currentUser.nombre_completo || 'Usuario actual',
-            observaciones: pagoData.observaciones
-          }
-        ],
-        cantidad_pagos: (selectedFactura.cantidad_pagos || 0) + 1
+        pagos: pagoRecuperadoTrasError
+          ? (facturaBase.pagos || [])
+          : [
+              ...(facturaBase.pagos || []),
+              {
+                id_pago: pagoCreado.id_pago,
+                monto_pago: montoAPagar,
+                fecha_pago: new Date().toISOString(),
+                metodo_pago: pagoData.metodo_pago,
+                estado_pago: 'REGISTRADO',
+                cajero: currentUser.nombre_completo || 'Usuario actual',
+                observaciones: pagoData.observaciones
+              }
+            ],
+        cantidad_pagos: pagoRecuperadoTrasError
+          ? (facturaBase.pagos || []).length
+          : (facturaBase.cantidad_pagos || 0) + 1
       };
 
       // ✅ Actualizar UI inmediatamente
       setFacturas(prev => prev.map(f => 
-        f.id_factura === selectedFactura.id_factura ? facturaOptimista : f
+        f.id_factura === facturaBase.id_factura ? facturaOptimista : f
       ));
 
       // Cerrar modal inmediatamente
@@ -1141,7 +1229,7 @@ const closePagoMultipleModal = () => {
           try {
             const pdfFile = await generatePaymentPDF(pagoCreado, facturaOptimista);
             
-            if (pdfFile && pdfFile.size > 0) {
+            if (pdfFile && pdfFile.size > 0 && !pagoCreado.tiene_comprobante) {
               await paymentsServices.uploadComprobante(pagoCreado.id_pago, pdfFile);
             }
           } catch (pdfError) {
@@ -1157,8 +1245,8 @@ const closePagoMultipleModal = () => {
             await fetchStats();
             
             // Limpiar caché de adeudos
-            const idAfiliado = selectedFactura.usuario_afiliado?.id_usuario_afi;
-            const idMedidor = selectedFactura.id_medidor;
+            const idAfiliado = facturaBase.usuario_afiliado?.id_usuario_afi || facturaBase.id_usuario_afi;
+            const idMedidor = facturaBase.id_medidor;
             if (idAfiliado && idMedidor ) {
               const periodoStr = `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
               const cacheKey = `${idAfiliado}-${idMedidor}-${periodoStr}`;

@@ -309,10 +309,24 @@ async getMedidoresParaLecturas(mes = null, anio = null, incluirConLectura = fals
     
     // Validar estructura
     if (data && data.afiliados && Array.isArray(data.afiliados)) {
+      const afiliados = data.afiliados.map((afiliado) => {
+        const nombreSector =
+          afiliado.nombre_sector ||
+          afiliado.sector?.nombre_sector ||
+          (typeof afiliado.sector === 'string' ? afiliado.sector : '') ||
+          'Sin sector';
+
+        return {
+          ...afiliado,
+          sector: nombreSector,
+          nombre_sector: nombreSector,
+        };
+      });
+
       return {
         success: true,
-        data: data.afiliados,
-        total: data.total || data.afiliados.length,
+        data: afiliados,
+        total: data.total || afiliados.length,
         periodo: data.periodo || null,
         mensaje: data.mensaje || null
       };

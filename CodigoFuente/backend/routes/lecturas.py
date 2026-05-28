@@ -273,7 +273,7 @@ def listar_afiliados_con_medidores(
             )
             .outerjoin(
                 Sector,
-                Medidor.id_sector == Sector.id_sector
+                func.coalesce(Medidor.id_sector, UsuarioAfiliado.id_sector) == Sector.id_sector
             )
             .outerjoin(
                 subq_ultima_lectura,
@@ -336,6 +336,7 @@ def listar_afiliados_con_medidores(
                 "apellidos": r.apellidos,
                 "cedula": r.cedula,
                 "sector": r.nombre_sector or "Sin sector",
+                "nombre_sector": r.nombre_sector or "Sin sector",
                 "lectura_anterior": float(r.lectura_anterior) if r.lectura_anterior else 0,
                 "fecha_ultima_lectura": r.fecha_ultima_lectura.strftime('%Y-%m-%d') if r.fecha_ultima_lectura else None,
                 "periodo_ultima_lectura": r.periodo_ultima_lectura,

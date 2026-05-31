@@ -93,7 +93,7 @@ allowed_origins = [
     origin.strip().rstrip("/")
     for origin in os.getenv(
     "ALLOWED_ORIGINS",
-    "https://localhost:3000,http://localhost:3000,https://hidrosyssanjapamba.netlify.app,https://tecnicobrosanjapamba.netlify.app"
+    "https://localhost:3000,http://localhost:3000,https://hidrosyssanjapamba.netlify.app,https://sistema-web-hidro-sys.vercel.app"
     ).split(",")
     if origin.strip()
 ]

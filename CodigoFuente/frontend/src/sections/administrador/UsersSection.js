@@ -1,6 +1,6 @@
 // src/sections/users/UsersSection.js
 // MODULO DE USUARIOS de sistema - Con control de permisos 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import './UserSection.css';
 import usersService from '../../services/userServices'; // 🔑 Importar usersService
@@ -425,10 +425,11 @@ const UsersSection = () => {
     setError(null);
   
     try {
-      const pageLimit = 100;
+      const pageLimit = 500;
       let skip = 0;
       let allUsers = [];
       let usersResult = { success: true, data: [] };
+      const miPerfilPromise = usersService.getMiPerfil();
 
       do {
         usersResult = await usersService.getUsers({
@@ -447,7 +448,7 @@ const UsersSection = () => {
 
       const [result, miPerfilResult] = await Promise.all([
         Promise.resolve({ ...usersResult, data: allUsers }),
-        usersService.getMiPerfil(),   
+        miPerfilPromise,
       ]);
   
       if (result.success) {
@@ -496,9 +497,12 @@ const UsersSection = () => {
     return false;
   };
 
-  const blockedUsersCount = users.filter(isUserBlocked).length;
+  const blockedUsersCount = useMemo(
+    () => users.filter(isUserBlocked).length,
+    [users]
+  );
 
-  const filteredUsers = users.filter(user => {
+  const filteredUsers = useMemo(() => users.filter(user => {
     const searchValue = searchTerm.trim().toLowerCase();
     // Filtro por búsqueda de texto
     const matchesSearch =
@@ -519,12 +523,12 @@ const UsersSection = () => {
       (statusFilter === 'blocked' && isUserBlocked(user));
 
     return matchesSearch && matchesRole && matchesStatus;
-  });
+  }), [users, searchTerm, filterRole, statusFilter]);
 
   /**
    * 🔀 Ordena los usuarios filtrados según el criterio y orden seleccionados
    */
-  const sortedUsers = [...filteredUsers].sort((a, b) => {
+  const sortedUsers = useMemo(() => [...filteredUsers].sort((a, b) => {
     let comparison = 0;
     
     if (sortOption === 'nombre') {
@@ -546,7 +550,7 @@ const UsersSection = () => {
     
     // Aplicar orden ascendente o descendente
     return sortOrder === 'asc' ? comparison : -comparison;
-  });
+  }), [filteredUsers, sortOption, sortOrder]);
 
   const totalPages = Math.max(1, Math.ceil(sortedUsers.length / pageSize));
   const normalizedCurrentPage = Math.min(currentPage, totalPages);

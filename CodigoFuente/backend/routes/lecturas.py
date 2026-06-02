@@ -640,9 +640,9 @@ def crear_lectura(
             )
             
             if exito:
-                mensaje_factura = f"✅ {mensaje}"
+                mensaje_factura = "Factura generada correctamente."
             else:
-                mensaje_factura = f"⚠️ Lectura creada pero: {mensaje}"
+                mensaje_factura = f"No se pudo generar la factura: {mensaje}"
         
         # Commit final
         db.commit()
@@ -661,21 +661,21 @@ def crear_lectura(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
             titulo="Lectura creada",
-            mensaje=f"Lectura del medidor {medidor.num_medidor} registrada. Consumo: {nueva_lectura.consumo_m3}m³. {mensaje_factura}",
+            mensaje=f"Lectura registrada para el medidor {medidor.num_medidor}. Consumo: {nueva_lectura.consumo_m3} m3. {mensaje_factura}",
             tipo="exito"
         )
         
         # Notificación para el afiliado
         if id_usuario_afiliado:
-            mensaje_afiliado = f"Se registró una lectura de {nueva_lectura.consumo_m3}m³ para tu medidor N° {medidor.num_medidor}."
+            mensaje_afiliado = f"Se registró una lectura de {nueva_lectura.consumo_m3} m3 para tu medidor {medidor.num_medidor}."
             
             if factura_generada:
-                mensaje_afiliado += f" Factura {factura_generada.num_factura} generada por ${factura_generada.total}"
+                mensaje_afiliado += f" Factura {factura_generada.num_factura} generada por ${factura_generada.total}."
             
             registrar_notificacion(
                 db=db,
                 id_usuario=id_usuario_afiliado,
-                titulo="Nueva lectura y factura",
+                titulo="Nueva lectura registrada",
                 mensaje=mensaje_afiliado,
                 tipo="info"
             )
@@ -749,7 +749,7 @@ def actualizar_lectura(
         return {
             "success": False,
             "accion": "no_actualizado",
-            "message": "⚠️ NO se puede actualizar la lectura porque tiene una factura pagada.",
+            "message": "No se puede actualizar la lectura porque tiene una factura pagada.",
             "info": {
                 "id_factura": factura_relacionada.id_factura,
                 "numero_factura": factura_relacionada.num_factura,
@@ -778,7 +778,7 @@ def actualizar_lectura(
             return {
                 "success": False,
                 "accion": "no_actualizado",
-                "message": "⚠️ Ya existe otra lectura para ese medidor en ese mes.",
+                "message": "Ya existe otra lectura para ese medidor en ese mes.",
                 "info": {
                     "id_lectura_existente": duplicado.id_lectura,
                     "periodo_consumo": nuevo_periodo
@@ -847,7 +847,7 @@ def actualizar_lectura(
                         "estado": factura_reactivada.estado_factura,
                         "estado_anterior": "anulada"
                     }
-                    mensaje_adicional = "Factura reactivada (anulada → pendiente)"
+                    mensaje_adicional = "Factura reactivada a estado pendiente"
                     
                 except Exception as e:
                     print(f"❌ Error reactivando: {e}")
@@ -882,7 +882,7 @@ def actualizar_lectura(
             "data": lectura_to_response(lectura),
             "factura": info_factura if info_factura else None,
             "accion_factura": accion_factura,
-            "message": f"✅ Lectura actualizada. {mensaje_adicional}"
+            "message": f"Lectura actualizada. {mensaje_adicional or 'Sin factura asociada'}"
         }
     
     except Exception as e:
@@ -2177,7 +2177,7 @@ def generar_lecturas_estimadas(
                     consumo_estimado = sum(l.consumo_m3 for l in ultimas_lecturas) / len(ultimas_lecturas)
                     consumo_estimado = round(consumo_estimado)
                     lectura_anterior = ultimas_lecturas[0].lectura_actual
-                    metodo_calculo = f"Promedio de {len(ultimas_lecturas)} meses anteriores"
+                    metodo_calculo = "historial de consumo"
                     
                 else:
                     # 🔹 CASO 2: MEDIDOR SIN HISTORIAL
@@ -2188,12 +2188,12 @@ def generar_lecturas_estimadas(
                         # ✅ Tiene una lectura previa (aunque sea antigua)
                         lectura_anterior = ultima_lectura_conocida.lectura_actual
                         consumo_estimado = consumo_default
-                        metodo_calculo = f"Sin historial reciente - Consumo sugerido: {consumo_default} m³"
+                        metodo_calculo = "consumo sugerido sin historial reciente"
                     else:
                         # ✅ MEDIDOR COMPLETAMENTE NUEVO (primera lectura)
                         lectura_anterior = 0
                         consumo_estimado = consumo_default
-                        metodo_calculo = f"Primera lectura - Consumo inicial sugerido: {consumo_default} m³"
+                        metodo_calculo = "consumo inicial sugerido"
                 
                 # Calcular lectura estimada
                 lectura_estimada = lectura_anterior + consumo_estimado
@@ -2207,7 +2207,7 @@ def generar_lecturas_estimadas(
                     fecha_lectura=date.today(),
                     periodo_consumo=periodo_consumo,
                     id_lector=current_user.id_usuario_sistema,
-                    observacion=f"⚡ Lectura estimada - {metodo_calculo}",
+                    observacion=f"Lectura estimada por {metodo_calculo.lower()}",
                     activo=True,
                     es_estimada=True
                 )
@@ -2354,9 +2354,9 @@ def confirmar_lectura_estimada(
         lectura.id_lector = current_user.id_usuario_sistema
         
         if observacion:
-            lectura.observacion = f"Confirmada - {observacion}"
+            lectura.observacion = f"Lectura confirmada desde estimación. {observacion.strip()}"
         else:
-            lectura.observacion = "Lectura confirmada y corregida"
+            lectura.observacion = "Lectura confirmada desde estimación"
         
         db.flush()  # Guardar cambios de lectura antes de generar factura
         
@@ -2375,9 +2375,9 @@ def confirmar_lectura_estimada(
             )
             
             if exito:
-                mensaje_factura = f"✅ {mensaje}"
+                mensaje_factura = "Factura generada correctamente."
             else:
-                mensaje_factura = f"⚠️ Lectura confirmada pero: {mensaje}"
+                mensaje_factura = f"No se pudo generar la factura: {mensaje}"
         
         # Commit final
         db.commit()
@@ -2395,22 +2395,22 @@ def confirmar_lectura_estimada(
         registrar_notificacion(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
-            titulo="Lectura estimada confirmada",
-            mensaje=f"Lectura confirmada para medidor {medidor.num_medidor}. Consumo real: {lectura.consumo_m3}m³. {mensaje_factura}",
+            titulo="Lectura confirmada",
+            mensaje=f"Lectura confirmada desde estimación para el medidor {medidor.num_medidor}. Consumo: {lectura.consumo_m3} m3. {mensaje_factura}",
             tipo="exito"
         )
         
         # Notificación para el afiliado
         if id_usuario_afiliado:
-            mensaje_afiliado = f"Se confirmó la lectura de {lectura.consumo_m3}m³ para tu medidor N° {medidor.num_medidor}."
+            mensaje_afiliado = f"Se confirmó la lectura de {lectura.consumo_m3} m3 para tu medidor {medidor.num_medidor}."
             
             if factura_generada:
-                mensaje_afiliado += f" Factura {factura_generada.num_factura} generada por ${factura_generada.total}"
+                mensaje_afiliado += f" Factura {factura_generada.num_factura} generada por ${factura_generada.total}."
             
             registrar_notificacion(
                 db=db,
                 id_usuario=id_usuario_afiliado,
-                titulo="Lectura confirmada y factura generada",
+                titulo="Lectura confirmada",
                 mensaje=mensaje_afiliado,
                 tipo="info"
             )
@@ -2542,9 +2542,9 @@ def confirmar_todas_lecturas_estimadas(
                 
                 # Actualizar observación
                 if lectura.observacion:
-                    lectura.observacion += " | Confirmada automáticamente"
+                    lectura.observacion = "Lectura confirmada desde estimación"
                 else:
-                    lectura.observacion = "Lectura estimada confirmada automáticamente"
+                    lectura.observacion = "Lectura confirmada desde estimación"
                 
                 db.flush()  # Guardar cambios de lectura
                 
@@ -2571,8 +2571,8 @@ def confirmar_todas_lecturas_estimadas(
                             registrar_notificacion(
                                 db=db,
                                 id_usuario=id_usuario_afiliado,
-                                titulo="Lectura confirmada y factura generada",
-                                mensaje=f"Se confirmó tu lectura de {lectura.consumo_m3}m³ para el medidor N° {medidor.num_medidor}. Factura {factura_generada.num_factura} generada por ${factura_generada.total}",
+                                titulo="Lectura confirmada",
+                                mensaje=f"Se confirmó la lectura de {lectura.consumo_m3} m3 para tu medidor {medidor.num_medidor}. Factura {factura_generada.num_factura} generada por ${factura_generada.total}.",
                                 tipo="info"
                             )
                     else:

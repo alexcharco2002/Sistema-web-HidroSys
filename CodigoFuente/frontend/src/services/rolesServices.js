@@ -260,7 +260,7 @@ class RolesService {
       return {
         success: true,
         data: data,
-        message: 'Rol eliminado exitosamente'
+        message: data?.message || 'Rol eliminado exitosamente'
       };
 
     } catch (error) {

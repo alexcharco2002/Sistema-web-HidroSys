@@ -417,16 +417,16 @@ const RolesSection = () => {
 
     // ✅ Confirmación simple
     const confirmed = window.confirm(
-      "¿Está seguro de eliminar este rol? Esta acción eliminará todas sus acciones asociadas."
+      "¿Está seguro de eliminar este rol? Solo podrá eliminarse si no tiene usuarios ni permisos asociados."
     );
     if (!confirmed) return;
 
     try {
+      setError(null);
       const result = await rolesService.deleteRole(roleId);
 
       if (result.success) {
-        // 🎉 Éxito con emoji
-        alert("✅ Rol Eliminado: " + result.message);
+        alert(result.message || "Rol eliminado correctamente.");
 
         // Si el rol eliminado es el seleccionado, limpiar
         if (selectedRole?.id_rol === roleId) {
@@ -437,12 +437,15 @@ const RolesSection = () => {
         await fetchRoles();
 
       } else {
-        // ❌ Error al eliminar
-        alert("❌ Error: " + result.message);
+        const message = result.message || "No se pudo eliminar el rol.";
+        setError(message);
+        alert(message);
       }
 
     } catch (error) {
-      alert("❌ Error inesperado al eliminar rol: " + error.message);
+      const message = error.message || "No se pudo eliminar el rol.";
+      setError(message);
+      alert(message);
     }
   };
 

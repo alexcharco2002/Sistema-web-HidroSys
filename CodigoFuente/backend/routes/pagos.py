@@ -2419,11 +2419,11 @@ def crear_pago(
                 else:
                     tipo_periodo_txt = f"{config_mora.meses_gracia} meses de gracia"
                 
-                obs_mora = f"[MORA APLICADA] ${monto_mora}. Configuración: {config_mora.nombre} ({tipo_periodo_txt}). {detalle_mora}"
+                obs_mora = f"Mora aplicada: ${monto_mora}."
             else:
-                obs_mora = f"[MORA APLICADA] ${monto_mora}. {detalle_mora}"
+                obs_mora = f"Mora aplicada: ${monto_mora}."
             
-            observaciones_pago = f"{obs_mora}\n{observaciones_pago}" if observaciones_pago else obs_mora
+            observaciones_pago = f"{obs_mora} {observaciones_pago}".strip() if observaciones_pago else obs_mora
 
         
         nuevo_pago = Pago(
@@ -2511,7 +2511,7 @@ def crear_pago(
                         multas_liberadas = liberar_multas_no_pagadas(multas_en_factura, db)
                         
                         #  info a observaciones
-                        obs_parcial = f"\n[PAGO PARCIAL SIN MULTAS] {multas_liberadas} multa(s) liberada(s) (${total_multas}). Pendientes para próxima facturación."
+                        obs_parcial = f" Pago parcial sin multas. {multas_liberadas} multa(s) quedan pendientes para la próxima facturación."
                         nuevo_pago.observaciones = (nuevo_pago.observaciones or "") + obs_parcial
                         print(f"   ⚠️ {multas_liberadas} multa(s) liberada(s) para próxima factura")
                         print(f"   📊 Saldo pendiente (solo multas): ${total_multas}")
@@ -2583,13 +2583,13 @@ def crear_pago(
         )
         print(f"🟢 Auditoría registrada: {desc_auditoria}")
 
-        mensaje_notif = f"Pago de {nombre_afiliado} por {monto_formateado} registrado para la factura {numero_factura}"
+        mensaje_notif = f"Pago registrado para {nombre_afiliado}. Factura {numero_factura}. Monto: {monto_formateado}."
         if mora_aplicada:
-            mensaje_notif += f" (incluye mora de ${monto_mora})"
+            mensaje_notif += f" Incluye mora de ${monto_mora}."
         if pago.incluir_multas and multas_procesadas > 0:
-            mensaje_notif += f". {multas_procesadas} multa(s) pagada(s)"
+            mensaje_notif += f" {multas_procesadas} multa(s) pagada(s)."
         if not pago.incluir_multas and multas_liberadas > 0:
-            mensaje_notif += f". {multas_liberadas} multa(s) liberada(s)"
+            mensaje_notif += f" {multas_liberadas} multa(s) quedan pendientes."
 
         registrar_notificacion(
             db=db,
@@ -2913,11 +2913,11 @@ def crear_pago_multiple(
             print(f"   📊 Total factura: ${monto_total_factura}")
             
             # Construir observaciones
-            obs_factura = f"[PAGO MÚLTIPLE {idx}/{len(pago_multiple.facturas)}]"
+            obs_factura = f"Pago múltiple. Factura {idx} de {len(pago_multiple.facturas)}."
             if mora_aplicada:
-                obs_factura += f" Mora: ${monto_mora}. {detalle_mora}"
+                obs_factura += f" Mora: ${monto_mora}."
             if pago_multiple.observaciones:
-                obs_factura += f" | {pago_multiple.observaciones}"
+                obs_factura += f" {pago_multiple.observaciones.strip()}"
             
             # Crear registro de pago
             t_step = time.perf_counter()
@@ -2971,7 +2971,7 @@ def crear_pago_multiple(
             elif not item.incluir_multas and total_pagado >= total_sin_multas_esperado:
                 if len(multas_en_factura) > 0:
                     multas_liberadas = liberar_multas_no_pagadas(multas_en_factura, db)
-                    obs_adicional = f"\n{multas_liberadas} multa(s) liberadas (${total_multas})"
+                    obs_adicional = f" {multas_liberadas} multa(s) quedan pendientes para la próxima facturación."
                     nuevo_pago.observaciones += obs_adicional
                     facturas_pagadas_parciales.append(item.id_factura)
                     print(f"   ⚠️ Pago sin multas - {multas_liberadas} multa(s) liberadas")
@@ -3033,7 +3033,7 @@ def crear_pago_multiple(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
             titulo="Pago múltiple registrado",
-            mensaje=f"${total_general} pagados en {len(pago_multiple.facturas)} facturas. Mora: ${total_mora}",
+            mensaje=f"Pago múltiple registrado por ${total_general}. Facturas pagadas: {len(pago_multiple.facturas)}. Mora: ${total_mora}.",
             tipo="exito"
         )
         
@@ -3875,7 +3875,7 @@ async def subir_comprobante(
 
         factura_comprobante = db.query(Factura).filter(Factura.id_factura == pago.id_factura).first()
         numero_factura = factura_comprobante.num_factura if factura_comprobante else f"#{pago.id_factura or 'sin factura'}"
-        mensaje_comprobante = f"Comprobante de pago de la factura {numero_factura} guardado"
+        mensaje_comprobante = f"Comprobante guardado para la factura {numero_factura}."
         
         # Auditoría
         registrar_auditoria(
@@ -3899,7 +3899,7 @@ async def subir_comprobante(
         
         return {
             "success": True,
-            "message": "Comprobante guardado exitosamente",
+            "message": "Comprobante guardado correctamente.",
             "data": {
                 "id_pago": id_pago,
                 "nombre_archivo": comprobante.filename,
@@ -4019,7 +4019,7 @@ def eliminar_comprobante(
         
         return {
             "success": True,
-            "message": "Comprobante eliminado exitosamente",
+            "message": "Comprobante eliminado correctamente.",
             "id_pago": id_pago
         }
         

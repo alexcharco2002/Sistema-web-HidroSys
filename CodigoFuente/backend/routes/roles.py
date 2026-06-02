@@ -297,6 +297,28 @@ def eliminar_rol(
     usuarios_con_rol = db.query(UsuarioSistema).filter(
         UsuarioSistema.id_rol == id_rol
     ).count()
+
+    acciones_con_rol = db.query(RolAccion).filter(
+        RolAccion.id_rol == id_rol
+    ).count()
+
+    if usuarios_con_rol > 0 and acciones_con_rol > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede eliminar el rol porque tiene usuarios y permisos asociados."
+        )
+
+    if usuarios_con_rol > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede eliminar el rol porque tiene usuarios asignados."
+        )
+
+    if acciones_con_rol > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede eliminar el rol porque tiene permisos asociados."
+        )
     
     try:
         if usuarios_con_rol > 0:
@@ -367,6 +389,12 @@ def eliminar_rol(
         
         # ✅ Si es por relación de clave foránea, desactivar
         if isinstance(e.orig, ForeignKeyViolation):
+            print(f"No se puede eliminar el rol por relaciones existentes: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede eliminar el rol porque tiene información asociada."
+            )
+
             print(f"⚠️ No se puede eliminar por relaciones, se desactiva el rol: {e}")
             
             if not rol.activo:

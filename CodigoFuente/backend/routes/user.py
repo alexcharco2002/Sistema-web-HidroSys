@@ -1,5 +1,6 @@
 # routes/users.py
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_ , cast, String
 from typing import List, Optional
@@ -13,6 +14,7 @@ import base64
 
 from db.session import SessionLocal
 from models.user import UsuarioSistema
+from models.role import Rol
 from schemas.user import (
     UserCreate, 
     UserUpdate, 
@@ -206,6 +208,39 @@ def user_to_response(user: UsuarioSistema, db: Session = None) -> dict:
 # MI PERFIL DE USUARIO — endpoint para el usuario autenticado
 # ============================================================================
 
+def user_list_row_to_response(row) -> dict:
+    """Respuesta liviana para tablas de usuarios, sin foto ni permisos por fila."""
+    rol_info = None
+    if row.rol_id:
+        rol_info = {
+            "id_rol": row.rol_id,
+            "nombre_rol": row.nombre_rol,
+            "descripcion": row.descripcion_rol
+        }
+
+    return {
+        "id": row.id,
+        "usuario": row.usuario,
+        "nombres": row.nombres,
+        "apellidos": row.apellidos,
+        "sexo": row.sexo,
+        "fecha_nac": row.fecha_nac.isoformat() if row.fecha_nac else None,
+        "cedula": row.cedula,
+        "email": row.email,
+        "telefono": row.telefono,
+        "direccion": row.direccion,
+        "id_rol": row.id_rol,
+        "rol": rol_info,
+        "permisos": [],
+        "activo": row.activo,
+        "fecha_registro": row.fecha_registro.isoformat() if row.fecha_registro else None,
+        "foto": None,
+        "bloqueado_permanente": bool(row.bloqueado_permanente),
+        "bloqueado_hasta": row.bloqueado_hasta.isoformat() if row.bloqueado_hasta else None,
+        "intentos_fallidos": row.intentos_fallidos or 0
+    }
+
+
 @router.get("/mi-perfil", response_model=UserListResponse)
 def get_mi_perfil(
     payload: dict = Depends(verify_token),
@@ -244,7 +279,32 @@ def get_users(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "usuarios", "lectura")
     
-    query = db.query(UsuarioSistema) 
+    limit = max(1, min(limit, 500))
+
+    query = (
+        db.query(
+            UsuarioSistema.id_usuario_sistema.label("id"),
+            UsuarioSistema.usuario,
+            UsuarioSistema.nombres,
+            UsuarioSistema.apellidos,
+            UsuarioSistema.sexo,
+            UsuarioSistema.fecha_nac,
+            UsuarioSistema.cedula,
+            UsuarioSistema.email,
+            UsuarioSistema.telefono,
+            UsuarioSistema.direccion,
+            UsuarioSistema.id_rol,
+            UsuarioSistema.activo,
+            UsuarioSistema.fecha_registro,
+            UsuarioSistema.bloqueado_permanente,
+            UsuarioSistema.bloqueado_hasta,
+            UsuarioSistema.intentos_fallidos,
+            Rol.id_rol.label("rol_id"),
+            Rol.nombre_rol,
+            Rol.descripcion.label("descripcion_rol"),
+        )
+        .outerjoin(Rol, Rol.id_rol == UsuarioSistema.id_rol)
+    )
     
     # Filtro de búsqueda
     if search:
@@ -267,9 +327,9 @@ def get_users(
     # Ordenar por fecha de registro descendente
     query = query.order_by(UsuarioSistema.fecha_registro.desc())
     
-    users = query.offset(skip).limit(limit).all()
-    
-    return [user_to_response(user, db) for user in users]
+    rows = query.offset(skip).limit(limit).all()
+
+    return JSONResponse(content=[user_list_row_to_response(row) for row in rows])
 
 # ========================================
 # LISTAR USUARIOS BLOQUEADOS

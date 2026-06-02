@@ -633,7 +633,7 @@ def crear_factura(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
             titulo="Factura creada",
-            mensaje=f"Factura {num_factura} creada correctamente",
+            mensaje=f"Factura {num_factura} creada correctamente.",
             tipo="exito"
         )
         
@@ -783,7 +783,7 @@ def cambiar_estado_factura(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
             titulo="Estado de factura actualizado",
-            mensaje=f"Factura {factura.num_factura} ahora está '{nuevo_estado}'",
+            mensaje=f"Factura {factura.num_factura} actualizada a estado {nuevo_estado}.",
             tipo="info"
         )
         

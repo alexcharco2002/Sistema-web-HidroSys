@@ -1055,7 +1055,7 @@ def capturar_orden_paypal(
         metodo_pago="PAYPAL",
         estado_pago="REGISTRADO",
         activo=True,
-        observaciones=f"Pago PayPal - Order: {order_id} - PayPal Capture: {paypal_capture_id}",
+        observaciones=f"Pago registrado por PayPal. Referencia: PayPal Capture: {paypal_capture_id}",
     )
     db.add(nuevo_pago)
     db.flush()
@@ -1238,7 +1238,7 @@ async def subir_comprobante_pago(
     db.refresh(nuevo_pago)
 
     return {
-        "message": "Comprobante subido exitosamente. Será verificado por el administrador.",
+        "message": "Comprobante subido correctamente. Será verificado por el administrador.",
         "id_pago": nuevo_pago.id_pago,
         "estado": nuevo_pago.estado_pago,
     }

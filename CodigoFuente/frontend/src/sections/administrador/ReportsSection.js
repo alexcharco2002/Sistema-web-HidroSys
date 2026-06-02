@@ -18,6 +18,54 @@ import { ReportExport } from '../../components/ReportExport';
 
 import ReportStats from '../../components/ReportStats';
 
+const naturalCollator = new Intl.Collator('es', {
+  numeric: true,
+  sensitivity: 'base'
+});
+
+const isEmptySortValue = (value) => value === null || value === undefined || value === '';
+
+const normalizeSortValue = (value) => {
+  if (isEmptySortValue(value)) return '';
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+
+  const text = String(value).trim();
+  const normalizedNumber = Number(text.replace(',', '.'));
+  if (text !== '' && Number.isFinite(normalizedNumber) && /^-?\d+(?:[.,]\d+)?$/.test(text)) {
+    return normalizedNumber;
+  }
+
+  return text;
+};
+
+const compareReportValues = (aValue, bValue, sortBy, sortOrder) => {
+  const direction = sortOrder === 'asc' ? 1 : -1;
+
+  if (isEmptySortValue(aValue) && isEmptySortValue(bValue)) return 0;
+  if (isEmptySortValue(aValue)) return direction;
+  if (isEmptySortValue(bValue)) return -direction;
+
+  if (sortBy.includes('fecha')) {
+    const aTime = new Date(aValue).getTime();
+    const bTime = new Date(bValue).getTime();
+    const safeATime = Number.isNaN(aTime) ? 0 : aTime;
+    const safeBTime = Number.isNaN(bTime) ? 0 : bTime;
+    return safeATime === safeBTime ? 0 : (safeATime < safeBTime ? -direction : direction);
+  }
+
+  const aNormalized = normalizeSortValue(aValue);
+  const bNormalized = normalizeSortValue(bValue);
+
+  if (typeof aNormalized === 'number' && typeof bNormalized === 'number') {
+    return aNormalized === bNormalized ? 0 : (aNormalized < bNormalized ? -direction : direction);
+  }
+
+  const result = naturalCollator.compare(String(aNormalized), String(bNormalized));
+  return result * direction;
+};
+
 const ReportsSection = () => {
   // ============================================================
   // ESTADOS PRINCIPALES
@@ -37,7 +85,6 @@ const ReportsSection = () => {
   // FILTROS ESPECÍFICOS POR MÓDULO 
   const [filterSector, setFilterSector] = useState('todos');        // Para Medidores
   const [filterTipoLectura, setFilterTipoLectura] = useState('todos'); // Para Lecturas (real/estimada)
-  const [filterPagoCompleto, setFilterPagoCompleto] = useState('todos'); // Para Pagos
   const [sectoresDisponibles, setSectoresDisponibles] = useState([]); // Lista de sectores
   // estados para multas
   const [filterActivoMultas, ] = useState('todos');  
@@ -904,7 +951,7 @@ const ReportsSection = () => {
     reporteData
       .map(r => r.num_medidor)
       .filter(Boolean)
-  )].sort();
+  )].sort((a, b) => naturalCollator.compare(String(a), String(b)));
 
   setMedidoresDisponibles(unicos);
   setFilterMedidor('todos'); // reset al recargar datos
@@ -995,8 +1042,7 @@ const ReportsSection = () => {
         case 'Pagos':
                 result = await reportsServices.getReportePagos({
                   ...filtros,
-                  estado_pago: filterEstado !== 'todos' ? filterEstado : undefined,
-                  pago_completo: filterPagoCompleto === 'completos' ? true : (filterPagoCompleto === 'parciales' ? false : undefined)
+                  estado_pago: filterEstado !== 'todos' ? filterEstado : undefined
                 });
                 break;
 
@@ -1147,7 +1193,7 @@ const ReportsSection = () => {
         } finally {
           setLoading(false);
         }
-  }, [selectedModulo, filterEstado, searchTerm, modulosSistema, periodoSeleccionado, filterSector, filterPagoCompleto, filterTipoLectura, filterActivoMultas, cajaMesFiltro, cajaAnioFiltro]);
+  }, [selectedModulo, filterEstado, searchTerm, modulosSistema, periodoSeleccionado, filterSector, filterTipoLectura, filterActivoMultas, cajaMesFiltro, cajaAnioFiltro]);
 
   useEffect(() => {
     if (reporteData.length > 0) {
@@ -1190,7 +1236,6 @@ const ReportsSection = () => {
     filterEstado,
     filterSector,
     filterTipoLectura,
-    filterPagoCompleto,
     periodoSeleccionado,   // ← agregado aquí
     generarReporte,
     permissions.canRead,
@@ -1258,7 +1303,7 @@ const ReportsSection = () => {
       { value: 'direccion',       label: 'Dirección' },
       { value: 'sexo',            label: 'Sexo' },
       { value: 'rol',             label: 'Rol' },
-      { value: 'fecharegistro',   label: 'Fecha de Registro' },
+      { value: 'fecha_registro',  label: 'Fecha de Registro' },
     ],   
     Afiliados: [
       { value: 'apellidos',        label: 'Apellido' },
@@ -1270,10 +1315,56 @@ const ReportsSection = () => {
       { value: 'total_medidores',  label: 'N° Medidores' },
     ],
     Medidores: [
+      { value: 'cod_usuario_afi', label: 'Codigo' },
       { value: 'num_medidor', label: 'N° Medidor' },
       { value: 'sector',      label: 'Sector' },
       { value: 'afiliado',    label: 'Afiliado' },
       { value: 'activo',      label: 'Estado' },
+    ],
+    Lecturas: [
+      { value: 'cod_usuario_afi',   label: 'Codigo' },
+      { value: 'nombres',           label: 'Afiliado' },
+      { value: 'num_medidor',       label: 'Medidor' },
+      { value: 'sector',            label: 'Sector' },
+      { value: 'periodo_consumo',   label: 'Periodo' },
+      { value: 'fecha_lectura',     label: 'Fecha de lectura' },
+      { value: 'lectura_anterior',  label: 'Lectura anterior' },
+      { value: 'lectura_actual',    label: 'Lectura actual' },
+      { value: 'consumo_m3',        label: 'Consumo' },
+      { value: 'tipo_lectura',      label: 'Tipo de lectura' },
+    ],
+    Facturas: [
+      { value: 'num_factura',       label: 'Factura' },
+      { value: 'periodo',           label: 'Periodo' },
+      { value: 'cod_usuario_afi',   label: 'Codigo' },
+      { value: 'num_medidor',       label: 'Medidor' },
+      { value: 'nombres',           label: 'Afiliado' },
+      { value: 'fecha_emision',     label: 'Fecha de emision' },
+      { value: 'estado_factura',    label: 'Estado' },
+      { value: 'consumo_m3',        label: 'Consumo' },
+      { value: 'exceso_m3',         label: 'Exceso' },
+      { value: 'valor_consumo',     label: 'Valor consumo' },
+      { value: 'valor_exceso',      label: 'Valor exceso' },
+      { value: 'subtotal',          label: 'Subtotal' },
+      { value: 'descuento',         label: 'Descuento' },
+      { value: 'impuesto',          label: 'IVA' },
+      { value: 'total',             label: 'Total' },
+    ],
+    Pagos: [
+      { value: 'num_factura',       label: 'Factura' },
+      { value: 'periodo',           label: 'Periodo' },
+      { value: 'cod_usuario_afi',   label: 'Codigo' },
+      { value: 'num_medidor',       label: 'Medidor' },
+      { value: 'nombres',           label: 'Afiliado' },
+      { value: 'fecha_pago',        label: 'Fecha de pago' },
+      { value: 'metodo_pago',       label: 'Metodo' },
+      { value: 'estado_pago',       label: 'Estado' },
+      { value: 'total_factura',     label: 'Total factura' },
+      { value: 'monto_pagado',      label: 'Monto pagado' },
+      { value: 'saldo',             label: 'Saldo' },
+      { value: 'meses_adeudo',      label: 'Meses de adeudo' },
+      { value: 'valor_mora',        label: 'Mora' },
+      { value: 'total_con_mora',    label: 'Total con mora' },
     ],
   };
 
@@ -1286,20 +1377,7 @@ const ReportsSection = () => {
     }
 
     if (!sortBy || !datos.length) return datos;
-    return [...datos].sort((a, b) => {
-      let aVal = a[sortBy] ?? '';
-      let bVal = b[sortBy] ?? '';
-      if (sortBy.includes('fecha')) {
-        aVal = aVal ? new Date(aVal) : new Date(0);
-        bVal = bVal ? new Date(bVal) : new Date(0);
-      } else if (typeof aVal === 'string') {
-        aVal = aVal.toLowerCase();
-        bVal = (bVal ?? '').toString().toLowerCase();
-      }
-      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
+    return [...datos].sort((a, b) => compareReportValues(a[sortBy], b[sortBy], sortBy, sortOrder));
   }, [reporteData, sortBy, sortOrder, filterMedidor, selectedModulo]);
 
 
@@ -1359,7 +1437,6 @@ const ReportsSection = () => {
     setPeriodoSeleccionado('');
     setFilterSector('todos');
     setFilterTipoLectura('todos');
-    setFilterPagoCompleto('todos');
     setError(null);
     setSortBy('');
     setSortOrder('asc');
@@ -2212,16 +2289,6 @@ const toggleTodasColumnas = (seleccionar) => {
                 <option value="ANULADO">Anulado</option>
 
               </select>
-
-                <select
-                  className="filter-select"
-                  value={filterPagoCompleto}
-                  onChange={(e) => setFilterPagoCompleto(e.target.value)}
-                >
-                  <option value="todos">Tipo de pago</option>
-                  <option value="completos">Pagos completos</option>
-                  <option value="parciales">Pagos parciales</option>
-                </select>
               </>
             )}
 
@@ -2255,7 +2322,7 @@ const toggleTodasColumnas = (seleccionar) => {
             )}
 
             {/* ── ORDENAMIENTO ── Afiliados y Medidores */}
-            {['Usuarios', 'Afiliados', 'Medidores'].includes(selectedModulo) && (
+            {(sortOptions[selectedModulo] || []).length > 0 && (
               <>
                 <select
                   className="filter-select"

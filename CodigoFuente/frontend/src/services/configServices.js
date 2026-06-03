@@ -15,6 +15,7 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
     // ---------------- BACKUPS CORRECTOS ----------------
     listBackups: '/backups/',          // GET
     createBackup: '/backups/',         // POST
+    uploadBackup: '/backups/upload',   // POST
     restoreBackup: '/backups/restore', // PUT
     deleteBackup: (filename) => `/backups/${filename}`, // DELETE
     downloadBackup: (filename) => `/backups/download/${filename}`, // GET
@@ -248,6 +249,45 @@ class ConfigService {
       return {
         success: false,
         message: error.message || 'Error al crear el backup'
+      };
+    }
+  }
+
+  /**
+   * Subir un backup local en formato .dump
+   */
+  async uploadBackup(file) {
+    try {
+      if (!file) {
+        throw new Error('Debe seleccionar un archivo de respaldo');
+      }
+
+      if (!file.name.toLowerCase().endsWith('.dump')) {
+        throw new Error('Solo se permiten archivos .dump');
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const data = await this.makeRequest(
+        API_CONFIG.endpoints.uploadBackup,
+        {
+          method: 'POST',
+          body: formData,
+          timeout: 120000
+        }
+      );
+
+      return {
+        success: true,
+        message: data.message || 'Backup subido correctamente',
+        data
+      };
+    } catch (error) {
+      console.error('Error subiendo backup:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al subir el backup'
       };
     }
   }

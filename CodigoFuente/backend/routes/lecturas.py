@@ -453,6 +453,35 @@ def listar_lecturas_optimizado(
             Lectura.fecha_lectura.desc()
         ).limit(500).all()
 
+        tarifas_vigentes = db.query(Tarifa).filter(
+            Tarifa.activo == True,
+            Tarifa.es_vigente == True,
+            Tarifa.tipo_tarifa.in_(["basico", "exceso"])
+        ).all()
+        tarifas_por_tipo = {tarifa.tipo_tarifa: tarifa for tarifa in tarifas_vigentes}
+        tarifa_basica = tarifas_por_tipo.get("basico")
+        tarifa_exceso = tarifas_por_tipo.get("exceso")
+        limite_basico = (
+            float(tarifa_basica.limite_max_m3)
+            if tarifa_basica and tarifa_exceso and tarifa_basica.limite_max_m3 is not None
+            else None
+        )
+
+        excesos_por_lectura = {}
+        if limite_basico is not None:
+            for lectura_row in lecturas:
+                consumo = float(lectura_row.consumo_m3 or 0)
+                tiene_exceso = consumo > limite_basico
+                exceso_m3 = round(consumo - limite_basico, 2) if tiene_exceso else 0.0
+                excesos_por_lectura[lectura_row.id_lectura] = {
+                    "tiene_exceso": tiene_exceso,
+                    "exceso_m3": exceso_m3,
+                    "observacion_exceso": (
+                        f"Exceso de consumo: {exceso_m3:g} m3 sobre limite basico "
+                        f"de {limite_basico:g} m3"
+                    ) if tiene_exceso else None,
+                }
+
         print(f"✅ Total lecturas encontradas: {len(lecturas)}")
 
         return [
@@ -465,6 +494,10 @@ def listar_lecturas_optimizado(
                 "lectura_anterior": l.lectura_anterior,
                 "consumo_m3": l.consumo_m3,
                 "observacion": l.observacion,
+                "observacion_exceso": excesos_por_lectura.get(l.id_lectura, {}).get("observacion_exceso"),
+                "tiene_exceso": excesos_por_lectura.get(l.id_lectura, {}).get("tiene_exceso", False),
+                "exceso_m3": excesos_por_lectura.get(l.id_lectura, {}).get("exceso_m3", 0.0),
+                "limite_basico_m3": limite_basico,
                 "activo": l.activo,
                 "es_estimada": l.es_estimada,
                 
@@ -1120,7 +1153,19 @@ def exportar_plantilla(
         if not incluir_todos and medidores_con_lectura_ids:
             query = query.filter(Medidor.id_medidor.notin_(medidores_con_lectura_ids))
         
-        medidores_data = query.order_by(Medidor.num_medidor).all()
+        medidores_data = query.all()
+
+        def codigo_afiliado_sort_key(medidor_row):
+            codigo = str(medidor_row.cod_usuario_afi or "").strip()
+            if codigo.isdigit():
+                codigo_key = (0, int(codigo))
+            else:
+                codigo_key = (1, codigo.lower())
+
+            num_medidor = str(medidor_row.num_medidor or "").strip()
+            return codigo_key, num_medidor
+
+        medidores_data = sorted(medidores_data, key=codigo_afiliado_sort_key)
         
         print(f"✅ Medidores a exportar: {len(medidores_data)}")
         

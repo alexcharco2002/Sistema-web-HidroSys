@@ -41,6 +41,23 @@
   min-width: 145px;
 }
 
+.meters-section .periodo-stats-header {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.meters-section .meters-summary-hint {
+  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.meters-section .meters-summary-separator {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
 .meters-section .meters-search-advice {
   display: flex;
   align-items: flex-start;

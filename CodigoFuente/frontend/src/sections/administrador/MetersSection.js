@@ -707,6 +707,8 @@ const MetersSection = () => {
         <div className="periodo-stats-header">
           <Gauge className="w-5 h-5 text-blue-600 mr-2" />
           <h3>Resumen de Medidores</h3>
+          <span className="meters-summary-separator">•</span>
+          <span className="meters-summary-hint">Seleccione una tarjeta para filtrar el listado</span>
         </div>
         
         <div className="users-stats">
@@ -796,43 +798,18 @@ const MetersSection = () => {
         <div className="filters-right">
           <select 
             className="filter-select" 
-            value={filterSector}
+            value={filterSector === 'with_sector' ? 'all' : filterSector}
             onChange={(e) => {
               setFilterSector(e.target.value);
             }}
           >
             <option value="all">Todos los sectores</option>
-            <option value="with_sector">Con sector</option>
             <option value="no_sector">Sin sector</option>
             {sectors.map(sector => (
               <option key={sector.id_sector} value={sector.id_sector}>
                 {sector.nombre_sector}
               </option>
             ))}
-          </select>
-
-          <select 
-            className="filter-select" 
-            value={filterStatus}
-            onChange={(e) => {
-              setFilterStatus(e.target.value);
-            }}
-          >
-            <option value="all">Todos los estados</option>
-            <option value="active">Activos</option>
-            <option value="inactive">Inactivos</option>
-          </select>
-
-          <select 
-            className="filter-select" 
-            value={filterAssignment}
-            onChange={(e) => {
-              setFilterAssignment(e.target.value);
-            }}
-          >
-            <option value="all">Todas las asignaciones</option>
-            <option value="assigned">Asignados</option>
-            <option value="unassigned">Sin asignar</option>
           </select>
 
           <select

@@ -79,6 +79,23 @@
   min-width: 145px;
 }
 
+.affiliates-section .periodo-stats-header {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.affiliates-section .affiliates-summary-hint {
+  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.affiliates-section .affiliates-summary-separator {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
 .affiliates-section .affiliates-search-advice {
   display: flex;
   align-items: flex-start;

@@ -46,6 +46,8 @@ const ReadingsSection = () => {
   // ============================================================
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterConsumo, setFilterConsumo] = useState('all');
+  const [filterSector, setFilterSector] = useState('all');
   const [sortOption, setSortOption] = useState('periodo');
   const [sortOrder, setSortOrder] = useState('desc');
   const [pageSize, setPageSize] = useState(20);
@@ -567,6 +569,15 @@ const fetchMeters = useCallback(async () => {
   // FUNCIONES DE FILTRADO Y ORDENAMIENTO
   // ============================================================
 
+  const sectorOptions = useMemo(() => {
+    const sectors = new Set();
+    readings.forEach(reading => {
+      const sector = String(reading.sector || '').trim();
+      if (sector) sectors.add(sector);
+    });
+    return Array.from(sectors).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+  }, [readings]);
+
   const filteredReadings = readings.filter(reading => {
     const searchLower = searchTerm.toLowerCase();
     
@@ -582,8 +593,17 @@ const fetchMeters = useCallback(async () => {
       filterStatus === 'all' || 
       (filterStatus === 'active' && reading.activo) || 
       (filterStatus === 'inactive' && !reading.activo);
+
+    const matchesConsumo =
+      filterConsumo === 'all' ||
+      (filterConsumo === 'exceso' && reading.tiene_exceso) ||
+      (filterConsumo === 'normal' && !reading.tiene_exceso);
+
+    const matchesSector =
+      filterSector === 'all' ||
+      String(reading.sector || '').trim() === filterSector;
     
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesConsumo && matchesSector;
   });
 
 
@@ -608,6 +628,10 @@ const sortedReadings = [...filteredReadings].sort((a, b) => {
     const medidorA = a.num_medidor?.toLowerCase() || '';
     const medidorB = b.num_medidor?.toLowerCase() || '';
     comparison = medidorA.localeCompare(medidorB);
+  } else if (sortOption === 'codigo') {
+    const codigoA = String(a.codigo_afiliado || '');
+    const codigoB = String(b.codigo_afiliado || '');
+    comparison = codigoA.localeCompare(codigoB, 'es', { numeric: true, sensitivity: 'base' });
   } else if (sortOption === 'consumo') {
     comparison = a.consumo_m3 - b.consumo_m3;
   }
@@ -625,7 +649,7 @@ const sortedReadings = [...filteredReadings].sort((a, b) => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterStatus, sortOption, sortOrder, pageSize, periodoSeleccionado]);
+  }, [searchTerm, filterStatus, filterConsumo, filterSector, sortOption, sortOrder, pageSize, periodoSeleccionado]);
 
   useEffect(() => {
     if (readings.length <= 100) {
@@ -636,7 +660,7 @@ const sortedReadings = [...filteredReadings].sort((a, b) => {
     setShowSearchAdvice(true);
     const timer = setTimeout(() => setShowSearchAdvice(false), 12000);
     return () => clearTimeout(timer);
-  }, [readings.length, searchTerm, filterStatus, periodoSeleccionado]);
+  }, [readings.length, searchTerm, filterStatus, filterConsumo, filterSector, periodoSeleccionado]);
 
   const toggleSortOrder = () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
@@ -1573,12 +1597,34 @@ return (
             </select>
             <select
               className="filter-select"
+              value={filterConsumo}
+              onChange={(e) => setFilterConsumo(e.target.value)}
+            >
+              <option value="all">Todos los consumos</option>
+              <option value="exceso">Con exceso</option>
+              <option value="normal">Consumo normal</option>
+            </select>
+            <select
+              className="filter-select"
+              value={filterSector}
+              onChange={(e) => setFilterSector(e.target.value)}
+            >
+              <option value="all">Todos los sectores</option>
+              {sectorOptions.map(sector => (
+                <option key={sector} value={sector}>
+                  {sector}
+                </option>
+              ))}
+            </select>
+            <select
+              className="filter-select"
               value={sortOption}
               onChange={(e) => setSortOption(e.target.value)}
             >
               <option value="periodo">Ordenar por Periodo de consumo</option>
               <option value="fecha">Ordenar por Fecha de lectura</option>
               <option value="medidor">Ordenar por Medidor</option>
+              <option value="codigo">Ordenar por Codigo afiliado</option>
               <option value="consumo">Ordenar por Consumo</option>
             </select>
 
@@ -1792,7 +1838,13 @@ return (
             <div className="readings-list-body">
               {sortedReadings.length > 0 ? (
                 paginatedReadings.map((reading, index) => {
-                  const consumoClass = reading.consumo_m3 > 100 ? 'alto' : reading.consumo_m3 > 50 ? 'medio' : '';
+                  const consumoClass = reading.tiene_exceso
+                    ? 'alto'
+                    : reading.consumo_m3 > 100
+                      ? 'alto'
+                      : reading.consumo_m3 > 50
+                        ? 'medio'
+                        : '';
                   return (
                     <div 
                       key={reading.id_lectura} 
@@ -1831,7 +1883,10 @@ return (
                         {reading.lectura_actual}<span className="unidad">m³</span>
                       </div>
 
-                      <div className={`list-col-consumo ${consumoClass}`}>
+                      <div
+                        className={`list-col-consumo ${consumoClass}`}
+                        title={reading.observacion_exceso || undefined}
+                      >
                         {reading.consumo_m3} m³
                       </div>
 
@@ -2328,6 +2383,11 @@ return (
                 <div className="detail-group">
                   <label>Observación:</label>
                   <p>{selectedReading.observacion || 'Sin observaciones'}</p>
+                  {selectedReading.observacion_exceso && (
+                    <p className="text-red-700 font-semibold">
+                      {selectedReading.observacion_exceso}
+                    </p>
+                  )}
                 </div>
 
                 {/* Estado */}

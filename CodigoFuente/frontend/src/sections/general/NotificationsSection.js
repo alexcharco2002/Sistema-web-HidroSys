@@ -90,11 +90,12 @@ useEffect(() => {
                    authService.hasPermission('notificaciones', 'operaciones crud');
   const canUpdate = authService.hasPermission('notificaciones', 'actualizar') || 
                    authService.hasPermission('notificaciones', 'operaciones crud');
-  const canDelete = authService.hasPermission('notificaciones', 'eliminar') || 
-                   authService.hasPermission('notificaciones', 'operaciones crud');
   const canRead = authService.hasPermission('notificaciones', 'lectura') || 
-                 canCreate || canUpdate || canDelete || 
+                 canCreate || canUpdate ||
                  authService.hasPermission('notificaciones', 'operaciones crud');
+  const canDelete = canRead ||
+                   authService.hasPermission('notificaciones', 'eliminar') ||
+                   authService.hasPermission('notificaciones', 'operaciones crud');
 
   setPermissions({ canCreate, canRead, canUpdate, canDelete });
 }, []);

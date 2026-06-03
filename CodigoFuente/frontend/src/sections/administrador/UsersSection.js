@@ -725,7 +725,29 @@ const UsersSection = () => {
           return;
         }
 
-        result = await usersService.updateUser(selectedUser.id, formData);
+        const cedulaAnterior = String(selectedUser?.cedula || '').trim();
+        const cedulaNueva = String(formData.cedula || '').trim();
+        let updatePayload = formData;
+
+        if (cedulaAnterior && cedulaNueva && cedulaNueva !== cedulaAnterior) {
+          const confirmarCambioCedula = window.confirm(
+            `La cedula cambio de ${cedulaAnterior} a ${cedulaNueva}.\n\n` +
+            'Al guardar, el usuario de acceso tambien se actualizara con la nueva cedula. ' +
+            'La contrasena actual no se modificara.\n\n' +
+            'Deseas continuar?'
+          );
+
+          if (!confirmarCambioCedula) {
+            return;
+          }
+
+          updatePayload = {
+            ...formData,
+            usuario: cedulaNueva
+          };
+        }
+
+        result = await usersService.updateUser(selectedUser.id, updatePayload);
         
         if (result.success) {
           alert("✅ Cambios guardados correctamente");
@@ -1112,6 +1134,8 @@ const getBlockStatusText = (user) => {
         <div className="periodo-stats-header">
           <Users className="w-5 h-5 text-blue-600 mr-2" />
           <h3>Resumen de Usuarios</h3>
+          <span className="users-summary-separator">•</span>
+          <span className="users-summary-hint">Seleccione una tarjeta para filtrar el listado</span>
         </div>
 
         {/* Grid de estadísticas */}

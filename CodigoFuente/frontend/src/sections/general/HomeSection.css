@@ -38,6 +38,67 @@
   font-weight: 500;
 }
 
+.modules-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.modules-search {
+  position: relative;
+  width: min(280px, 34vw);
+  min-width: 190px;
+}
+
+.modules-search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  width: 1rem;
+  height: 1rem;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.modules-search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 0.85rem 0 2.25rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  color: #111827;
+  background: #ffffff;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.modules-search input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.modules-empty-search {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  min-height: 150px;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+}
+
+.modules-empty-search p {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
 /* ========================================
    ESTADO VACÍO
    ======================================== */
@@ -462,6 +523,17 @@
     gap: 0.5rem;
   }
 
+  .modules-header-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .modules-search {
+    width: 100%;
+    min-width: 0;
+  }
+
   .modules-count {
     align-self: flex-start;
   }
@@ -535,6 +607,8 @@
 }
 
 .home-widget-weather {
+  position: relative;
+  padding-bottom: 2.1rem;
   box-shadow: 0 4px 6px -1px rgba(14, 165, 233, 0.1), 0 2px 4px -1px rgba(14, 165, 233, 0.06);
 }
 
@@ -572,6 +646,26 @@
   font-size: 0.875rem;
   color: var(--text-secondary);
   text-transform: capitalize;
+}
+
+.home-widget-location {
+  position: absolute;
+  right: 1rem;
+  bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: min(70%, 360px);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  justify-content: flex-end;
+}
+
+.home-widget-location span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .home-widget-details {

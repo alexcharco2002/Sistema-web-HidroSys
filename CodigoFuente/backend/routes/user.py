@@ -581,7 +581,23 @@ def update_user(
         )
     
     # Verificar unicidad de campos si se están actualizando
-    if user_data.usuario and user_data.usuario != user.usuario:
+    cedula_nueva = user_data.cedula.strip() if user_data.cedula else None
+    usuario_derivado = None
+
+    if cedula_nueva and cedula_nueva != user.cedula:
+        usuario_derivado = cedula_login_value(cedula_nueva)
+
+    if usuario_derivado:
+        existing = db.query(UsuarioSistema).filter(
+            UsuarioSistema.usuario == usuario_derivado,
+            UsuarioSistema.id_usuario_sistema != user_id
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya existe un usuario con esa cedula"
+            )
+    elif user_data.usuario and user_data.usuario != user.usuario:
         existing = db.query(UsuarioSistema).filter(
             UsuarioSistema.usuario == user_data.usuario,
             UsuarioSistema.id_usuario_sistema != user_id
@@ -621,10 +637,15 @@ def update_user(
         if value is not None:
             if field == "clave":
                 setattr(user, field, hash_password(value))
+            elif field == "usuario" and usuario_derivado:
+                continue
             elif field in ["usuario", "nombres", "apellidos", "email", "cedula", "telefono", "direccion"]:
                 setattr(user, field, value.strip() if isinstance(value, str) else value)
             else:
                 setattr(user, field, value)
+
+    if usuario_derivado:
+        user.usuario = usuario_derivado
     
     try:
         db.commit()

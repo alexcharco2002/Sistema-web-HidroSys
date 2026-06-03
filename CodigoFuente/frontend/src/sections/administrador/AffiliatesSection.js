@@ -885,6 +885,8 @@ const AffiliatesSection = () => {
         <div className="periodo-stats-header">
           <UserPlus className="w-5 h-5 text-blue-600 mr-2" />
           <h3>Resumen de Afiliados</h3>
+          <span className="affiliates-summary-separator">•</span>
+          <span className="affiliates-summary-hint">Seleccione una tarjeta para filtrar el listado</span>
         </div>
 
         {/* Grid de estadísticas */}

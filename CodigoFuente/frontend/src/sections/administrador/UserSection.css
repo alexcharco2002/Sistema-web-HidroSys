@@ -67,6 +67,23 @@
 /* ========================================
    SECCIÓN DE FILTROS
    ======================================== */
+.users-section .periodo-stats-header {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.users-section .users-summary-hint {
+  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.users-section .users-summary-separator {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
 .users-section .filters-section {
   background: var(--notif-bg-white);
   border-radius: 12px;

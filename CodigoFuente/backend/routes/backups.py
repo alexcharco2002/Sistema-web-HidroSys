@@ -4,7 +4,7 @@ Router para gestión de backups de base de datos
 Sigue el patrón del router de sectores con permisos granulares
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
@@ -13,6 +13,7 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 import subprocess
+import re
 
 from db.session import SessionLocal
 from security.jwt import verify_token
@@ -51,7 +52,24 @@ DB_PORT = os.getenv("DB_PORT")
 
 # Rutas de herramientas PostgreSQL
 PG_DUMP_PATH = os.getenv("PG_DUMP_PATH", "pg_dump")
-PG_RESTORE_PATH = os.getenv("PG_RESTORE_PATH", "pg_restore")
+
+
+def resolve_pg_tool(tool_name: str, configured_path: str = None) -> str:
+    if configured_path:
+        return configured_path
+
+    dump_path = Path(PG_DUMP_PATH)
+    if dump_path.name.lower().startswith("pg_dump"):
+        suffix = ".exe" if os.name == "nt" else ""
+        candidate = dump_path.with_name(f"{tool_name}{suffix}")
+        if candidate.exists():
+            return str(candidate)
+
+    return tool_name
+
+
+PG_RESTORE_PATH = resolve_pg_tool("pg_restore", os.getenv("PG_RESTORE_PATH"))
+PG_PSQL_PATH = resolve_pg_tool("psql", os.getenv("PG_PSQL_PATH"))
 
 # Directorio de backups
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -60,6 +78,11 @@ BACKUP_DIR = BACKUP_DIR_CONFIG if BACKUP_DIR_CONFIG.is_absolute() else PROJECT_R
 
 # Crear carpeta si no existe
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+MAX_UPLOAD_MB = int(os.getenv("BACKUP_UPLOAD_MAX_MB", "200"))
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # ========================================
 # DEPENDENCIAS
@@ -194,6 +217,170 @@ def get_backup_files():
     
     return backups
 
+
+def sanitize_backup_filename(filename: str) -> str:
+    original_name = Path(filename or "").name.strip()
+
+    if not original_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debe seleccionar un archivo de respaldo"
+        )
+
+    if Path(original_name).suffix.lower() != ".dump":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Solo se permiten archivos .dump"
+        )
+
+    safe_name = SAFE_FILENAME_RE.sub("_", original_name)
+    safe_name = safe_name.strip("._")
+
+    if not safe_name or Path(safe_name).suffix.lower() != ".dump":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nombre de archivo de respaldo no válido"
+        )
+
+    return safe_name
+
+
+def get_available_backup_path(filename: str) -> Path:
+    backup_path = BACKUP_DIR / filename
+    if not backup_path.exists():
+        return backup_path
+
+    stem = Path(filename).stem
+    suffix = Path(filename).suffix
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return BACKUP_DIR / f"{stem}_{timestamp}{suffix}"
+
+
+def get_backup_path_from_filename(filename: str) -> Path:
+    safe_name = sanitize_backup_filename(filename)
+    backup_path = (BACKUP_DIR / safe_name).resolve()
+    backup_root = BACKUP_DIR.resolve()
+
+    if backup_root not in backup_path.parents and backup_path != backup_root:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nombre de archivo de respaldo no válido"
+        )
+
+    return backup_path
+
+
+def validate_custom_dump(backup_path: Path):
+    result = subprocess.run(
+        [PG_RESTORE_PATH, "-l", str(backup_path)],
+        capture_output=True,
+        text=True,
+        timeout=60
+    )
+
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo no es un respaldo PostgreSQL válido en formato .dump"
+        )
+
+
+def quote_identifier(identifier: str) -> str:
+    if not SAFE_IDENTIFIER_RE.match(identifier):
+        raise ValueError(f"Identificador no válido en el respaldo: {identifier}")
+
+    return f'"{identifier}"'
+
+
+def get_restore_cleanup_sql(backup_path: Path) -> str:
+    result = subprocess.run(
+        [PG_RESTORE_PATH, "-l", str(backup_path)],
+        capture_output=True,
+        text=True,
+        timeout=60
+    )
+
+    if result.returncode != 0:
+        raise Exception(result.stderr or "No se pudo leer el índice del respaldo")
+
+    schemas = []
+    public_tables = []
+    public_sequences = []
+    public_functions = []
+
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(";"):
+            continue
+
+        parts = line.split()
+        if len(parts) < 6:
+            continue
+
+        object_type = parts[3]
+
+        if object_type == "SCHEMA":
+            schema_name = parts[5]
+            if schema_name not in {"public", "pg_catalog", "information_schema"}:
+                schemas.append(schema_name)
+            continue
+
+        object_schema = parts[4]
+        object_name = parts[5]
+
+        if object_schema != "public":
+            continue
+
+        if object_type == "TABLE":
+            public_tables.append(object_name)
+        elif object_type == "SEQUENCE":
+            public_sequences.append(object_name)
+        elif object_type == "FUNCTION":
+            public_functions.append(object_name)
+
+    statements = []
+    if schemas:
+        schema_list = ", ".join(quote_identifier(schema) for schema in sorted(set(schemas)))
+        statements.append(f"DROP SCHEMA IF EXISTS {schema_list} CASCADE")
+
+    for function_name in sorted(set(public_functions)):
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*\(.*\)$", function_name):
+            raise ValueError(f"Función no válida en el respaldo: {function_name}")
+        statements.append(f"DROP FUNCTION IF EXISTS public.{function_name} CASCADE")
+
+    for table_name in sorted(set(public_tables)):
+        statements.append(f"DROP TABLE IF EXISTS public.{quote_identifier(table_name)} CASCADE")
+
+    for sequence_name in sorted(set(public_sequences)):
+        statements.append(f"DROP SEQUENCE IF EXISTS public.{quote_identifier(sequence_name)} CASCADE")
+
+    return "; ".join(statements) + (";" if statements else "")
+
+
+def limpiar_objetos_antes_de_restaurar(backup_path: Path, env: dict):
+    cleanup_sql = get_restore_cleanup_sql(backup_path)
+    if not cleanup_sql:
+        return
+
+    result = subprocess.run(
+        [
+            PG_PSQL_PATH,
+            "-v", "ON_ERROR_STOP=1",
+            "-h", DB_HOST,
+            "-p", str(DB_PORT),
+            "-U", DB_USER,
+            "-d", DB_NAME,
+            "-c", cleanup_sql,
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=180
+    )
+
+    if result.returncode != 0:
+        raise Exception(result.stderr or "No se pudo limpiar la base antes de restaurar")
+
 # ========================================
 # ENDPOINTS
 # ========================================
@@ -318,6 +505,90 @@ def crear_backup(
             detail=f"Error al crear backup: {str(e)}"
         )
 
+
+@router.post("/upload", response_model=BackupResponse, status_code=status.HTTP_201_CREATED)
+async def subir_backup(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    """
+    Subir un archivo .dump local para dejarlo disponible en la lista de respaldos.
+    Requiere permiso: configuracion.crear o configuracion.crud
+    """
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "configuracion", "crear")
+
+    filename = sanitize_backup_filename(file.filename)
+    backup_path = get_available_backup_path(filename)
+    bytes_written = 0
+
+    try:
+        with backup_path.open("wb") as buffer:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+
+                bytes_written += len(chunk)
+                if bytes_written > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"El respaldo supera el tamaño máximo permitido de {MAX_UPLOAD_MB} MB"
+                    )
+
+                buffer.write(chunk)
+
+        if bytes_written == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El archivo de respaldo está vacío"
+            )
+
+        validate_custom_dump(backup_path)
+
+        registrar_auditoria(
+            db=db,
+            accion="UPLOAD_BACKUP",
+            descripcion=f"Backup subido: {backup_path.name}",
+            id_usuario=current_user.id_usuario_sistema
+        )
+
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Backup subido",
+            mensaje=f"El backup '{backup_path.name}' fue subido correctamente.",
+            tipo="exito"
+        )
+
+        return {
+            "success": True,
+            "message": f"Backup subido correctamente: {backup_path.name}",
+            "filename": backup_path.name
+        }
+
+    except HTTPException:
+        if backup_path.exists():
+            backup_path.unlink()
+        raise
+    except subprocess.TimeoutExpired:
+        if backup_path.exists():
+            backup_path.unlink()
+        raise HTTPException(
+            status_code=status.HTTP_408_REQUEST_TIMEOUT,
+            detail="La validación del backup tardó demasiado tiempo"
+        )
+    except Exception as e:
+        if backup_path.exists():
+            backup_path.unlink()
+        print(f"Error al subir backup: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al subir backup: {str(e)}"
+        )
+
+
 @router.put("/restore", response_model=BackupResponse)
 def restaurar_backup(
     restore_data: RestoreBackupRequest,
@@ -336,20 +607,13 @@ def restaurar_backup(
     user_id = current_user.id_usuario_sistema
     username = current_user.usuario
     
-    backup_path = BACKUP_DIR / restore_data.filename
+    backup_path = get_backup_path_from_filename(restore_data.filename)
     
     # Verificar que el archivo existe
     if not backup_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Backup no encontrado: {restore_data.filename}"
-        )
-    
-    # Verificar que es un archivo .dump
-    if not restore_data.filename.endswith('.dump'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Solo se pueden restaurar archivos .dump"
         )
     
     try:
@@ -374,6 +638,10 @@ def restaurar_backup(
         # ✅ PASO 4: Configurar entorno con contraseña
         env = os.environ.copy()
         env["PGPASSWORD"] = DB_PASSWORD
+
+        # Limpiar previamente los objetos incluidos en el respaldo.
+        # Evita errores de dependencias cruzadas al restaurar con pg_restore -c.
+        limpiar_objetos_antes_de_restaurar(backup_path, env)
         
         # ✅ PASO 5: Comando de restauración
         comando = [
@@ -382,9 +650,8 @@ def restaurar_backup(
             "-p", str(DB_PORT),
             "-U", DB_USER,
             "-d", DB_NAME,
-            "-c",  # limpia la base
-            "--if-exists",
-            "--disable-triggers",  # evita errores de FK
+            "--no-owner",
+            "--no-acl",
             str(backup_path),
         ]
         
@@ -400,7 +667,7 @@ def restaurar_backup(
         )
         
         # ✅ PASO 7: Evaluar resultado
-        if result.returncode == 0 or "ERROR" not in result.stderr.upper():
+        if result.returncode == 0:
             print(f"✅ Base de datos restaurada exitosamente")
             
             # ✅ PASO 8: Crear NUEVA sesión para registrar éxito
@@ -507,20 +774,13 @@ def eliminar_backup(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "configuracion", "eliminar")
     
-    backup_path = BACKUP_DIR / filename
+    backup_path = get_backup_path_from_filename(filename)
     
     # Verificar que el archivo existe
     if not backup_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Backup no encontrado: {filename}"
-        )
-    
-    # Verificar que es un archivo .dump
-    if not filename.endswith('.dump'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Solo se pueden eliminar archivos .dump"
         )
     
     try:
@@ -570,20 +830,13 @@ def descargar_backup(
     current_user = get_current_user(payload, db)
     require_permission(current_user, db, "configuracion", "lectura")
     
-    backup_path = BACKUP_DIR / filename
+    backup_path = get_backup_path_from_filename(filename)
     
     # Verificar que el archivo existe
     if not backup_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Backup no encontrado: {filename}"
-        )
-    
-    # Verificar que es un archivo .dump
-    if not filename.endswith('.dump'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Solo se pueden descargar archivos .dump"
         )
     
     # ✅ Registrar auditoría

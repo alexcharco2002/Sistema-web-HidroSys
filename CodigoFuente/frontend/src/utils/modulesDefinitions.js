@@ -278,6 +278,7 @@ export const MODULE_DEFINITIONS = {
     category: "REPORTS_ANALYSIS",
     order: 3,
     componentName: "HistorialConsumos",
+    description: "Consulta del historial de consumos y lecturas."
   },
   estadisticas: {
     id: "statistics",

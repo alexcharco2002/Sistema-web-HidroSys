@@ -1,6 +1,6 @@
 // src/sections/ConfigSection.js
 // MÓDULO DE CONFIGURACIÓN - Solo Backups
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
 //import './RolesSection.css';
 import configService from '../../services/configServices';
@@ -36,6 +36,8 @@ const ConfigSection = () => {
   const [backups, setBackups] = useState([]);
   const [backupStats, setBackupStats] = useState(null);
   const [loadingBackups, setLoadingBackups] = useState(false);
+  const [uploadingBackup, setUploadingBackup] = useState(false);
+  const backupUploadInputRef = useRef(null);
 
   // Estados para limites geograficos
   const [limites, setLimites] = useState([]);
@@ -338,6 +340,58 @@ const asignacionesFiltradas = useMemo(() => {
       console.error('Error en configuracion:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSelectBackupFile = () => {
+    if (!permissions.canCreate) {
+      window.alert("No tienes permiso para subir backups.");
+      return;
+    }
+
+    backupUploadInputRef.current?.click();
+  };
+
+  const handleUploadBackup = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.dump')) {
+      window.alert('Solo se permiten archivos .dump.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Se subirá el archivo "${file.name}" a la carpeta de respaldos.\n\n` +
+      'Luego aparecerá en la lista y podrás restaurarlo desde esta sección.\n\n' +
+      '¿Deseas continuar?'
+    );
+
+    if (!confirmed) return;
+
+    setUploadingBackup(true);
+    setError(null);
+
+    try {
+      const result = await configService.uploadBackup(file);
+
+      if (result.success) {
+        window.alert(`Backup subido correctamente:\n${result.message}`);
+        setSuccess(result.message);
+        await loadBackups();
+        setTimeout(() => setSuccess(null), 5000);
+      } else {
+        window.alert(`Error al subir el backup:\n${result.message}`);
+        setError(result.message);
+      }
+    } catch (err) {
+      window.alert('Error inesperado al subir el backup.');
+      setError('Error al subir el backup');
+      console.error('Error en configuracion:', err);
+    } finally {
+      setUploadingBackup(false);
     }
   };
 
@@ -2272,14 +2326,31 @@ const afiliadosFiltrados = useMemo(() => {
                         <RefreshCw className={`w-4 h-4 ${loadingBackups ? 'animate-spin' : ''}`} />
                       </button>
                       {permissions.canCreate && (
-                        <button
-                          className="btn-primary"
-                          onClick={handleCreateBackup}
-                          disabled={loading}
-                        >
-                          <Database className="w-4 h-4 mr-2" />
-                          Nuevo Backup
-                        </button>
+                        <>
+                          <input
+                            ref={backupUploadInputRef}
+                            type="file"
+                            accept=".dump"
+                            onChange={handleUploadBackup}
+                            style={{ display: 'none' }}
+                          />
+                          <button
+                            className="btn-secondary"
+                            onClick={handleSelectBackupFile}
+                            disabled={uploadingBackup || loading}
+                          >
+                            <Upload className="w-4 h-4 mr-2" />
+                            {uploadingBackup ? 'Subiendo...' : 'Subir Backup'}
+                          </button>
+                          <button
+                            className="btn-primary"
+                            onClick={handleCreateBackup}
+                            disabled={loading || uploadingBackup}
+                          >
+                            <Database className="w-4 h-4 mr-2" />
+                            Nuevo Backup
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

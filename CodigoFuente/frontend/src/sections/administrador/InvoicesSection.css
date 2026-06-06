@@ -1632,6 +1632,52 @@ input:checked + .slider:before {
   border-color: #d1d5db;
 }
 
+.services-permanent-section {
+  background: #ffffff;
+  border: 2px solid #bbf7d0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.08);
+  margin-bottom: 1rem;
+}
+
+.services-no-reading-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: #ecfdf5;
+}
+
+.services-no-reading-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.services-no-reading-info h4 {
+  margin: 0;
+  color: #064e3b;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.services-no-reading-info p {
+  margin: 0.2rem 0 0;
+  color: #047857;
+  font-size: 0.85rem;
+}
+
+.services-no-reading-card .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
 /* ============================================
    HEADER CON TOGGLE
    ============================================ */
@@ -1997,6 +2043,15 @@ input:checked + .slider:before {
    RESPONSIVE
    ============================================ */
 @media (max-width: 768px) {
+  .services-no-reading-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .services-no-reading-card .btn-primary {
+    width: 100%;
+  }
+
   .services-toggle-header {
     padding: 1rem;
   }

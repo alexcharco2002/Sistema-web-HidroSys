@@ -23,6 +23,75 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
   }
 };
 
+const buildPeriodoConsumo = (anio, mes) => {
+  if (!anio || !mes) return '';
+  return `${anio}-${String(mes).padStart(2, '0')}`;
+};
+
+const getPeriodoFromDate = (fecha) => {
+  if (!fecha || typeof fecha !== 'string') return '';
+  const match = fecha.match(/^(\d{4})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}` : '';
+};
+
+const normalizePeriodoValue = (periodo) => {
+  if (!periodo) return '';
+  if (typeof periodo === 'object') {
+    const periodoValue = periodo.periodo_consumo ||
+      periodo.periodoconsumo ||
+      periodo.periodoConsumo ||
+      periodo.periodo_facturacion ||
+      periodo.periodofacturacion ||
+      periodo.periodo;
+
+    if (periodoValue) return normalizePeriodoValue(periodoValue);
+
+    return buildPeriodoConsumo(
+      periodo.anio_consumo || periodo.anioconsumo || periodo.anio_facturacion || periodo.anio_periodo || periodo.anio || periodo.year,
+      periodo.mes_consumo || periodo.mesconsumo || periodo.mes_facturacion || periodo.mes_periodo || periodo.mes || periodo.month
+    );
+  }
+
+  return String(periodo);
+};
+
+const normalizePeriodoConsumo = (item, fallbackPeriodo = '') => {
+  const periodo = item?.periodo_consumo ||
+    item?.periodoconsumo ||
+    item?.periodoConsumo ||
+    item?.periodo_facturacion ||
+    item?.periodofacturacion ||
+    item?.periodo_lectura ||
+    item?.periodolectura ||
+    item?.periodo;
+
+  if (periodo) return normalizePeriodoValue(periodo);
+
+  const anio = item?.anio_consumo || item?.anioconsumo || item?.anio_facturacion || item?.anio_periodo || item?.anio || item?.year;
+  const mes = item?.mes_consumo || item?.mesconsumo || item?.mes_facturacion || item?.mes_periodo || item?.mes || item?.month;
+  const periodoDesdeCampos = buildPeriodoConsumo(anio, mes);
+  if (periodoDesdeCampos) return periodoDesdeCampos;
+
+  return fallbackPeriodo || getPeriodoFromDate(item?.fecha_emision || item?.fechaemision);
+};
+
+const normalizeFacturasPeriodoConsumo = (data, fallbackPeriodo = '') => {
+  const normalizeOne = (factura) => ({
+    ...factura,
+    periodo_consumo: normalizePeriodoConsumo(factura, fallbackPeriodo)
+  });
+
+  if (Array.isArray(data)) return data.map(normalizeOne);
+  if (Array.isArray(data?.facturas)) {
+    return {
+      ...data,
+      facturas: data.facturas.map(normalizeOne)
+    };
+  }
+
+  return data;
+};
+
 class AffiliateBillingServices {
   constructor() {
     this.cachedPeriodosFacturas = null;
@@ -39,7 +108,8 @@ class AffiliateBillingServices {
         method,
         headers: {
             'Accept': 'application/json',
-            'Authorization': `Bearer ${authService.getToken()}`
+            'Authorization': `Bearer ${authService.getToken()}`,
+            'X-Skip-Session-Expired': 'true'
         },
         timeout: 50000,
     };
@@ -131,9 +201,11 @@ class AffiliateBillingServices {
   async getMisFacturasPorPeriodo(anio = null, mes = null, filtrosAdicionales = {}) {
     try {
       const params = new URLSearchParams();
+      const periodoConsumo = buildPeriodoConsumo(anio, mes);
       
       if (anio) params.append('anio', anio);
       if (mes) params.append('mes', mes);
+      if (periodoConsumo) params.append('periodo_consumo', periodoConsumo);
       
       // Filtros adicionales
       if (filtrosAdicionales.estado_pago && filtrosAdicionales.estado_pago !== 'todos') {
@@ -159,10 +231,11 @@ class AffiliateBillingServices {
         : API_CONFIG.endpoints.misFacturas;
 
       const data = await this.makeRequest(url);
+      const normalizedData = normalizeFacturasPeriodoConsumo(data, periodoConsumo);
 
       return {
         success: true,
-        data
+        data: normalizedData
       };
     } catch (error) {
       console.error('Error al obtener facturas:', error);

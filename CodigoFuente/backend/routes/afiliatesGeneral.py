@@ -25,6 +25,20 @@ from security.jwt import verify_token
 router = APIRouter(prefix="/afiliados", tags=["afiliados"])
 
 
+def construir_periodo_consumo(anio: int, mes: int) -> str:
+    return f"{anio}-{mes:02d}"
+
+
+def separar_periodo_consumo(periodo: Optional[str]) -> tuple[Optional[int], Optional[int]]:
+    if not periodo:
+        return None, None
+    try:
+        anio_str, mes_str = periodo.split("-", 1)
+        return int(anio_str), int(mes_str)
+    except (ValueError, AttributeError):
+        return None, None
+
+
 def get_db():
     """Dependencia para obtener la sesión de base de datos"""
     db = SessionLocal()
@@ -91,20 +105,17 @@ def obtener_periodos_mis_lecturas(
 
     periodos = (
         db.query(
-            extract('year', Lectura.fecha_lectura).label("anio"),
-            extract('month', Lectura.fecha_lectura).label("mes"),
+            Lectura.periodo_consumo.label("periodo_consumo"),
             func.count(Lectura.id_lectura).label("total_lecturas")
         )
         .join(Medidor, Medidor.id_medidor == Lectura.id_medidor)
         .filter(
             Medidor.id_usuario_afi == afiliado.id_usuario_afi,
-            Lectura.activo == True
+            Lectura.activo == True,
+            Lectura.periodo_consumo.isnot(None)
         )
-        .group_by("anio", "mes")
-        .order_by(
-            extract('year', Lectura.fecha_lectura).desc(),
-            extract('month', Lectura.fecha_lectura).desc()
-        )
+        .group_by(Lectura.periodo_consumo)
+        .order_by(Lectura.periodo_consumo.desc())
         .all()
     )
 
@@ -113,8 +124,9 @@ def obtener_periodos_mis_lecturas(
     anios_disponibles = []
 
     for p in periodos:
-        anio = int(p.anio)
-        mes = int(p.mes)
+        anio, mes = separar_periodo_consumo(p.periodo_consumo)
+        if not anio or not mes:
+            continue
         
         # Crear lista para el año si no existe
         if anio not in periodos_agrupados:
@@ -125,6 +137,7 @@ def obtener_periodos_mis_lecturas(
         periodos_agrupados[anio].append({
             "mes": mes,
             "nombre_mes": obtener_nombre_mes(mes),
+            "periodo_consumo": p.periodo_consumo,
             "total_lecturas": p.total_lecturas
         })
 
@@ -186,6 +199,7 @@ def obtener_tarifas_vigentes_endpoint(
 def listar_mis_lecturas(
     anio: Optional[int] = Query(None, description="Año para filtrar (ej. 2025)"),
     mes: Optional[int] = Query(None, ge=1, le=12, description="Mes para filtrar (1-12)"),
+    periodo_consumo: Optional[str] = Query(None, min_length=7, max_length=7, description="Periodo de consumo YYYY-MM"),
     tipo_lectura: Optional[str] = Query(None, description="Tipo: reales, estimadas o todas"),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token)
@@ -219,6 +233,7 @@ def listar_mis_lecturas(
         Lectura.lectura_anterior,
         Lectura.consumo_m3,
         Lectura.fecha_lectura,
+        Lectura.periodo_consumo,
         Lectura.observacion,
         Lectura.es_estimada,
         Lectura.activo,
@@ -239,23 +254,12 @@ def listar_mis_lecturas(
     )
     
     # Aplicar filtros (mantén tu código existente)
-    if anio and mes:
-        fecha_inicio = date(anio, mes, 1)
-        if mes == 12:
-            fecha_fin = date(anio + 1, 1, 1)
-        else:
-            fecha_fin = date(anio, mes + 1, 1)
-        query = query.filter(
-            Lectura.fecha_lectura >= fecha_inicio,
-            Lectura.fecha_lectura < fecha_fin
-        )
+    if periodo_consumo:
+        query = query.filter(Lectura.periodo_consumo == periodo_consumo)
+    elif anio and mes:
+        query = query.filter(Lectura.periodo_consumo == construir_periodo_consumo(anio, mes))
     elif anio:
-        fecha_inicio = date(anio, 1, 1)
-        fecha_fin = date(anio + 1, 1, 1)
-        query = query.filter(
-            Lectura.fecha_lectura >= fecha_inicio,
-            Lectura.fecha_lectura < fecha_fin
-        )
+        query = query.filter(Lectura.periodo_consumo.like(f"{anio}-%"))
     
     if tipo_lectura:
         tipo_lower = tipo_lectura.lower()
@@ -264,7 +268,7 @@ def listar_mis_lecturas(
         elif tipo_lower == 'estimadas':
             query = query.filter(Lectura.es_estimada == True)
     
-    lecturas = query.order_by(Lectura.fecha_lectura.desc()).limit(200).all()
+    lecturas = query.order_by(Lectura.periodo_consumo.desc(), Lectura.fecha_lectura.desc()).limit(200).all()
     
     # ✅ FORMATEAR RESPUESTA CON CLASIFICACIÓN
     def clasificar_consumo(consumo_m3):
@@ -303,12 +307,13 @@ def listar_mis_lecturas(
             "lectura_anterior": l.lectura_anterior,
             "consumo_m3": l.consumo_m3,
             "fecha_lectura": l.fecha_lectura,
+            "periodo_consumo": l.periodo_consumo,
             "observacion": l.observacion,
             "es_estimada": l.es_estimada,
             "activo": l.activo,
-            "anio": l.fecha_lectura.year if l.fecha_lectura else None,
-            "mes": l.fecha_lectura.month if l.fecha_lectura else None,
-            "nombre_mes": obtener_nombre_mes(l.fecha_lectura.month) if l.fecha_lectura else None,
+            "anio": separar_periodo_consumo(l.periodo_consumo)[0],
+            "mes": separar_periodo_consumo(l.periodo_consumo)[1],
+            "nombre_mes": obtener_nombre_mes(separar_periodo_consumo(l.periodo_consumo)[1]) if separar_periodo_consumo(l.periodo_consumo)[1] else None,
             "medidor": {"num_medidor": l.num_medidor},
             "codigo_afiliado": codigo_afiliado,
             "nombre_afiliado": nombre_afiliado,
@@ -334,11 +339,7 @@ def obtener_consumo_por_periodo(
     current_user = get_current_user(payload, db)
     afiliado = get_current_afiliado(current_user, db)
 
-    # ===============================
-    # RANGO DE FECHAS (CLAVE)
-    # ===============================
-    fecha_inicio = date(anio, mes, 1)
-    fecha_fin = date(anio + 1, 1, 1) if mes == 12 else date(anio, mes + 1, 1)
+    periodo_consumo = construir_periodo_consumo(anio, mes)
 
     # ===============================
     # QUERY OPTIMIZADA
@@ -354,8 +355,7 @@ def obtener_consumo_por_periodo(
             Medidor.id_usuario_afi == afiliado.id_usuario_afi,
             Medidor.activo.is_(True),
             Lectura.activo.is_(True),
-            Lectura.fecha_lectura >= fecha_inicio,
-            Lectura.fecha_lectura < fecha_fin
+            Lectura.periodo_consumo == periodo_consumo
         )
         .first()
     )
@@ -363,6 +363,7 @@ def obtener_consumo_por_periodo(
     return {
         "anio": anio,
         "mes": mes,
+        "periodo_consumo": periodo_consumo,
         "nombre_mes": obtener_nombre_mes(mes),
         "consumo_total": float(stats.consumo_total),
         "total_lecturas": stats.total_lecturas,
@@ -410,6 +411,7 @@ from io import BytesIO
 def exportar_lecturas_excel(
     anio: Optional[int] = Query(None),
     mes: Optional[int] = Query(None, ge=1, le=12),
+    periodo_consumo: Optional[str] = Query(None, min_length=7, max_length=7),
     tipo_lectura: Optional[str] = Query(None),
     id_medidor: Optional[int] = Query(None),
     db: Session = Depends(get_db),
@@ -426,15 +428,9 @@ def exportar_lecturas_excel(
         # ===============================
         # CONSTRUCCIÓN DE FECHAS
         # ===============================
-        fecha_inicio = fecha_fin = None
-        if anio and mes:
-            fecha_inicio = date(anio, mes, 1)
-            fecha_fin = (
-                date(anio + 1, 1, 1) if mes == 12 else date(anio, mes + 1, 1)
-            )
-        elif anio:
-            fecha_inicio = date(anio, 1, 1)
-            fecha_fin = date(anio + 1, 1, 1)
+        periodo_filtrado = periodo_consumo or (
+            construir_periodo_consumo(anio, mes) if anio and mes else None
+        )
 
         # ===============================
         # QUERY OPTIMIZADA
@@ -460,11 +456,10 @@ def exportar_lecturas_excel(
         if id_medidor:
             query = query.filter(Medidor.id_medidor == id_medidor)
 
-        if fecha_inicio and fecha_fin:
-            query = query.filter(
-                Lectura.fecha_lectura >= fecha_inicio,
-                Lectura.fecha_lectura < fecha_fin
-            )
+        if periodo_filtrado:
+            query = query.filter(Lectura.periodo_consumo == periodo_filtrado)
+        elif anio:
+            query = query.filter(Lectura.periodo_consumo.like(f"{anio}-%"))
 
         if tipo_lectura:
             tipo_lower = tipo_lectura.lower()
@@ -473,7 +468,7 @@ def exportar_lecturas_excel(
             elif tipo_lower == "estimadas":
                 query = query.filter(Lectura.es_estimada.is_(True))
 
-        lecturas = query.order_by(Lectura.fecha_lectura.desc()).all()
+        lecturas = query.order_by(Lectura.periodo_consumo.desc(), Lectura.fecha_lectura.desc()).all()
 
         # ✅ Verificar si hay datos
         if not lecturas:
@@ -564,9 +559,8 @@ def exportar_lecturas_excel(
         # ENCABEZADOS DE TABLA
         # ===============================
         headers = [
-            'Fecha Lectura',
-            'Año',
-            'Mes',
+            'Periodo Consumo',
+            'Fecha Registro',
             'Lectura Anterior (m³)',
             'Lectura Actual (m³)',
             'Consumo (m³)',
@@ -594,9 +588,8 @@ def exportar_lecturas_excel(
             lector = lectura.lector
             
             row_data = [
+                lectura.periodo_consumo or '',
                 lectura.fecha_lectura.strftime('%d/%m/%Y') if lectura.fecha_lectura else '',
-                lectura.fecha_lectura.year if lectura.fecha_lectura else '',
-                obtener_nombre_mes(lectura.fecha_lectura.month) if lectura.fecha_lectura else '',
                 lectura.lectura_anterior if lectura.lectura_anterior is not None else 0,
                 lectura.lectura_actual if lectura.lectura_actual is not None else 0,
                 lectura.consumo_m3 if lectura.consumo_m3 is not None else 0,
@@ -621,9 +614,9 @@ def exportar_lecturas_excel(
                 cell.border = thin_border
                 
                 # Alineación según columna
-                if col_idx in [1, 2, 3, 7, 10]:  # Fecha, Año, Mes, Tipo, Estado
+                if col_idx in [1, 2, 6, 9]:  # Periodo, fecha, tipo, estado
                     cell.alignment = data_alignment_center
-                elif col_idx in [4, 5, 6]:  # Valores numéricos
+                elif col_idx in [3, 4, 5]:  # Valores numéricos
                     cell.alignment = data_alignment_right
                     cell.number_format = '#,##0.00'  # Formato numérico con 2 decimales
                 else:
@@ -633,16 +626,15 @@ def exportar_lecturas_excel(
         # AJUSTE AUTOMÁTICO DE ANCHOS
         # ===============================
         column_widths = {
-            'A': 14,  # Fecha
-            'B': 8,   # Año
-            'C': 12,  # Mes
-            'D': 18,  # Lectura Ant
-            'E': 18,  # Lectura Act
-            'F': 14,  # Consumo
-            'G': 12,  # Tipo
-            'H': 25,  # Lector
-            'I': 35,  # Observación
-            'J': 10   # Estado
+            'A': 18,  # Periodo consumo
+            'B': 16,  # Fecha registro
+            'C': 18,  # Lectura Ant
+            'D': 18,  # Lectura Act
+            'E': 14,  # Consumo
+            'F': 12,  # Tipo
+            'G': 25,  # Lector
+            'H': 35,  # Observación
+            'I': 10   # Estado
         }
         
         for col_letter, width in column_widths.items():

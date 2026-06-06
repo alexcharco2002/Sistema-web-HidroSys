@@ -42,7 +42,8 @@ from utils.facturacion import (
     marcar_facturas_vencidas,
     recalcular_totales_factura,
     calcular_iva_sobre_detalles,
-    obtener_configuracion_iva
+    obtener_configuracion_iva,
+    obtener_tarifas_vigentes
 )
 from utils.notifications import registrar_notificacion
 from utils.audit_logger import registrar_auditoria
@@ -210,14 +211,13 @@ def listar_facturas_optimizado(
                 # ===== SECTOR =====
                 Sector.nombre_sector,
             )
-            # ✅ INNER JOINs — solo registros con factura real
-            .join(Lectura, Factura.id_lectura == Lectura.id_lectura)
-            .join(Medidor, Lectura.id_medidor == Medidor.id_medidor)
-            .join(UsuarioAfiliado, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            # Incluye facturas con lectura y facturas de servicios sin lectura.
+            .outerjoin(Lectura, Factura.id_lectura == Lectura.id_lectura)
+            .outerjoin(Medidor, Lectura.id_medidor == Medidor.id_medidor)
+            .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
             .filter(
-                Medidor.activo == True,
                 UsuarioAfiliado.activo == True,
             )
         )
@@ -242,7 +242,7 @@ def listar_facturas_optimizado(
             )
 
         if id_usuario_afi:
-            query = query.filter(Medidor.id_usuario_afi == id_usuario_afi)
+            query = query.filter(Factura.id_usuario_afi == id_usuario_afi)
 
         if periodo:
             # ✅ Filtro directo, sin NULL
@@ -275,6 +275,8 @@ def listar_facturas_optimizado(
                     DetalleFactura.id_detalle,
                     DetalleFactura.id_factura,
                     DetalleFactura.tipo_detalle,
+                    DetalleFactura.id_servicio,
+                    DetalleFactura.id_asignacion_sp,
                     DetalleFactura.descripcion,
                     DetalleFactura.subtotal_detalle,
                 )
@@ -289,6 +291,8 @@ def listar_facturas_optimizado(
                 detalles_por_factura[d.id_factura].append({
                     "id_detalle": d.id_detalle,
                     "tipo_detalle": d.tipo_detalle,
+                    "id_servicio": d.id_servicio,
+                    "id_asignacion_sp": d.id_asignacion_sp,
                     "descripcion": d.descripcion,
                     "subtotal_detalle": float(d.subtotal_detalle),
                 })
@@ -505,6 +509,294 @@ def obtener_periodos_facturas_disponibles(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener periodos de facturas: {str(e)}"
+        )
+
+
+def _fecha_desde_periodo(periodo: str) -> date:
+    anio, mes = periodo.split("-")
+    return date(int(anio), int(mes), 1)
+
+
+def _query_servicios_permanentes_sin_medidor(db: Session, periodo: str):
+    from models.servicio_permanente import (
+        AsignacionServicioPermanente,
+        ConfiguracionServicioPermanente
+    )
+
+    medidor_activo = db.query(Medidor.id_medidor).filter(
+        Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi,
+        Medidor.activo == True
+    ).exists()
+
+    return (
+        db.query(
+            AsignacionServicioPermanente,
+            ConfiguracionServicioPermanente,
+            Servicio,
+            UsuarioAfiliado,
+            UsuarioSistema
+        )
+        .join(
+            ConfiguracionServicioPermanente,
+            ConfiguracionServicioPermanente.id_configuracion_sp == AsignacionServicioPermanente.id_configuracion_sp
+        )
+        .join(Servicio, Servicio.id_servicio == ConfiguracionServicioPermanente.id_servicio)
+        .join(UsuarioAfiliado, UsuarioAfiliado.id_usuario_afi == AsignacionServicioPermanente.id_usuario_afi)
+        .join(UsuarioSistema, UsuarioSistema.id_usuario_sistema == UsuarioAfiliado.id_usuario_sistema)
+        .filter(
+            UsuarioAfiliado.activo == True,
+            UsuarioAfiliado.cod_usuario_afi.isnot(None),
+            UsuarioAfiliado.cod_usuario_afi != "",
+            ~medidor_activo,
+            AsignacionServicioPermanente.activo == True,
+            Servicio.activo == True,
+            Servicio.es_vigente == True
+        )
+        .order_by(UsuarioAfiliado.cod_usuario_afi, Servicio.nombre)
+    )
+
+
+def _precio_servicio_permanente(config, servicio) -> Decimal:
+    if config.precio_override is not None:
+        return Decimal(str(config.precio_override))
+    return Decimal(str(servicio.precio_base or 0))
+
+
+def _detalle_sp_existente(db: Session, periodo: str, id_usuario_afi: int, id_asignacion_sp: int):
+    return (
+        db.query(DetalleFactura.id_detalle)
+        .join(Factura, Factura.id_factura == DetalleFactura.id_factura)
+        .filter(
+            Factura.periodo == periodo,
+            Factura.id_usuario_afi == id_usuario_afi,
+            Factura.estado_factura != "anulada",
+            DetalleFactura.tipo_detalle == "servicio",
+            DetalleFactura.id_asignacion_sp == id_asignacion_sp
+        )
+        .first()
+    )
+
+
+def _calcular_pendientes_servicios_sin_lectura(db: Session, periodo: str):
+    filas = _query_servicios_permanentes_sin_medidor(db, periodo).all()
+    pendientes = []
+    afiliados = set()
+    monto_estimado = Decimal("0.00")
+
+    for asignacion, config, servicio, afiliado, usuario in filas:
+        if _detalle_sp_existente(db, periodo, afiliado.id_usuario_afi, asignacion.id_asignacion_sp):
+            continue
+
+        precio = _precio_servicio_permanente(config, servicio)
+        afiliados.add(afiliado.id_usuario_afi)
+        monto_estimado += precio
+        pendientes.append({
+            "asignacion": asignacion,
+            "config": config,
+            "servicio": servicio,
+            "afiliado": afiliado,
+            "usuario": usuario,
+            "precio": precio
+        })
+
+    return pendientes, afiliados, monto_estimado
+
+
+@router.get("/servicios-sin-lectura/pendientes", response_model=dict)
+def validar_servicios_sin_lectura_pendientes(
+    periodo: str = Query(..., description="Periodo de consumo (YYYY-MM)"),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "facturas", "lectura")
+
+    es_valido, mensaje = validar_periodo_factura(periodo)
+    if not es_valido:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=mensaje)
+
+    total_facturas_periodo = db.query(func.count(Factura.id_factura)).filter(
+        Factura.periodo == periodo,
+        Factura.estado_factura != "anulada"
+    ).scalar() or 0
+
+    if total_facturas_periodo == 0:
+        return {
+            "success": True,
+            "periodo": periodo,
+            "hay_pendientes": False,
+            "total_afiliados": 0,
+            "total_servicios": 0,
+            "total_facturas_periodo": 0,
+            "monto_estimado": 0.0,
+            "mensaje": "Este periodo todavía no tiene facturas generadas desde lecturas."
+        }
+
+    pendientes, afiliados, monto_estimado = _calcular_pendientes_servicios_sin_lectura(db, periodo)
+
+    return {
+        "success": True,
+        "periodo": periodo,
+        "hay_pendientes": len(pendientes) > 0,
+        "total_afiliados": len(afiliados),
+        "total_servicios": len(pendientes),
+        "total_facturas_periodo": int(total_facturas_periodo),
+        "monto_estimado": float(monto_estimado),
+        "mensaje": (
+            f"Hay {len(pendientes)} servicio(s) permanente(s) sin lectura pendientes."
+            if pendientes else
+            "No hay servicios permanentes sin lectura pendientes para este periodo."
+        )
+    }
+
+
+@router.post("/servicios-sin-lectura/generar", response_model=dict)
+def generar_facturas_servicios_sin_lectura(
+    data: dict = Body(...),
+    db: Session = Depends(get_db),
+    payload: dict = Depends(verify_token)
+):
+    current_user = get_current_user(payload, db)
+    require_permission(current_user, db, "facturas", "crear")
+
+    periodo = (data or {}).get("periodo")
+    if not periodo:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El periodo es requerido")
+
+    es_valido, mensaje = validar_periodo_factura(periodo)
+    if not es_valido:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=mensaje)
+
+    total_facturas_periodo = db.query(func.count(Factura.id_factura)).filter(
+        Factura.periodo == periodo,
+        Factura.estado_factura != "anulada"
+    ).scalar() or 0
+
+    if total_facturas_periodo == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Primero genera facturas del periodo desde lecturas; luego aplica servicios sin lectura."
+        )
+
+    tarifa_basica, _ = obtener_tarifas_vigentes(db)
+    if not tarifa_basica:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se encontró una tarifa básica vigente para crear las facturas."
+        )
+
+    pendientes, afiliados, _ = _calcular_pendientes_servicios_sin_lectura(db, periodo)
+    if not pendientes:
+        return {
+            "success": True,
+            "message": "No hay servicios permanentes sin lectura pendientes para generar.",
+            "facturas_creadas": 0,
+            "detalles_creados": 0,
+            "afiliados_procesados": 0,
+            "monto_total": 0.0
+        }
+
+    try:
+        facturas_por_afiliado = {}
+        facturas_creadas = 0
+        detalles_creados = 0
+        monto_total = Decimal("0.00")
+
+        for item in pendientes:
+            asignacion = item["asignacion"]
+            servicio = item["servicio"]
+            afiliado = item["afiliado"]
+            precio = item["precio"]
+
+            factura = facturas_por_afiliado.get(afiliado.id_usuario_afi)
+            if factura is None:
+                factura = db.query(Factura).filter(
+                    Factura.id_usuario_afi == afiliado.id_usuario_afi,
+                    Factura.periodo == periodo,
+                    Factura.id_lectura.is_(None),
+                    Factura.estado_factura.in_(["pendiente", "vencida"])
+                ).first()
+
+                if factura is None:
+                    factura = Factura(
+                        num_factura=generar_numero_factura(db, periodo),
+                        id_usuario_afi=afiliado.id_usuario_afi,
+                        id_lectura=None,
+                        id_tarifa=tarifa_basica.id_tarifa,
+                        consumo_m3=0,
+                        exceso_m3=0,
+                        valor_consumo=Decimal("0.00"),
+                        valor_exceso=Decimal("0.00"),
+                        descuento=Decimal("0.00"),
+                        subtotal=Decimal("0.00"),
+                        impuesto=Decimal("0.00"),
+                        total=Decimal("0.00"),
+                        fecha_emision=date.today(),
+                        periodo=periodo,
+                        estado_factura="pendiente"
+                    )
+                    db.add(factura)
+                    db.flush()
+                    facturas_creadas += 1
+
+                facturas_por_afiliado[afiliado.id_usuario_afi] = factura
+
+            if _detalle_sp_existente(db, periodo, afiliado.id_usuario_afi, asignacion.id_asignacion_sp):
+                continue
+
+            detalle = DetalleFactura(
+                id_factura=factura.id_factura,
+                tipo_detalle="servicio",
+                id_servicio=servicio.id_servicio,
+                id_multa_afiliados=None,
+                id_asignacion_sp=asignacion.id_asignacion_sp,
+                subtotal_detalle=precio,
+                descripcion=f"{servicio.nombre} (Servicio permanente sin lectura) - Periodo {periodo}"
+            )
+            db.add(detalle)
+            detalles_creados += 1
+            monto_total += precio
+
+        db.flush()
+        for factura in facturas_por_afiliado.values():
+            recalcular_totales_factura(db, factura)
+
+        registrar_auditoria(
+            db=db,
+            accion="CREATE",
+            descripcion=(
+                f"Facturas de servicios permanentes sin lectura generadas - "
+                f"Periodo: {periodo} - Facturas: {facturas_creadas} - Detalles: {detalles_creados}"
+            ),
+            id_usuario=current_user.id_usuario_sistema
+        )
+
+        registrar_notificacion(
+            db=db,
+            id_usuario=current_user.id_usuario_sistema,
+            titulo="Facturas sin lectura generadas",
+            mensaje=f"Se generaron {facturas_creadas} factura(s) y {detalles_creados} servicio(s) para {periodo}.",
+            tipo="exito"
+        )
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Se generaron {facturas_creadas} factura(s) de servicios sin lectura.",
+            "facturas_creadas": facturas_creadas,
+            "detalles_creados": detalles_creados,
+            "afiliados_procesados": len(afiliados),
+            "monto_total": float(monto_total)
+        }
+
+    except Exception as e:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar facturas de servicios sin lectura: {str(e)}"
         )
 
 # ========================================

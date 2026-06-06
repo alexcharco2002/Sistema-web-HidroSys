@@ -658,6 +658,7 @@ const toggleSidebar = () => {
                 onLogout={handleLogout}
                 onViewProfile={handleProfileClick}
                 onSettingsClick={handleSettingsClick}
+                onNotificationsClick={handleViewAllNotifications}
               />
             </div>
           </div>
@@ -738,6 +739,7 @@ const toggleSidebar = () => {
           isOpen={showChangePasswordModal}
           onClose={handleClosePasswordModal}
           userId={user.id_usuario_sistema}
+          username={user.usuario}
           userEmail={user.email}
           isPrimerLogin={user.primer_login === true || user.primer_login === 1}
           onSuccess={handlePasswordChangeSuccess}

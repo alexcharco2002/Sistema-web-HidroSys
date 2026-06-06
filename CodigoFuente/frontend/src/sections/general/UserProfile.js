@@ -1,18 +1,26 @@
 // src/sections/UserProfile.js
-// Componente para mostrar el perfil del usuario con un dropdown para opciones como ver perfil, configuración y cerrar sesión
+// Componente para mostrar el perfil del usuario con opciones dinamicas.
 
 import React, { useState, useRef, useEffect } from 'react';
-import { LogOut, ChevronDown, User, Settings } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { LogOut, ChevronDown, User, Settings, Bell } from 'lucide-react';
+import authService from '../../services/authServices';
 
 import './UserProfile.css';
 
-const UserProfile = ({ user, onLogout, onViewProfile }) => {
+const UserProfile = ({ user, onLogout, onViewProfile, onSettingsClick, onNotificationsClick }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
-  const navigate = useNavigate();
 
-  // Cerrar dropdown cuando se hace click fuera
+  const canAccessSettings =
+    authService.hasPermission('configuracion', 'lectura') ||
+    authService.hasPermission('configuracion', 'operaciones crud') ||
+    authService.hasPermission('configuracion');
+
+  const canAccessNotifications =
+    authService.hasPermission('notificaciones', 'lectura') ||
+    authService.hasPermission('notificaciones', 'operaciones crud') ||
+    authService.hasPermission('notificaciones');
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -21,19 +29,15 @@ const UserProfile = ({ user, onLogout, onViewProfile }) => {
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Función para obtener las iniciales del usuario
   const getUserInitials = (nombres, apellidos) => {
     const firstInitial = nombres ? nombres.charAt(0).toUpperCase() : '';
     const lastInitial = apellidos ? apellidos.charAt(0).toUpperCase() : '';
     return firstInitial + lastInitial || 'U';
   };
 
-  // Función para manejar errores al cargar la imagen
   const handleImageError = (e) => {
     e.target.style.display = 'none';
     if (e.target.nextSibling) {
@@ -41,39 +45,61 @@ const UserProfile = ({ user, onLogout, onViewProfile }) => {
     }
   };
 
-  // Función para manejar cuando la imagen se carga correctamente
   const handleImageLoad = (e) => {
     e.target.style.display = 'block';
     if (e.target.nextSibling) {
       e.target.nextSibling.style.display = 'none';
     }
   };
-  // Navegación a ver perfil
-   const handleViewProfile = () => {
+
+  const handleViewProfile = () => {
     setShowDropdown(false);
-    if (onViewProfile) onViewProfile(); // 🔥 notifica al AdminDashboard
+    if (onViewProfile) onViewProfile();
   };
-  
-  // Navegación a configuración
+
   const handleSettings = () => {
     setShowDropdown(false);
-    navigate('/administrador/settings');
+    if (onSettingsClick) onSettingsClick();
   };
 
+  const handleNotifications = () => {
+    setShowDropdown(false);
+    if (onNotificationsClick) onNotificationsClick();
+  };
 
-  // Toggle dropdown
   const toggleDropdown = () => {
     setShowDropdown(!showDropdown);
   };
 
+  const renderSecondaryAction = () => {
+    if (canAccessSettings) {
+      return (
+        <button className="dropdown-item" onClick={handleSettings}>
+          <Settings className="dropdown-icon" />
+          <span>Configuración</span>
+        </button>
+      );
+    }
+
+    if (canAccessNotifications) {
+      return (
+        <button className="dropdown-item" onClick={handleNotifications}>
+          <Bell className="dropdown-icon" />
+          <span>Notificaciones</span>
+        </button>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <div className="user-profile-container" ref={dropdownRef}>
-      <div 
-        className="user-profile" 
+      <div
+        className="user-profile"
         data-role={user.rol}
         onClick={toggleDropdown}
       >
-        {/* Avatar del usuario */}
         <div className="user-avatar-container">
           {user.foto ? (
             <>
@@ -84,7 +110,6 @@ const UserProfile = ({ user, onLogout, onViewProfile }) => {
                 onError={handleImageError}
                 onLoad={handleImageLoad}
               />
-              {/* Fallback con iniciales si la imagen falla */}
               <div className="user-avatar-fallback" style={{ display: 'none' }}>
                 <span className="user-initials">
                   {getUserInitials(user.nombres, user.apellidos)}
@@ -92,7 +117,6 @@ const UserProfile = ({ user, onLogout, onViewProfile }) => {
               </div>
             </>
           ) : (
-            /* Avatar por defecto con iniciales */
             <div className="user-avatar-fallback">
               <span className="user-initials">
                 {getUserInitials(user.nombres, user.apellidos)}
@@ -101,21 +125,18 @@ const UserProfile = ({ user, onLogout, onViewProfile }) => {
           )}
         </div>
 
-        {/* Información del usuario */}
         <div className="user-info">
           <p className="user-name header-user-profile-name">
-            { `${user.nombres || ''} ${user.apellidos || ''}`.trim() || 'Usuario'}
+            {`${user.nombres || ''} ${user.apellidos || ''}`.trim() || 'Usuario'}
           </p>
           <p className="user-role">{user.rol?.nombre_rol || 'Sin rol'}</p>
         </div>
 
-        {/* Icono dropdown */}
         <div className={`dropdown-arrow ${showDropdown ? 'open' : ''}`}>
           <ChevronDown className="w-4 h-4" />
         </div>
       </div>
 
-      {/* Dropdown Menu */}
       {showDropdown && (
         <div className="user-dropdown">
           <div className="dropdown-header">
@@ -137,44 +158,28 @@ const UserProfile = ({ user, onLogout, onViewProfile }) => {
               </div>
             </div>
           </div>
-          
+
           <div className="dropdown-divider"></div>
-          
+
           <div className="dropdown-menu">
-            <button 
-              className="dropdown-item"
-              onClick={handleViewProfile}
-            >
+            <button className="dropdown-item" onClick={handleViewProfile}>
               <User className="dropdown-icon" />
               <span>Mi Perfil</span>
             </button>
-            
-            <button 
-              className="dropdown-item"
-              onClick={handleSettings}
-            >
-              <Settings className="dropdown-icon" />
-              <span>Configuración</span>
-            </button>
-            
+
+            {renderSecondaryAction()}
+
             <div className="dropdown-divider"></div>
-            
-            <button 
-              className="dropdown-item logout-item"
-              onClick={onLogout}
-            >
+
+            <button className="dropdown-item logout-item" onClick={onLogout}>
               <LogOut className="dropdown-icon" />
               <span>Cerrar Sesión</span>
             </button>
           </div>
         </div>
-        
       )}
-      
     </div>
-    
   );
-  
 };
 
 export default UserProfile;

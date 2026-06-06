@@ -111,6 +111,9 @@ const InvoicesSection = () => {
   const [showServiciosModal, setShowServiciosModal] = useState(false);
   const [facturaSeleccionadaServicios, setFacturaSeleccionadaServicios] = useState(null);
   const [serviciosSeleccionadosModal, setServiciosSeleccionadosModal] = useState([]);
+  const [serviciosSinLecturaInfo, setServiciosSinLecturaInfo] = useState(null);
+  const [loadingServiciosSinLectura, setLoadingServiciosSinLectura] = useState(false);
+  const [generatingServiciosSinLectura, setGeneratingServiciosSinLectura] = useState(false);
 
   // ============================================================
   // ESTADOS  MANEJAR ANULACION DE MULTAS
@@ -138,6 +141,11 @@ const InvoicesSection = () => {
     'Problemas técnicos del sistema',
     'Otro (especificar)'
   ];
+
+  const periodoSeleccionadoStr = useMemo(() => {
+    if (!periodoSeleccionado) return null;
+    return `${periodoSeleccionado.anio}-${String(periodoSeleccionado.mes).padStart(2, '0')}`;
+  }, [periodoSeleccionado]);
 
 
 
@@ -260,6 +268,28 @@ const InvoicesSection = () => {
     }
   }, [periodoSeleccionado]);
 
+  const fetchServiciosSinLecturaInfo = useCallback(async () => {
+    if (!periodoSeleccionadoStr || !permissions.canRead) {
+      setServiciosSinLecturaInfo(null);
+      return;
+    }
+
+    setLoadingServiciosSinLectura(true);
+    try {
+      const result = await invoicesServices.validarServiciosSinLectura(periodoSeleccionadoStr);
+      if (result.success) {
+        setServiciosSinLecturaInfo(result.data);
+      } else {
+        setServiciosSinLecturaInfo(null);
+      }
+    } catch (err) {
+      console.error('Error validando servicios sin lectura:', err);
+      setServiciosSinLecturaInfo(null);
+    } finally {
+      setLoadingServiciosSinLectura(false);
+    }
+  }, [periodoSeleccionadoStr, permissions.canRead]);
+
 
   const handlePeriodoChange = (mes, anio) => {
     setPeriodoSeleccionado({ mes, anio });
@@ -301,13 +331,15 @@ const InvoicesSection = () => {
     if (permissions.canRead && periodoSeleccionado) {
       fetchFacturasByPeriodo();
       fetchStats();
+      fetchServiciosSinLecturaInfo();
 
     }
   }, [
     periodoSeleccionado,
     permissions.canRead,
     fetchFacturasByPeriodo,
-    fetchStats
+    fetchStats,
+    fetchServiciosSinLecturaInfo
   ]);
 
   // ============================================================
@@ -650,6 +682,50 @@ const handleConfirmarAnulacion = async (e) => {
         return [...prev, idServicio];
       }
     });
+  };
+
+
+  const handleGenerarServiciosSinLectura = async () => {
+    if (!periodoSeleccionadoStr || !serviciosSinLecturaInfo?.hay_pendientes) {
+      return;
+    }
+
+    const mensaje = [
+      `¿Generar facturas de servicios permanentes sin lectura para ${formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}?`,
+      '',
+      `Afiliados: ${serviciosSinLecturaInfo.total_afiliados}`,
+      `Servicios: ${serviciosSinLecturaInfo.total_servicios}`,
+      `Monto estimado: ${formatCurrency(serviciosSinLecturaInfo.monto_estimado || 0)}`,
+      '',
+      'El sistema evitará duplicados por asignación permanente.'
+    ].join('\n');
+
+    if (!window.confirm(mensaje)) return;
+
+    setGeneratingServiciosSinLectura(true);
+    try {
+      const result = await invoicesServices.generarServiciosSinLectura(periodoSeleccionadoStr);
+
+      if (result.success) {
+        alert(
+          `✅ ${result.message}\n\n` +
+          `Facturas creadas: ${result.data.facturas_creadas}\n` +
+          `Servicios facturados: ${result.data.detalles_creados}\n` +
+          `Total generado: ${formatCurrency(result.data.monto_total || 0)}`
+        );
+        await fetchFacturasByPeriodo();
+        await fetchStats();
+        await fetchServiciosSinLecturaInfo();
+        await fetchPeriodosDisponibles();
+      } else {
+        alert(`❌ ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error generando facturas sin lectura:', error);
+      alert('❌ Error al generar facturas de servicios sin lectura');
+    } finally {
+      setGeneratingServiciosSinLectura(false);
+    }
   };
 
 
@@ -1394,47 +1470,83 @@ const agruparDetallesPorTipo = (detalles) => {
             )}
           </div>
 
-          {permissions.canUpdate && (
-            <div className="services-bulk-section">
-              <div className="services-toggle-header">
-                <div className="toggle-left flex flex-col">
-                  <div className="toggle-left flex flex-col items-start">
-                    
-                    {/* Línea del título */}
-                    <div className="flex items-center gap-2">
-                      <Package className="w-5 h-5 text-indigo-600" />
-                      <span className="toggle-title font-semibold">
-                        Servicios Masivos -
-                      </span>
-
-                      {serviciosSeleccionados.length > 0 && (
-                        <span className="counter-badge animate-pop">
-                          {serviciosSeleccionados.length}
-                        </span>
-                      )}
-                      {/* Descripción alineada con el texto (no con el ícono) */}
-                      <p className="text-sm text-gray-500 ml-7 mt-1">
-                        Selecciona múltiples servicios para aplicar acciones de forma rápida.
+          {permissions.canCreate && serviciosSinLecturaInfo?.hay_pendientes && (
+            <div className="services-permanent-section">
+                <div className="services-no-reading-card">
+                  <div className="services-no-reading-info">
+                    <Briefcase className="w-5 h-5 text-emerald-600" />
+                    <div>
+                      <h4>Servicios permanentes sin lectura pendientes</h4>
+                      <p>
+                        {serviciosSinLecturaInfo.total_afiliados} afiliado(s), {' '}
+                        {serviciosSinLecturaInfo.total_servicios} servicio(s), {' '}
+                        estimado {formatCurrency(serviciosSinLecturaInfo.monto_estimado || 0)}
                       </p>
                     </div>
-
                   </div>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleGenerarServiciosSinLectura}
+                    disabled={generatingServiciosSinLectura || loadingServiciosSinLectura}
+                  >
+                    {generatingServiciosSinLectura ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Generando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-4 h-4" />
+                        <span>Generar facturas</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-                
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={showServicios}
-                    onChange={(e) => setShowServicios(e.target.checked)}
-                    disabled={loading}
-                  />
-                  <span className="toggle-slider"></span>
-                </label>
-              </div>
+            </div>
+          )}
 
-              {/* CONTENIDO EXPANDIBLE */}
-              {showServicios && (
-                <div className="services-content">
+          {permissions.canUpdate && (
+            <div className="services-bulk-section">
+                  <div className="services-toggle-header">
+                    <div className="toggle-left flex flex-col">
+                      <div className="toggle-left flex flex-col items-start">
+                        
+                        {/* Línea del título */}
+                        <div className="flex items-center gap-2">
+                          <Package className="w-5 h-5 text-indigo-600" />
+                          <span className="toggle-title font-semibold">
+                            Servicios Masivos -
+                          </span>
+
+                          {serviciosSeleccionados.length > 0 && (
+                            <span className="counter-badge animate-pop">
+                              {serviciosSeleccionados.length}
+                            </span>
+                          )}
+                          {/* Descripción alineada con el texto (no con el ícono) */}
+                          <p className="text-sm text-gray-500 ml-7 mt-1">
+                            Selecciona múltiples servicios para aplicar acciones de forma rápida.
+                          </p>
+                        </div>
+
+                      </div>
+                    </div>
+                    
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={showServicios}
+                        onChange={(e) => setShowServicios(e.target.checked)}
+                        disabled={loading}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
+
+                  {/* CONTENIDO EXPANDIBLE */}
+                  {showServicios && (
+                    <div className="services-content">
                   {serviciosDisponibles.length === 0 ? (
                     <div className="services-empty">
                       <Package className="w-12 h-12 text-gray-300" />
@@ -1515,8 +1627,8 @@ const agruparDetallesPorTipo = (detalles) => {
                       )}
                     </>
                   )}
-                </div>
-              )}
+                    </div>
+                  )}
             </div>
           )}
 

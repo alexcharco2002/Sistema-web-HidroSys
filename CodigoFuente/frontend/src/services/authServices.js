@@ -343,13 +343,28 @@ class AuthService {
       if (response.success) {
         this.user = response.data.user;
         this.token = response.data.token;
+        this.sessionToken = response.data.session_token || response.session_token || null;
         this.permissions = response.data.user.permisos || [];
         sessionStorage.setItem('auth_token', this.token);
+        if (this.sessionToken) {
+          sessionStorage.setItem('session_token', this.sessionToken);
+        } else {
+          sessionStorage.removeItem('session_token');
+        }
         sessionStorage.setItem('user_data', JSON.stringify(this.user));
         sessionStorage.setItem('user_permissions', JSON.stringify(this.permissions));
         sessionStorage.setItem('login_time', new Date().toISOString());
         const redirectRoute = this.getRoleBasedRoute();
-        return { success: true, redirectTo: redirectRoute, data: { user: this.user, token: this.token, permissions: this.permissions } };
+        return {
+          success: true,
+          redirectTo: redirectRoute,
+          data: {
+            user: this.user,
+            token: this.token,
+            session_token: this.sessionToken,
+            permissions: this.permissions
+          }
+        };
       }
 
       return { success: false, message: response.message || 'Credenciales inválidas' };
@@ -455,8 +470,15 @@ clearLocalData() {
       const response = await this.makeRequest(API_CONFIG.endpoints.verifySession);
 
       if (response && !response.detail) {
-        this.user = response;
-        this.permissions = response.permisos || [];
+        const verifiedUser = response.user || response;
+        const verifiedSessionToken = response.session_token || response.data?.session_token;
+
+        this.user = verifiedUser;
+        this.permissions = verifiedUser.permisos || [];
+        if (verifiedSessionToken) {
+          this.sessionToken = verifiedSessionToken;
+          sessionStorage.setItem('session_token', verifiedSessionToken);
+        }
         sessionStorage.setItem('user_data', JSON.stringify(this.user));
         sessionStorage.setItem('user_permissions', JSON.stringify(this.permissions));
         return { success: true, user: this.user };

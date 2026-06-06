@@ -13,12 +13,17 @@ const createFetchInterceptor = () => {
 
   window.fetch = async (...args) => {
     const [url, config = {}] = args;
+    const headers = config.headers || {};
+    const skipSessionExpired =
+      headers['X-Skip-Session-Expired'] === 'true' ||
+      headers['x-skip-session-expired'] === 'true' ||
+      (headers.get && headers.get('X-Skip-Session-Expired') === 'true');
 
     try {
       const response = await originalFetch(url, config);
 
       // 🔥 Interceptar respuestas 401 globalmente
-      if (response.status === 401 && !isHandlingExpiredSession) {
+      if (response.status === 401 && !skipSessionExpired && !isHandlingExpiredSession) {
         isHandlingExpiredSession = true;
         
         // ✅ NUEVO: Verificar si es un logout forzado

@@ -461,6 +461,18 @@
   gap: 1rem;
 }
 
+.filter-period-context {
+  margin-top: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.5rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 /* ========================================
    GRUPOS DE FILTROS
    ======================================== */

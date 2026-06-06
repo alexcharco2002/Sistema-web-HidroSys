@@ -20,6 +20,76 @@ import {
 
 import './AffiliateBillingSection.css';
 import './HistorialConsumos.css'; // Para estilos compartidos de tablas y filtros
+import './MiMedidorSection.css';
+
+const buildPeriodoConsumo = (anio, mes) => {
+  if (!anio || !mes) return '';
+  return `${anio}-${String(mes).padStart(2, '0')}`;
+};
+
+const getPeriodoFromDate = (fecha) => {
+  if (!fecha || typeof fecha !== 'string') return '';
+  const match = fecha.match(/^(\d{4})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}` : '';
+};
+
+const normalizePeriodoValue = (periodo) => {
+  if (!periodo) return '';
+  if (typeof periodo === 'object') {
+    const periodoValue = periodo.periodo_consumo ||
+      periodo.periodoconsumo ||
+      periodo.periodoConsumo ||
+      periodo.periodo_facturacion ||
+      periodo.periodofacturacion ||
+      periodo.periodo;
+
+    if (periodoValue) return normalizePeriodoValue(periodoValue);
+
+    return buildPeriodoConsumo(
+      periodo.anio_consumo || periodo.anioconsumo || periodo.anio_facturacion || periodo.anio_periodo || periodo.anio || periodo.year,
+      periodo.mes_consumo || periodo.mesconsumo || periodo.mes_facturacion || periodo.mes_periodo || periodo.mes || periodo.month
+    );
+  }
+
+  return String(periodo);
+};
+
+const getFacturaPeriodoConsumo = (factura) => {
+  const periodo = factura?.periodo_consumo ||
+    factura?.periodoconsumo ||
+    factura?.periodoConsumo ||
+    factura?.periodo_facturacion ||
+    factura?.periodofacturacion ||
+    factura?.periodo_lectura ||
+    factura?.periodolectura ||
+    factura?.periodo;
+
+  if (periodo) return normalizePeriodoValue(periodo);
+
+  const anio = factura?.anio_consumo || factura?.anioconsumo || factura?.anio_facturacion || factura?.anio_periodo || factura?.anio || factura?.year;
+  const mes = factura?.mes_consumo || factura?.mesconsumo || factura?.mes_facturacion || factura?.mes_periodo || factura?.mes || factura?.month;
+  return buildPeriodoConsumo(anio, mes) || getPeriodoFromDate(factura?.fecha_emision || factura?.fechaemision);
+};
+
+const getPeriodoSortValue = (periodo) => {
+  if (!periodo || typeof periodo !== 'string') return 0;
+  const [anio, mes] = periodo.split('-').map(Number);
+  if (!anio || !mes) return 0;
+  return anio * 100 + mes;
+};
+
+const MESES_ES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
+
+const formatPeriodoDisplay = (periodo) => {
+  if (!periodo) return 'N/A';
+  const [anio, mes] = periodo.split('-');
+  const mesIndex = Number(mes) - 1;
+  if (!anio || Number.isNaN(mesIndex) || !MESES_ES[mesIndex]) return periodo;
+  return `${MESES_ES[mesIndex]} ${anio}`;
+};
 
 const AffiliateBillingSection = () => {
 
@@ -47,13 +117,11 @@ const AffiliateBillingSection = () => {
   // ESTADOS DE FILTROS Y BÚSQUEDA
   // ============================================================
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterFechaDesde, setFilterFechaDesde] = useState('');
-  const [filterFechaHasta, setFilterFechaHasta] = useState('');
   const [filterEstadoFactura, setFilterEstadoFactura] = useState('todos');
   const [filterMontoMin, setFilterMontoMin] = useState('');
   const [filterMontoMax, setFilterMontoMax] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
-  const [sortBy, setSortBy] = useState('fecha_emision');
+  const [sortBy, setSortBy] = useState('periodo');
 
   // ============================================================
   // ESTADOS DE PERIODOS (AÑO/MES)
@@ -259,16 +327,10 @@ const AffiliateBillingSection = () => {
           factura.usuario_afiliado?.usuario_sistema?.nombre_completo
             ?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           factura.usuario_afiliado?.num_medidor?.includes(searchTerm) ||
+          getFacturaPeriodoConsumo(factura).toLowerCase().includes(searchTerm.toLowerCase()) ||
+          formatPeriodoDisplay(getFacturaPeriodoConsumo(factura)).toLowerCase().includes(searchTerm.toLowerCase()) ||
           factura.usuario_afiliado?.sector?.nombre_sector
             ?.toLowerCase().includes(searchTerm.toLowerCase());
-
-        const fechaEmision = new Date(factura.fecha_emision);
-
-        const matchesFechaDesde =
-          !filterFechaDesde || fechaEmision >= new Date(filterFechaDesde);
-
-        const matchesFechaHasta =
-          !filterFechaHasta || fechaEmision <= new Date(filterFechaHasta);
 
         const matchesMontoMin =
           !filterMontoMin || factura.total >= parseFloat(filterMontoMin);
@@ -278,8 +340,6 @@ const AffiliateBillingSection = () => {
 
         return (
           matchesSearch &&
-          matchesFechaDesde &&
-          matchesFechaHasta &&
           matchesMontoMin &&
           matchesMontoMax
         );
@@ -288,9 +348,10 @@ const AffiliateBillingSection = () => {
         let comparison = 0;
 
         switch (sortBy) {
-          case 'fecha_emision':
+          case 'periodo':
             comparison =
-              new Date(a.fecha_emision) - new Date(b.fecha_emision);
+              getPeriodoSortValue(getFacturaPeriodoConsumo(a)) -
+              getPeriodoSortValue(getFacturaPeriodoConsumo(b));
             break;
 
           case 'monto':
@@ -305,7 +366,8 @@ const AffiliateBillingSection = () => {
 
           default:
             comparison =
-              new Date(a.fecha_emision) - new Date(b.fecha_emision);
+              getPeriodoSortValue(getFacturaPeriodoConsumo(a)) -
+              getPeriodoSortValue(getFacturaPeriodoConsumo(b));
         }
 
         return sortOrder === 'asc' ? comparison : -comparison;
@@ -314,8 +376,6 @@ const AffiliateBillingSection = () => {
     facturas,
     selectedMedidor,
     searchTerm,
-    filterFechaDesde,
-    filterFechaHasta,
     filterMontoMin,
     filterMontoMax,
     sortBy,
@@ -329,6 +389,30 @@ const AffiliateBillingSection = () => {
       : null,
     [selectedMedidor, medidores]
   );
+
+  const getPeriodoReporteContext = () => {
+    if (selectedAnio && selectedMes) {
+      return {
+        label: `Periodo de consumo: ${formatPeriodoDisplay(buildPeriodoConsumo(selectedAnio, selectedMes))}`,
+        detail: 'Reporte filtrado por un periodo de consumo especifico',
+        isSpecificPeriod: true
+      };
+    }
+
+    if (selectedAnio) {
+      return {
+        label: `Año de consumo: ${selectedAnio}`,
+        detail: 'Cada fila resalta el periodo de consumo correspondiente',
+        isSpecificPeriod: false
+      };
+    }
+
+    return {
+      label: 'Todos los periodos de consumo',
+      detail: 'Cada fila resalta el periodo de consumo correspondiente',
+      isSpecificPeriod: false
+    };
+  };
 
   // ============================================================
   // CALCULAR ESTADÍSTICAS
@@ -377,12 +461,10 @@ const AffiliateBillingSection = () => {
 
   const limpiarFiltros = () => {
     setSearchTerm('');
-    setFilterFechaDesde('');
-    setFilterFechaHasta('');
     setFilterEstadoFactura('todos');
     setFilterMontoMin('');
     setFilterMontoMax('');
-    setSortBy('fecha_emision');
+    setSortBy('periodo');
     setSortOrder('desc');
     setSelectedMedidor(null);
     if (aniosDisponibles.length > 0) {
@@ -650,6 +732,7 @@ const AffiliateBillingSection = () => {
       const usuarioInfo    = gf(usuarioSistema,  'usuario_sistema',  'usuariosistema')
       const nombreUsuario  = gf(usuarioInfo, 'nombre_completo', 'nombrecompleto') || 'N/A'
       const cedulaUsuario  = usuarioInfo?.cedula || ''
+      const periodoContext = getPeriodoReporteContext()
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
       const fecha = new Date().toLocaleDateString('es-EC', {
@@ -687,17 +770,27 @@ const AffiliateBillingSection = () => {
       doc.setTextColor(100, 100, 100)
       doc.text(`Fecha de generación: ${fecha}`, 148.5, 43, { align: 'center' })
 
+      doc.setFillColor(239, 246, 255)
+      doc.setDrawColor(147, 197, 253)
+      doc.roundedRect(78, 46, 141, 9, 2, 2, 'FD')
+      doc.setFontSize(10)
+      doc.setTextColor(29, 78, 216)
+      doc.text(periodoContext.label, 148.5, 51, { align: 'center' })
+      doc.setFontSize(7)
+      doc.setTextColor(100, 116, 139)
+      doc.text(periodoContext.detail, 148.5, 54, { align: 'center' })
+
       // ── Resumen estadísticas ────────────────────────────────
       doc.setFontSize(9)
       doc.setTextColor(50, 50, 50)
       doc.text(
         `Total: ${totalF}   Pagadas: ${pagadasF}   Pendientes: ${pendientesF}   Monto total: ${formatCurrency(montoTotalF)}   Pagado: ${formatCurrency(montoPagadoF)}   Por pagar: ${formatCurrency(montoPendienteF)}`,
-        148.5, 49, { align: 'center' }
+        148.5, 60, { align: 'center' }
       )
 
       // ── Filas de datos ──────────────────────────────────────
       const headers = [
-        'N° Factura', 'Fecha Emisión', 'Período', 'Medidor',
+        'N° Factura', 'Periodo Consumo', 'Medidor',
         'Sector', 'Consumo (m³)', 'Total', 'Pagado', 'Saldo', 'Estado'
       ]
 
@@ -707,8 +800,7 @@ const AffiliateBillingSection = () => {
         return [
           index + 1,
           gf(f, 'num_factura', 'numfactura') || gf(f, 'id_factura', 'idfactura') || 'N/A',
-          formatDateShort(gf(f, 'fecha_emision', 'fechaemision')),
-          formatPeriodoDisplay(f.periodo),
+          formatPeriodoDisplay(getFacturaPeriodoConsumo(f)),
           gf(afi, 'num_medidor', 'nummedidor') || 'N/A',
           gf(sector, 'nombre_sector', 'nombresector') || 'N/A',
           `${gf(f, 'consumo_m3', 'consumom3') ?? 0} m³`,
@@ -720,7 +812,7 @@ const AffiliateBillingSection = () => {
       })
 
       autoTable(doc, {
-        startY: 53,
+        startY: 64,
         head: [['#', ...headers]],
         body: dataRows,
         theme: 'grid',
@@ -728,6 +820,13 @@ const AffiliateBillingSection = () => {
         bodyStyles: { fontSize: 8, textColor: [50, 50, 50], valign: 'middle' },
         alternateRowStyles: { fillColor: [248, 249, 250] },
         didParseCell(data) {
+          if (data.section === 'body' && data.column.index === 2) {
+            data.cell.styles.textColor = [29, 78, 216]
+            data.cell.styles.fontStyle = 'bold'
+            if (!periodoContext.isSpecificPeriod) {
+              data.cell.styles.fillColor = [239, 246, 255]
+            }
+          }
           if (data.section === 'body' && data.column.index === dataRows[0]?.length - 1) {
             const val = String(data.cell.raw || '').toLowerCase()
             if (val === 'pagada')    data.cell.styles.textColor = [21, 128, 61]
@@ -783,8 +882,9 @@ const AffiliateBillingSection = () => {
     const nombreUsuario   = gf(usuarioInfo, 'nombre_completo', 'nombrecompleto') || 'N/A'
     const cedulaUsuario   = usuarioInfo?.cedula || ''
     const numMedidor      = gf(medidorActivo, 'num_medidor', 'nummedidor') || ''
+    const periodoContext  = getPeriodoReporteContext()
 
-    const headers = ['N°', 'Factura', 'Fecha Emisión', 'Período', 'Medidor',
+    const headers = ['N°', 'Factura', 'Periodo Consumo', 'Medidor',
                     'Sector', 'Consumo', 'Total', 'Pagado', 'Saldo', 'Estado']
 
     // ✅ Filas con helper dual-format
@@ -794,8 +894,7 @@ const AffiliateBillingSection = () => {
       return [
         i + 1,
         gf(f, 'num_factura', 'numfactura') || gf(f, 'id_factura', 'idfactura') || 'N/A',
-        formatDateShort(gf(f, 'fecha_emision', 'fechaemision')),
-        formatPeriodoDisplay(f.periodo),
+        formatPeriodoDisplay(getFacturaPeriodoConsumo(f)),
         gf(afi, 'num_medidor', 'nummedidor') || 'N/A',
         gf(sector, 'nombre_sector', 'nombresector') || 'N/A',
         `${gf(f, 'consumo_m3', 'consumom3') ?? 0} m³`,
@@ -822,6 +921,8 @@ const AffiliateBillingSection = () => {
       .header-left p { font-size: 12px; color: #666; margin: 2px 0; }
       .header-right { text-align: right; font-size: 12px; }
       .header-right .info-value { font-weight: 600; color: #333; }
+      .period-banner { background: #eff6ff; border: 1px solid #93c5fd; border-radius: 6px; color: #1d4ed8; font-weight: 700; margin: 0 0 16px; padding: 10px 14px; text-align: center; }
+      .period-banner span { display: block; color: #64748b; font-size: 11px; font-weight: 500; margin-top: 3px; }
       .stats-bar { display: flex; gap: 16px; background: #f0f4ff; padding: 8px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 12px; flex-wrap: wrap; }
       .stats-bar strong { color: #1d4ed8; }
       table { width: 100%; border-collapse: collapse; font-size: 10px; }
@@ -829,6 +930,8 @@ const AffiliateBillingSection = () => {
       th { padding: 9px 6px; text-align: left; font-weight: 600; border: 1px solid #2F5496; }
       td { padding: 7px 6px; border: 1px solid #ddd; }
       tbody tr:nth-child(even) { background: #f9f9f9; }
+      .period-cell { color: #1d4ed8; font-weight: 700; }
+      .period-highlight { background: #eff6ff; }
       .est-pagada { color: #15803d; font-weight: 600; }
       .est-pendiente { color: #ca8a04; font-weight: 600; }
       .est-vencida { color: #b91c1c; font-weight: 600; }
@@ -849,8 +952,12 @@ const AffiliateBillingSection = () => {
         <div class="header-right">
           <p>Generado: <span class="info-value">${fechaGeneracion}</span></p>
           <p>Total de registros: <span class="info-value">${totalF}</span></p>
-          ${selectedAnio ? `<p>Período: <span class="info-value">${selectedAnio}${selectedMes ? ` / Mes ${selectedMes}` : ''}</span></p>` : ''}
         </div>
+      </div>
+
+      <div class="period-banner">
+        ${periodoContext.label}
+        <span>${periodoContext.detail}</span>
       </div>
 
       <div class="stats-bar">
@@ -873,9 +980,11 @@ const AffiliateBillingSection = () => {
                       : estado === 'pendiente' ? 'est-pendiente'
                       : estado === 'vencida'   ? 'est-vencida'
                       : estado === 'anulada'   ? 'est-anulada' : ''
-            return `<tr>${fila.map((c, ci) =>
-              `<td${ci === fila.length - 1 ? ` class="${cls}"` : ''}>${c ?? 'N/A'}</td>`
-            ).join('')}</tr>`
+            return `<tr>${fila.map((c, ci) => {
+              const periodoCls = ci === 2 ? `period-cell${periodoContext.isSpecificPeriod ? '' : ' period-highlight'}` : ''
+              const cellCls = ci === 2 ? periodoCls : ci === fila.length - 1 ? cls : ''
+              return `<td${cellCls ? ` class="${cellCls}"` : ''}>${c ?? 'N/A'}</td>`
+            }).join('')}</tr>`
           }).join('')}
         </tbody>
       </table>
@@ -928,18 +1037,6 @@ const AffiliateBillingSection = () => {
 
   const formatCurrency = (amount) =>
     new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(amount || 0);
-
-  const formatearPeriodo = (mes, anio) => {
-    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-    return `${meses[mes - 1]} ${anio}`;
-  };
-
-  const formatPeriodoDisplay = (periodo) => {
-    if (!periodo) return 'N/A';
-    const [anio, mes] = periodo.split('-');
-    return formatearPeriodo(parseInt(mes), anio);
-  };
 
   const getMetodoIcon = (metodo) => {
     switch (metodo?.toLowerCase()) {
@@ -1023,6 +1120,34 @@ const AffiliateBillingSection = () => {
         <div className="empty-state">
           <RefreshCw className="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin" />
           <h3>Espere mientras cargamos sus facturas...</h3>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && facturas.length === 0) {
+    return (
+      <div className="medidor-container">
+        <div className="section-header">
+          <div className="section-title">
+            <FileText className="w-7 h-7 text-blue-600" />
+            <div>
+              <h2>Facturas y Pagos</h2>
+              <p className="section-subtitle">Consulta tus facturas y pagos registrados</p>
+            </div>
+          </div>
+          <button className="btn-secondary" onClick={handleRecargar} title="Actualizar información">
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="medidor-error-state">
+          <AlertCircle size={64} />
+          <h3>No se pudo cargar la información</h3>
+          <p>{error}</p>
+          <button onClick={handleRecargar} className="btn-primary">
+            <RefreshCw size={16} />
+            Reintentar
+          </button>
         </div>
       </div>
     );
@@ -1149,7 +1274,7 @@ const AffiliateBillingSection = () => {
         <div className="filters-section-card">
           <div className="filters-section-header">
             <Search className="w-4 h-4 text-blue-600" />
-            <h4 className="filters-section-title">Filtro por periodo</h4>
+            <h4 className="filters-section-title">Filtro por periodo de consumo</h4>
           </div>
           <div className="filters-section-content-full">
             <div className="filter-group-row">
@@ -1184,6 +1309,9 @@ const AffiliateBillingSection = () => {
                 )}
               </div>
             </div>
+            <div className="filter-period-context">
+              {getPeriodoReporteContext().label}
+            </div>
           </div>
         </div>
 
@@ -1212,7 +1340,7 @@ const AffiliateBillingSection = () => {
               <label className="filter-label">Ordenar por</label>
               <select className="filter-select" value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}>
-                <option value="fecha_emision">Fecha</option>
+                <option value="periodo">Periodo de consumo</option>
                 <option value="monto">Monto</option>
                 <option value="numero">Número</option>
               </select>
@@ -1320,7 +1448,7 @@ const AffiliateBillingSection = () => {
 {/* ENCABEZADOS DE COLUMNAS */}
 {filteredFacturas.length > 0 && (
   <div className="fcols-header">
-    <div className="fcol-h"><Calendar className="w-3 h-3" /><span>Fecha emisión</span></div>
+    <div className="fcol-h"><Calendar className="w-3 h-3" /><span>Periodo consumo</span></div>
     <div className="fcol-h"><Gauge className="w-3 h-3" /><span>Medidor</span></div>
     <div className="fcol-h"><Activity className="w-3 h-3" /><span>Consumo</span></div>
     <div className="fcol-h fcol-h-right"><DollarSign className="w-3 h-3" /><span>Total</span></div>
@@ -1355,9 +1483,9 @@ const AffiliateBillingSection = () => {
       return (
         <div key={factura.id_factura} className="factura-card-item">
 
-          {/* Col 1: Fecha principal + número secundario */}
+          {/* Col 1: Periodo principal + número secundario */}
           <div className="fc-fecha factura-clickable" onClick={() => verDetalle(factura)}>
-            <span className="fc-fecha-dia">{formatDateShort(factura.fecha_emision)}</span>
+            <span className="fc-fecha-dia">{formatPeriodoDisplay(getFacturaPeriodoConsumo(factura))}</span>
             <span className="fc-fact-num">{factura.num_factura || `#${factura.id_factura}`}</span>
             {estaPagada && ultimoPago?.fecha_pago && (
               <span className="fc-pago-fecha">
@@ -1500,12 +1628,12 @@ const AffiliateBillingSection = () => {
                     <p className="font-mono font-semibold">{selectedFactura.num_factura}</p>
                   </div>
                   <div className="detail-group">
-                    <label>Fecha de Emisión</label>
-                    <p>{formatDateShort(selectedFactura.fecha_emision)}</p>
+                    <label>Periodo de consumo</label>
+                    <p>{formatPeriodoDisplay(getFacturaPeriodoConsumo(selectedFactura))}</p>
                   </div>
                   <div className="detail-group">
-                    <label>Periodo</label>
-                    <p>{formatPeriodoDisplay(selectedFactura.periodo)}</p>
+                    <label>Fecha de emisión</label>
+                    <p>{formatDateShort(selectedFactura.fecha_emision)}</p>
                   </div>
                   <div className="detail-group">
                     <label>Estado</label>
@@ -1839,7 +1967,7 @@ const AffiliateBillingSection = () => {
                 </div>
                 <div>
                   <span>Periodo: </span>
-                  <strong>{formatPeriodoDisplay(paypalFactura.periodo)}</strong>
+                  <strong>{formatPeriodoDisplay(getFacturaPeriodoConsumo(paypalFactura))}</strong>
                 </div>
                 <div>
                   <span>Saldo pendiente: </span>

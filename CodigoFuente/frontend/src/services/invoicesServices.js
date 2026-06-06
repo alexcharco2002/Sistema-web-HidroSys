@@ -17,6 +17,8 @@ baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
     marcarVencidas: '/facturas/jobs/marcar-vencidas',
     serviciosActivos: '/facturas/activos-facturacion',
     facturasPeriodosDisponibles: '/facturas/periodos/disponibles',
+    serviciosSinLecturaPendientes: '/facturas/servicios-sin-lectura/pendientes',
+    generarServiciosSinLectura: '/facturas/servicios-sin-lectura/generar',
   }
 };
 
@@ -634,6 +636,53 @@ async getPeriodosDisponibles() {
       return {
         success: false,
         message: error.message || 'Error al aplicar servicios'
+      };
+    }
+  }
+
+  async validarServiciosSinLectura(periodo) {
+    try {
+      const params = new URLSearchParams({ periodo });
+      const data = await this.makeRequest(
+        `${API_CONFIG.endpoints.serviciosSinLecturaPendientes}?${params.toString()}`
+      );
+
+      return {
+        success: true,
+        data
+      };
+    } catch (error) {
+      console.error('Error al validar servicios sin lectura:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al validar servicios sin lectura'
+      };
+    }
+  }
+
+  async generarServiciosSinLectura(periodo) {
+    try {
+      const data = await this.makeRequest(
+        API_CONFIG.endpoints.generarServiciosSinLectura,
+        {
+          method: 'POST',
+          body: { periodo }
+        }
+      );
+
+      this.cachedFacturas = null;
+      this.cachedStats = null;
+
+      return {
+        success: true,
+        data,
+        message: data.message || 'Facturas generadas correctamente'
+      };
+    } catch (error) {
+      console.error('Error al generar servicios sin lectura:', error);
+      return {
+        success: false,
+        message: error.message || 'Error al generar servicios sin lectura'
       };
     }
   }

@@ -5,7 +5,11 @@ import authService from '../services/authServices';
 import userService from '../services/userServices';
 import './ChangePasswordModal.css';
 
-const ChangePasswordModal = ({ isOpen, onClose, userId, userEmail, isPrimerLogin = false, onSuccess }) => {
+const ChangePasswordModal = ({ isOpen, onClose, userId, username, userEmail, isPrimerLogin = false, onSuccess }) => {
+  const storedUser = authService.getStoredUser?.() || {};
+  const normalizedEmail = String(userEmail || '').trim().toLowerCase();
+  const normalizedUsername = String(username || storedUser.usuario || storedUser.username || '').trim();
+
   // Estados principales
   const hasRequestedCodeRef = useRef(false);
   const [step, setStep] = useState(1);
@@ -116,10 +120,22 @@ const ChangePasswordModal = ({ isOpen, onClose, userId, userEmail, isPrimerLogin
 
   // PASO 1: Solicitar código de verificación
   const handleRequestCode = useCallback(async () => {
+    if (!normalizedEmail) {
+      setIsError(true);
+      setMessage('No se encontró un correo electrónico válido para este usuario.');
+      return;
+    }
+
+    if (!normalizedUsername) {
+      setIsError(true);
+      setMessage('No se encontró el nombre de usuario para enviar el código.');
+      return;
+    }
+
     setIsLoading(true);
     setMessage('');
     try {
-      const result = await authService.forgotPassword(userEmail);
+      const result = await authService.forgotPassword(normalizedUsername, normalizedEmail);
       if (result.success) {
         setIsError(false);
         setMessage('Se ha enviado un código de verificación a tu correo.');
@@ -135,7 +151,7 @@ const ChangePasswordModal = ({ isOpen, onClose, userId, userEmail, isPrimerLogin
     } finally {
       setIsLoading(false);
     }
-  }, [userEmail]);
+  }, [normalizedEmail, normalizedUsername]);
 
   // Resetear estados al abrir/cerrar
   useEffect(() => {
@@ -169,10 +185,16 @@ const ChangePasswordModal = ({ isOpen, onClose, userId, userEmail, isPrimerLogin
       return;
     }
 
+    if (!normalizedEmail || !normalizedUsername) {
+      setMessage('No se pudo validar el usuario y correo para verificar el código.');
+      setIsError(true);
+      return;
+    }
+
     setIsLoading(true);
     setMessage('');
     try {
-      const result = await authService.verifyRecoveryCode(userEmail, code);
+      const result = await authService.verifyRecoveryCode(normalizedUsername, normalizedEmail, code);
       if (result.success) {
         setIsError(false);
         setMessage('Código verificado correctamente.');
@@ -289,7 +311,7 @@ const ChangePasswordModal = ({ isOpen, onClose, userId, userEmail, isPrimerLogin
                 </label>
                 <input
                   type="email"
-                  value={userEmail}
+                  value={normalizedEmail}
                   disabled
                   className="form-input"
                 />

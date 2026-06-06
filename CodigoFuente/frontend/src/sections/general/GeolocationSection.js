@@ -95,6 +95,56 @@ const mapOptions = {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
+const getAffiliateCode = (item) =>
+  item?.cod_usuario_afi ??
+  item?.codigo_afiliado ??
+  item?.codigo_usuario_afi ??
+  item?.codigo_usuarioafi ??
+  item?.codigo ??
+  '';
+
+const getAffiliateCodeSortValue = (item) => {
+  const rawCode = getAffiliateCode(item);
+  const numericCode = Number.parseInt(rawCode, 10);
+  return Number.isFinite(numericCode) ? numericCode : Number.MAX_SAFE_INTEGER;
+};
+
+const sortByAffiliateCode = (a, b) => {
+  const codeDiff = getAffiliateCodeSortValue(a) - getAffiliateCodeSortValue(b);
+  if (codeDiff !== 0) return codeDiff;
+  return (a?.nombre_afiliado || '').localeCompare(b?.nombre_afiliado || '');
+};
+
+const sortMetersByAffiliateCode = (a, b) => {
+  const codeDiff = getAffiliateCodeSortValue(a) - getAffiliateCodeSortValue(b);
+  if (codeDiff !== 0) return codeDiff;
+  return (a?.num_medidor || '').localeCompare(b?.num_medidor || '', undefined, { numeric: true });
+};
+
+const getInitials = (name = '') =>
+  name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0])
+    .join('')
+    .toUpperCase() || 'AF';
+
+const meterHasCoordinates = (meter) => meter?.latitud != null && meter?.longitud != null;
+
+const normalizeSearchText = (value = '') =>
+  value
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+const hasAffiliateCode = (affiliate) => {
+  const code = normalizeSearchText(getAffiliateCode(affiliate));
+  return code.length > 0 && !['sin codigo', 'sin código', 's/c', 'n/a', 'null', 'undefined'].includes(code);
+};
+
 const GeolocationSection = () => {
   const mapRef             = useRef(null);
   const mapSectionRef      = useRef(null);
@@ -149,6 +199,12 @@ const GeolocationSection = () => {
   });
   const [createError,  setCreateError]  = useState(null);
   const [createSaving, setCreateSaving] = useState(false);
+
+  const [showAssignCoordsModal, setShowAssignCoordsModal] = useState(false);
+  const [assignableMeters, setAssignableMeters] = useState([]);
+  const [assignSearchTerm, setAssignSearchTerm] = useState('');
+  const [assignCoordsError, setAssignCoordsError] = useState(null);
+  const [loadingAssignableMeters, setLoadingAssignableMeters] = useState(false);
 
 
   const { isLoaded, loadError } = useGoogleMaps();
@@ -333,7 +389,7 @@ const filteredMedidores = useMemo(() => {
 
   // ── MODO ACTUALIZAR COORDENADAS ───────────────────────────────────────────
   const iniciarModoUbicacion = (medidor, e) => {
-    e.stopPropagation();
+    e?.stopPropagation?.();
     setModoUbicacion(medidor);
     setCoordPreview(null);
     setConfirmDialog(false);
@@ -532,19 +588,127 @@ const activarMedidor = async (medidor, e) => {
   const fetchAffiliates = useCallback(async () => {
     try {
       const res = await metersService.getAvailableAffiliates();    
-      if (res?.success) setAvailableAffiliates(res.data || []);
+      if (res?.success) {
+        setAvailableAffiliates(
+          [...(res.data || [])]
+            .filter(hasAffiliateCode)
+            .sort(sortByAffiliateCode)
+        );
+      }
     } catch { /* silencioso */ }
   }, []);
 
+  const affiliateSearchQuery = normalizeSearchText(affiliateSearchTerm);
+
   // Afiliados filtrados por buscador
   const filteredAffiliates = availableAffiliates.filter(a => {
-    const q = affiliateSearchTerm.toLowerCase();
+    if (!hasAffiliateCode(a)) return false;
+    if (!affiliateSearchQuery) return true;
+
+    const searchableText = normalizeSearchText([
+      a.nombre_afiliado,
+      getAffiliateCode(a),
+      a.cedula,
+      a.nombre_sector,
+    ].filter(Boolean).join(' '));
+
+    return affiliateSearchQuery
+      .split(/\s+/)
+      .every(term => searchableText.includes(term));
+  }).sort(sortByAffiliateCode);
+
+  const clearSelectedAffiliate = useCallback(() => {
+    setCreateForm(f => ({ ...f, id_usuario_afi: null }));
+    setSelectedAffiliateInfo(null);
+  }, []);
+
+  const handleSelectAffiliate = useCallback((affiliate) => {
+    const alreadySelected = createForm.id_usuario_afi === affiliate.id_usuario_afi;
+    setCreateForm(f => ({
+      ...f,
+      id_usuario_afi: alreadySelected ? null : affiliate.id_usuario_afi,
+    }));
+    setSelectedAffiliateInfo(alreadySelected ? null : affiliate);
+  }, [createForm.id_usuario_afi]);
+
+  const fetchAssignableMeters = useCallback(async () => {
+    setLoadingAssignableMeters(true);
+    setAssignCoordsError(null);
+
+    try {
+      const limit = 500;
+      let skip = 0;
+      let allMeters = [];
+      let keepLoading = true;
+
+      while (keepLoading) {
+        const result = await metersService.getMeters({ asignado: true, skip, limit });
+
+        if (!result.success) {
+          setAssignCoordsError(result.message || 'No se pudieron cargar los medidores asignados.');
+          setAssignableMeters([]);
+          return;
+        }
+
+        const page = result.data || [];
+        allMeters = [...allMeters, ...page];
+        keepLoading = page.length === limit;
+        skip += limit;
+      }
+
+      const meters = allMeters
+        .filter(meter => meter.id_usuario_afi)
+        .sort(sortMetersByAffiliateCode);
+
+      setAssignableMeters(meters);
+    } catch {
+      setAssignCoordsError('No se pudieron cargar los medidores asignados.');
+      setAssignableMeters([]);
+    } finally {
+      setLoadingAssignableMeters(false);
+    }
+  }, []);
+
+  const filteredAssignableMeters = assignableMeters.filter(meter => {
+    const q = assignSearchTerm.trim().toLowerCase();
+    if (!q) return true;
+
     return (
-      (a.nombre_afiliado || '').toLowerCase().includes(q) ||
-      (a.cod_usuario_afi || '').toString().includes(q) ||
-      (a.cedula           || '').includes(q)
+      (meter.nombre_afiliado || '').toLowerCase().includes(q) ||
+      (meter.cod_usuario_afi || '').toString().includes(q) ||
+      (meter.cedula || '').includes(q) ||
+      (meter.num_medidor || '').toLowerCase().includes(q) ||
+      (meter.nombre_sector || '').toLowerCase().includes(q)
     );
-  });
+  }).sort(sortMetersByAffiliateCode);
+
+  const abrirModalAsignarCoordenadas = () => {
+    cancelarModoCrearMedidor();
+    cancelarModoUbicacion();
+    setAssignSearchTerm('');
+    setShowAssignCoordsModal(true);
+    fetchAssignableMeters();
+  };
+
+  const cerrarModalAsignarCoordenadas = () => {
+    setShowAssignCoordsModal(false);
+    setAssignSearchTerm('');
+    setAssignCoordsError(null);
+  };
+
+  const seleccionarMedidorParaCoordenadas = (medidor) => {
+    cerrarModalAsignarCoordenadas();
+    iniciarModoUbicacion(medidor);
+
+    if (window.matchMedia('(max-width: 1024px)').matches) {
+      window.requestAnimationFrame(() => {
+        mapSectionRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+    }
+  };
 
   const iniciarModoCrearMedidor = () => {
     // Cancela cualquier otro modo activo
@@ -694,14 +858,24 @@ const limiteStyleHover = {
           )}
 
           {permissions.canUpdate && (
-            <button
-              className="btn-primary"
-              onClick={iniciarModoCrearMedidor}
-              title="Registrar nuevo medidor en el mapa"
-            >
-              <Plus className="w-4 h-4 mr-1" />
-              Nuevo Medidor
-            </button>
+            <>
+              <button
+                className="btn-secondary"
+                onClick={abrirModalAsignarCoordenadas}
+                title="Asignar coordenadas a un afiliado con medidor"
+              >
+                <Crosshair className="w-4 h-4 mr-1" />
+                Asignar Coordenadas
+              </button>
+              <button
+                className="btn-primary"
+                onClick={iniciarModoCrearMedidor}
+                title="Registrar nuevo medidor en el mapa"
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Nuevo Medidor
+              </button>
+            </>
           )}
 
         </div>
@@ -971,6 +1145,14 @@ const limiteStyleHover = {
                   </div>
                 );
               })}
+
+              {filteredMedidores.length === 0 && !loading && (
+                <div className="geo-sidebar-empty-state">
+                  <MapPin className="w-10 h-10 text-gray-400" />
+                  <h4>No se encontraron medidores</h4>
+                  <p>No hay medidores con geolocalizacion que coincidan con los filtros.</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1314,7 +1496,7 @@ const limiteStyleHover = {
         </div>
       </div>
 
-      {filteredMedidores.length === 0 && !loading && (
+      {false && filteredMedidores.length === 0 && !loading && (
         <div className="empty-state">
           <MapPin className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3>No se encontraron medidores</h3>
@@ -1389,10 +1571,121 @@ const limiteStyleHover = {
         </div>
       )}
 
+      {showAssignCoordsModal && (
+        <div className="geo-confirm-overlay" onClick={cerrarModalAsignarCoordenadas}>
+          <div
+            className="geo-confirm-dialog geo-create-dialog geo-assign-dialog"
+            style={{ maxWidth: 560, width: '95%' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="geo-confirm-header">
+              <div className="geo-confirm-icon" style={{ background: '#dbeafe', color: '#1d4ed8' }}>
+                <Crosshair size={22} />
+              </div>
+              <div>
+                <h3>Asignar Coordenadas</h3>
+                <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>
+                  Selecciona un afiliado con medidor y luego marca su punto en el mapa.
+                </p>
+              </div>
+              <button
+                style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer' }}
+                onClick={cerrarModalAsignarCoordenadas}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="geo-create-form">
+              {assignCoordsError && (
+                <div className="alert alert-error" style={{ margin: 0 }}>
+                  <AlertCircle className="w-4 h-4 mr-2" />
+                  {assignCoordsError}
+                </div>
+              )}
+
+              <div className="geo-affiliate-search-container">
+                <div className="geo-affiliate-search-input-wrapper">
+                  <Search className="geo-affiliate-search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por codigo, afiliado, cedula, medidor o sector..."
+                    value={assignSearchTerm}
+                    onChange={e => setAssignSearchTerm(e.target.value)}
+                    className="geo-affiliate-search-input"
+                  />
+                  {assignSearchTerm && (
+                    <button type="button" onClick={() => setAssignSearchTerm('')} className="geo-affiliate-search-clear">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="geo-affiliates-modal-list geo-assign-list">
+                {loadingAssignableMeters ? (
+                  <div className="geo-affiliate-empty-state">
+                    <Loader2 className="w-8 h-8 spin" />
+                    <p>Cargando medidores asignados...</p>
+                  </div>
+                ) : (
+                  <>
+                    {filteredAssignableMeters.map(meter => {
+                      const nombre = meter.nombre_afiliado || 'Sin nombre';
+                      const hasCoords = meterHasCoordinates(meter);
+
+                      return (
+                        <button
+                          type="button"
+                          key={meter.id_medidor}
+                          className="geo-affiliate-modal-item geo-assign-item"
+                          onClick={() => seleccionarMedidorParaCoordenadas(meter)}
+                        >
+                          <div className="geo-avatar-circle">{getInitials(nombre)}</div>
+                          <div className="geo-affiliate-info">
+                            <p className="geo-affiliate-name">{nombre}</p>
+                            <p className="geo-affiliate-meta">
+                              {meter.cod_usuario_afi || 'Sin codigo'} · {meter.cedula || 'Sin cedula'} · Medidor {meter.num_medidor || 'S/N'}
+                            </p>
+                            <p className="geo-affiliate-meta">
+                              {meter.nombre_sector || 'Sin sector'}
+                            </p>
+                          </div>
+                          <span className={`geo-coordinate-status ${hasCoords ? 'has-coords' : 'no-coords'}`}>
+                            {hasCoords ? 'Actualizar' : 'Asignar'}
+                          </span>
+                        </button>
+                      );
+                    })}
+
+                    {filteredAssignableMeters.length === 0 && (
+                      <div className="geo-affiliate-empty-state">
+                        <User className="w-8 h-8" />
+                        <p>No se encontraron afiliados con medidor.</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="geo-confirm-actions geo-create-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={cerrarModalAsignarCoordenadas}
+                >
+                  <X className="w-4 h-4 mr-2" /> Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
   {showCreateModal && coordNuevoMedidor && (
   <div className="geo-confirm-overlay" onClick={cancelarModoCrearMedidor}>
     <div
-      className="geo-confirm-dialog geo-create-dialog"
+      className="geo-confirm-dialog geo-create-dialog geo-new-meter-dialog"
       style={{ maxWidth: 480, width: '95%' }}
       onClick={e => e.stopPropagation()}
     >
@@ -1422,7 +1715,8 @@ const limiteStyleHover = {
         </div>
       )}
 
-      <form onSubmit={handleCreateMedidor} className="geo-create-form">
+      <form onSubmit={handleCreateMedidor} className="geo-create-form geo-new-meter-form">
+        <div className="geo-new-meter-scroll">
 
         {/* Número de medidor */}
         <div className="form-group" style={{ margin: 0 }}>
@@ -1467,7 +1761,7 @@ const limiteStyleHover = {
         </div>
 
         {/* Asignar afiliado */}
-        <div className="form-group" style={{ margin: 0 }}>
+        <div className="form-group" style={{ margin: 0, order: -5 }}>
           <label>Asignar a Afiliado <small style={{ color: '#9ca3af' }}>opcional</small></label>
 
           {/* Buscador */}
@@ -1490,58 +1784,60 @@ const limiteStyleHover = {
           </div>
 
           <div className="geo-affiliates-modal-list">
-            <button
-              type="button"
-              className={`geo-affiliate-modal-item ${!createForm.id_usuario_afi ? 'selected' : ''}`}
-              onClick={() => {
-                setCreateForm(f => ({ ...f, id_usuario_afi: null }));
-                setSelectedAffiliateInfo(null);
-              }}
-            >
-              <div className="geo-avatar-circle">SA</div>
-              <div className="geo-affiliate-info">
-                <p className="geo-affiliate-name">Sin asignar</p>
-                <p className="geo-affiliate-meta">Crear medidor sin afiliado asociado</p>
-              </div>
-              {!createForm.id_usuario_afi && <CheckCircle className="w-4 h-4 text-blue-600" />}
-            </button>
+            {!affiliateSearchQuery && (
+              <button
+                type="button"
+                className={`geo-affiliate-modal-item ${!createForm.id_usuario_afi ? 'selected' : ''}`}
+                onClick={clearSelectedAffiliate}
+              >
+                <div className="geo-avatar-circle">SA</div>
+                <div className="geo-affiliate-info">
+                  <p className="geo-affiliate-name">Sin asignar</p>
+                  <p className="geo-affiliate-meta">Crear medidor sin afiliado asociado</p>
+                </div>
+                {!createForm.id_usuario_afi && <CheckCircle className="w-4 h-4 text-blue-600" />}
+              </button>
+            )}
 
-            {filteredAffiliates.map(a => {
-              const isSelected = createForm.id_usuario_afi === a.id_usuario_afi;
-              const nombre = a.nombre_afiliado || 'Sin nombre';
-              const iniciales = nombre
-                .split(' ')
-                .filter(Boolean)
-                .slice(0, 2)
-                .map(parte => parte[0])
-                .join('');
+            {filteredAffiliates.length > 0 ? (
+              filteredAffiliates.map(a => {
+                const isSelected = createForm.id_usuario_afi === a.id_usuario_afi;
+                const nombre = a.nombre_afiliado || 'Sin nombre';
+                const codigoAfiliado = getAffiliateCode(a);
+                const iniciales = nombre
+                  .split(' ')
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map(parte => parte[0])
+                  .join('');
 
-              return (
-                <button
-                  type="button"
-                  key={a.id_usuario_afi}
-                  className={`geo-affiliate-modal-item ${isSelected ? 'selected' : ''}`}
-                  onClick={() => {
-                    setCreateForm(f => ({ ...f, id_usuario_afi: a.id_usuario_afi }));
-                    setSelectedAffiliateInfo(a);
-                  }}
-                >
-                  <div className="geo-avatar-circle">{iniciales}</div>
-                  <div className="geo-affiliate-info">
-                    <p className="geo-affiliate-name">{nombre}</p>
-                    <p className="geo-affiliate-meta">
-                      {a.cod_usuario_afi || 'Sin código'} · {a.cedula || 'Sin cédula'} · {a.nombre_sector || 'Sin sector'}
-                    </p>
-                  </div>
-                  {isSelected && <CheckCircle className="w-4 h-4 text-blue-600" />}
-                </button>
-              );
-            })}
-
-            {filteredAffiliates.length === 0 && (
+                return (
+                  <button
+                    type="button"
+                    key={a.id_usuario_afi}
+                    className={`geo-affiliate-modal-item ${isSelected ? 'selected' : ''}`}
+                    onClick={() => handleSelectAffiliate(a)}
+                    title={isSelected ? 'Quitar selección' : 'Seleccionar afiliado'}
+                  >
+                    <div className="geo-avatar-circle">{iniciales}</div>
+                    <div className="geo-affiliate-info">
+                      <p className="geo-affiliate-name">{nombre}</p>
+                      <p className="geo-affiliate-meta">
+                        {codigoAfiliado} · {a.cedula || 'Sin cédula'} · {a.nombre_sector || 'Sin sector'}
+                      </p>
+                    </div>
+                    {isSelected && <CheckCircle className="w-4 h-4 text-blue-600" />}
+                  </button>
+                );
+              })
+            ) : (
               <div className="geo-affiliate-empty-state">
                 <User className="w-8 h-8" />
-                <p>No se encontraron afiliados con "{affiliateSearchTerm}"</p>
+                <p>
+                  {affiliateSearchQuery
+                    ? `No se encontraron afiliados con "${affiliateSearchTerm}"`
+                    : 'No hay afiliados disponibles para asignar'}
+                </p>
               </div>
             )}
           </div>
@@ -1549,14 +1845,24 @@ const limiteStyleHover = {
 
         {/* Tarjeta info afiliado seleccionado */}
         {selectedAffiliateInfo && (
-          <div className="meter-info-card">
-            <h4 className="meter-info-title">
-              <User className="w-4 h-4 mr-2" />
-              Información del Afiliado
-            </h4>
+          <div className="meter-info-card" style={{ order: -4 }}>
+            <div className="meter-info-title-row">
+              <h4 className="meter-info-title">
+                <User className="w-4 h-4 mr-2" />
+                Información del Afiliado
+              </h4>
+              <button
+                type="button"
+                className="geo-affiliate-remove-btn"
+                onClick={clearSelectedAffiliate}
+                title="Quitar afiliado seleccionado"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             <div className="meter-info-content">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, fontSize: 13 }}>
-                <p><strong>Código:</strong> {selectedAffiliateInfo.cod_usuario_afi || '—'}</p>
+                <p><strong>Código:</strong> {getAffiliateCode(selectedAffiliateInfo) || '—'}</p>
                 <p><strong>Nombre:</strong> {selectedAffiliateInfo.nombre_afiliado || '—'}</p>
                 <p><strong>Cédula:</strong> {selectedAffiliateInfo.cedula || '—'}</p>
                 <p><strong>Sector:</strong> {selectedAffiliateInfo.nombre_sector || '—'}</p>
@@ -1576,21 +1882,10 @@ const limiteStyleHover = {
             </div>
           </div>
         )}
-
-        {/* Coordenadas — solo lectura */}
-        <div className="geo-confirm-coords">
-          <div className="geo-confirm-coord-row">
-            <span className="geo-confirm-label">Latitud</span>
-            <span className="geo-confirm-value">{coordNuevoMedidor.lat.toFixed(7)}</span>
-          </div>
-          <div className="geo-confirm-coord-row">
-            <span className="geo-confirm-label">Longitud</span>
-            <span className="geo-confirm-value">{coordNuevoMedidor.lng.toFixed(7)}</span>
-          </div>
         </div>
 
         {/* Botones */}
-        <div className="geo-confirm-actions geo-create-actions">
+        <div className="geo-confirm-actions geo-create-actions geo-new-meter-actions">
           <button
             type="button"
             className="btn-secondary"

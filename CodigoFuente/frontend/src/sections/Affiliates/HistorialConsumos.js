@@ -8,10 +8,72 @@ import {
   CheckCircle, XCircle, Clock, Gauge, ArrowUpDown, SlidersHorizontal, Printer, FileDown 
 } from 'lucide-react';
 import './HistorialConsumos.css';
+import './MiMedidorSection.css';
 
 // IMPORT PARA EXPORTAR A PDF
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+
+const MESES_ES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
+
+const buildPeriodoConsumo = (anio, mes) => {
+  if (!anio || !mes) return '';
+  return `${anio}-${String(mes).padStart(2, '0')}`;
+};
+
+const getPeriodoFromDate = (fecha) => {
+  if (!fecha || typeof fecha !== 'string') return '';
+  const match = fecha.match(/^(\d{4})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}` : '';
+};
+
+const normalizePeriodoValue = (periodo) => {
+  if (!periodo) return '';
+  if (typeof periodo === 'object') {
+    const periodoValue = periodo.periodo_consumo ||
+      periodo.periodoconsumo ||
+      periodo.periodoConsumo ||
+      periodo.periodo_lectura ||
+      periodo.periodolectura ||
+      periodo.periodo;
+
+    if (periodoValue) return normalizePeriodoValue(periodoValue);
+
+    return buildPeriodoConsumo(
+      periodo.anio_consumo || periodo.anioconsumo || periodo.anio_lectura || periodo.anio_periodo || periodo.anio || periodo.year,
+      periodo.mes_consumo || periodo.mesconsumo || periodo.mes_lectura || periodo.mes_periodo || periodo.mes || periodo.month
+    );
+  }
+
+  return String(periodo);
+};
+
+const getLecturaPeriodoConsumo = (lectura) => {
+  const periodo = lectura?.periodo_consumo ||
+    lectura?.periodoconsumo ||
+    lectura?.periodoConsumo ||
+    lectura?.periodo_lectura ||
+    lectura?.periodolectura ||
+    lectura?.periodo_facturacion ||
+    lectura?.periodofacturacion ||
+    lectura?.periodo;
+
+  if (periodo) return normalizePeriodoValue(periodo);
+
+  const anio = lectura?.anio_consumo || lectura?.anioconsumo || lectura?.anio_lectura || lectura?.anio_periodo || lectura?.anio || lectura?.year;
+  const mes = lectura?.mes_consumo || lectura?.mesconsumo || lectura?.mes_lectura || lectura?.mes_periodo || lectura?.mes || lectura?.month;
+  return buildPeriodoConsumo(anio, mes) || getPeriodoFromDate(lectura?.fecha_lectura || lectura?.fechalectura);
+};
+
+const getPeriodoSortValue = (periodo) => {
+  if (!periodo || typeof periodo !== 'string') return 0;
+  const [anio, mes] = periodo.split('-').map(Number);
+  if (!anio || !mes) return 0;
+  return anio * 100 + mes;
+};
 
 const HistorialConsumos = () => {
 
@@ -35,13 +97,11 @@ const HistorialConsumos = () => {
   // ESTADOS DE FILTROS Y BÚSQUEDA
   // ============================================================
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterFechaDesde, setFilterFechaDesde] = useState('');
-  const [filterFechaHasta, setFilterFechaHasta] = useState('');
   const [filterTipoLectura, setFilterTipoLectura] = useState('todas');
   const [filterConsumoMin, setFilterConsumoMin] = useState('');
   const [filterConsumoMax, setFilterConsumoMax] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
-  const [sortBy, setSortBy] = useState('fecha');
+  const [sortBy, setSortBy] = useState('periodo');
 
   // ============================================================
   // ESTADOS DE PERIODOS (AÑO/MES)
@@ -94,24 +154,6 @@ const HistorialConsumos = () => {
   };
 
   // ============================================================
-  // FETCH MEDIDORES
-  // ============================================================
-  const fetchMisMedidores = useCallback(async () => {
-    try {
-      const result = await affiliateGeneralServices.getMisMedidores();
-      if (result.success) {
-        const lista = result.data.medidores || [];
-        setMedidores(lista);
-        return lista;
-      }
-      return [];
-    } catch (error) {
-      console.error('❌ Error obteniendo medidores:', error);
-      return [];
-    }
-  }, []);
-
-  // ============================================================
   // FETCH PERIODOS
   // ============================================================
   const fetchPeriodosDisponibles = useCallback(async () => {
@@ -124,6 +166,7 @@ const HistorialConsumos = () => {
           return result.data.anios_disponibles[0];
         }
       }
+      setError(result.message);
       return null;
     } catch (error) {
       console.error('❌ Error obteniendo periodos:', error);
@@ -151,10 +194,20 @@ const HistorialConsumos = () => {
     const inicializar = async () => {
       if (!permissions.canRead || isInitialized) return;
 
-      // Cargar todo en paralelo
+      const perfilResult = await affiliateGeneralServices.getMiMedidor();
+      if (!perfilResult.success) {
+        setLecturas([]);
+        setMedidores([]);
+        setError(perfilResult.message);
+        setLoading(false);
+        return;
+      }
+
+      setMedidores(perfilResult.data?.medidores || []);
+
+      // Cargar datos de historial solo si existe perfil de afiliado.
       const [anioReciente] = await Promise.all([
         fetchPeriodosDisponibles(),
-        fetchMisMedidores(),
         cargarTarifasVigentes(),
       ]);
 
@@ -166,7 +219,7 @@ const HistorialConsumos = () => {
     };
 
     inicializar();
-  }, [permissions.canRead, isInitialized, fetchPeriodosDisponibles, fetchMisMedidores, cargarTarifasVigentes]);
+  }, [permissions.canRead, isInitialized, fetchPeriodosDisponibles, cargarTarifasVigentes]);
 
   // Sincronizar meses cuando periodosDisponibles o selectedAnio cambian
   useEffect(() => {
@@ -242,8 +295,8 @@ const HistorialConsumos = () => {
       lecturasData[0])
 
     const lecturasOrdenadas = [...lecturasData].sort((a, b) =>
-      new Date(gf(b, 'fecha_lectura', 'fechalectura')) -
-      new Date(gf(a, 'fecha_lectura', 'fechalectura')))
+      getPeriodoSortValue(getLecturaPeriodoConsumo(b)) -
+      getPeriodoSortValue(getLecturaPeriodoConsumo(a)))
 
     let tendencia = null
     if (lecturasOrdenadas.length >= 6) {
@@ -295,6 +348,7 @@ const descargarPDF = () => {
     const nombreAfiliado  = gf(primeraLectura, 'nombre_afiliado',  'nombreafiliado')  || 'N/A'
     const codigoAfiliado  = gf(primeraLectura, 'codigo_afiliado',  'codigoafiliado')  || ''
     const numMedidor      = gf(medidorActivo,  'num_medidor',      'nummedidor')      || ''
+    const periodoContext  = getPeriodoReporteContext()
 
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
     const fecha = new Date().toLocaleDateString('es-EC', {
@@ -330,17 +384,27 @@ const descargarPDF = () => {
     doc.setTextColor(100, 100, 100)
     doc.text(`Fecha de generación: ${fecha}`, 148.5, 43, { align: 'center' })
 
+    doc.setFillColor(239, 246, 255)
+    doc.setDrawColor(147, 197, 253)
+    doc.roundedRect(78, 46, 141, 9, 2, 2, 'FD')
+    doc.setFontSize(10)
+    doc.setTextColor(29, 78, 216)
+    doc.text(periodoContext.label, 148.5, 51, { align: 'center' })
+    doc.setFontSize(7)
+    doc.setTextColor(100, 116, 139)
+    doc.text(periodoContext.detail, 148.5, 54, { align: 'center' })
+
     // ── Resumen ───────────────────────────────────────────────
     doc.setFontSize(9)
     doc.setTextColor(50, 50, 50)
     doc.text(
       `Total: ${totalF}   Consumo total: ${consumoTotalF.toFixed(2)} m³   Promedio: ${consumoPromedioF} m³   Mayor: ${gf(mayorF,'consumo_m3','consumom3') ?? 0} m³   Menor: ${gf(menorF,'consumo_m3','consumom3') ?? 0} m³`,
-      148.5, 49, { align: 'center' }
+      148.5, 60, { align: 'center' }
     )
 
     // ── Filas ─────────────────────────────────────────────────
     const headers = [
-      'Fecha Lectura', 'Medidor', 'Sector',
+      'Periodo Consumo', 'Medidor', 'Sector',
       'Lect. Anterior', 'Lect. Actual', 'Consumo (m³)',
       'Tipo', 'Clasificación', 'Afiliado'
     ]
@@ -350,7 +414,7 @@ const descargarPDF = () => {
       const clasificacion = gf(l, 'clasificacion_consumo', 'clasificacionconsumo')
       return [
         i + 1,
-        formatDateShort(gf(l, 'fecha_lectura', 'fechalectura')),
+        formatPeriodoDisplay(getLecturaPeriodoConsumo(l)),
         gf(l, 'medidor', 'medidor')?.num_medidor || gf(l, 'medidor', 'medidor')?.nummedidor || 'N/A',
         l.sector || gf(l, 'medidor', 'medidor')?.sector || 'N/A',
         `${gf(l, 'lectura_anterior', 'lecturaanterior') ?? 0} m³`,
@@ -363,7 +427,7 @@ const descargarPDF = () => {
     })
 
     autoTable(doc, {
-      startY: 53,
+      startY: 64,
       head: [['#', ...headers]],
       body: dataRows,
       theme: 'grid',
@@ -376,6 +440,13 @@ const descargarPDF = () => {
       didParseCell(data) {
         if (data.section === 'body') {
           const val = String(data.cell.raw || '').toLowerCase()
+          if (data.column.index === 1) {
+            data.cell.styles.textColor = [29, 78, 216]
+            data.cell.styles.fontStyle = 'bold'
+            if (!periodoContext.isSpecificPeriod) {
+              data.cell.styles.fillColor = [239, 246, 255]
+            }
+          }
           // Columna Tipo
           if (data.column.index === 7) {
             if (val === 'estimada') data.cell.styles.textColor = [202, 138, 4]
@@ -438,8 +509,9 @@ const imprimirReporte = () => {
   const nombreAfiliado = gf(primeraLectura, 'nombre_afiliado', 'nombreafiliado') || 'N/A'
   const codigoAfiliado = gf(primeraLectura, 'codigo_afiliado', 'codigoafiliado') || ''
   const numMedidor     = gf(medidorActivo, 'num_medidor', 'nummedidor') || ''
+  const periodoContext = getPeriodoReporteContext()
 
-  const headers = ['N°', 'Fecha', 'Medidor', 'Sector',
+  const headers = ['N°', 'Periodo Consumo', 'Medidor', 'Sector',
                    'Ant. (m³)', 'Act. (m³)', 'Consumo (m³)',
                    'Tipo', 'Clasificación', 'Afiliado']
 
@@ -448,7 +520,7 @@ const imprimirReporte = () => {
     const clasificacion = gf(l, 'clasificacion_consumo', 'clasificacionconsumo')
     return [
       i + 1,
-      formatDateShort(gf(l, 'fecha_lectura', 'fechalectura')),
+      formatPeriodoDisplay(getLecturaPeriodoConsumo(l)),
       gf(l, 'medidor', 'medidor')?.num_medidor || gf(l, 'medidor', 'medidor')?.nummedidor || 'N/A',
       l.sector || gf(l, 'medidor', 'medidor')?.sector || 'N/A',
       `${gf(l, 'lectura_anterior', 'lecturaanterior') ?? 0}`,
@@ -475,6 +547,8 @@ const imprimirReporte = () => {
     .header-left p { font-size: 12px; color: #666; margin: 2px 0; }
     .header-right { text-align: right; font-size: 12px; }
     .header-right .info-value { font-weight: 600; color: #333; }
+    .period-banner { background: #eff6ff; border: 1px solid #93c5fd; border-radius: 6px; color: #1d4ed8; font-weight: 700; margin: 0 0 16px; padding: 10px 14px; text-align: center; }
+    .period-banner span { display: block; color: #64748b; font-size: 11px; font-weight: 500; margin-top: 3px; }
     .stats-bar { display: flex; gap: 14px; background: #eff6ff; padding: 8px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 12px; flex-wrap: wrap; }
     .stats-bar strong { color: #1d4ed8; }
     table { width: 100%; border-collapse: collapse; font-size: 10px; }
@@ -482,6 +556,8 @@ const imprimirReporte = () => {
     th { padding: 9px 6px; text-align: left; font-weight: 600; border: 1px solid #1558a0; }
     td { padding: 7px 6px; border: 1px solid #ddd; }
     tbody tr:nth-child(even) { background: #f9f9f9; }
+    .period-cell { color: #1d4ed8; font-weight: 700; }
+    .period-highlight { background: #eff6ff; }
     .tipo-real      { color: #15803d; font-weight: 600; }
     .tipo-estimada  { color: #ca8a04; font-weight: 600; }
     .cls-exceso     { color: #b91c1c; font-weight: 600; }
@@ -503,8 +579,12 @@ const imprimirReporte = () => {
       <div class="header-right">
         <p>Generado: <span class="info-value">${fechaGeneracion}</span></p>
         <p>Total registros: <span class="info-value">${totalF}</span></p>
-        ${selectedAnio ? `<p>Período: <span class="info-value">${selectedAnio}${selectedMes ? ` / Mes ${selectedMes}` : ''}</span></p>` : ''}
       </div>
+    </div>
+
+    <div class="period-banner">
+      ${periodoContext.label}
+      <span>${periodoContext.detail}</span>
     </div>
 
     <div class="stats-bar">
@@ -528,7 +608,8 @@ const imprimirReporte = () => {
                            : clasif.includes('normal') ? 'cls-normal'
                            : clasif.includes('bajo')   ? 'cls-bajo' : ''
           return `<tr>${fila.map((c, ci) => {
-            const cls = ci === 7 ? tipoCls : ci === 8 ? clasifCls : ''
+            const periodoCls = ci === 1 ? `period-cell${periodoContext.isSpecificPeriod ? '' : ' period-highlight'}` : ''
+            const cls = ci === 1 ? periodoCls : ci === 7 ? tipoCls : ci === 8 ? clasifCls : ''
             return `<td${cls ? ` class="${cls}"` : ''}>${c ?? 'N/A'}</td>`
           }).join('')}</tr>`
         }).join('')}
@@ -593,25 +674,22 @@ const imprimirReporte = () => {
           lectura.medidor?.num_medidor?.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
           lectura.observacion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           lectura.medidor?.sector?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          getLecturaPeriodoConsumo(lectura).toLowerCase().includes(searchTerm.toLowerCase()) ||
+          formatPeriodoDisplay(getLecturaPeriodoConsumo(lectura)).toLowerCase().includes(searchTerm.toLowerCase()) ||
           lectura.id_lectura?.toString().includes(searchTerm);
-
-        // Filtro por rango de fechas
-        const fechaLectura = new Date(lectura.fecha_lectura);
-        const matchesFechaDesde = !filterFechaDesde || fechaLectura >= new Date(filterFechaDesde);
-        const matchesFechaHasta = !filterFechaHasta || fechaLectura <= new Date(filterFechaHasta);
 
         // Filtros por rango de consumo
         const matchesConsumoMin = !filterConsumoMin || lectura.consumo_m3 >= parseFloat(filterConsumoMin);
         const matchesConsumoMax = !filterConsumoMax || lectura.consumo_m3 <= parseFloat(filterConsumoMax);
 
-        return matchesSearch && matchesFechaDesde && matchesFechaHasta &&
-          matchesConsumoMin && matchesConsumoMax;
+        return matchesSearch && matchesConsumoMin && matchesConsumoMax;
       })
       .sort((a, b) => {
         let comparison = 0;
         switch (sortBy) {
-          case 'fecha':
-            comparison = new Date(a.fecha_lectura) - new Date(b.fecha_lectura);
+          case 'periodo':
+            comparison = getPeriodoSortValue(getLecturaPeriodoConsumo(a)) -
+              getPeriodoSortValue(getLecturaPeriodoConsumo(b));
             break;
           case 'consumo':
             comparison = (a.consumo_m3 || 0) - (b.consumo_m3 || 0);
@@ -620,13 +698,13 @@ const imprimirReporte = () => {
             comparison = (a.medidor?.num_medidor || '').localeCompare(b.medidor?.num_medidor || '');
             break;
           default:
-            comparison = new Date(a.fecha_lectura) - new Date(b.fecha_lectura);
+            comparison = getPeriodoSortValue(getLecturaPeriodoConsumo(a)) -
+              getPeriodoSortValue(getLecturaPeriodoConsumo(b));
         }
         return sortOrder === 'asc' ? comparison : -comparison;
       });
   }, [
     lecturas, selectedMedidorId, searchTerm,
-    filterFechaDesde, filterFechaHasta,
     filterConsumoMin, filterConsumoMax,
     sortBy, sortOrder
   ]);
@@ -638,6 +716,30 @@ const imprimirReporte = () => {
     if (selectedMedidorId === null) return null;
     return medidores.find(m => m.id_medidor === selectedMedidorId) || null;
   }, [selectedMedidorId, medidores]);
+
+  const getPeriodoReporteContext = () => {
+    if (selectedAnio && selectedMes) {
+      return {
+        label: `Periodo de consumo: ${formatPeriodoDisplay(buildPeriodoConsumo(selectedAnio, selectedMes))}`,
+        detail: 'Reporte filtrado por un periodo de consumo especifico',
+        isSpecificPeriod: true
+      };
+    }
+
+    if (selectedAnio) {
+      return {
+        label: `Año de consumo: ${selectedAnio}`,
+        detail: 'Cada fila resalta el periodo de consumo correspondiente',
+        isSpecificPeriod: false
+      };
+    }
+
+    return {
+      label: 'Todos los periodos de consumo',
+      detail: 'Cada fila resalta el periodo de consumo correspondiente',
+      isSpecificPeriod: false
+    };
+  };
 
   // ============================================================
   // FUNCIONES DE PERIODOS
@@ -657,12 +759,10 @@ const imprimirReporte = () => {
 
   const limpiarFiltros = () => {
     setSearchTerm('');
-    setFilterFechaDesde('');
-    setFilterFechaHasta('');
     setFilterTipoLectura('todas');
     setFilterConsumoMin('');
     setFilterConsumoMax('');
-    setSortBy('fecha');
+    setSortBy('periodo');
     setSortOrder('desc');
     setSelectedAnio('');
     setSelectedMes('');
@@ -676,13 +776,22 @@ const imprimirReporte = () => {
     setLoading(true);
     setError(null);
     try {
+      const perfilResult = await affiliateGeneralServices.getMiMedidor();
+      if (!perfilResult.success) {
+        setLecturas([]);
+        setMedidores([]);
+        setError(perfilResult.message);
+        return;
+      }
+
+      setMedidores(perfilResult.data?.medidores || []);
+
       const [result] = await Promise.all([
         affiliateGeneralServices.getMisLecturasPorPeriodo(
           selectedAnio || null,
           selectedMes || null,
           { tipo_lectura: filterTipoLectura }
         ),
-        fetchMisMedidores(),
       ]);
       if (result.success) {
         setLecturas(result.data);
@@ -713,12 +822,13 @@ const imprimirReporte = () => {
     });
   };
 
-  const formatDateShort = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString + 'T00:00:00').toLocaleDateString('es-EC', {
-      year: 'numeric', month: 'short', day: 'numeric'
-    });
-  };
+  function formatPeriodoDisplay(periodo) {
+    if (!periodo) return 'N/A';
+    const [anio, mes] = periodo.split('-');
+    const mesIndex = Number(mes) - 1;
+    if (!anio || Number.isNaN(mesIndex) || !MESES_ES[mesIndex]) return periodo;
+    return `${MESES_ES[mesIndex]} ${anio}`;
+  }
 
   // ============================================================
   // BADGE DE CLASIFICACIÓN
@@ -759,12 +869,40 @@ const imprimirReporte = () => {
     );
   }
 
-  if (loading) {
+  if (loading && !error) {
     return (
       <div className="affiliates-section">
         <div className="empty-state">
           <RefreshCw className="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin" />
           <h3>Espere mientras cargamos su historial de consumos...</h3>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && lecturas.length === 0) {
+    return (
+      <div className="medidor-container">
+        <div className="section-header">
+          <div className="section-title">
+            <Clock className="w-7 h-7 text-blue-600" />
+            <div>
+              <h2>Mi Historial de Lecturas</h2>
+              <p className="section-subtitle">Información de mi historial de Lecturas</p>
+            </div>
+          </div>
+          <button className="btn-secondary" onClick={handleRecargar} title="Actualizar información">
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="medidor-error-state">
+          <AlertCircle size={64} />
+          <h3>No se pudo cargar la información</h3>
+          <p>{error}</p>
+          <button onClick={handleRecargar} className="btn-primary">
+            <RefreshCw size={16} />
+            Reintentar
+          </button>
         </div>
       </div>
     );
@@ -897,7 +1035,7 @@ const imprimirReporte = () => {
         <div className="filters-section-card">
           <div className="filters-section-header">
             <Calendar className="w-4 h-4 text-blue-600" />
-            <h4 className="filters-section-title">Filtrar por Periodo</h4>
+            <h4 className="filters-section-title">Filtrar por periodo de consumo</h4>
           </div>
           <div className="filters-section-content-full">
             <div className="filter-group-row">
@@ -927,6 +1065,9 @@ const imprimirReporte = () => {
                 </select>
               </div>
             </div>
+            <div className="filter-period-context">
+              {getPeriodoReporteContext().label}
+            </div>
           </div>
         </div>
 
@@ -951,7 +1092,7 @@ const imprimirReporte = () => {
             <div className="filter-group">
               <label className="filter-label">Ordenar por</label>
               <select className="filter-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                <option value="fecha">Fecha</option>
+                <option value="periodo">Periodo de consumo</option>
                 <option value="consumo">Consumo</option>
               </select>
             </div>
@@ -1070,7 +1211,7 @@ const imprimirReporte = () => {
           <div className="lec-cols-header">
             <div className="lec-ch">
               <Calendar className="w-3 h-3" />
-              <span>Fecha / Medidor</span>
+              <span>Periodo / Medidor</span>
             </div>
             <div className="lec-ch lec-ch-center">
               <Gauge className="w-3 h-3" />
@@ -1110,11 +1251,11 @@ const imprimirReporte = () => {
             {filteredLecturas.map(lectura => (
               <div key={lectura.id_lectura} className="lectura-card-item">
 
-                {/* Columna 1: Fecha y Medidor */}
+                {/* Columna 1: Periodo y Medidor */}
                 <div className="lectura-info-section lectura-clickable" onClick={() => verDetalle(lectura)}>
                   <Calendar className="w-5 h-5 text-blue-500 flex-shrink-0" />
                   <div className="lectura-info-text">
-                    <span className="lectura-fecha">{formatDateShort(lectura.fecha_lectura)}</span>
+                    <span className="lectura-fecha">{formatPeriodoDisplay(getLecturaPeriodoConsumo(lectura))}</span>
                     <span className="lectura-medidor">Medidor: {lectura.medidor?.num_medidor || 'N/A'}</span>
                   </div>
                 </div>
@@ -1323,7 +1464,12 @@ const imprimirReporte = () => {
           </div>
 
           <div className="detail-group">
-            <label>Fecha lectura:</label>
+            <label>Periodo de consumo:</label>
+            <p>{formatPeriodoDisplay(getLecturaPeriodoConsumo(selectedLectura))}</p>
+          </div>
+
+          <div className="detail-group">
+            <label>Fecha de registro de lectura:</label>
             <p>{formatDate(selectedLectura.fecha_lectura)}</p>
           </div>
 

@@ -431,6 +431,7 @@ def _formatear_factura(
         "id_factura": f.id_factura,
         "num_factura": f.num_factura,
         "periodo": f.periodo,
+        "periodo_consumo": f.periodo,
         "fecha_emision": f.fecha_emision.isoformat(),
         "estado_factura": f.estado_factura,
         "consumo_m3": f.consumo_m3 or 0,
@@ -486,17 +487,17 @@ def obtener_periodos_facturas_disponibles(
 
     periodos = (
         db.query(
-            func.extract("year", Factura.fecha_emision).label("anio"),
-            func.extract("month", Factura.fecha_emision).label("mes"),
+            Factura.periodo.label("periodo_consumo"),
             func.count(Factura.id_factura).label("total_facturas"),
             func.coalesce(func.sum(Factura.total), 0).label("monto_total"),
         )
         .filter(
             Factura.id_usuario_afi == afiliado.id_usuario_afi,
             Factura.estado_factura.in_(["pendiente", "pagada", "vencida"]),
+            Factura.periodo.isnot(None),
         )
-        .group_by("anio", "mes")
-        .order_by(desc("anio"), desc("mes"))
+        .group_by(Factura.periodo)
+        .order_by(Factura.periodo.desc())
         .all()
     )
 
@@ -507,8 +508,13 @@ def obtener_periodos_facturas_disponibles(
     anios_disponibles: list = []
 
     for p in periodos:
-        anio = int(p.anio)
-        mes = int(p.mes)
+        try:
+            anio_str, mes_str = p.periodo_consumo.split("-", 1)
+            anio = int(anio_str)
+            mes = int(mes_str)
+        except (ValueError, AttributeError):
+            continue
+
         if anio not in periodos_por_anio:
             periodos_por_anio[anio] = []
             anios_disponibles.append(anio)
@@ -516,6 +522,7 @@ def obtener_periodos_facturas_disponibles(
             {
                 "mes": mes,
                 "nombre_mes": obtener_nombre_mes(mes),
+                "periodo_consumo": p.periodo_consumo,
                 "total_facturas": p.total_facturas,
                 "monto_total": float(p.monto_total),
             }
@@ -532,6 +539,7 @@ def obtener_periodos_facturas_disponibles(
 def listar_mis_facturas_completo(
     anio: Optional[int] = Query(None),
     mes: Optional[int] = Query(None, ge=1, le=12),
+    periodo_consumo: Optional[str] = Query(None, min_length=7, max_length=7),
     estado_factura: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
@@ -597,20 +605,12 @@ def listar_mis_facturas_completo(
 
     
     # ── 4. Filtros opcionales ─────────────────────────────────
-    if anio and mes:
-        fecha_inicio = date(anio, mes, 1)
-        fecha_fin = (
-            date(anio + 1, 1, 1) if mes == 12 else date(anio, mes + 1, 1)
-        )
-        base_q = base_q.filter(
-            Factura.fecha_emision >= fecha_inicio,
-            Factura.fecha_emision < fecha_fin,
-        )
+    if periodo_consumo:
+        base_q = base_q.filter(Factura.periodo == periodo_consumo)
+    elif anio and mes:
+        base_q = base_q.filter(Factura.periodo == f"{anio}-{mes:02d}")
     elif anio:
-        base_q = base_q.filter(
-            Factura.fecha_emision >= date(anio, 1, 1),
-            Factura.fecha_emision < date(anio + 1, 1, 1),
-        )
+        base_q = base_q.filter(Factura.periodo.like(f"{anio}-%"))
 
     if estado_factura and estado_factura != "todos":
         base_q = base_q.filter(Factura.estado_factura == estado_factura)
@@ -625,7 +625,7 @@ def listar_mis_facturas_completo(
     )
 
     facturas = (
-        base_q.order_by(estado_orden, Factura.fecha_emision.desc())
+        base_q.order_by(estado_orden, Factura.periodo.desc(), Factura.fecha_emision.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -805,6 +805,7 @@ def obtener_detalle_mi_factura(
         "id_factura": factura.id_factura,
         "num_factura": factura.num_factura,
         "periodo": factura.periodo,
+        "periodo_consumo": factura.periodo,
         "fecha_emision": factura.fecha_emision.isoformat(),
         "estado_factura": factura.estado_factura,
         "consumo_m3": factura.consumo_m3 or 0,
@@ -1100,6 +1101,7 @@ def capturar_orden_paypal(
 def listar_mis_pagos(
     anio: Optional[int] = Query(None),
     mes: Optional[int] = Query(None, ge=1, le=12),
+    periodo_consumo: Optional[str] = Query(None, min_length=7, max_length=7),
     db: Session = Depends(get_db),
     payload: dict = Depends(verify_token),
 ):
@@ -1134,19 +1136,12 @@ def listar_mis_pagos(
         )
     )
 
-    if anio and mes:
-        fecha_inicio = datetime(anio, mes, 1)
-        fecha_fin = (
-            datetime(anio + 1, 1, 1) if mes == 12 else datetime(anio, mes + 1, 1)
-        )
-        query = query.filter(
-            Pago.fecha_pago >= fecha_inicio, Pago.fecha_pago < fecha_fin
-        )
+    if periodo_consumo:
+        query = query.filter(Factura.periodo == periodo_consumo)
+    elif anio and mes:
+        query = query.filter(Factura.periodo == f"{anio}-{mes:02d}")
     elif anio:
-        query = query.filter(
-            Pago.fecha_pago >= datetime(anio, 1, 1),
-            Pago.fecha_pago < datetime(anio + 1, 1, 1),
-        )
+        query = query.filter(Factura.periodo.like(f"{anio}-%"))
 
     pagos = query.order_by(Pago.fecha_pago.desc()).all()
 
@@ -1168,6 +1163,7 @@ def listar_mis_pagos(
                 "numero_factura": p.num_factura,
                 "num_factura": p.num_factura,
                 "periodo": p.periodo,
+                "periodo_consumo": p.periodo,
                 "total": float(p.total_factura) if p.total_factura else None,
             },
             "cajero": {"nombres": p.cajero_nombres, "apellidos": p.cajero_apellidos},

@@ -41,7 +41,7 @@ class Lectura(Base):
     )
     
     def __repr__(self):
-        tipo = "ESTIMADA" if self.es_estimada else "REAL"  # ✅ MEJORADO
+        tipo = "ESTIMADA" if self.es_estimada else "REAL"  
         return f"<Lectura(id={self.id_lectura}, medidor={self.id_medidor}, consumo={self.consumo_m3}m³, fecha={self.fecha_lectura}, tipo={tipo})>"
     
     def to_dict(self):

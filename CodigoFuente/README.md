@@ -1,140 +1,141 @@
-Sistema de Facturación - Junta de Agua de Sanjapamba
+# 💧 Sistema de Facturación - Junta de Agua de Sanjapamba (TecniCobro)
 
-Descripción del proyecto
+![React](https://img.shields.io/badge/Frontend-React-blue?style=for-the-badge&logo=react)
+![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&logo=fastapi)
+![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791?style=for-the-badge&logo=postgresql)
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 
-Este proyecto es un sistema web de facturación para la Junta de Agua de la Comunidad de Sanjapamba.
-Permite gestionar usuarios, medidores, sectores, tarifas, servicios, lecturas y facturación de manera automatizada.
+## 📖 Descripción del Proyecto
 
-El sistema cuenta con:
+Este proyecto es un **sistema web de facturación integral** diseñado específicamente para la Junta de Agua de la Comunidad de Sanjapamba. Su objetivo principal es automatizar y optimizar la gestión operativa y financiera de la junta.
 
-Frontend: React (src y estructura organizada por componentes y páginas).
+El sistema permite gestionar de manera eficiente:
+- 👥 Usuarios y afiliados
+- 🚰 Medidores y sectores
+- 💰 Tarifas y servicios adicionales
+- 📊 Registro de lecturas de consumo
+- 🧾 Facturación y control de pagos
 
-Backend: FastAPI (Python) con conexión a PostgreSQL.
+---
 
-Base de datos: Relacional, diseñada para cumplir todos los requisitos funcionales del sistema.
+## 🚀 Características Principales
 
-Arquitectura del proyecto
-C:.
-├───backend
-│   ├───db/             # Configuración y conexión a la base de datos
-│   ├───models/         # Modelos de la base de datos (ORM)
-│   ├───routes/         # Endpoints de la API
-│   ├───schemas/        # Esquemas de datos (Pydantic)
-│   ├───security/       # Autenticación y autorización
-│   ├───services/       # Lógica de negocio
-│   ├───utils/          # Funciones auxiliares
-│   └───venv/           # Entorno virtual de Python
-└───frontend
-│    │
-│    ├── node_modules/ # Dependencias instaladas de npm
-│    │
-│    ├── public/ # Archivos públicos accesibles directamente (index.html, favicon, imágenes estáticas)
-│    │
-│    ├── src/ # Código fuente de la aplicación React
-│    │ ├── componentes/ # Componentes reutilizables (botones, formularios, modales, tablas etc.)
-│    │ ├── pages/ # Vistas o páginas completas (Dashboard, Login, Usuarios, Facturas, etc.)
-│    │ ├── services/ # Funciones para consumir APIs del backend (fetch, axios, autenticación, etc.)
-│    │ ├── utils/ # Utilidades generales, helpers y funciones de apoyo
-│    │ ├── index.js # Punto de entrada principal de la aplicación React
-│    │ └── app.js # Componente raíz que organiza rutas y layout principal
-│
-└── README.md # Documentación del frontend y guía de configuración
+El sistema está diseñado para cumplir con **45 requisitos funcionales**, destacando:
 
+*   **Gestión de Usuarios y Roles:** Control de acceso seguro y administración de afiliados.
+*   **Lectura y Facturación Automática:** Cálculo preciso basado en el consumo y tarifas vigentes.
+*   **Gestión de Infraestructura:** Control de medidores, sectores y asignaciones.
+*   **Control de Pagos y Multas:** Registro detallado del estado de cuenta de cada usuario.
+*   **Reportes y Estadísticas:** Generación de información clave para la toma de decisiones.
+*   **Seguridad:** Autenticación y protección de datos mediante FastAPI Security.
 
+---
 
-Configuración de la Base de Datos
+## 🛠️ Arquitectura y Tecnologías
 
-Motor de base de datos: PostgreSQL
+El proyecto sigue una arquitectura Cliente-Servidor moderna:
 
-Número de serie del volumen: 3C08-E484
+*   **Frontend:** Desarrollado con **React**, organizado por componentes modulares y vistas.
+*   **Backend:** Construido con **FastAPI (Python)**, ofreciendo una API RESTful rápida y segura.
+*   **Base de Datos:** Motor relacional **PostgreSQL**, diseñado para mantener la integridad referencial de los datos.
 
-Tablas principales:
+### Estructura del Proyecto
 
-Tabla	Descripción
-t_usuario_sistema	Usuarios del sistema con roles y permisos.
-t_usuario_afiliado	Información personal de los usuarios/afiliados.
-t_medidor	Medidores de agua asignados a usuarios y sectores.
-t_sector	Sectores de la comunidad.
-t_tarifa	Tarifas de agua según consumo y tipo de servicio.
-t_servicios	Servicios adicionales como recargos, reconexiones, mantenimiento.
-t_lecturas	Lecturas de consumo asociadas a usuarios y medidores.
-t_factura	Facturas generadas automáticamente por consumo y servicios.
-t_detalle_factura	Detalle de la facturación (servicios y tarifas).
-t_pagos	Registro de pagos realizados por usuarios.
-t_multa y t_multas_usuario	Registro de multas y su relación con los usuarios.
+```text
+Sistema-web-HidroSys/
+├── backend/            # Lógica del servidor / API REST
+│   ├── db/             # Configuración de base de datos
+│   ├── models/         # Modelos ORM
+│   ├── routes/         # Endpoints (Controladores)
+│   ├── schemas/        # Validadores de datos (Pydantic)
+│   ├── security/       # Módulos de autenticación
+│   └── services/       # Lógica de negocio
+└── frontend/           # Interfaz de Usuario
+    ├── public/         # Assets estáticos
+    └── src/            # Código fuente React
+        ├── componentes/# Componentes UI reutilizables
+        ├── pages/      # Vistas de la aplicación
+        └── services/   # Consumo de la API backend
+```
 
-Relaciones:
+---
 
-Cada usuario afiliado puede tener uno o más medidores.
+## ⚙️ Configuración del Entorno de Desarrollo
 
-Cada medidor pertenece a un sector.
+Sigue estos pasos para levantar el proyecto en tu máquina local.
 
-Cada lectura está asociada a un usuario y un medidor.
+### 1. Clonar el repositorio
 
-Cada factura se genera a partir de lecturas y tarifas, y se vincula a pagos.
+```bash
+git clone https://github.com/alexcharco2002/Sistema-web-de-facturaci-n-TecniCobro-.git
+cd Sistema-web-de-facturaci-n-TecniCobro-
+```
 
-Multas se asignan a usuarios y afectan su estado de cuenta.
+### 2. Configuración del Backend (FastAPI)
 
-Configuración del entorno de desarrollo
+```bash
+cd CodigoFuente/backend
 
-Clonar el repositorio:
-
-git clone <https://github.com/alexcharco2002/Sistema-web-de-facturaci-n-TecniCobro-.git>
-cd backend
-
-
-Crear entorno virtual de Python:
-
+# Crear y activar entorno virtual
 python -m venv venv
-
-
-Activar el entorno virtual:
-
-Windows:
-
+# En Windows:
 venv\Scripts\activate
 
-
-Instalar dependencias:
-
+# Instalar dependencias
 pip install -r requirements.txt
+```
 
+**Variables de Entorno (`.env`):**
+Crea un archivo `.env` en la carpeta `backend` con las siguientes credenciales (ajusta según tu configuración de PostgreSQL):
 
---Configurar variables de entorno en .env:
-
+```env
 DATABASE_URL=postgresql://usuario:clave@localhost:5432/jaap_sanjapamba
-SECRET_KEY=Informatico593
+SECRET_KEY=TuClaveSecretaSuperSegura
+```
 
-
-Ejecutar el backend:
-
+**Ejecutar el servidor:**
+```bash
 uvicorn main:app --reload
+```
+*La API estará disponible en `http://localhost:8000` (Swagger UI en `/docs`).*
 
+### 3. Configuración del Frontend (React)
 
-Ejecutar el frontend:
+En una nueva terminal:
 
-cd ../frontend
+```bash
+cd CodigoFuente/frontend
+
+# Instalar dependencias
 npm install
+
+# Iniciar la aplicación
 npm start
+```
+*La aplicación web estará disponible en `http://localhost:3000`.*
 
--- Cumplimiento de requisitos funcionales
+---
 
-La base de datos y su estructura garantizan el cumplimiento de los 45 requisitos funcionales del sistema, incluyendo:
+## 🗄️ Estructura de la Base de Datos
 
-Gestión de usuarios y roles
+El motor principal es **PostgreSQL**. A continuación se describen las tablas principales del modelo relacional:
 
-Lectura y facturación automática
+| Tabla | Descripción |
+| :--- | :--- |
+| `t_usuario_sistema` | Usuarios administradores del sistema y sus roles. |
+| `t_usuario_afiliado` | Información personal de los socios/afiliados a la junta. |
+| `t_medidor` | Medidores físicos instalados, asignados a sectores y usuarios. |
+| `t_sector` | Zonas o sectores geográficos de la comunidad. |
+| `t_tarifa` | Estructura de costos según rangos de consumo. |
+| `t_servicios` | Catálogo de servicios adicionales (reconexión, mantenimiento, etc). |
+| `t_lecturas` | Registros mensuales del consumo marcado por los medidores. |
+| `t_factura` | Documentos de cobro generados para los usuarios. |
+| `t_pagos` | Transacciones y abonos realizados para cancelar facturas. |
+| `t_multa` | Tipos de penalizaciones y multas aplicables. |
 
-Gestión de medidores, sectores y tarifas
+---
 
-Registro y control de pagos
+## 📚 Documentación Adicional
 
-Generación de reportes y estadísticas
-
-Seguridad y autenticación
-
--- Documentación adicional
-
-Diagrama ER: /docs/ER_diagram.png
-
-Documentación de la API: /docs/api_documentation.md
+*   **Diagrama Entidad-Relación (ER):** Disponible en `/docs/ER_diagram.png`
+*   **Documentación de la API:** Disponible en `/docs/api_documentation.md` (o accediendo a `/docs` al correr el backend).

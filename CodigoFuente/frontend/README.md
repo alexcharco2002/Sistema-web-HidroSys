@@ -1,70 +1,64 @@
-# Getting Started with Create React App
+# 🖥️ Frontend - Sistema de Facturación web (React)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+![React](https://img.shields.io/badge/Frontend-React-blue?style=for-the-badge&logo=react)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
+![NPM](https://img.shields.io/badge/NPM-CB3837?style=for-the-badge&logo=npm&logoColor=white)
 
-## Available Scripts
+Este directorio contiene todo el código fuente correspondiente a la **Interfaz de Usuario (UI)** del Sistema Web de Facturación para la Junta de Agua de Sanjapamba. 
+El proyecto fue inicializado utilizando [Create React App](https://github.com/facebook/create-react-app).
 
-In the project directory, you can run:
+---
+
+## 📂 Estructura de Directorios
+
+El código está organizado modularmente para facilitar la escalabilidad y el mantenimiento:
+
+```text
+frontend/
+├── public/          # Archivos estáticos accesibles directamente (index.html, favicon, iconos)
+└── src/             # Código fuente de la aplicación React
+    ├── componentes/ # Elementos reutilizables (Botones, Tablas, Modales, Formularios)
+    ├── pages/       # Vistas principales (Login, Dashboard, Facturas, Usuarios)
+    ├── services/    # Lógica de conexión con la API del Backend (Fetch/Axios)
+    ├── utils/       # Funciones auxiliares y formateadores
+    ├── App.js       # Componente raíz y configuración de Rutas
+    └── index.js     # Punto de entrada de la aplicación
+```
+
+---
+
+## 🚀 Scripts Disponibles
+
+En el directorio del proyecto (`frontend`), puedes ejecutar los siguientes comandos para el desarrollo y despliegue:
 
 ### `npm start`
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Inicia la aplicación en modo de desarrollo.<br />
+Abre [http://localhost:3000](http://localhost:3000) para verla en el navegador.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+La página se recargará automáticamente si realizas ediciones en el código. También verás los errores de *linting* (formato) en la consola.
 
 ### `npm test`
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Lanza el ejecutor de pruebas en modo interactivo.<br />
+Consulta la sección sobre [ejecución de pruebas](https://facebook.github.io/create-react-app/docs/running-tests) para obtener más información.
 
 ### `npm run build`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Compila la aplicación para producción en la carpeta `build`.<br />
+Empaqueta React correctamente en modo de producción y optimiza la compilación para obtener el mejor rendimiento. El código se minimiza y los nombres de archivo incluyen *hashes* de seguridad.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+¡Tu aplicación estará lista para ser desplegada en un servidor (como Nginx, Apache, o Vercel)!
 
 ### `npm run eject`
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+**Nota: esta es una operación irreversible. ¡Una vez que ejecutas `eject`, no puedes volver atrás!**
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Si no estás satisfecho con las herramientas de compilación y las opciones de configuración predeterminadas, puedes ejecutar este comando. Eliminará la dependencia de compilación única y copiará todos los archivos de configuración (Webpack, Babel, ESLint, etc.) directamente en tu proyecto para que tengas control total sobre ellos.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+---
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## 📚 Recursos Adicionales
 
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+*   Aprende más en la [Documentación de Create React App](https://facebook.github.io/create-react-app/docs/getting-started).
+*   Para aprender o repasar React, revisa la [Documentación Oficial de React](https://reactjs.org/).

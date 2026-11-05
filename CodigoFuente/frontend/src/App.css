@@ -1,22 +1,24 @@
 /* src/App.css */
-@import 'tailwindcss/base';
-@import 'tailwindcss/sections';
-@import 'tailwindcss/utilities';
+/* ============================================================================
+   ESTILOS GENERALES Y UTILIDADES DE APLICACIÓN
+   ============================================================================ */
 
-/* Estilos personalizados para el sistema de facturación */
-.App {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+.hidrosys-app,
+.App-scale,
+.app-scale {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-/* Animaciones personalizadas */
+/* Animaciones suaves */
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
@@ -25,17 +27,17 @@
 }
 
 .fade-in {
-  animation: fadeIn 0.5s ease-out;
+  animation: fadeIn 0.3s ease-out;
 }
 
 /* Estilos para el loading spinner */
 .spinner {
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #3498db;
+  border: 3px solid var(--hs-slate-200, #e2e8f0);
+  border-top: 3px solid var(--hs-primary-600, #0284c7);
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 2s linear infinite;
+  width: 36px;
+  height: 36px;
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
@@ -43,40 +45,52 @@
   100% { transform: rotate(360deg); }
 }
 
-/* Estilos para formularios */
+/* Estilos base para formularios e inputs */
 .form-input {
-  transition: all 0.3s ease;
+  transition: all var(--hs-transition-fast, 150ms ease);
+  border-radius: var(--hs-radius-md, 8px);
+  border: 1px solid var(--hs-slate-300, #cbd5e1);
+  font-family: inherit;
 }
 
 .form-input:focus {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-color: var(--hs-primary-500, #0ea5e9);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+  outline: none;
 }
 
-/* Estilos para botones */
+/* Botones principales estándar */
 .btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  transition: all 0.3s ease;
+  background: linear-gradient(135deg, var(--hs-primary-600, #0284c7) 0%, var(--hs-primary-800, #075985) 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--hs-radius-md, 8px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--hs-transition-fast, 150ms ease);
 }
 
 .btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+  box-shadow: var(--hs-shadow-md, 0 4px 6px -1px rgba(15, 23, 42, 0.1));
 }
 
-/* Estilos para cards */
+/* Tarjetas (Cards) estándar */
 .card {
-  transition: all 0.3s ease;
+  background-color: #ffffff;
+  border-radius: var(--hs-radius-lg, 12px);
+  border: 1px solid var(--hs-slate-200, #e2e8f0);
+  box-shadow: var(--hs-shadow-sm, 0 1px 3px rgba(0,0,0,0.05));
+  transition: all var(--hs-transition-base, 250ms ease);
 }
 
 .card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--hs-shadow-md, 0 4px 6px -1px rgba(15, 23, 42, 0.08));
 }
 
-/* Estilos para el sidebar */
+/* Sidebar transition */
 .sidebar-transition {
-  transition: transform 0.3s ease-in-out;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Responsive utilities */
@@ -86,46 +100,49 @@
   }
 }
 
-/* Estilos para alertas */
+/* Alertas semánticas */
 .alert-success {
-  background-color: #d4edda;
-  border-color: #c3e6cb;
-  color: #155724;
+  background-color: var(--hs-status-paid-bg, #ecfdf5);
+  border: 1px solid var(--hs-status-paid-border, #a7f3d0);
+  color: var(--hs-status-paid, #059669);
+  border-radius: var(--hs-radius-md, 8px);
 }
 
 .alert-error {
-  background-color: #f8d7da;
-  border-color: #f5c6cb;
-  color: #721c24;
+  background-color: var(--hs-status-overdue-bg, #fef2f2);
+  border: 1px solid var(--hs-status-overdue-border, #fecaca);
+  color: var(--hs-status-overdue, #dc2626);
+  border-radius: var(--hs-radius-md, 8px);
 }
 
 .alert-warning {
-  background-color: #fff3cd;
-  border-color: #ffeaa7;
-  color: #856404;
+  background-color: var(--hs-status-pending-bg, #fffbeb);
+  border: 1px solid var(--hs-status-pending-border, #fde68a);
+  color: var(--hs-status-pending, #d97706);
+  border-radius: var(--hs-radius-md, 8px);
 }
 
-/* Utilidades para texto */
+/* Utilidad para gradientes de texto de marca */
 .text-gradient {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--hs-primary-600, #0284c7) 0%, var(--hs-accent-600, #0891b2) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Estilos para tablas */
+/* Tablas */
 .table-hover tbody tr:hover {
-  background-color: #f8f9fa;
+  background-color: var(--hs-slate-50, #f8fafc);
 }
 
-/* Estilos para modales */
+/* Modales */
 .modal-backdrop {
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(15, 23, 42, 0.45);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
 }
 
-/* Print styles */
+/* Estilos de impresión */
 @media print {
   .no-print {
     display: none !important;
@@ -134,11 +151,4 @@
   .print-break {
     page-break-before: always;
   }
-}
-
-.app-scale {
-  transform: scale(0.8);
-  transform-origin: top left;
-  width: 125%;
-  min-height: 125vh;
 }

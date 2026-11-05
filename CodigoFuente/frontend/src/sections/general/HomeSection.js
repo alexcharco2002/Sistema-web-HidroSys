@@ -152,7 +152,7 @@ const HomeSection = ({ user, stats, dataLoading }) => {
 
   if (loading) {
     return (
-      <div className="affiliates-section">
+      <div className="home-section">
         <div className="empty-state">
           <RefreshCw className="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin" />
           <h3> Espere mientras cargamos su información...</h3>
@@ -162,11 +162,13 @@ const HomeSection = ({ user, stats, dataLoading }) => {
   }
 
   return (
-    <div className="users-section">
+    <div className="home-section">
       {/* HEADER CON BIENVENIDA */}
       <div className="section-header">
         <div className="section-title">
-          <Home className="w-6 h-6 text-blue-600" />
+          <div className="section-title-icon">
+            <Home className="w-6 h-6" />
+          </div>
           <div>
             <h2>{greeting}, {user.nombres}</h2>
             <p className="subtitle">Panel de Control - {user?.rol?.nombre_rol || 'Usuario'}</p>
@@ -175,14 +177,14 @@ const HomeSection = ({ user, stats, dataLoading }) => {
         <div className="actions">
           <button
             onClick={() => setLayout('grid')}
-            className={`btn-secondary ${layout === 'grid' ? 'active' : ''}`}
+            className={`btn-layout-toggle ${layout === 'grid' ? 'active' : ''}`}
             title="Vista en cuadrícula"
           >
             <Grid className="w-4 h-4" />
           </button>
           <button
             onClick={() => setLayout('list')}
-            className={`btn-secondary ${layout === 'list' ? 'active' : ''}`}
+            className={`btn-layout-toggle ${layout === 'list' ? 'active' : ''}`}
             title="Vista en lista"
           >
             <List className="w-4 h-4" />

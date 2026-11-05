@@ -25,6 +25,18 @@ import {
   AlertCircle, CheckCircle, RefreshCw, Calendar, FileText, Clock, Edit, XCircle, Percent, ToggleRight, ToggleLeft, Search
 } from 'lucide-react';
 
+// Formateador de fechas para vigencia sin desface horario
+const formatVigenciaFecha = (fechaStr) => {
+  if (!fechaStr) return null;
+  const str = String(fechaStr).trim();
+  const dateObj = new Date(str.includes('T') ? str : `${str}T00:00:00`);
+  if (isNaN(dateObj.getTime())) return str;
+  const dia = String(dateObj.getDate()).padStart(2, '0');
+  const mes = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const anio = dateObj.getFullYear();
+  return `${dia}/${mes}/${anio}`;
+};
+
 const ConfigSection = () => {
   const [selectedSection, setSelectedSection] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -4054,9 +4066,9 @@ const afiliadosFiltrados = useMemo(() => {
                               </td>
                               <td>
                                 <small>
-                                  <strong>Desde:</strong> {new Date(sp.vigencia_desde).toLocaleDateString('es-EC')}
+                                  <strong>Desde:</strong> {formatVigenciaFecha(sp.vigencia_desde)}
                                   {sp.vigencia_hasta && (
-                                    <><br /><strong>Hasta:</strong> {new Date(sp.vigencia_hasta).toLocaleDateString('es-EC')}</>
+                                    <><br /><strong>Hasta:</strong> {formatVigenciaFecha(sp.vigencia_hasta)}</>
                                   )}
                                   {!sp.vigencia_hasta && (
                                     <><br /><span style={{color: '#10b981'}}>Sin límite</span></>
@@ -4064,20 +4076,67 @@ const afiliadosFiltrados = useMemo(() => {
                                 </small>
                               </td>
                               <td>
-                                {sp.activo && sp.aplicar_servicio ? (
-                                  <span className="badge badge-success flex items-center gap-1">
-                                    <CheckCircle className="w-4 h-4" />
-                                    Activo
+                                <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px'}}>
+                                  <label 
+                                    title={sp.activo && sp.aplicar_servicio ? 'Configuración Activa - Clic para desactivar' : 'Configuración Inactiva - Clic para activar'}
+                                    style={{
+                                      position: 'relative',
+                                      display: 'inline-block',
+                                      width: '46px',
+                                      height: '24px',
+                                      cursor: permissions.canUpdate ? 'pointer' : 'not-allowed',
+                                      margin: 0
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(sp.activo && sp.aplicar_servicio)}
+                                      disabled={!permissions.canUpdate || loading}
+                                      onChange={() => {
+                                        if (sp.activo && sp.aplicar_servicio) {
+                                          handleDesactivarSP(sp.id_configuracion_sp, sp.nombre);
+                                        } else {
+                                          handleActivarSP(sp.id_configuracion_sp, sp.nombre);
+                                        }
+                                      }}
+                                      style={{opacity: 0, width: 0, height: 0, position: 'absolute'}}
+                                    />
+                                    <span 
+                                      style={{
+                                        position: 'absolute',
+                                        top: 0, left: 0, right: 0, bottom: 0,
+                                        backgroundColor: (sp.activo && sp.aplicar_servicio) ? '#10b981' : '#f43f5e',
+                                        borderRadius: '24px',
+                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                        boxShadow: (sp.activo && sp.aplicar_servicio) ? '0 2px 6px rgba(16, 185, 129, 0.35)' : '0 2px 6px rgba(244, 63, 94, 0.3)'
+                                      }}
+                                    >
+                                      <span 
+                                        style={{
+                                          position: 'absolute',
+                                          height: '18px',
+                                          width: '18px',
+                                          left: (sp.activo && sp.aplicar_servicio) ? '25px' : '3px',
+                                          bottom: '3px',
+                                          backgroundColor: 'white',
+                                          borderRadius: '50%',
+                                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+                                        }}
+                                      />
+                                    </span>
+                                  </label>
+                                  <span style={{
+                                    fontSize: '0.72rem', 
+                                    fontWeight: '700',
+                                    color: (sp.activo && sp.aplicar_servicio) ? '#059669' : '#e11d48'
+                                  }}>
+                                    {(sp.activo && sp.aplicar_servicio) ? 'ACTIVO' : 'INACTIVO'}
                                   </span>
-                                ) : (
-                                  <span className="badge badge-inactive flex items-center gap-1">
-                                    <XCircle className="w-4 h-4" />
-                                    Inactivo
-                                  </span>
-                                )}
-                                {!sp.es_vigente && (
-                                  <><br /><span className="badge badge-warning">No Vigente</span></>
-                                )}
+                                  {!sp.es_vigente && (
+                                    <span className="badge badge-warning" style={{fontSize: '0.65rem'}}>No Vigente</span>
+                                  )}
+                                </div>
                               </td>
                               <td>
                                 <div className="action-buttons">
@@ -4088,24 +4147,6 @@ const afiliadosFiltrados = useMemo(() => {
                                       title="Gestionar usuarios"
                                     >
                                       <UserCheck size={16} />
-                                    </button>
-                                  )}
-                                  {!sp.activo && permissions.canUpdate && (
-                                    <button
-                                      className="btn-icon btn-activate-config"
-                                      onClick={() => handleActivarSP(sp.id_configuracion_sp, sp.nombre)}
-                                      title="Activar Configuración"
-                                    >
-                                      <CheckCircle size={16} />
-                                    </button>
-                                  )}
-                                  {sp.activo && permissions.canUpdate && (
-                                    <button
-                                      className="btn-icon btn-warning"
-                                      onClick={() => handleDesactivarSP(sp.id_configuracion_sp, sp.nombre)}
-                                      title="Desactivar Configuración"
-                                    >
-                                      <XCircle size={16} />
                                     </button>
                                   )}
                                   {permissions.canUpdate && (

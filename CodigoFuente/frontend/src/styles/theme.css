@@ -1,0 +1,515 @@
+/* ============================================================================
+   🌊 HIDROSYS - SISTEMA CENTRAL DE VARIABLES Y COMPONENTES (Design System)
+   TODOS los módulos derivan sus colores, tipografía, botones y controles de aquí.
+   ============================================================================ */
+
+/* Importación de fuentes oficiales desde Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* ==========================================================================
+     💧 1. COLORES PRINCIPALES DE MARCA (HidroSys / JAAP Sanjapamba)
+     ========================================================================== */
+  --primary-color:       #1e40af;       /* Azul Real Oficial */
+  --primary-light:       #3b82f6;       /* Azul Brillante */
+  --primary-dark:        #1e3a8a;       /* Azul Marino Profundo */
+  --accent-color:        #0ea5e9;       /* Celeste Agua */
+  --accent-light:        #38bdf8;
+  --accent-pale:         #e0f2fe;
+
+  /* Degradados de marca */
+  --brand-gradient:       linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 50%, var(--accent-color) 100%);
+  --brand-gradient-hover: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 50%, var(--accent-color) 100%);
+
+  /* ==========================================================================
+     🚦 2. ESTADOS SEMÁNTICOS (Facturación, Multas, Notificaciones y Alertas)
+     ========================================================================== */
+  --success-color:        #16a34a;       /* Verde Esmeralda */
+  --success-hover:        #15803d;
+  --success-light:        #ecfdf5;
+  --success-border:       #a7f3d0;
+
+  --warning-color:        #d97706;       /* Ámbar Cálido */
+  --warning-hover:        #b45309;
+  --warning-light:        #fffbeb;
+  --warning-border:       #fde68a;
+
+  --error-color:          #dc2626;       /* Rojo Carmesí */
+  --error-hover:          #b91c1c;
+  --error-light:          #fef2f2;
+  --error-border:         #fecaca;
+
+  --info-color:           #2563eb;       /* Azul Información */
+  --info-hover:           #1d4ed8;
+  --info-light:           #eff6ff;
+  --info-border:          #bfdbfe;
+
+  /* ==========================================================================
+     🏢 3. SUPERFICIES, BORDES Y NEUTROS (Textos y Fondos)
+     ========================================================================== */
+  --text-primary:         #1a202c;       /* Títulos y textos principales */
+  --text-secondary:       #64748b;       /* Subtítulos y etiquetas */
+  --text-light:           #9ca3af;       /* Placeholders y textos tenues */
+  --text-white:           #ffffff;
+
+  --bg-white:             #ffffff;       /* Fondo de tarjetas y modales */
+  --bg-gray-50:           #f8fafc;       /* Fondo general del sistema */
+  --bg-gray-100:          #f1f5f9;       /* Fondo de inputs y hover de listas */
+  --bg-gray-200:          #e2e8f0;       /* Separadores y bordes sutiles */
+  --border-color:         #e2e8f0;       /* Borde estándar */
+  --border-color-focus:   var(--primary-light);
+
+  /* ==========================================================================
+     ✨ 4. ELEVACIONES Y SOMBRAS (SaaS Suaves)
+     ========================================================================== */
+  --shadow-sm:  0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md:  0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-lg:  0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+  --shadow-xl:  0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.04);
+
+  /* ==========================================================================
+     🔤 5. SISTEMA TIPOGRÁFICO UNIFICADO (Familias, Tamaños y Pesos)
+     ========================================================================== */
+  --font-family-base:     'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display:         var(--font-family-base);
+  --font-body:            var(--font-family-base);
+  --lv2-font:             var(--font-family-base);
+
+  /* Escala de Tamaños */
+  --font-size-2xs:        0.6875rem;     /* 11px - Microetiquetas */
+  --font-size-xs:         0.75rem;       /* 12px - Metadatos, badges */
+  --font-size-sm:         0.875rem;      /* 14px - Inputs, tablas */
+  --font-size-base:       1rem;          /* 16px - Texto base */
+  --font-size-md:         1.125rem;      /* 18px - Subtítulos */
+  --font-size-lg:         1.25rem;       /* 20px - Títulos de sección */
+  --font-size-xl:         1.5rem;        /* 24px - Títulos de módulo */
+  --font-size-2xl:        1.875rem;      /* 30px - KPIs y métricas */
+  --font-size-3xl:        2.25rem;       /* 36px - Títulos grandes */
+
+  /* Pesos Tipográficos */
+  --font-weight-regular:   400;
+  --font-weight-medium:    500;
+  --font-weight-semibold:  600;
+  --font-weight-bold:      700;
+  --font-weight-extrabold: 800;
+
+  /* ==========================================================================
+     📐 6. RADIOS DE BORDE Y TRANSICIONES
+     ========================================================================== */
+  --radius-xs:            4px;
+  --radius-sm:            6px;
+  --radius-md:            8px;
+  --radius-lg:            12px;
+  --radius-xl:            16px;
+  --radius-full:          9999px;
+
+  --transition-fast:      150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal:    250ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ==========================================================================
+     🔘 7. VARIABLES DE BOTONES ESTÁNDAR
+     ========================================================================== */
+  --btn-primary-bg:        var(--primary-color);
+  --btn-primary-hover:     var(--primary-dark);
+  --btn-primary-text:      #ffffff;
+
+  --btn-secondary-bg:      var(--bg-white);
+  --btn-secondary-hover:   var(--bg-gray-100);
+  --btn-secondary-border:  var(--border-color);
+  --btn-secondary-text:    var(--text-primary);
+
+  --btn-success-bg:        var(--success-color);
+  --btn-success-hover:     var(--success-hover);
+  --btn-success-text:      #ffffff;
+
+  --btn-danger-bg:         var(--error-color);
+  --btn-danger-hover:      var(--error-hover);
+  --btn-danger-text:       #ffffff;
+
+  --btn-warning-bg:        var(--warning-color);
+  --btn-warning-hover:     var(--warning-hover);
+  --btn-warning-text:      #ffffff;
+
+  /* ==========================================================================
+     🔐 8. VARIABLES DE LOGIN & RECUPERACIÓN (lv2)
+     ========================================================================== */
+  --lv2-blue-deep:        var(--primary-dark);
+  --lv2-blue-mid:         var(--primary-color);
+  --lv2-blue-light:       var(--primary-light);
+  --lv2-blue-pale:        #eff6ff;
+
+  --lv2-text-dark:        var(--text-primary);
+  --lv2-text-mid:         var(--text-secondary);
+  --lv2-text-soft:        var(--text-light);
+
+  --lv2-border:           var(--border-color);
+  --lv2-bg-input:         var(--bg-gray-50);
+  --lv2-error-bg:         var(--error-light);
+  --lv2-error-text:       #991b1b;
+  --lv2-error-border:     var(--error-border);
+
+  --lv2-radius-sm:        var(--radius-md);
+  --lv2-radius-md:        var(--radius-lg);
+  --lv2-radius-lg:        20px;
+
+  /* ==========================================================================
+     🎨 9. PALETA DE ACENTOS POR MÓDULO (Dashboard e Iconos)
+     ========================================================================== */
+  --accent-blue:          #2563eb;
+  --accent-green:         #16a34a;
+  --accent-purple:        #9333ea;
+  --accent-orange:        #ea580c;
+  --accent-red:           #dc2626;
+  --accent-cyan:          #0891b2;
+  --accent-indigo:        #4f46e5;
+  --accent-emerald:       #059669;
+  --accent-amber:         #d97706;
+  --accent-rose:          #e11d48;
+  --accent-lime:          #65a30d;
+  --accent-teal:          #0d9488;
+  --accent-violet:        #7c3aed;
+  --accent-fuchsia:       #c026d3;
+}
+
+/* ============================================================================
+   RESET MODERNO & BASE GLOBAL
+   ============================================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  font-family: var(--font-family-base);
+  background-color: var(--bg-gray-50);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================================
+   SCROLLBARS GLOBALES LIMPIOS (SIN !important para validez estricta en Chromium)
+   ============================================================================ */
+html {
+  }
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ============================================================================
+   🔘 CATÁLOGO MAESTRO DE BOTONES
+   ============================================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+  line-height: 1.25;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border-color: var(--btn-primary-bg);
+}
+.btn-primary:hover {
+  background: var(--btn-primary-hover);
+  border-color: var(--btn-primary-hover);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-secondary {
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border-color: var(--btn-secondary-border);
+}
+.btn-secondary:hover {
+  background: var(--btn-secondary-hover);
+  border-color: #cbd5e1;
+}
+
+.btn-success {
+  background: var(--btn-success-bg);
+  color: var(--btn-success-text);
+  border-color: var(--btn-success-bg);
+}
+.btn-success:hover {
+  background: var(--btn-success-hover);
+  border-color: var(--btn-success-hover);
+}
+
+.btn-danger {
+  background: var(--btn-danger-bg);
+  color: var(--btn-danger-text);
+  border-color: var(--btn-danger-bg);
+}
+.btn-danger:hover {
+  background: var(--btn-danger-hover);
+  border-color: var(--btn-danger-hover);
+}
+
+.btn-warning {
+  background: var(--btn-warning-bg);
+  color: var(--btn-warning-text);
+  border-color: var(--btn-warning-bg);
+}
+.btn-warning:hover {
+  background: var(--btn-warning-hover);
+  border-color: var(--btn-warning-hover);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+.btn-outline:hover {
+  background: var(--primary-color);
+  color: #ffffff;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: transparent;
+}
+.btn-ghost:hover {
+  background: var(--bg-gray-100);
+  color: var(--text-primary);
+}
+
+.btn-sm {
+  padding: 0.35rem 0.65rem;
+  font-size: var(--font-size-xs);
+  border-radius: var(--radius-sm);
+}
+.btn-lg {
+  padding: 0.75rem 1.4rem;
+  font-size: var(--font-size-base);
+  border-radius: var(--radius-lg);
+}
+.btn-icon {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: var(--radius-md);
+}
+
+/* ============================================================================
+   📝 FORMULARIOS E INPUTS ESTÁNDAR
+   ============================================================================ */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.form-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background-color: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  border-color: var(--primary-light);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.form-input::placeholder {
+  color: var(--text-light);
+}
+
+/* ============================================================================
+   🏷️ BADGES DE ESTADO (Facturación, Medición, Roles)
+   ============================================================================ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-full);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.badge-success, .badge-pagado {
+  background-color: var(--success-light);
+  color: var(--success-color);
+  border: 1px solid var(--success-border);
+}
+
+.badge-warning, .badge-pendiente {
+  background-color: var(--warning-light);
+  color: var(--warning-color);
+  border: 1px solid var(--warning-border);
+}
+
+.badge-danger, .badge-mora, .badge-cortado {
+  background-color: var(--error-light);
+  color: var(--error-color);
+  border: 1px solid var(--error-border);
+}
+
+.badge-info, .badge-proceso {
+  background-color: var(--info-light);
+  color: var(--info-color);
+  border: 1px solid var(--info-border);
+}
+
+.badge-neutral {
+  background-color: var(--bg-gray-100);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+/* ============================================================================
+   📦 TARJETAS (CARDS)
+   ============================================================================ */
+.card-standard {
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+  transition: box-shadow var(--transition-normal);
+}
+
+.card-standard:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* ============================================================================
+   🔘 BOTONES DE ALTERNANCIA DE VISTA (Grid / Lista)
+   ============================================================================ */
+.btn-layout-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-white);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-layout-toggle:hover {
+  background: var(--bg-gray-100);
+  color: var(--text-primary);
+  border-color: #cbd5e1;
+}
+
+.btn-layout-toggle.active {
+  background: var(--primary-color);
+  color: #ffffff;
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ============================================================================
+   📑 ENCABEZADOS DE SECCIÓN ESTÁNDAR (Panel General, Usuarios, etc.)
+   ============================================================================ */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--bg-white);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.section-title h2 {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.section-subtitle,
+.subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0.2rem 0 0 0;
+  font-weight: var(--font-weight-regular);
+}

@@ -385,9 +385,12 @@ def agregar_servicios_permanentes_a_factura(
         )
         from datetime import datetime
         
-        # Convertir periodo a fecha para validar vigencia
-        anio, mes = periodo.split('-')
-        fecha_periodo = datetime(int(anio), int(mes), 1).date()
+        import calendar
+        # Convertir periodo a fechas de inicio y fin de mes para validar vigencia
+        anio, mes = [int(x) for x in periodo.split('-')]
+        fecha_inicio_periodo = datetime(anio, mes, 1).date()
+        ultimo_dia = calendar.monthrange(anio, mes)[1]
+        fecha_fin_periodo = datetime(anio, mes, ultimo_dia).date()
         
         # ============================================
         # OPCIÓN 1: Usar cache (para generación masiva)
@@ -411,18 +414,18 @@ def agregar_servicios_permanentes_a_factura(
             ).filter(
                 AsignacionServicioPermanente.id_usuario_afi == id_usuario_afi,
                 AsignacionServicioPermanente.activo == True,
-                AsignacionServicioPermanente.fecha_inicio <= fecha_periodo,
+                AsignacionServicioPermanente.fecha_inicio <= fecha_fin_periodo,
                 or_(
                     AsignacionServicioPermanente.fecha_fin.is_(None),
-                    AsignacionServicioPermanente.fecha_fin >= fecha_periodo
+                    AsignacionServicioPermanente.fecha_fin >= fecha_inicio_periodo
                 ),
                 ConfiguracionServicioPermanente.activo == True,
                 ConfiguracionServicioPermanente.aplicar_servicio == True,
                 ConfiguracionServicioPermanente.es_vigente == True,
-                ConfiguracionServicioPermanente.vigencia_desde <= fecha_periodo,
+                ConfiguracionServicioPermanente.vigencia_desde <= fecha_fin_periodo,
                 or_(
                     ConfiguracionServicioPermanente.vigencia_hasta.is_(None),
-                    ConfiguracionServicioPermanente.vigencia_hasta >= fecha_periodo
+                    ConfiguracionServicioPermanente.vigencia_hasta >= fecha_inicio_periodo
                 ),
                 Servicio.activo == True,
                 Servicio.es_vigente == True
@@ -514,9 +517,12 @@ def precargar_servicios_permanentes_masivo(
     if not ids_usuarios_afi:
         return {}
     
-    # Convertir periodo a fecha
-    anio, mes = periodo.split('-')
-    fecha_periodo = datetime(int(anio), int(mes), 1).date()
+    import calendar
+    # Convertir periodo a fechas de inicio y fin de mes para validar vigencia
+    anio, mes = [int(x) for x in periodo.split('-')]
+    fecha_inicio_periodo = datetime(anio, mes, 1).date()
+    ultimo_dia = calendar.monthrange(anio, mes)[1]
+    fecha_fin_periodo = datetime(anio, mes, ultimo_dia).date()
     
     print(f"\n{'='*60}")
     print(f"🚀 PRECARGANDO SERVICIOS PERMANENTES MASIVAMENTE")
@@ -541,18 +547,18 @@ def precargar_servicios_permanentes_masivo(
     ).filter(
         AsignacionServicioPermanente.id_usuario_afi.in_(ids_usuarios_afi),
         AsignacionServicioPermanente.activo == True,
-        AsignacionServicioPermanente.fecha_inicio <= fecha_periodo,
+        AsignacionServicioPermanente.fecha_inicio <= fecha_fin_periodo,
         or_(
             AsignacionServicioPermanente.fecha_fin.is_(None),
-            AsignacionServicioPermanente.fecha_fin >= fecha_periodo
+            AsignacionServicioPermanente.fecha_fin >= fecha_inicio_periodo
         ),
         ConfiguracionServicioPermanente.activo == True,
         ConfiguracionServicioPermanente.aplicar_servicio == True,
         ConfiguracionServicioPermanente.es_vigente == True,
-        ConfiguracionServicioPermanente.vigencia_desde <= fecha_periodo,
+        ConfiguracionServicioPermanente.vigencia_desde <= fecha_fin_periodo,
         or_(
             ConfiguracionServicioPermanente.vigencia_hasta.is_(None),
-            ConfiguracionServicioPermanente.vigencia_hasta >= fecha_periodo
+            ConfiguracionServicioPermanente.vigencia_hasta >= fecha_inicio_periodo
         ),
         Servicio.activo == True,
         Servicio.es_vigente == True

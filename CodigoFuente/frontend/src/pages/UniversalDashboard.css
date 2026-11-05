@@ -2,27 +2,7 @@
    ESTILOS el DASHBOARD UNIVERSAL
    ============================================================================ */
 
-/* ===== VARIABLES DE COLOR Y SOMBRAS ===== */
-:root {
-  --primary-color: #1e40af;
-  --primary-light: #3b82f6;
-  --primary-dark: #1e3a8a;
-  --accent-color: #0ea5e9;
-  --success-color: #22c55e;
-  --warning-color: #f59e0b;
-  --error-color: #ef4444;
-  --text-primary: #1a202c;
-  --text-secondary: #64748b;
-  --text-light: #9ca3af;
-  --bg-white: #ffffff;
-  --bg-gray-50: #f8fafc;
-  --bg-gray-100: #f1f5f9;
-  --border-color: #e2e8f0;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
-}
+/* Las variables y colores globales se derivan de src/styles/theme.css */
 
 .dashboard {
   min-height: 100vh;
@@ -276,16 +256,20 @@
 /* ===== HEADER STYLES ===== */
 .header {
   background: var(--bg-white);
-  border-bottom: 2px solid var(--border-color);
-  padding: 1.87rem;
-  box-shadow: var(--shadow-md);
+  border-bottom: 1px solid var(--border-color);
+  padding: 1.25rem 2rem;
+  box-shadow: var(--shadow-sm);
   position: relative;
+  transition: padding 0.3s ease;
 }
 
 .header-content {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .header-title h1 {
@@ -642,6 +626,27 @@
   margin-left: 80px;
 }
 
+/* ===== MÁRGENES Y RESPIROS EN MODO COLAPSADO (NO ACOPLAR COMPLETAMENTE) ===== */
+.main-content.sidebar-collapsed .header {
+  padding-left: 3.5rem;
+  padding-right: 3.5rem;
+}
+
+.main-content.sidebar-collapsed .content {
+  padding: 2rem 3.5rem;
+}
+
+@media (min-width: 1500px) {
+  .main-content.sidebar-collapsed .header {
+    padding-left: 4.5rem;
+    padding-right: 4.5rem;
+  }
+  .main-content.sidebar-collapsed .content {
+    padding: 2.25rem 4.5rem;
+  }
+}
+
+
 /* 🔥 Overlay para móvil */
 .sidebar-overlay {
   display: none;
@@ -651,8 +656,8 @@
 .content {
   min-height: 0; 
   flex: 1; 
-  padding: 2rem;
-  background: var(--bg-white);
+  padding: 1.75rem 2rem;
+  background: var(--bg-gray-50);
   overflow-y: auto; 
   overflow-x: hidden;
 }
@@ -1662,26 +1667,20 @@
 .mb-4 { margin-bottom: 1rem; }
 
 /* ===== SCROLLBAR STYLING ===== */
-.notification-list::-webkit-scrollbar,
-.sidebar-nav::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Scrollbar de notificaciones */
+.notification-list::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
 }
-
-.notification-list::-webkit-scrollbar-track,
-.sidebar-nav::-webkit-scrollbar-track {
+.notification-list::-webkit-scrollbar-track {
   background: var(--bg-gray-100);
   border-radius: 3px;
 }
-
-.notification-list::-webkit-scrollbar-thumb,
-.sidebar-nav::-webkit-scrollbar-thumb {
+.notification-list::-webkit-scrollbar-thumb {
   background: var(--text-light);
   border-radius: 3px;
 }
-
-.notification-list::-webkit-scrollbar-thumb:hover,
-.sidebar-nav::-webkit-scrollbar-thumb:hover {
+.notification-list::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
 }
 
@@ -2260,39 +2259,9 @@
   padding: 1rem;
 }
 
-.sidebar-nav::-webkit-scrollbar {
-  width: 6px;
-}
 
-.sidebar-nav::-webkit-scrollbar-track {
-  background: transparent;
-}
 
-.sidebar-nav::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 3px;
-}
 
-.sidebar-nav::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5);
-}
-
-.sidebar-nav::-webkit-scrollbar {
-  width: 6px;
-}
-
-.sidebar-nav::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.sidebar-nav::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 3px;
-}
-
-.sidebar-nav::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5);
-}
 
 /* ============================================================================
    RESUMEN DE MÓDULOS (Overview)
@@ -2551,40 +2520,7 @@
   transform: scale(0.95);
 }
 
-/* SIDEBAR TOGGLE DESKTOP */
-.sidebar-toggle-btn {
-  position: absolute;
-  top: 32px;
-  right: -14px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: white;
-  border: 1px solid var(--border-color);
-  color: var(--primary-color);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 1002;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.sidebar-toggle-btn:hover {
-  background: var(--primary-light);
-  color: white;
-  transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.sidebar-toggle-btn:active {
-  transform: scale(0.95);
-}
-
-.sidebar.collapsed .sidebar-toggle-btn {
-  right: -14px;
-}
+/* SIDEBAR TOGGLE DESKTOP: definido al final */
 
 /* Sidebar colapsado */
 .sidebar.collapsed {
@@ -2793,31 +2729,33 @@
     font-size: 0.7rem;
   }
 }
-/*  BOTÓN TOGGLE SIDEBAR MEJORADO */
+/* ============================================================================
+   🔘 BOTÓN TOGGLE SIDEBAR Y COMPORTAMIENTO COLAPSADO (REUBICADO DEBAJO DEL LOGO)
+   ============================================================================ */
 .sidebar-toggle-btn {
   position: absolute;
-  top: 30px; 
-  right: -14px;
-  width: 28px;
-  height: 28px;
+  top: 94px; /* Posicionado debajo del logo para evitar solapamiento */
+  right: -13px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  background: white;
-  border: 1px solid var(--border-color);
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
   color: var(--primary-color);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 1002;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1005;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  transition: all 0.25s ease;
 }
 
 .sidebar-toggle-btn:hover {
   background: var(--primary-light);
-  color: white;
-  transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  color: #ffffff;
+  transform: scale(1.12);
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.35);
 }
 
 .sidebar-toggle-btn:active {
@@ -2829,11 +2767,19 @@
   width: 80px;
 }
 
-.sidebar.collapsed .logo-text {
-  display: none;
+.sidebar.collapsed .sidebar-header {
+  padding: 1.5rem 0.5rem;
 }
 
-.sidebar.collapsed .nav-item span {
+.sidebar.collapsed .logo-container {
+  justify-content: center;
+}
+
+.sidebar.collapsed .logo-icon {
+  margin: 0 auto;
+}
+
+.sidebar.collapsed .logo-text {
   display: none;
 }
 
@@ -2841,29 +2787,73 @@
   display: none;
 }
 
-.sidebar.collapsed .sidebar-toggle-btn {
-  right: -14px;
-}
-
-/* Ajustes adicionales para sidebar colapsado */
-.sidebar-collapsed .logo-container {
+.sidebar.collapsed .nav-item {
   justify-content: center;
+  padding: 0.85rem 0;
+  margin-bottom: 0.35rem;
 }
 
-.sidebar-collapsed .logo-icon {
-  margin: 0;
+.sidebar.collapsed .nav-item span {
+  display: none;
 }
 
-/* Texto del logo */
-.logo-text h2 {
-  color: white;
-  font-size: 1.2rem;
-  margin: 0;
-  font-weight: bold;
+.sidebar.collapsed .sidebar-toggle-btn {
+  top: 94px;
+  right: -13px;
 }
 
-.logo-text p {
-  color: #e9eefc;
-  margin: 0;
-  font-size: 0.82rem;
+/* ============================================================================
+   🎨 SCROLLBAR ADAPTADO AL FONDO AZUL (EXPANDIDO) Y OCULTO EN COLAPSADO
+   ============================================================================ */
+/* Scrollbar de la navegación del Sidebar en modo expandido */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 9999px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.sidebar-nav::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.sidebar-nav::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Sidebar colapsado: SIN scrollbar visible para no opacar ni recortar los iconos */
+.sidebar.collapsed .sidebar-nav {
+  padding: 0.75rem 0.25rem !important;
+  scrollbar-width: none !important; /* Firefox y Chrome moderno */
+  -ms-overflow-style: none !important; /* Edge */
+  overflow-y: auto;
+}
+
+.sidebar.collapsed .sidebar-nav::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }

@@ -262,6 +262,7 @@ const toggleSidebar = () => {
 
   const currentPath = getActivePath();
 
+
   // ============================================================================
   // EFECTOS Y CARGA DE DATOS
   // ============================================================================
@@ -285,10 +286,16 @@ const toggleSidebar = () => {
     const modules = buildModulesFromPermissions(permissions);
     setOrganizedModules(modules);
     
-    const initialExpanded = {};
-    modules.forEach(category => {
-      initialExpanded[category.id] = category.defaultOpen !== false;
-    });
+    // Modo acordeón: 'HOME' (Inicio) SIEMPRE desplegado + la categoría activa
+    const activePath = getActivePath();
+    const activeCat = modules.find(cat =>
+      cat.modules.some(mod => mod.path === activePath)
+    );
+
+    const initialExpanded = { HOME: true };
+    if (activeCat && activeCat.id !== 'HOME') {
+      initialExpanded[activeCat.id] = true;
+    }
     setExpandedCategories(initialExpanded);
     
     const verifySession = async () => {
@@ -299,7 +306,7 @@ const toggleSidebar = () => {
     };
 
     verifySession();
-  }, [navigate, roleBasePath]);
+  }, [navigate, roleBasePath, getActivePath]);
 
   // Mantener abierta la categoría donde está el módulo activo
   useEffect(() => {
@@ -312,12 +319,12 @@ const toggleSidebar = () => {
       cat.modules.some(mod => mod.path === activePath)
     );
 
-    if (categoryFound) {
-      setExpandedCategories(prev => ({
-        ...prev,
-        [categoryFound.id]: true
-      }));
+    // Modo acordeón: HOME siempre desplegado + categoría activa
+    const nextState = { HOME: true };
+    if (categoryFound && categoryFound.id !== 'HOME') {
+      nextState[categoryFound.id] = true;
     }
+    setExpandedCategories(nextState);
   }, [location.pathname, organizedModules, getActivePath]);
 
   // ============================================================================
@@ -487,11 +494,24 @@ const toggleSidebar = () => {
     await loadDashboardData();
   };
 
+  // Acordeón: 'HOME' (Inicio) SIEMPRE desplegado; al abrir otra categoría se cierran las demás
   const toggleCategory = (categoryId) => {
-    setExpandedCategories(prev => ({
-      ...prev,
-      [categoryId]: !prev[categoryId]
-    }));
+    if (categoryId === 'HOME') {
+      // Inicio siempre permanece desplegado
+      setExpandedCategories(prev => ({
+        ...prev,
+        HOME: true
+      }));
+      return;
+    }
+
+    setExpandedCategories(prev => {
+      const isAlreadyOpen = !!prev[categoryId];
+      return {
+        HOME: true, // Inicio siempre permanece desplegado
+        [categoryId]: !isAlreadyOpen // Alterna la categoría seleccionada y cierra las demás
+      };
+    });
   };
 
   //  Navegación entre módulos con ruta base dinámica
@@ -554,21 +574,21 @@ const toggleSidebar = () => {
               </div>
             )}
           </div>
-
-          {/* BOTÓN TOGGLE PARA COLAPSAR/EXPANDIR SIDEBAR MEJORADO */}
-          <button
-            className="sidebar-toggle-btn"
-            onClick={toggleSidebar}
-            aria-label={sidebarCollapsed ? "Expandir menú" : "Contraer menú"}
-            title={sidebarCollapsed ? "Expandir menú" : "Contraer menú"}
-          >
-            {sidebarCollapsed ? (
-              <ChevronRight size={20} />
-            ) : (
-              <ChevronLeft size={20} />
-            )}
-          </button>
         </div>
+
+        {/* BOTÓN TOGGLE PARA COLAPSAR/EXPANDIR SIDEBAR (UBICADO DEBAJO DEL LOGO) */}
+        <button
+          className="sidebar-toggle-btn"
+          onClick={toggleSidebar}
+          aria-label={sidebarCollapsed ? "Expandir menú" : "Contraer menú"}
+          title={sidebarCollapsed ? "Expandir menú" : "Contraer menú"}
+        >
+          {sidebarCollapsed ? (
+            <ChevronRight size={18} />
+          ) : (
+            <ChevronLeft size={18} />
+          )}
+        </button>
 
         {/* Navegación */}
         <nav className="sidebar-nav">

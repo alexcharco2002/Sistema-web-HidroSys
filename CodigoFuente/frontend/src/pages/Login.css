@@ -2,37 +2,9 @@
   Estilos Login.css  
    ============================================================ */
 
-:root {
-  --primary-color:  #1e40af;
-  --primary-light:  #3b82f6;
-  --primary-dark:   #1e3a8a;
-  --accent-color:   #0ea5e9;
+/* Las variables y colores globales se derivan de src/styles/theme.css */
 
-  --lv2-blue-deep:   var(--primary-dark);
-  --lv2-blue-mid:    var(--primary-color);
-  --lv2-blue-light:  var(--primary-light);
-  --lv2-blue-pale:   #eff6ff;
-
-  --lv2-text-dark:   #1a202c;
-  --lv2-text-mid:    #64748b;
-  --lv2-text-soft:   #9ca3af;
-
-  --lv2-border:      #e2e8f0;
-  --lv2-bg-input:    #f8fafc;
-  --lv2-error-bg:    #fee2e2;
-  --lv2-error-text:  #991b1b;
-  --lv2-error-border:#fecaca;
-
-  --lv2-radius-sm:   8px;
-  --lv2-radius-md:   12px;
-  --lv2-radius-lg:   20px;
-
-  --lv2-font: 'Poppins', 'Segoe UI', system-ui, sans-serif;
-}
-
-/* ── RESET MÍNIMO ── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+/* Reset derivado de src/styles/theme.css */
 /* ── CONTENEDOR RAÍZ ── */
 .lv2-container {
   display: flex;
@@ -305,7 +277,7 @@
   padding: 12px 16px;
   background: var(--lv2-error-bg);
   border: 1px solid var(--lv2-error-border);
-  border-left: 4px solid #ef4444;
+  border-left: 4px solid var(--error-color);
   border-radius: var(--lv2-radius-sm);
   color: var(--lv2-error-text);
   font-size: 0.875rem;
@@ -453,7 +425,7 @@
 .lv2-submit-btn:hover:not(:disabled)::after { transform: translateX(100%); }
 
 .lv2-submit-btn:hover:not(:disabled) {
-  background: var(--primary-color);
+  background: var(--primary-dark);
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(30, 64, 175, 0.28);
 }

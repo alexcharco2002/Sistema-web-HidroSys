@@ -2,8 +2,8 @@
 
 import locale
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
-from sqlalchemy import String, cast, func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy import String, cast, func, or_, and_
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from datetime import datetime, date
@@ -172,11 +172,12 @@ def listar_facturas_optimizado(
         # ========================================
         # QUERY PRINCIPAL — solo facturas reales ✅
         # ========================================
+        MedidorAfiliado = aliased(Medidor)
         query = (
             db.query(
                 # ===== MEDIDOR =====
-                Medidor.id_medidor,
-                Medidor.num_medidor,
+                func.coalesce(Medidor.id_medidor, MedidorAfiliado.id_medidor).label('id_medidor'),
+                func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).label('num_medidor'),
 
                 # ===== FACTURA =====
                 Factura.id_factura,
@@ -215,6 +216,13 @@ def listar_facturas_optimizado(
             .outerjoin(Lectura, Factura.id_lectura == Lectura.id_lectura)
             .outerjoin(Medidor, Lectura.id_medidor == Medidor.id_medidor)
             .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            .outerjoin(
+                MedidorAfiliado,
+                and_(
+                    MedidorAfiliado.id_usuario_afi == UsuarioAfiliado.id_usuario_afi,
+                    MedidorAfiliado.activo == True
+                )
+            )
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
             .filter(
@@ -237,7 +245,7 @@ def listar_facturas_optimizado(
                     ).ilike(search_pattern),
                     UsuarioSistema.cedula.ilike(search_pattern),
                     cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
-                    Medidor.num_medidor.ilike(search_pattern),
+                    func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(search_pattern),
                 )
             )
 
@@ -518,15 +526,20 @@ def _fecha_desde_periodo(periodo: str) -> date:
 
 
 def _query_servicios_permanentes_sin_medidor(db: Session, periodo: str):
+    import calendar
     from models.servicio_permanente import (
         AsignacionServicioPermanente,
         ConfiguracionServicioPermanente
     )
 
-    medidor_activo = db.query(Medidor.id_medidor).filter(
-        Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi,
-        Medidor.activo == True
-    ).exists()
+    try:
+        anio, mes = [int(x) for x in periodo.split("-")]
+        fecha_inicio_periodo = date(anio, mes, 1)
+        ultimo_dia = calendar.monthrange(anio, mes)[1]
+        fecha_fin_periodo = date(anio, mes, ultimo_dia)
+    except Exception:
+        fecha_inicio_periodo = date.today()
+        fecha_fin_periodo = date.today()
 
     return (
         db.query(
@@ -547,8 +560,20 @@ def _query_servicios_permanentes_sin_medidor(db: Session, periodo: str):
             UsuarioAfiliado.activo == True,
             UsuarioAfiliado.cod_usuario_afi.isnot(None),
             UsuarioAfiliado.cod_usuario_afi != "",
-            ~medidor_activo,
             AsignacionServicioPermanente.activo == True,
+            AsignacionServicioPermanente.fecha_inicio <= fecha_fin_periodo,
+            or_(
+                AsignacionServicioPermanente.fecha_fin.is_(None),
+                AsignacionServicioPermanente.fecha_fin >= fecha_inicio_periodo
+            ),
+            ConfiguracionServicioPermanente.activo == True,
+            ConfiguracionServicioPermanente.aplicar_servicio == True,
+            ConfiguracionServicioPermanente.es_vigente == True,
+            ConfiguracionServicioPermanente.vigencia_desde <= fecha_fin_periodo,
+            or_(
+                ConfiguracionServicioPermanente.vigencia_hasta.is_(None),
+                ConfiguracionServicioPermanente.vigencia_hasta >= fecha_inicio_periodo
+            ),
             Servicio.activo == True,
             Servicio.es_vigente == True
         )
@@ -620,19 +645,33 @@ def validar_servicios_sin_lectura_pendientes(
         Factura.estado_factura != "anulada"
     ).scalar() or 0
 
-    if total_facturas_periodo == 0:
-        return {
-            "success": True,
-            "periodo": periodo,
-            "hay_pendientes": False,
-            "total_afiliados": 0,
-            "total_servicios": 0,
-            "total_facturas_periodo": 0,
-            "monto_estimado": 0.0,
-            "mensaje": "Este periodo todavía no tiene facturas generadas desde lecturas."
-        }
-
     pendientes, afiliados, monto_estimado = _calcular_pendientes_servicios_sin_lectura(db, periodo)
+
+    detalles_afiliados = []
+    medidores_map = {}
+    if afiliados:
+        medidores_q = db.query(Medidor.id_usuario_afi, Medidor.num_medidor).filter(
+            Medidor.id_usuario_afi.in_(list(afiliados)),
+            Medidor.activo == True
+        ).all()
+        medidores_map = {m.id_usuario_afi: m.num_medidor for m in medidores_q}
+
+    for item in pendientes:
+        u = item["usuario"]
+        a = item["afiliado"]
+        s = item["servicio"]
+        cfg = item["config"]
+        detalles_afiliados.append({
+            "id_usuario_afi": a.id_usuario_afi,
+            "cod_usuario_afi": a.cod_usuario_afi,
+            "nombre_completo": f"{u.nombres or ''} {u.apellidos or ''}".strip(),
+            "cedula": u.cedula,
+            "num_medidor": medidores_map.get(a.id_usuario_afi) or "S/M",
+            "id_servicio": s.id_servicio,
+            "servicio_nombre": s.nombre,
+            "tarifa_nombre": cfg.nombre,
+            "precio": float(item["precio"])
+        })
 
     return {
         "success": True,
@@ -642,10 +681,11 @@ def validar_servicios_sin_lectura_pendientes(
         "total_servicios": len(pendientes),
         "total_facturas_periodo": int(total_facturas_periodo),
         "monto_estimado": float(monto_estimado),
+        "detalles": detalles_afiliados,
         "mensaje": (
-            f"Hay {len(pendientes)} servicio(s) permanente(s) sin lectura pendientes."
+            f"Hay {len(pendientes)} servicio(s) permanente(s) pendientes por facturar."
             if pendientes else
-            "No hay servicios permanentes sin lectura pendientes para este periodo."
+            "No hay servicios permanentes pendientes para este periodo."
         )
     }
 
@@ -672,28 +712,35 @@ def generar_facturas_servicios_sin_lectura(
         Factura.estado_factura != "anulada"
     ).scalar() or 0
 
-    if total_facturas_periodo == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Primero genera facturas del periodo desde lecturas; luego aplica servicios sin lectura."
-        )
-
     tarifa_basica, _ = obtener_tarifas_vigentes(db)
+    if not tarifa_basica:
+        from models.tarifa import Tarifa
+        tarifa_basica = db.query(Tarifa).filter(Tarifa.activo == True).first()
+
     if not tarifa_basica:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se encontró una tarifa básica vigente para crear las facturas."
+            detail="No se encontró una tarifa activa para asociar la factura."
         )
 
+    afiliados_ids = (data or {}).get("afiliados_ids")
     pendientes, afiliados, _ = _calcular_pendientes_servicios_sin_lectura(db, periodo)
+
+    if afiliados_ids and isinstance(afiliados_ids, list):
+        afiliados_ids_set = set(int(x) for x in afiliados_ids)
+        pendientes = [item for item in pendientes if item["afiliado"].id_usuario_afi in afiliados_ids_set]
+        afiliados = set(item["afiliado"].id_usuario_afi for item in pendientes)
     if not pendientes:
         return {
             "success": True,
-            "message": "No hay servicios permanentes sin lectura pendientes para generar.",
-            "facturas_creadas": 0,
-            "detalles_creados": 0,
-            "afiliados_procesados": 0,
-            "monto_total": 0.0
+            "message": "No hay servicios permanentes pendientes para generar en este periodo.",
+            "data": {
+                "periodo": periodo,
+                "facturas_creadas": 0,
+                "detalles_creados": 0,
+                "afiliados_procesados": 0,
+                "monto_total": 0.0
+            }
         }
 
     try:
@@ -710,10 +757,10 @@ def generar_facturas_servicios_sin_lectura(
 
             factura = facturas_por_afiliado.get(afiliado.id_usuario_afi)
             if factura is None:
+                # Buscar factura activa del afiliado para el periodo (con o sin lectura)
                 factura = db.query(Factura).filter(
                     Factura.id_usuario_afi == afiliado.id_usuario_afi,
                     Factura.periodo == periodo,
-                    Factura.id_lectura.is_(None),
                     Factura.estado_factura.in_(["pendiente", "vencida"])
                 ).first()
 
@@ -751,7 +798,7 @@ def generar_facturas_servicios_sin_lectura(
                 id_multa_afiliados=None,
                 id_asignacion_sp=asignacion.id_asignacion_sp,
                 subtotal_detalle=precio,
-                descripcion=f"{servicio.nombre} (Servicio permanente sin lectura) - Periodo {periodo}"
+                descripcion=f"{servicio.nombre} (Servicio Permanente) - ${float(precio):.2f}"
             )
             db.add(detalle)
             detalles_creados += 1
@@ -765,8 +812,8 @@ def generar_facturas_servicios_sin_lectura(
             db=db,
             accion="CREATE",
             descripcion=(
-                f"Facturas de servicios permanentes sin lectura generadas - "
-                f"Periodo: {periodo} - Facturas: {facturas_creadas} - Detalles: {detalles_creados}"
+                f"Facturas de servicios permanentes generadas - "
+                f"Periodo: {periodo} - Facturas nuevas: {facturas_creadas} - Detalles: {detalles_creados}"
             ),
             id_usuario=current_user.id_usuario_sistema
         )
@@ -774,8 +821,8 @@ def generar_facturas_servicios_sin_lectura(
         registrar_notificacion(
             db=db,
             id_usuario=current_user.id_usuario_sistema,
-            titulo="Facturas sin lectura generadas",
-            mensaje=f"Se generaron {facturas_creadas} factura(s) y {detalles_creados} servicio(s) para {periodo}.",
+            titulo="Facturación de servicios generada",
+            mensaje=f"Se procesaron {len(afiliados)} afiliado(s), {facturas_creadas} factura(s) nueva(s) y {detalles_creados} servicio(s) para {periodo}.",
             tipo="exito"
         )
 
@@ -783,20 +830,27 @@ def generar_facturas_servicios_sin_lectura(
 
         return {
             "success": True,
-            "message": f"Se generaron {facturas_creadas} factura(s) de servicios sin lectura.",
-            "facturas_creadas": facturas_creadas,
-            "detalles_creados": detalles_creados,
-            "afiliados_procesados": len(afiliados),
-            "monto_total": float(monto_total)
+            "message": f"Se procesaron {len(afiliados)} afiliado(s) exitosamente.",
+            "data": {
+                "periodo": periodo,
+                "facturas_creadas": facturas_creadas,
+                "detalles_creados": detalles_creados,
+                "afiliados_procesados": len(afiliados),
+                "monto_total": float(monto_total)
+            }
         }
 
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
+        print(f"❌ Error al generar facturas de servicios: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al generar facturas de servicios sin lectura: {str(e)}"
+            detail=f"Error al generar facturas de servicios: {str(e)}"
         )
 
 # ========================================

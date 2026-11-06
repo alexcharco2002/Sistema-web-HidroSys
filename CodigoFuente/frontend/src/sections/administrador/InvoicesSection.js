@@ -25,7 +25,8 @@ import {
   TrendingUp,
   Ban,
   CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
-  Gauge, User, IdCard  ,Tag, Percent, Package, Briefcase
+  Gauge, User, IdCard  ,Tag, Percent, Package, Briefcase,
+  CheckSquare, Users
 } from 'lucide-react';
 
 const InvoicesSection = () => {
@@ -114,6 +115,14 @@ const InvoicesSection = () => {
   const [serviciosSinLecturaInfo, setServiciosSinLecturaInfo] = useState(null);
   const [loadingServiciosSinLectura, setLoadingServiciosSinLectura] = useState(false);
   const [generatingServiciosSinLectura, setGeneratingServiciosSinLectura] = useState(false);
+
+  // Estados modal preview de facturación de servicios
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewTab, setPreviewTab] = useState('todas');
+  const [searchPreview, setSearchPreview] = useState('');
+  const [selectedAfiliadosPreview, setSelectedAfiliadosPreview] = useState([]);
+  const [previewPage, setPreviewPage] = useState(1);
+  const [previewPageSize, setPreviewPageSize] = useState(10);
 
   // ============================================================
   // ESTADOS  MANEJAR ANULACION DE MULTAS
@@ -685,34 +694,141 @@ const handleConfirmarAnulacion = async (e) => {
   };
 
 
-  const handleGenerarServiciosSinLectura = async () => {
-    if (!periodoSeleccionadoStr || !serviciosSinLecturaInfo?.hay_pendientes) {
+  const handleAbrirModalPreview = async () => {
+    if (!periodoSeleccionadoStr) return;
+
+    let info = serviciosSinLecturaInfo;
+    if (!info || !info.detalles) {
+      setLoadingServiciosSinLectura(true);
+      try {
+        const result = await invoicesServices.validarServiciosSinLectura(periodoSeleccionadoStr);
+        if (result.success && result.data) {
+          info = result.data;
+          setServiciosSinLecturaInfo(result.data);
+        }
+      } catch (err) {
+        console.error('Error cargando preview de servicios:', err);
+      } finally {
+        setLoadingServiciosSinLectura(false);
+      }
+    }
+
+    if (info?.detalles) {
+      setSelectedAfiliadosPreview(info.detalles.map(d => d.id_usuario_afi));
+    }
+    setPreviewTab('todas');
+    setSearchPreview('');
+    setPreviewPage(1);
+    setShowPreviewModal(true);
+  };
+
+  const listaDetallesPreview = useMemo(() => {
+    return serviciosSinLecturaInfo?.detalles || [];
+  }, [serviciosSinLecturaInfo]);
+
+  const categoriasTarifasPreview = useMemo(() => {
+    const map = {};
+    listaDetallesPreview.forEach(item => {
+      const tarifaKey = Number(item.precio).toFixed(2);
+      if (!map[tarifaKey]) {
+        map[tarifaKey] = {
+          precio: Number(item.precio),
+          key: tarifaKey,
+          label: `$${Number(item.precio).toFixed(2)}`,
+          count: 0,
+          total: 0
+        };
+      }
+      map[tarifaKey].count += 1;
+      map[tarifaKey].total += Number(item.precio);
+    });
+    return Object.values(map).sort((a, b) => a.precio - b.precio);
+  }, [listaDetallesPreview]);
+
+  const detallesFiltradosPreview = useMemo(() => {
+    return listaDetallesPreview.filter(item => {
+      if (previewTab !== 'todas') {
+        if (Number(item.precio).toFixed(2) !== previewTab) return false;
+      }
+      if (searchPreview.trim()) {
+        const term = searchPreview.toLowerCase().trim();
+        const nombre = (item.nombre_completo || '').toLowerCase();
+        const cedula = (item.cedula || '').toLowerCase();
+        const cod = String(item.cod_usuario_afi || '').toLowerCase();
+        const medidor = String(item.num_medidor || '').toLowerCase();
+        return nombre.includes(term) || cedula.includes(term) || cod.includes(term) || medidor.includes(term);
+      }
+      return true;
+    });
+  }, [listaDetallesPreview, previewTab, searchPreview]);
+
+  const totalPaginasPreview = Math.ceil(detallesFiltradosPreview.length / previewPageSize) || 1;
+  const itemsPaginaPreview = useMemo(() => {
+    const inicio = (previewPage - 1) * previewPageSize;
+    return detallesFiltradosPreview.slice(inicio, inicio + previewPageSize);
+  }, [detallesFiltradosPreview, previewPage, previewPageSize]);
+
+  const totalSeleccionadosPreview = selectedAfiliadosPreview.length;
+  const montoSeleccionadoPreview = useMemo(() => {
+    const setIds = new Set(selectedAfiliadosPreview);
+    return listaDetallesPreview
+      .filter(item => setIds.has(item.id_usuario_afi))
+      .reduce((sum, item) => sum + Number(item.precio), 0);
+  }, [selectedAfiliadosPreview, listaDetallesPreview]);
+
+  const toggleSelectAfiliadoPreview = (idUsuarioAfi) => {
+    setSelectedAfiliadosPreview(prev => {
+      if (prev.includes(idUsuarioAfi)) {
+        return prev.filter(id => id !== idUsuarioAfi);
+      } else {
+        return [...prev, idUsuarioAfi];
+      }
+    });
+  };
+
+  const toggleSelectTodosFiltradosPreview = () => {
+    const idsFiltrados = detallesFiltradosPreview.map(item => item.id_usuario_afi);
+    const todosSeleccionados = idsFiltrados.length > 0 && idsFiltrados.every(id => selectedAfiliadosPreview.includes(id));
+
+    if (todosSeleccionados) {
+      setSelectedAfiliadosPreview(prev => prev.filter(id => !idsFiltrados.includes(id)));
+    } else {
+      setSelectedAfiliadosPreview(prev => Array.from(new Set([...prev, ...idsFiltrados])));
+    }
+  };
+
+  const handleConfirmarGeneracionServicios = async () => {
+    if (!periodoSeleccionadoStr || selectedAfiliadosPreview.length === 0) {
+      alert('⚠️ Debes seleccionar al menos un afiliado para generar facturas');
       return;
     }
 
     const mensaje = [
-      `¿Generar facturas de servicios permanentes sin lectura para ${formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}?`,
+      `¿Confirmar la generación de facturas para ${formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}?`,
       '',
-      `Afiliados: ${serviciosSinLecturaInfo.total_afiliados}`,
-      `Servicios: ${serviciosSinLecturaInfo.total_servicios}`,
-      `Monto estimado: ${formatCurrency(serviciosSinLecturaInfo.monto_estimado || 0)}`,
+      `• Afiliados seleccionados: ${totalSeleccionadosPreview}`,
+      `• Monto total estimado: ${formatCurrency(montoSeleccionadoPreview)}`,
       '',
-      'El sistema evitará duplicados por asignación permanente.'
+      'El sistema generará las facturas correspondientes sin duplicados.'
     ].join('\n');
 
     if (!window.confirm(mensaje)) return;
 
     setGeneratingServiciosSinLectura(true);
     try {
-      const result = await invoicesServices.generarServiciosSinLectura(periodoSeleccionadoStr);
+      const result = await invoicesServices.generarServiciosSinLectura(
+        periodoSeleccionadoStr,
+        selectedAfiliadosPreview
+      );
 
       if (result.success) {
         alert(
           `✅ ${result.message}\n\n` +
-          `Facturas creadas: ${result.data.facturas_creadas}\n` +
-          `Servicios facturados: ${result.data.detalles_creados}\n` +
-          `Total generado: ${formatCurrency(result.data.monto_total || 0)}`
+          `• Facturas creadas: ${result.data?.facturas_creadas ?? 0}\n` +
+          `• Servicios facturados: ${result.data?.detalles_creados ?? 0}\n` +
+          `• Total generado: ${formatCurrency(result.data?.monto_total || 0)}`
         );
+        setShowPreviewModal(false);
         await fetchFacturasByPeriodo();
         await fetchStats();
         await fetchServiciosSinLecturaInfo();
@@ -721,8 +837,8 @@ const handleConfirmarAnulacion = async (e) => {
         alert(`❌ ${result.message}`);
       }
     } catch (error) {
-      console.error('Error generando facturas sin lectura:', error);
-      alert('❌ Error al generar facturas de servicios sin lectura');
+      console.error('Error generando facturas de servicios:', error);
+      alert('❌ Error al generar facturas de servicios');
     } finally {
       setGeneratingServiciosSinLectura(false);
     }
@@ -1487,18 +1603,18 @@ const agruparDetallesPorTipo = (detalles) => {
                   <button
                     type="button"
                     className="btn-primary"
-                    onClick={handleGenerarServiciosSinLectura}
+                    onClick={handleAbrirModalPreview}
                     disabled={generatingServiciosSinLectura || loadingServiciosSinLectura}
                   >
-                    {generatingServiciosSinLectura ? (
+                    {loadingServiciosSinLectura ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Generando...</span>
+                        <span>Cargando...</span>
                       </>
                     ) : (
                       <>
                         <FileText className="w-4 h-4" />
-                        <span>Generar facturas</span>
+                        <span>Previsualizar y Generar</span>
                       </>
                     )}
                   </button>
@@ -2206,6 +2322,14 @@ const agruparDetallesPorTipo = (detalles) => {
               )}
 
             </div>
+
+            {/* FOOTER */}
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={closeModal}>
+                <X className="w-4 h-4 mr-1.5" />
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -2440,14 +2564,15 @@ const agruparDetallesPorTipo = (detalles) => {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={closePaymentModal}>
-                <X className="w-4 h-4 mr-2" />
+              <button type="button" className="btn btn-secondary" onClick={closePaymentModal}>
+                <X className="w-4 h-4 mr-1.5" />
                 Cancelar
               </button>
               {/* Botón para aplicar descuento solamente */}
               {paymentData.descuentoTipo !== 'ninguno' && paymentData.descuentoValor > 0 && (
                 <button 
-                  className="btn-primary" 
+                  type="button"
+                  className="btn btn-primary" 
                   onClick={handleAplicarDescuento}
                   disabled={loading}
                 >
@@ -2769,14 +2894,14 @@ const agruparDetallesPorTipo = (detalles) => {
 
       {/* FOOTER */}
       <div className="modal-footer">
-        <button className="btn-secondary" onClick={closeModal}>
-          <X className="w-4 h-4 mr-2" />
+        <button type="button" className="btn btn-secondary" onClick={closeModal}>
+          <X className="w-4 h-4 mr-1.5" />
           Cancelar
         </button>
 
         <button
-          type="submit"
-           className="btn-confirm-anulacion"
+          type="button"
+          className="btn btn-danger btn-confirm-anulacion"
           disabled={
             !anulacionData.motivo ||
             (anulacionData.motivo === 'Otro (especificar)' &&
@@ -2793,7 +2918,288 @@ const agruparDetallesPorTipo = (detalles) => {
   </div>
 )}
 
+      {/* ============================================================ */}
+      {/* MODAL PREVIEW Y CONFIRMACIÓN DE GENERACIÓN DE SERVICIOS */}
+      {/* ============================================================ */}
+      {showPreviewModal && serviciosSinLecturaInfo && (
+        <div className="modal-overlay">
+          <div className="modal modal-preview-services">
+            {/* HEADER */}
+            <div className="modal-header">
+              <h3>
+                <Briefcase className="w-5 h-5 inline mr-2 text-blue-600" />
+                Previsualización de Facturación — {formatearPeriodo(periodoSeleccionado.mes, periodoSeleccionado.anio)}
+              </h3>
+              <button 
+                type="button"
+                className="modal-close"
+                onClick={() => setShowPreviewModal(false)}
+                disabled={generatingServiciosSinLectura}
+                title="Cerrar modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
+            {/* BODY */}
+            <div className="modal-body">
+              {/* Tarjetas resumen */}
+              <div className="preview-stats-grid">
+                <div className="preview-stat-card">
+                  <div className="preview-stat-icon emerald">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div className="preview-stat-content">
+                    <h5>Total Afiliados</h5>
+                    <div className="preview-stat-val">{serviciosSinLecturaInfo.total_afiliados}</div>
+                  </div>
+                </div>
+
+                <div className="preview-stat-card">
+                  <div className="preview-stat-icon blue">
+                    <CheckSquare className="w-5 h-5" />
+                  </div>
+                  <div className="preview-stat-content">
+                    <h5>Seleccionados</h5>
+                    <div className="preview-stat-val text-blue-600">
+                      {totalSeleccionadosPreview} / {serviciosSinLecturaInfo.total_afiliados}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="preview-stat-card">
+                  <div className="preview-stat-icon amber">
+                    <DollarSign className="w-5 h-5" />
+                  </div>
+                  <div className="preview-stat-content">
+                    <h5>Monto a Facturar</h5>
+                    <div className="preview-stat-val text-amber-700">
+                      {formatCurrency(montoSeleccionadoPreview)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pestañas de grupo / tarifa */}
+              <div className="preview-tabs-container">
+                <button
+                  type="button"
+                  className={`preview-tab-btn ${previewTab === 'todas' ? 'active' : ''}`}
+                  onClick={() => { setPreviewTab('todas'); setPreviewPage(1); }}
+                >
+                  <span>Todas las tarifas</span>
+                  <span className="preview-tab-badge">
+                    {listaDetallesPreview.length} • {formatCurrency(serviciosSinLecturaInfo.monto_estimado || 0)}
+                  </span>
+                </button>
+                {categoriasTarifasPreview.map(cat => (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    className={`preview-tab-btn ${previewTab === cat.key ? 'active' : ''}`}
+                    onClick={() => { setPreviewTab(cat.key); setPreviewPage(1); }}
+                  >
+                    <span>Tarifa {cat.label}</span>
+                    <span className="preview-tab-badge">
+                      {cat.count} • {formatCurrency(cat.total)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Barra de herramientas: buscador y selector de tamaño */}
+              <div className="preview-toolbar">
+                <div className="preview-search-box">
+                  <Search className="preview-search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por código, nombre o cédula..."
+                    value={searchPreview}
+                    onChange={(e) => { setSearchPreview(e.target.value); setPreviewPage(1); }}
+                  />
+                  {searchPreview && (
+                    <button
+                      type="button"
+                      className="absolute right-2 top-2 text-gray-400 hover:text-gray-600"
+                      onClick={() => { setSearchPreview(''); setPreviewPage(1); }}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="preview-page-size-selector">
+                    <span>Ver:</span>
+                    <select
+                      value={previewPageSize}
+                      onChange={(e) => {
+                        setPreviewPageSize(Number(e.target.value));
+                        setPreviewPage(1);
+                      }}
+                    >
+                      <option value={10}>10 por grupo</option>
+                      <option value={20}>20 por grupo</option>
+                      <option value={50}>50 por grupo</option>
+                    </select>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs py-1 px-2.5 flex items-center gap-1.5"
+                    onClick={toggleSelectTodosFiltradosPreview}
+                  >
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    <span>Invertir Selección</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tabla de afiliados a facturar */}
+              <div className="preview-table-container">
+                <table className="preview-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '40px', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={
+                            detallesFiltradosPreview.length > 0 &&
+                            detallesFiltradosPreview.every(item => selectedAfiliadosPreview.includes(item.id_usuario_afi))
+                          }
+                          onChange={toggleSelectTodosFiltradosPreview}
+                        />
+                      </th>
+                      <th>Cód.</th>
+                      <th>Afiliado</th>
+                      <th>Cédula</th>
+                      <th>Medidor</th>
+                      <th>Servicio / Categoría</th>
+                      <th style={{ textAlign: 'right' }}>Tarifa</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {itemsPaginaPreview.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="text-center py-6 text-gray-400">
+                          No se encontraron afiliados que coincidan con el filtro.
+                        </td>
+                      </tr>
+                    ) : (
+                      itemsPaginaPreview.map((item) => {
+                        const isChecked = selectedAfiliadosPreview.includes(item.id_usuario_afi);
+                        return (
+                          <tr 
+                            key={item.id_usuario_afi}
+                            onClick={() => toggleSelectAfiliadoPreview(item.id_usuario_afi)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleSelectAfiliadoPreview(item.id_usuario_afi)}
+                              />
+                            </td>
+                            <td className="font-semibold text-gray-700">{item.cod_usuario_afi}</td>
+                            <td className="font-medium text-gray-900">{item.nombre_completo}</td>
+                            <td className="text-gray-500 font-mono text-xs">{item.cedula || 'S/C'}</td>
+                            <td className="text-gray-500 text-xs">
+                              {item.num_medidor !== 'S/M' ? (
+                                <span className="text-indigo-600 font-medium">{item.num_medidor}</span>
+                              ) : (
+                                <span className="text-gray-400">Sin medidor</span>
+                              )}
+                            </td>
+                            <td>
+                              <span className="text-gray-700 text-xs font-medium">{item.servicio_nombre}</span>
+                              <span className="text-gray-400 text-xs block">({item.tarifa_nombre})</span>
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <span className="preview-badge-tarifa">
+                                {formatCurrency(item.precio)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Paginador */}
+              {totalPaginasPreview > 1 && (
+                <div className="preview-pagination">
+                  <div>
+                    Mostrando {(previewPage - 1) * previewPageSize + 1} a {Math.min(previewPage * previewPageSize, detallesFiltradosPreview.length)} de {detallesFiltradosPreview.length} afiliados
+                  </div>
+                  <div className="preview-pagination-actions">
+                    <button
+                      type="button"
+                      className="preview-page-btn"
+                      disabled={previewPage <= 1}
+                      onClick={() => setPreviewPage(prev => Math.max(1, prev - 1))}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="px-2 font-semibold">
+                      Página {previewPage} de {totalPaginasPreview}
+                    </span>
+                    <button
+                      type="button"
+                      className="preview-page-btn"
+                      disabled={previewPage >= totalPaginasPreview}
+                      onClick={() => setPreviewPage(prev => Math.min(totalPaginasPreview, prev + 1))}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* FOOTER */}
+            <div className="modal-footer">
+              <div className="footer-left-info">
+                <span>Total a generar: </span>
+                <strong>{totalSeleccionadosPreview} facturas</strong> por un total de <strong>{formatCurrency(montoSeleccionadoPreview)}</strong>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowPreviewModal(false)}
+                  disabled={generatingServiciosSinLectura}
+                >
+                  <X className="w-4 h-4 mr-1.5" />
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-primary btn-confirm-generate"
+                  onClick={handleConfirmarGeneracionServicios}
+                  disabled={generatingServiciosSinLectura || totalSeleccionadosPreview === 0}
+                >
+                  {generatingServiciosSinLectura ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Generando Facturas...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="w-4 h-4" />
+                      <span>Confirmar y Generar Facturas ({totalSeleccionadosPreview})</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -660,13 +660,18 @@ async getPeriodosDisponibles() {
     }
   }
 
-  async generarServiciosSinLectura(periodo) {
+  async generarServiciosSinLectura(periodo, afiliadosIds = null) {
     try {
+      const payload = { periodo };
+      if (afiliadosIds && Array.isArray(afiliadosIds) && afiliadosIds.length > 0) {
+        payload.afiliados_ids = afiliadosIds;
+      }
+
       const data = await this.makeRequest(
         API_CONFIG.endpoints.generarServiciosSinLectura,
         {
           method: 'POST',
-          body: { periodo }
+          body: payload
         }
       );
 

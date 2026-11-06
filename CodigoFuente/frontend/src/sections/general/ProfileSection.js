@@ -350,9 +350,9 @@ const getEstadoBadge = (estado) => {
   };
     if (loading) {
       return (
-        <div className="affiliates-section">
-          <div className="empty-state">
-            <RefreshCw className="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin" />
+        <div className="profile-page">
+          <div className="profile-loading">
+            <RefreshCw className="w-12 h-12 spinner mx-auto mb-3 animate-spin" />
             <h3>Cargando perfil...</h3>
           </div>
         </div>

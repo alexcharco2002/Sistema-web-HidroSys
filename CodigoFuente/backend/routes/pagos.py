@@ -516,8 +516,9 @@ def obtener_facturas_periodo_con_pagos(
         )
 
         # ========================================
-        # QUERY PRINCIPAL — Factura → Lectura → Medidor ✅
+        # QUERY PRINCIPAL — Factura → Afiliado → UsuarioSistema (Lectura/Medidor opcionales)
         # ========================================
+        MedidorAfiliado = aliased(Medidor)
         query = (
             db.query(
                 # ===== FACTURA =====
@@ -535,9 +536,9 @@ def obtener_facturas_periodo_con_pagos(
                 Factura.impuesto,
                 Factura.total,
 
-                # ===== MEDIDOR ✅ (viene de Lectura, no de Afiliado) =====
-                Medidor.id_medidor,
-                Medidor.num_medidor,
+                # ===== MEDIDOR (coalesce entre medidor de lectura y medidor activo del afiliado) =====
+                func.coalesce(Medidor.id_medidor, MedidorAfiliado.id_medidor).label('id_medidor'),
+                func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).label('num_medidor'),
 
                 # ===== AFILIADO =====
                 UsuarioAfiliado.id_usuario_afi,
@@ -560,12 +561,18 @@ def obtener_facturas_periodo_con_pagos(
                 # ===== TOTAL PAGADO =====
                 func.coalesce(subquery_pagos.c.total_pagado, 0).label('monto_pagado_total')
             )
-            # ✅ Ruta correcta: Factura → Lectura → Medidor → Afiliado → UsuarioSistema
-            .join(Lectura, Factura.id_lectura == Lectura.id_lectura)
-            .join(Medidor, Lectura.id_medidor == Medidor.id_medidor)
-            .join(UsuarioAfiliado, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
+            .outerjoin(Lectura, Factura.id_lectura == Lectura.id_lectura)
+            .outerjoin(Medidor, Lectura.id_medidor == Medidor.id_medidor)
+            .outerjoin(
+                MedidorAfiliado,
+                and_(
+                    MedidorAfiliado.id_usuario_afi == UsuarioAfiliado.id_usuario_afi,
+                    MedidorAfiliado.activo == True
+                )
+            )
             .outerjoin(subquery_pagos, Factura.id_factura == subquery_pagos.c.id_factura)
         )
 
@@ -589,8 +596,7 @@ def obtener_facturas_periodo_con_pagos(
                         func.coalesce(UsuarioSistema.apellidos, '')
                     ).ilike(search_pattern),
                     UsuarioSistema.cedula.ilike(search_pattern),
-                    # ✅ Medidor.num_medidor en lugar de UsuarioAfiliado.num_medidor
-                    Medidor.num_medidor.ilike(search_pattern),
+                    func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(search_pattern),
                     cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
                 )
             )
@@ -838,6 +844,7 @@ def listar_pagos(
     try:
         # Alias para el cajero (usuario sistema que registró el pago)
         CajeroUsuario = aliased(UsuarioSistema)
+        MedidorAfiliado = aliased(Medidor)
 
         # Query principal con joins correctos y campos necesarios para filtros y respuesta
         query = (
@@ -859,8 +866,8 @@ def listar_pagos(
                 Factura.estado_factura,
 
                 # ===== MEDIDOR =====
-                Medidor.id_medidor,
-                Medidor.num_medidor,
+                func.coalesce(Medidor.id_medidor, MedidorAfiliado.id_medidor).label('id_medidor'),
+                func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).label('num_medidor'),
 
                 # ===== AFILIADO =====
                 UsuarioAfiliado.id_usuario_afi,
@@ -887,15 +894,19 @@ def listar_pagos(
                     func.coalesce(CajeroUsuario.apellidos, '')
                 ).label('nombre_cajero'),
             )
-            # Cadena principal: Pago → Factura → Lectura → Medidor
             .join(Factura, Pago.id_factura == Factura.id_factura)
-            .join(Lectura, Factura.id_lectura == Lectura.id_lectura)
-            .join(Medidor, Lectura.id_medidor == Medidor.id_medidor)
-
-            # Unir con UsuarioAfiliado a través de Medidor (no de Factura) para obtener datos del afiliado correcto
-            .join(UsuarioAfiliado, Medidor.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
+            .join(UsuarioAfiliado, Factura.id_usuario_afi == UsuarioAfiliado.id_usuario_afi)
             .join(UsuarioSistema, UsuarioAfiliado.id_usuario_sistema == UsuarioSistema.id_usuario_sistema)
             .outerjoin(Sector, UsuarioAfiliado.id_sector == Sector.id_sector)
+            .outerjoin(Lectura, Factura.id_lectura == Lectura.id_lectura)
+            .outerjoin(Medidor, Lectura.id_medidor == Medidor.id_medidor)
+            .outerjoin(
+                MedidorAfiliado,
+                and_(
+                    MedidorAfiliado.id_usuario_afi == UsuarioAfiliado.id_usuario_afi,
+                    MedidorAfiliado.activo == True
+                )
+            )
 
             # Cajero con alias correcto
             .outerjoin(CajeroUsuario, Pago.id_cajero == CajeroUsuario.id_usuario_sistema)
@@ -910,7 +921,7 @@ def listar_pagos(
                 or_(
                     Pago.id_pago == int(search) if search.isdigit() else False,
                     Factura.num_factura.ilike(search_pattern),
-                    Medidor.num_medidor.ilike(search_pattern),
+                    func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(search_pattern),
                     func.concat(
                         func.coalesce(UsuarioSistema.nombres, ''),
                         ' ',
@@ -1260,6 +1271,15 @@ def obtener_factura_por_id(
                 db.query(Medidor)
                 .join(Lectura, Medidor.id_medidor == Lectura.id_medidor)
                 .filter(Lectura.id_lectura == factura.id_lectura)
+                .first()
+            )
+        if not medidor and usuario_afiliado:
+            medidor = (
+                db.query(Medidor)
+                .filter(
+                    Medidor.id_usuario_afi == usuario_afiliado.id_usuario_afi,
+                    Medidor.activo == True
+                )
                 .first()
             )
 

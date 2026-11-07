@@ -127,6 +127,7 @@ class PaymentsServices {
       
       if (filters.periodo) params.append('periodo', filters.periodo);
       if (filters.search) params.append('search', filters.search);
+      if (filters.search_type) params.append('search_type', filters.search_type);
       if (filters.estado_factura) params.append('estado_factura', filters.estado_factura);
       if (filters.skip) params.append('skip', filters.skip);
       if (filters.limit) params.append('limit', filters.limit);
@@ -251,6 +252,7 @@ class PaymentsServices {
       const params = new URLSearchParams();
       
       if (filters.search) params.append('search', filters.search);
+      if (filters.search_type) params.append('search_type', filters.search_type);
       if (filters.id_usuario_afi) params.append('id_usuario_afi', filters.id_usuario_afi);
       if (filters.periodo) params.append('periodo', filters.periodo);
       if (filters.estado_pago) params.append('estado_pago', filters.estado_pago);

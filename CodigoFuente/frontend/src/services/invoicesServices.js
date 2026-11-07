@@ -117,6 +117,7 @@ class InvoicesServices {
       const params = new URLSearchParams();
       
       if (filters.search) params.append('search', filters.search);
+      if (filters.search_type) params.append('search_type', filters.search_type);
       if (filters.id_usuario_afi) params.append('id_usuario_afi', filters.id_usuario_afi);
       if (filters.periodo) params.append('periodo', filters.periodo);
       if (filters.estado_factura) params.append('estado_factura', filters.estado_factura);

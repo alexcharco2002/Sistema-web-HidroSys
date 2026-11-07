@@ -487,6 +487,7 @@ def obtener_periodos_pagos_disponibles(
 def obtener_facturas_periodo_con_pagos(
     periodo: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    search_type: Optional[str] = Query('all'),
     estado_factura: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
@@ -586,20 +587,46 @@ def obtener_facturas_periodo_con_pagos(
             query = query.filter(Factura.estado_factura == estado_factura)
 
         if search:
-            search_pattern = f"%{search}%"
-            query = query.filter(
-                or_(
-                    Factura.num_factura.ilike(search_pattern),
+            search_clean = search.strip()
+            search_pattern = f"%{search_clean}%"
+            st = (search_type or 'all').lower()
+
+            if st == 'codigo':
+                # Búsqueda puntual por código de afiliado (exacta o prefijo)
+                query = query.filter(cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(f"{search_clean}%"))
+            elif st == 'cedula':
+                # Búsqueda puntual por cédula
+                query = query.filter(UsuarioSistema.cedula.ilike(f"{search_clean}%"))
+            elif st == 'nombre':
+                # Búsqueda por nombre o apellido
+                query = query.filter(
                     func.concat(
                         func.coalesce(UsuarioSistema.nombres, ''),
                         ' ',
                         func.coalesce(UsuarioSistema.apellidos, '')
-                    ).ilike(search_pattern),
-                    UsuarioSistema.cedula.ilike(search_pattern),
-                    func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(search_pattern),
-                    cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
+                    ).ilike(search_pattern)
                 )
-            )
+            elif st == 'medidor':
+                # Búsqueda por medidor
+                query = query.filter(func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(f"{search_clean}%"))
+            elif st == 'factura':
+                # Búsqueda por número de factura
+                query = query.filter(Factura.num_factura.ilike(search_pattern))
+            else:
+                # Búsqueda general
+                query = query.filter(
+                    or_(
+                        Factura.num_factura.ilike(search_pattern),
+                        func.concat(
+                            func.coalesce(UsuarioSistema.nombres, ''),
+                            ' ',
+                            func.coalesce(UsuarioSistema.apellidos, '')
+                        ).ilike(search_pattern),
+                        UsuarioSistema.cedula.ilike(search_pattern),
+                        func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(search_pattern),
+                        cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
+                    )
+                )
 
         # ========================================
         # ORDENAMIENTO
@@ -827,6 +854,7 @@ def obtener_facturas_periodo_con_pagos(
 @router.get("/", response_model=List[dict])
 def listar_pagos(
     search: Optional[str] = Query(None),
+    search_type: Optional[str] = Query('all'),
     id_usuario_afi: Optional[int] = Query(None),
     periodo: Optional[str] = Query(None, description="Filtrar por periodo de la FACTURA (YYYY-MM)"),
     estado_pago: Optional[str] = Query(None),
@@ -916,21 +944,41 @@ def listar_pagos(
         # FILTROS
         # ========================================
         if search:
-            search_pattern = f"%{search}%"
-            query = query.filter(
-                or_(
-                    Pago.id_pago == int(search) if search.isdigit() else False,
-                    Factura.num_factura.ilike(search_pattern),
-                    func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(search_pattern),
+            search_clean = search.strip()
+            search_pattern = f"%{search_clean}%"
+            st = (search_type or 'all').lower()
+
+            if st == 'codigo':
+                query = query.filter(cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(f"{search_clean}%"))
+            elif st == 'cedula':
+                query = query.filter(UsuarioSistema.cedula.ilike(f"{search_clean}%"))
+            elif st == 'nombre':
+                query = query.filter(
                     func.concat(
                         func.coalesce(UsuarioSistema.nombres, ''),
                         ' ',
                         func.coalesce(UsuarioSistema.apellidos, '')
-                    ).ilike(search_pattern),
-                    UsuarioSistema.cedula.ilike(search_pattern),
-                    cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
+                    ).ilike(search_pattern)
                 )
-            )
+            elif st == 'medidor':
+                query = query.filter(func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(f"{search_clean}%"))
+            elif st == 'factura':
+                query = query.filter(Factura.num_factura.ilike(search_pattern))
+            else:
+                query = query.filter(
+                    or_(
+                        Pago.id_pago == int(search_clean) if search_clean.isdigit() else False,
+                        Factura.num_factura.ilike(search_pattern),
+                        func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(search_pattern),
+                        func.concat(
+                            func.coalesce(UsuarioSistema.nombres, ''),
+                            ' ',
+                            func.coalesce(UsuarioSistema.apellidos, '')
+                        ).ilike(search_pattern),
+                        UsuarioSistema.cedula.ilike(search_pattern),
+                        cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
+                    )
+                )
 
         if id_usuario_afi:
             query = query.filter(UsuarioAfiliado.id_usuario_afi == id_usuario_afi)
@@ -3410,6 +3458,7 @@ def regenerar_factura_desde_factura_anulada(
                 tipo_detalle=detalle_orig.tipo_detalle,
                 id_servicio=detalle_orig.id_servicio,
                 id_multa_afiliados=detalle_orig.id_multa_afiliados,
+                id_asignacion_sp=detalle_orig.id_asignacion_sp,
                 subtotal_detalle=detalle_orig.subtotal_detalle,
                 descripcion=detalle_orig.descripcion
             )

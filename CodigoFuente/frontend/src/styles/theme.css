@@ -109,14 +109,14 @@
   /* ==========================================================================
      🔘 7. VARIABLES DE BOTONES ESTÁNDAR
      ========================================================================== */
-  --btn-primary-bg:        var(--primary-color);
-  --btn-primary-hover:     var(--primary-dark);
+  --btn-primary-bg:        var(--success-color);
+  --btn-primary-hover:     var(--success-hover);
   --btn-primary-text:      #ffffff;
 
-  --btn-secondary-bg:      var(--bg-white);
-  --btn-secondary-hover:   var(--bg-gray-100);
-  --btn-secondary-border:  var(--border-color);
-  --btn-secondary-text:    var(--text-primary);
+  --btn-secondary-bg:      #8590a2;
+  --btn-secondary-hover:   #6b778c;
+  --btn-secondary-border:  transparent;
+  --btn-secondary-text:    #ffffff;
 
   --btn-success-bg:        var(--success-color);
   --btn-success-hover:     var(--success-hover);
@@ -271,9 +271,10 @@ html {
   color: var(--btn-secondary-text);
   border-color: var(--btn-secondary-border);
 }
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
   background: var(--btn-secondary-hover);
-  border-color: #cbd5e1;
+  color: #ffffff;
+  border-color: transparent;
 }
 
 .btn-success {
@@ -291,9 +292,16 @@ html {
   color: var(--btn-danger-text);
   border-color: var(--btn-danger-bg);
 }
-.btn-danger:hover {
+.btn-danger:hover:not(:disabled) {
   background: var(--btn-danger-hover);
   border-color: var(--btn-danger-hover);
+}
+.btn-danger:disabled {
+  background: #fca5a5 !important;
+  color: #ffffff !important;
+  border-color: #fca5a5 !important;
+  opacity: 0.75 !important;
+  cursor: not-allowed;
 }
 
 .btn-warning {
@@ -605,6 +613,14 @@ html {
   gap: 0.5rem;
 }
 
+.modal-header h3 svg,
+.modal-title svg {
+  color: var(--primary-color) !important;
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
 .modal-subtitle {
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
@@ -669,7 +685,7 @@ html {
   gap: 0.75rem;
   padding: 1.1rem 1.75rem;
   border-top: 1px solid var(--border-color);
-  background: var(--bg-gray-50);
+  background: var(--bg-white);
   flex-shrink: 0;
 }
 
@@ -692,4 +708,148 @@ html {
     width: 100%;
     justify-content: center;
   }
+}
+
+
+/* ============================================================================
+   📋 TARJETAS DE INFORMACIÓN Y GRID COMPACTO DE MODALES (Design System)
+   ============================================================================ */
+.modal-info-card {
+  background: var(--bg-gray-50);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.modal-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 0.75rem 0;
+}
+
+.modal-section-title svg {
+  color: var(--primary-color) !important;
+  flex-shrink: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.modal-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.65rem 1.25rem;
+}
+
+.modal-info-grid.grid-cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.modal-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.modal-info-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.03em;
+}
+
+.modal-info-val {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.modal-info-val.text-total {
+  font-size: 1.15rem;
+  color: var(--primary-color);
+  font-weight: 800;
+}
+
+.modal-info-divider {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: var(--border-color);
+  margin: 0.25rem 0;
+}
+
+.modal-info-item.col-span-2 {
+  grid-column: span 2;
+}
+
+.modal-info-item.col-span-3 {
+  grid-column: span 3;
+}
+
+/* ============================================================================
+   🔍 PÍLDORAS DE CRITERIO DE BÚSQUEDA PUNTUAL (Design System)
+   ============================================================================ */
+.search-criteria-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.search-criteria-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 2px;
+}
+
+.search-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+
+.search-pill svg {
+  color: var(--text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.search-pill:hover {
+  background: var(--bg-gray-50);
+  border-color: var(--primary-light);
+  color: var(--primary-color);
+}
+
+.search-pill:hover svg {
+  color: var(--primary-color);
+}
+
+.search-pill.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+.search-pill.active svg {
+  color: #ffffff !important;
 }

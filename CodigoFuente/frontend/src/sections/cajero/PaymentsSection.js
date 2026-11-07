@@ -20,6 +20,7 @@ import authService from '../../services/authServices';
 
 import {
   DollarSign,
+  Hash,
   Search,
   Eye,
   Calendar,
@@ -61,6 +62,7 @@ const PaymentsSection = () => {
   // ESTADOS DE BÚSQUEDA Y FILTROS
   // ============================================================
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchType, setSearchType] = useState('all'); // 'all', 'codigo', 'nombre', 'cedula', 'medidor', 'factura'
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterMetodo, setFilterMetodo] = useState('all');
   const [sortOption, setSortOption] = useState('fecha');
@@ -599,26 +601,76 @@ const PaymentsSection = () => {
     factura.usuario_afiliado?.usuario_sistema?.cedula ||
     '';
 
+    const getSearchPlaceholder = () => {
+    switch (searchType) {
+      case 'codigo':
+        return 'Escribe el código del afiliado (ej. 1, 24, 150)...';
+      case 'nombre':
+        return 'Escribe el nombre o apellido del afiliado...';
+      case 'cedula':
+        return 'Escribe el número de cédula del afiliado...';
+      case 'medidor':
+        return 'Escribe el número de medidor...';
+      case 'factura':
+        return 'Escribe el folio de la factura (ej. 0130)...';
+      default:
+        return 'Buscar por factura, medidor, código, afiliado o cédula...';
+    }
+  };
+
   const filteredFacturas = facturas.filter(factura => {
-    const searchLower = searchTerm.toLowerCase();
+    const searchTrim = searchTerm.trim().toLowerCase();
+    
+    // Si no hay término de búsqueda, solo evaluar filtros de estado y método
+    if (!searchTrim) {
+      const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
+      const matchesMetodo = filterMetodo === 'all' || 
+        (factura.pagos && factura.pagos.some(p => p.metodo_pago === filterMetodo));
+      return matchesStatus && matchesMetodo;
+    }
+
     const toString = (value) => {
       if (value === null || value === undefined) return '';
       return String(value).toLowerCase();
     };
-    
-    // BÚSQUEDA: Por factura, afiliado, cédula, medidor, código y nombre completo
-    const matchesSearch =
-      toString(factura.num_factura).includes(searchLower) ||
-      toString(factura.id_factura).includes(searchLower) ||
-      toString(getFacturaCodigo(factura)).includes(searchLower) ||
-      toString(getFacturaMedidor(factura)).includes(searchLower) ||
-      toString(getFacturaNombre(factura)).includes(searchLower) ||
-      toString(getFacturaCedula(factura)).includes(searchLower);
+
+    let matchesSearch = false;
+
+    if (searchType === 'codigo') {
+      const cod = toString(getFacturaCodigo(factura));
+      // Búsqueda puntual por código: coincidencia exacta o prefijo
+      matchesSearch = cod === searchTrim || cod.startsWith(searchTrim);
+    } else if (searchType === 'cedula') {
+      const ced = toString(getFacturaCedula(factura));
+      // Búsqueda puntual por cédula: coincidencia exacta o prefijo
+      matchesSearch = ced === searchTrim || ced.startsWith(searchTrim);
+    } else if (searchType === 'nombre') {
+      const nom = toString(getFacturaNombre(factura));
+      // Búsqueda por nombre
+      matchesSearch = nom.includes(searchTrim);
+    } else if (searchType === 'medidor') {
+      const med = toString(getFacturaMedidor(factura));
+      // Búsqueda puntual por medidor
+      matchesSearch = med === searchTrim || med.startsWith(searchTrim);
+    } else if (searchType === 'factura') {
+      const fac = toString(factura.num_factura);
+      // Búsqueda por número de factura
+      matchesSearch = fac.includes(searchTrim);
+    } else {
+      // Búsqueda general en todos los campos
+      matchesSearch =
+        toString(factura.num_factura).includes(searchTrim) ||
+        toString(factura.id_factura).includes(searchTrim) ||
+        toString(getFacturaCodigo(factura)).includes(searchTrim) ||
+        toString(getFacturaMedidor(factura)).includes(searchTrim) ||
+        toString(getFacturaNombre(factura)).includes(searchTrim) ||
+        toString(getFacturaCedula(factura)).includes(searchTrim);
+    }
 
     // FILTRO DE ESTADO DE FACTURA
     const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
 
-    // FILTRO DE MÉTODO DE PAGO (corregido para array de pagos)
+    // FILTRO DE MÉTODO DE PAGO
     const matchesMetodo = filterMetodo === 'all' || 
       (factura.pagos && factura.pagos.some(p => p.metodo_pago === filterMetodo));
 
@@ -626,7 +678,16 @@ const PaymentsSection = () => {
   });
 
   // constante para ordenar facturas
-  const sortedFacturas = filteredFacturas;
+  const sortedFacturas = [...filteredFacturas].sort((a, b) => {
+    if (searchTerm.trim() && searchType === 'codigo') {
+      const aCod = String(getFacturaCodigo(a) || '').toLowerCase();
+      const bCod = String(getFacturaCodigo(b) || '').toLowerCase();
+      const term = searchTerm.trim().toLowerCase();
+      if (aCod === term && bCod !== term) return -1;
+      if (bCod === term && aCod !== term) return 1;
+    }
+    return 0;
+  });
   const totalPages = Math.max(1, Math.ceil(sortedFacturas.length / pageSize));
   const normalizedCurrentPage = Math.min(currentPage, totalPages);
   const pageStartIndex = (normalizedCurrentPage - 1) * pageSize;
@@ -637,7 +698,7 @@ const PaymentsSection = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterStatus, filterMetodo, sortOption, sortOrder, pageSize, periodoSeleccionado]);
+  }, [searchTerm, searchType, filterStatus, filterMetodo, sortOption, sortOrder, pageSize, periodoSeleccionado]);
 
   useEffect(() => {
     if (facturas.length <= 100) {
@@ -648,7 +709,7 @@ const PaymentsSection = () => {
     setShowSearchAdvice(true);
     const timer = setTimeout(() => setShowSearchAdvice(false), 12000);
     return () => clearTimeout(timer);
-  }, [facturas.length, searchTerm, filterStatus, filterMetodo, periodoSeleccionado]);
+  }, [facturas.length, searchTerm, searchType, filterStatus, filterMetodo, periodoSeleccionado]);
 
 
   /**
@@ -2084,13 +2145,72 @@ const pagoMultipleData = {
           </div>
 
 
+                    {/* PÍLDORAS DE CRITERIO DE BÚSQUEDA PUNTUAL (Opción 2) */}
+          <div className="search-criteria-pills">
+            <span className="search-criteria-label">Buscar por:</span>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'all' ? 'active' : ''}`}
+              onClick={() => setSearchType('all')}
+              title="Buscar en todos los campos"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>Todos</span>
+            </button>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'codigo' ? 'active' : ''}`}
+              onClick={() => setSearchType('codigo')}
+              title="Búsqueda puntual por código de afiliado"
+            >
+              <Hash className="w-3.5 h-3.5" />
+              <span>Código</span>
+            </button>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'nombre' ? 'active' : ''}`}
+              onClick={() => setSearchType('nombre')}
+              title="Búsqueda por nombre o apellido"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>Nombre</span>
+            </button>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'cedula' ? 'active' : ''}`}
+              onClick={() => setSearchType('cedula')}
+              title="Búsqueda puntual por cédula"
+            >
+              <IdCard className="w-3.5 h-3.5" />
+              <span>Cédula</span>
+            </button>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'medidor' ? 'active' : ''}`}
+              onClick={() => setSearchType('medidor')}
+              title="Búsqueda por número de medidor"
+            >
+              <Gauge className="w-3.5 h-3.5" />
+              <span>Medidor</span>
+            </button>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'factura' ? 'active' : ''}`}
+              onClick={() => setSearchType('factura')}
+              title="Búsqueda por folio de factura"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>N° Factura</span>
+            </button>
+          </div>
+
           {/* BARRA DE BÚSQUEDA Y FILTROS */}
           <div className="filters-section">
             <div className="search-container">
               <Search className="search-icon" />
               <input
                 type="text"
-                placeholder="Buscar por factura, medidor, código, afiliado o cédula..."
+                placeholder={getSearchPlaceholder()}
                 className="search-input"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -2149,7 +2269,7 @@ const pagoMultipleData = {
               </select>
 
               <button
-                className="btn-secondary"
+                className="btn btn-secondary"
                 onClick={toggleSortOrder}
                 title={sortOrder === 'asc' ? 'Orden Ascendente' : 'Orden Descendente'}
               >
@@ -2158,7 +2278,7 @@ const pagoMultipleData = {
               </button>
 
               <button 
-                className="btn-secondary" 
+                className="btn btn-secondary" 
                 onClick={() => {
                   fetchFacturasPeriodo();
                   fetchStats();
@@ -2189,6 +2309,7 @@ const pagoMultipleData = {
                 className="clear-search-btn"
                 onClick={() => {
                   setSearchTerm('');
+                  setSearchType('all');
                   setFilterStatus('all');
                   setFilterMetodo('all');
                 }}
@@ -2452,7 +2573,7 @@ const pagoMultipleData = {
               {sortedFacturas.length > 0 && (
                 <div className="payments-invoices-footer">
                   <button 
-                    className="btn-secondary"
+                    className="btn btn-secondary"
                     onClick={() => setPeriodoSeleccionado(null)}
                   >
                     <ArrowUpDown className="w-4 h-4 mr-2" style={{ transform: 'rotate(90deg)' }} />
@@ -2523,7 +2644,7 @@ const pagoMultipleData = {
               </button>
             </div>
 
-            <div className="modal-body">
+                        <div className="modal-body">
 
               {/* SECCIÓN DE INFORMACIÓN DE LA FACTURA */}
               <div className="factura-section">
@@ -3110,7 +3231,7 @@ const pagoMultipleData = {
                         {pago.tiene_comprobante && (
                           <div className="historial-pago-comprobante-btn">
                             <button
-                              className="btn-secondary"
+                              className="btn btn-secondary"
                               onClick={() => descargarComprobante(pago.id_pago)}
                               title={pago.nombre_archivo || 'Descargar comprobante'}
                             >
@@ -3176,8 +3297,8 @@ const pagoMultipleData = {
     
 
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={closeModal}>
-                <X className="w-5 h-5" />
+              <button type="button" className="btn btn-secondary" onClick={closeModal}>
+                <X className="w-4 h-4 mr-1.5" />
                 Cerrar
               </button>
             </div>
@@ -3204,36 +3325,48 @@ const pagoMultipleData = {
             {/* ── BODY ── */}
             <div className="modal-body">
 
-              {/* Datos del afiliado */}
-              <div className="form-grid" style={{ marginBottom: '1.25rem' }}>
-                <div className="form-group">
-                  <label>Afiliado</label>
-                  <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
-                    {selectedFactura.nombre_completo || '—'}
-                  </p>
-                </div>
-                <div className="form-group">
-                  <label>Cédula</label>
-                  <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
-                    {selectedFactura.cedula || '—'}
-                  </p>
-                </div>
-                <div className="form-group">
-                  <label>Periodo</label>
-                  <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem' }}>
-                    {selectedFactura.periodo || '—'}
-                  </p>
-                </div>
-                <div className="form-group">
-                  <label>Número de factura</label>
-                  <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '0.95rem',
-                              fontFamily: 'monospace' }}>
-                    {selectedFactura.num_factura || '—'}
-                  </p>
+                            {/* DETALLES DE LA FACTURA (Tarjeta Estandarizada) */}
+              <div className="modal-info-card">
+                <h4 className="modal-section-title">
+                  <FileText className="w-4 h-4" />
+                  Detalles de la factura
+                </h4>
+                <div className="modal-info-grid">
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Afiliado</span>
+                    <span className="modal-info-val">
+                      {selectedFactura.nombre_completo || '—'}
+                    </span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Código</span>
+                    <span className="modal-info-val font-mono">{selectedFactura.cod_usuario_afi || selectedFactura.cedula || '—'}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Medidor</span>
+                    <span className="modal-info-val font-mono">{selectedFactura.num_medidor || '—'}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Factura</span>
+                    <span className="modal-info-val font-mono">{selectedFactura.num_factura || '—'}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Periodo de consumo</span>
+                    <span className="modal-info-val text-blue-600 font-semibold">{selectedFactura.periodo || '—'}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Fecha emisión</span>
+                    <span className="modal-info-val">{selectedFactura.fecha_emision ? formatDateShort(selectedFactura.fecha_emision) : '—'}</span>
+                  </div>
+                  <div className="modal-info-divider"></div>
+                  <div className="modal-info-item col-span-2">
+                    <span className="modal-info-label">Total Factura</span>
+                    <span className="modal-info-val text-total">
+                      {formatCurrency(selectedFactura.total || selectedFactura.total_factura || 0)}
+                    </span>
+                  </div>
                 </div>
               </div>
-
-              <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '0 0 1.25rem' }} />
 
               {/* Loading */}
               {loadingResumen && (
@@ -3505,17 +3638,17 @@ const pagoMultipleData = {
             </div>
             {/* fin modal-body */}
 
-            {/* ── FOOTER ── */}
+                        {/* ── FOOTER ── */}
             <div className="modal-footer">
               {/* Total a pagar (izquierda) */}
               <div style={{ flex: 1 }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280',
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)',
                               textTransform: 'uppercase', letterSpacing: '0.4px',
                               display: 'block', marginBottom: 2 }}>
                   Total a pagar
                 </span>
-                <span style={{ fontSize: '1.5rem', fontWeight: 800, fontFamily: 'monospace',
-                              color: calcularTotalAPagar() > 0 ? '#1e40af' : '#94a3b8',
+                <span style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace',
+                              color: calcularTotalAPagar() > 0 ? 'var(--primary-color)' : 'var(--text-light)',
                               lineHeight: 1 }}>
                   {formatCurrency(calcularTotalAPagar())}
                 </span>
@@ -3529,13 +3662,14 @@ const pagoMultipleData = {
               </div>
 
               {/* Botones (derecha) */}
-              <button className="btn-secondary" onClick={closeCreateModal} disabled={loading}>
-                <X className="w-4 h-4 mr-1" />
+              <button type="button" className="btn btn-secondary" onClick={closeCreateModal} disabled={loading}>
+                <X className="w-4 h-4 mr-1.5" />
                 Cancelar
               </button>
 
               <button
-                className="btn-primary"
+                type="button"
+                className="btn btn-primary"
                 onClick={handleCreatePago}
                 disabled={
                   loading ||
@@ -3544,12 +3678,12 @@ const pagoMultipleData = {
               >
                 {loading ? (
                   <>
-                    <RefreshCw className="w-4 h-4 animate-spin mr-1" />
+                    <RefreshCw className="w-4 h-4 animate-spin mr-1.5" />
                     Procesando…
                   </>
                 ) : (
                   <>
-                    <CheckCircle className="w-4 h-4 mr-1" />
+                    <CheckCircle className="w-4 h-4 mr-1.5" />
                     Registrar pago
                   </>
                 )}
@@ -4080,21 +4214,21 @@ const pagoMultipleData = {
             </div>
 
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={closeAdeudosModal}>
-                <X className="w-4 h-4 mr-2" />
+              <button type="button" className="btn btn-secondary" onClick={closeAdeudosModal}>
+                <X className="w-4 h-4 mr-1.5" />
                 Cerrar
               </button>
 
               {/* BOTÓN PAGO MÚLTIPLE */}
               {permissions.canCreate && facturasSeleccionadasPago.length > 1 && (
                 <button
-                  className="btn-success"
+                  type="button"
+                  className="btn btn-primary"
                   onClick={() => {
                     setShowPagoMultipleModal(true);
                   }}
-                  style={{ backgroundColor: '#10b981' }}
                 >
-                  <DollarSign className="w-4 h-4 mr-2" />
+                  <DollarSign className="w-4 h-4 mr-1.5" />
                   Pagar {facturasSeleccionadasPago.length} Facturas ({formatCurrency(calcularTotalFacturasSeleccionadas())})
                 </button>
               )}
@@ -4102,17 +4236,17 @@ const pagoMultipleData = {
               {/* Botón pago individual */}
               {permissions.canCreate && facturasSeleccionadasPago.length === 0 && calcularSaldoPendiente(selectedFacturaAdeudos) > 0 && (
                 <button
-                  className="btn-primary"
+                  type="button"
+                  className="btn btn-primary"
                   onClick={() => {
                     closeAdeudosModal();
                     openPaymentModal(selectedFacturaAdeudos);
                   }}
                 >
-                  <DollarSign className="w-4 h-4 mr-2" />
+                  <DollarSign className="w-4 h-4 mr-1.5" />
                   Registrar Pago Individual
                 </button>
               )}
-
             </div>
           </div>
         </div>
@@ -4285,32 +4419,33 @@ const pagoMultipleData = {
 
               <div className="modal-footer">
                 <button
-                  className="btn-secondary"
+                  type="button"
+                  className="btn btn-secondary"
                   onClick={() => setShowPagoMultipleModal(false)}
                   disabled={loading}
                 >
-                  <X className="w-4 h-4 mr-2" />
+                  <X className="w-4 h-4 mr-1.5" />
                   Cancelar
                 </button>
 
                 <button
-                  className="btn-success"
+                  type="button"
+                  className="btn btn-primary"
                   onClick={handlePagoMultiple}
                   disabled={loading}
-                  style={{ backgroundColor: '#10b981' }}
                 >
                   {loading ? (
                     <>
-                      <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                      <RefreshCw className="w-4 h-4 animate-spin mr-1.5" />
                       Procesando...
                     </>
                   ) : (
                     <>
-                      <CheckCircle className="w-4 h-4 mr-2" />
+                      <CheckCircle className="w-4 h-4 mr-1.5" />
                       Confirmar Pago Múltiple
                       <span style={{
                         marginLeft: '8px', padding: '4px 8px',
-                        backgroundColor: 'rgba(255,255,255,0.3)',
+                        backgroundColor: 'rgba(255,255,255,0.25)',
                         borderRadius: '4px', fontWeight: 'bold'
                       }}>
                         {formatCurrency(totalAPagar)}

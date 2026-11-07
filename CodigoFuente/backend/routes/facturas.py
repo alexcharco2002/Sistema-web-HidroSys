@@ -157,6 +157,7 @@ def listar_servicios_para_facturacion(
 @router.get("/", response_model=List[dict])
 def listar_facturas_optimizado(
     search: Optional[str] = Query(None),
+    search_type: Optional[str] = Query('all'),
     id_usuario_afi: Optional[int] = Query(None),
     periodo: Optional[str] = Query(None),
     estado_factura: Optional[str] = Query(None),
@@ -234,20 +235,40 @@ def listar_facturas_optimizado(
         # FILTROS
         # ========================================
         if search:
-            search_pattern = f"%{search}%"
-            query = query.filter(
-                or_(
-                    Factura.num_factura.ilike(search_pattern),
+            search_clean = search.strip()
+            search_pattern = f"%{search_clean}%"
+            st = (search_type or 'all').lower()
+
+            if st == 'codigo':
+                query = query.filter(cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(f"{search_clean}%"))
+            elif st == 'cedula':
+                query = query.filter(UsuarioSistema.cedula.ilike(f"{search_clean}%"))
+            elif st == 'nombre':
+                query = query.filter(
                     func.concat(
                         func.coalesce(UsuarioSistema.nombres, ''),
                         ' ',
                         func.coalesce(UsuarioSistema.apellidos, '')
-                    ).ilike(search_pattern),
-                    UsuarioSistema.cedula.ilike(search_pattern),
-                    cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
-                    func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(search_pattern),
+                    ).ilike(search_pattern)
                 )
-            )
+            elif st == 'medidor':
+                query = query.filter(func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(f"{search_clean}%"))
+            elif st == 'factura':
+                query = query.filter(Factura.num_factura.ilike(search_pattern))
+            else:
+                query = query.filter(
+                    or_(
+                        Factura.num_factura.ilike(search_pattern),
+                        func.concat(
+                            func.coalesce(UsuarioSistema.nombres, ''),
+                            ' ',
+                            func.coalesce(UsuarioSistema.apellidos, '')
+                        ).ilike(search_pattern),
+                        UsuarioSistema.cedula.ilike(search_pattern),
+                        cast(UsuarioAfiliado.cod_usuario_afi, String).ilike(search_pattern),
+                        func.coalesce(Medidor.num_medidor, MedidorAfiliado.num_medidor).ilike(search_pattern),
+                    )
+                )
 
         if id_usuario_afi:
             query = query.filter(Factura.id_usuario_afi == id_usuario_afi)
@@ -587,19 +608,31 @@ def _precio_servicio_permanente(config, servicio) -> Decimal:
     return Decimal(str(servicio.precio_base or 0))
 
 
-def _detalle_sp_existente(db: Session, periodo: str, id_usuario_afi: int, id_asignacion_sp: int):
-    return (
+def _detalle_sp_existente(db: Session, periodo: str, id_usuario_afi: int, id_asignacion_sp: int, id_servicio: Optional[int] = None):
+    query = (
         db.query(DetalleFactura.id_detalle)
         .join(Factura, Factura.id_factura == DetalleFactura.id_factura)
         .filter(
             Factura.periodo == periodo,
             Factura.id_usuario_afi == id_usuario_afi,
             Factura.estado_factura != "anulada",
-            DetalleFactura.tipo_detalle == "servicio",
-            DetalleFactura.id_asignacion_sp == id_asignacion_sp
+            DetalleFactura.tipo_detalle == "servicio"
         )
-        .first()
     )
+    if id_servicio is not None:
+        query = query.filter(
+            or_(
+                DetalleFactura.id_asignacion_sp == id_asignacion_sp,
+                and_(
+                    DetalleFactura.id_servicio == id_servicio,
+                    DetalleFactura.id_asignacion_sp.is_(None)
+                )
+            )
+        )
+    else:
+        query = query.filter(DetalleFactura.id_asignacion_sp == id_asignacion_sp)
+
+    return query.first()
 
 
 def _calcular_pendientes_servicios_sin_lectura(db: Session, periodo: str):
@@ -609,7 +642,7 @@ def _calcular_pendientes_servicios_sin_lectura(db: Session, periodo: str):
     monto_estimado = Decimal("0.00")
 
     for asignacion, config, servicio, afiliado, usuario in filas:
-        if _detalle_sp_existente(db, periodo, afiliado.id_usuario_afi, asignacion.id_asignacion_sp):
+        if _detalle_sp_existente(db, periodo, afiliado.id_usuario_afi, asignacion.id_asignacion_sp, servicio.id_servicio):
             continue
 
         precio = _precio_servicio_permanente(config, servicio)
@@ -788,7 +821,7 @@ def generar_facturas_servicios_sin_lectura(
 
                 facturas_por_afiliado[afiliado.id_usuario_afi] = factura
 
-            if _detalle_sp_existente(db, periodo, afiliado.id_usuario_afi, asignacion.id_asignacion_sp):
+            if _detalle_sp_existente(db, periodo, afiliado.id_usuario_afi, asignacion.id_asignacion_sp, servicio.id_servicio):
                 continue
 
             detalle = DetalleFactura(

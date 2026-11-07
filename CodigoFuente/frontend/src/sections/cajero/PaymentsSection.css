@@ -1975,13 +1975,6 @@ textarea.form-input {
   margin-top: 12px;
 }
 
-/* Si quieres que el botón no crezca */
-.pago-comprobante-btn .btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
 
 
 /* Badge de resumen en header */
@@ -4070,32 +4063,6 @@ textarea.form-input {
   border-top: 1px dashed #d1d5db;
 }
 
-.historial-pago-comprobante-btn .btn-secondary {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: #f3f4f6;
-  color: #374151;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.historial-pago-comprobante-btn .btn-secondary:hover {
-  background: #e5e7eb;
-  border-color: #9ca3af;
-  transform: translateY(-1px);
-}
-
-.historial-pago-comprobante-btn .btn-secondary svg {
-  flex-shrink: 0;
-}
 
 /* ==================== RESUMEN DE PAGOS ==================== */
 .historial-pagos-resumen {
@@ -4286,30 +4253,6 @@ textarea.form-input {
   }
 }
 
-/* Botón de pago múltiple */
-.btn-success {
-  background-color: #10b981;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transition: all 0.2s;
-}
-
-.btn-success:hover:not(:disabled) {
-  background-color: #059669;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-}
-
-.btn-success:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 
 /* ============================================================
    PERÍODOS RECIENTES — PAGOS

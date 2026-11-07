@@ -25,7 +25,7 @@ import {
   TrendingUp,
   Ban,
   CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
-  Gauge, User, IdCard  ,Tag, Percent, Package, Briefcase,
+  Gauge, User, IdCard, Hash, Tag, Percent, Package, Briefcase,
   CheckSquare, Users
 } from 'lucide-react';
 
@@ -52,6 +52,7 @@ const InvoicesSection = () => {
   // ESTADOS DE BÚSQUEDA Y FILTROS
   // ============================================================
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchType, setSearchType] = useState('all'); // 'all', 'codigo', 'nombre', 'cedula', 'medidor', 'factura'
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortOption, setSortOption] = useState('codigo');
   const [sortOrder, setSortOrder] = useState('desc');
@@ -374,35 +375,71 @@ const InvoicesSection = () => {
     factura.usuario_afiliado?.usuario_sistema?.cedula ||
     '';
 
+    const getSearchPlaceholder = () => {
+    switch (searchType) {
+      case 'codigo':
+        return 'Escribe el código del afiliado (ej. 1, 24, 150)...';
+      case 'nombre':
+        return 'Escribe el nombre o apellido del afiliado...';
+      case 'cedula':
+        return 'Escribe el número de cédula del afiliado...';
+      case 'medidor':
+        return 'Escribe el número de medidor...';
+      case 'factura':
+        return 'Escribe el folio de la factura (ej. 0130)...';
+      default:
+        return 'Buscar por factura, medidor, código, afiliado o cédula...';
+    }
+  };
+
   const filteredFacturas = facturas.filter(factura => {
-    const searchLower = searchTerm.toLowerCase();
+    const searchTrim = searchTerm.trim().toLowerCase();
     
-    // 🔥 Helper para convertir valores a string de forma segura
+    // Si no hay término de búsqueda, solo evaluar filtro de estado
+    if (!searchTrim) {
+      return filterStatus === 'all' || factura.estado_factura === filterStatus;
+    }
+
     const toString = (value) => {
       if (value === null || value === undefined) return '';
       return String(value).toLowerCase();
     };
-    
-    // Buscar en múltiples campos
-    const matchesSearch = 
-      // Número de factura
-      toString(factura.num_factura).includes(searchLower) ||
-      toString(factura.id_factura).includes(searchTerm) ||
-      
-      // 🔥 Código de afiliado (convertido a string)
-      toString(getFacturaCodigo(factura)).includes(searchLower) ||
-      
-      // 🔥 Número de medidor
-      toString(getFacturaMedidor(factura)).includes(searchLower) ||
-      
-      // 🔹 CAMBIO: Buscar en nombre completo
-      toString(getFacturaNombre(factura)).includes(searchLower) ||
-      
-      // Cédula
-      toString(getFacturaCedula(factura)).includes(searchTerm);
-    
+
+    let matchesSearch = false;
+
+    if (searchType === 'codigo') {
+      const cod = toString(getFacturaCodigo(factura));
+      // Búsqueda puntual por código: coincidencia exacta o prefijo
+      matchesSearch = cod === searchTrim || cod.startsWith(searchTrim);
+    } else if (searchType === 'cedula') {
+      const ced = toString(getFacturaCedula(factura));
+      // Búsqueda puntual por cédula
+      matchesSearch = ced === searchTrim || ced.startsWith(searchTrim);
+    } else if (searchType === 'nombre') {
+      const nom = toString(getFacturaNombre(factura));
+      // Búsqueda por nombre o apellido
+      matchesSearch = nom.includes(searchTrim);
+    } else if (searchType === 'medidor') {
+      const med = toString(getFacturaMedidor(factura));
+      // Búsqueda puntual por número de medidor
+      matchesSearch = med === searchTrim || med.startsWith(searchTrim);
+    } else if (searchType === 'factura') {
+      const fac = toString(factura.num_factura);
+      // Búsqueda por número de factura
+      matchesSearch = fac.includes(searchTrim);
+    } else {
+      // 'all' - Búsqueda general en todos los campos
+      matchesSearch =
+        toString(factura.num_factura).includes(searchTrim) ||
+        toString(factura.id_factura).includes(searchTrim) ||
+        toString(getFacturaCodigo(factura)).includes(searchTrim) ||
+        toString(getFacturaMedidor(factura)).includes(searchTrim) ||
+        toString(getFacturaNombre(factura)).includes(searchTrim) ||
+        toString(getFacturaCedula(factura)).includes(searchTrim);
+    }
+
     const matchesStatus = filterStatus === 'all' || factura.estado_factura === filterStatus;
-    
+
     return matchesSearch && matchesStatus;
   });
 
@@ -419,6 +456,15 @@ const InvoicesSection = () => {
 
   const sortedFacturas = useMemo(() => {
     return [...filteredFacturas].sort((a, b) => {
+      // Prioridad exacta para búsqueda por código
+      if (searchTerm.trim() && searchType === 'codigo') {
+        const aCod = String(getFacturaCodigo(a) || '').toLowerCase();
+        const bCod = String(getFacturaCodigo(b) || '').toLowerCase();
+        const term = searchTerm.trim().toLowerCase();
+        if (aCod === term && bCod !== term) return -1;
+        if (bCod === term && aCod !== term) return 1;
+      }
+
       let comparison = 0;
 
       // Primero ordenar por estado (pendiente → vencida → pagada → anulada)
@@ -453,7 +499,7 @@ const InvoicesSection = () => {
 
       return sortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [filteredFacturas, sortOption, sortOrder]);
+  }, [filteredFacturas, sortOption, sortOrder, searchTerm, searchType]);
 
   const totalPages = Math.max(1, Math.ceil(sortedFacturas.length / pageSize));
   const normalizedCurrentPage = Math.min(currentPage, totalPages);
@@ -465,7 +511,7 @@ const InvoicesSection = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterStatus, sortOption, sortOrder, pageSize, periodoSeleccionado]);
+  }, [searchTerm, searchType, filterStatus, sortOption, sortOrder, pageSize, periodoSeleccionado]);
 
   useEffect(() => {
     if (facturas.length <= 100) {
@@ -476,7 +522,7 @@ const InvoicesSection = () => {
     setShowSearchAdvice(true);
     const timer = setTimeout(() => setShowSearchAdvice(false), 12000);
     return () => clearTimeout(timer);
-  }, [facturas.length, searchTerm, filterStatus, periodoSeleccionado]);
+  }, [facturas.length, searchTerm, searchType, filterStatus, periodoSeleccionado]);
 
   const toggleSortOrder = () => {
     setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc');
@@ -1483,13 +1529,72 @@ const agruparDetallesPorTipo = (detalles) => {
             </div>
           </div>
 
+                    {/* PÍLDORAS DE CRITERIO DE BÚSQUEDA PUNTUAL (Opción 2) */}
+          <div className="search-criteria-pills">
+            <span className="search-criteria-label">Buscar por:</span>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'all' ? 'active' : ''}`}
+              onClick={() => setSearchType('all')}
+              title="Buscar en todos los campos"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>Todos</span>
+            </button>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'codigo' ? 'active' : ''}`}
+              onClick={() => setSearchType('codigo')}
+              title="Búsqueda puntual por código de afiliado"
+            >
+              <Hash className="w-3.5 h-3.5" />
+              <span>Código</span>
+            </button>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'nombre' ? 'active' : ''}`}
+              onClick={() => setSearchType('nombre')}
+              title="Búsqueda por nombre o apellido"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>Nombre</span>
+            </button>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'cedula' ? 'active' : ''}`}
+              onClick={() => setSearchType('cedula')}
+              title="Búsqueda puntual por cédula"
+            >
+              <IdCard className="w-3.5 h-3.5" />
+              <span>Cédula</span>
+            </button>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'medidor' ? 'active' : ''}`}
+              onClick={() => setSearchType('medidor')}
+              title="Búsqueda por número de medidor"
+            >
+              <Gauge className="w-3.5 h-3.5" />
+              <span>Medidor</span>
+            </button>
+            <button
+              type="button"
+              className={`search-pill ${searchType === 'factura' ? 'active' : ''}`}
+              onClick={() => setSearchType('factura')}
+              title="Búsqueda por folio de factura"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>N° Factura</span>
+            </button>
+          </div>
+
           {/* BARRA DE BÚSQUEDA Y FILTROS */}
           <div className="filters-section">
             <div className="search-container">
               <Search className="search-icon" />
               <input
                 type="text"
-                placeholder="Buscar por factura, medidor, codigo, afiliado o cedula..."
+                placeholder={getSearchPlaceholder()}
                 className="search-input"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -1578,6 +1683,7 @@ const agruparDetallesPorTipo = (detalles) => {
                 className="clear-search-btn"
                 onClick={() => {
                   setSearchTerm('');
+                  setSearchType('all');
                   setFilterStatus('all');
                 }}
               >
@@ -2105,7 +2211,6 @@ const agruparDetallesPorTipo = (detalles) => {
 
                 </div>
               </div>
-              <br />
 
               {/* SECCIÓN DE INFORMACIÓN DE LA FACTURA */}
               <div className="factura-section">
@@ -2113,7 +2218,6 @@ const agruparDetallesPorTipo = (detalles) => {
                   <FileText className="w-4 h-4" />
                   Información de la Factura
                 </h4>
-                <br />
                 <div className="user-details">
 
                   <div className="detail-group">
@@ -2349,44 +2453,59 @@ const agruparDetallesPorTipo = (detalles) => {
             </div>
 
             <div className="modal-body">
-              {/* INFORMACIÓN DEL CLIENTE */}
-              <div className="payment-info-section">
-                <div className="payment-client">
-                 
-                  <h4 className="discount-title">
-                    <User className="w-4 h-4 text-blue-600" />
-                     Detalles de usuario
-                  </h4>
-                    <div>
-                      <p className="client-name">
-                        <strong>Nombre Afiliado:</strong>{' '}
-                        {getFacturaNombre(paymentData.factura) || 'N/A'}
-                      </p>
-
-                      <p className="client-code">
-                        <strong>Código:</strong>{' '}
-                        {getFacturaCodigo(paymentData.factura) || 'N/A'}
-                      </p>
-                    </div>
-
-                </div>
-              </div>
-
-              {/* RESUMEN SIMPLE */}
-              <div className="payment-summary">
-                <div className="summary-row">
-                  <span><strong>Total Factura:</strong></span>
-                  <span className="amount">
-                    {formatCurrency(paymentData.factura.total)}
-                  </span>
+              {/* INFORMACIÓN DE LA FACTURA */}
+              <div className="modal-info-card">
+                <h4 className="modal-section-title">
+                  <FileText className="w-4 h-4" />
+                  Detalles de la factura
+                </h4>
+                <div className="modal-info-grid">
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Afiliado</span>
+                    <span className="modal-info-val">{getFacturaNombre(paymentData.factura) || 'No registrado'}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Código</span>
+                    <span className="modal-info-val font-mono">{getFacturaCodigo(paymentData.factura) || 'N/A'}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Medidor</span>
+                    <span className="modal-info-val font-mono">{getFacturaMedidor(paymentData.factura) || 'N/A'}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Factura</span>
+                    <span className="modal-info-val font-mono">{paymentData.factura.num_factura}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Periodo de consumo</span>
+                    <span className="modal-info-val text-blue-600 font-semibold">
+                      {paymentData.factura.periodo 
+                        ? (() => {
+                            const [anio, mes] = paymentData.factura.periodo.split('-');
+                            return formatearPeriodo(parseInt(mes), anio);
+                          })()
+                        : 'N/A'
+                      }
+                    </span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Fecha emisión</span>
+                    <span className="modal-info-val">{formatDateShort(paymentData.factura.fecha_emision)}</span>
+                  </div>
+                  <div className="modal-info-divider"></div>
+                  <div className="modal-info-item col-span-2">
+                    <span className="modal-info-label">Total Factura</span>
+                    <span className="modal-info-val text-total">
+                      {formatCurrency(paymentData.factura.total)}
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* SECCIÓN DE DESCUENTO */}
               <div className="discount-section">
-                <br />
-                <h4 className="discount-title">
-                  <Tag className="w-4 h-4 text-blue-600" />
+                <h4 className="modal-section-title">
+                  <Tag className="w-4 h-4" />
                   Descuento (Opcional)
                 </h4>
 
@@ -2602,46 +2721,61 @@ const agruparDetallesPorTipo = (detalles) => {
             </div>
 
             <div className="modal-body">
-              {/* Información de la factura */}
-              <div className="payment-info-section">
-                <div className="payment-client">
-                  <div className='servicios-header'> 
-                    <h4 >
-                    <FileText className="w-4 h-4 text-blue-600" />
-                   {" "} Detalles de la factura
-                    </h4>
-
+              {/* INFORMACIÓN DE LA FACTURA */}
+              <div className="modal-info-card">
+                <h4 className="modal-section-title">
+                  <FileText className="w-4 h-4" />
+                  Detalles de la factura
+                </h4>
+                <div className="modal-info-grid">
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Afiliado</span>
+                    <span className="modal-info-val">{getFacturaNombre(facturaSeleccionadaServicios) || 'No registrado'}</span>
                   </div>
-                  <br />   
-                  <div>
-                    <p className="client-name">
-                      <strong>Factura:</strong>{' '}
-                      {facturaSeleccionadaServicios.num_factura}
-                    </p>
-
-                    <p className="client-name">
-                      <strong>Nombre Afiliado:</strong>{' '}
-                      {getFacturaNombre(facturaSeleccionadaServicios) || 'N/A'}
-                    </p>
-
-                    <p className="client-code">
-                      <strong>Total actual:</strong>{' '}
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Código</span>
+                    <span className="modal-info-val font-mono">{getFacturaCodigo(facturaSeleccionadaServicios) || 'N/A'}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Medidor</span>
+                    <span className="modal-info-val font-mono">{getFacturaMedidor(facturaSeleccionadaServicios) || 'N/A'}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Factura</span>
+                    <span className="modal-info-val font-mono">{facturaSeleccionadaServicios.num_factura}</span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Periodo de consumo</span>
+                    <span className="modal-info-val text-blue-600 font-semibold">
+                      {facturaSeleccionadaServicios.periodo 
+                        ? (() => {
+                            const [anio, mes] = facturaSeleccionadaServicios.periodo.split('-');
+                            return formatearPeriodo(parseInt(mes), anio);
+                          })()
+                        : 'N/A'
+                      }
+                    </span>
+                  </div>
+                  <div className="modal-info-item">
+                    <span className="modal-info-label">Fecha emisión</span>
+                    <span className="modal-info-val">{formatDateShort(facturaSeleccionadaServicios.fecha_emision)}</span>
+                  </div>
+                  <div className="modal-info-divider"></div>
+                  <div className="modal-info-item col-span-2">
+                    <span className="modal-info-label">Total Actual</span>
+                    <span className="modal-info-val text-total">
                       {formatCurrency(facturaSeleccionadaServicios.total)}
-                    </p>
+                    </span>
                   </div>
-
                 </div>
               </div>
 
-             {/* Lista de servicios disponibles */}
-            <div className="servicios-selection">
-              <div className="servicios-header">
-                <br />
-                <h4>
-                  <Briefcase className="w-4 h-4 text-blue-600" />
-                  {" "}Selecciona los servicios a aplicar</h4>
-              </div>
-                <br />
+              {/* Lista de servicios disponibles */}
+              <div className="servicios-selection">
+                <h4 className="modal-section-title">
+                  <Briefcase className="w-4 h-4" />
+                  Selecciona los servicios a aplicar
+                </h4>
             
               {serviciosDisponibles.length === 0 ? (
                 <div className="empty-state-modal">
@@ -2726,7 +2860,7 @@ const agruparDetallesPorTipo = (detalles) => {
                 className="btn btn-primary"
                 disabled={loading || serviciosSeleccionadosModal.length === 0}
               >
-                {loading ? 'Aplicando...' : `Aplicar ${serviciosSeleccionadosModal.length} Servicio(s)`}
+                <CheckCircle className="w-4 h-4 mr-2 inline" />{loading ? 'Aplicando...' : `Aplicar ${serviciosSeleccionadosModal.length} Servicio(s)`}
               </button>
             </div>
           </div>
@@ -2741,10 +2875,10 @@ const agruparDetallesPorTipo = (detalles) => {
       {/* HEADER */}
       <div className="modal-header">
         <h3>
-          <Ban className="w-5 h-5 inline mr-2 text-red-600" />
+          <Ban className="w-5 h-5 inline mr-2" />
           Anular Factura - {selectedFactura.num_factura}
         </h3>
-        <button className="modal-close" onClick={closeModal}>
+        <button className="modal-close" onClick={closeModal} title="Cerrar modal">
           <X className="w-5 h-5" />
         </button>
       </div>
@@ -2753,66 +2887,64 @@ const agruparDetallesPorTipo = (detalles) => {
       <div className="modal-body">
 
         {/* INFORMACIÓN DE LA FACTURA */}
-        <div className="payment-info-section">
-          <div className="payment-client">
-            <h4 className="discount-title text-red-600">
-              <AlertCircle className="w-4 h-4" />
-              Detalles de la factura
-            </h4>
+        <div className="modal-info-card">
+          <h4 className="modal-section-title">
+            <FileText className="w-4 h-4" />
+            Detalles de la factura
+          </h4>
 
-            <div className="grid grid-cols-2 gap-3"> {/* 👈 Grid de 2 columnas */}
-              <div>
-                <p className="client-name">
-                  <strong>Afiliado:</strong>{' '}
-                  {getFacturaNombre(selectedFactura) || 'No registrado'}
-                </p>
-
-                <p className="client-code">
-                  <strong>Código:</strong>{' '}
-                  {getFacturaCodigo(selectedFactura) || 'N/A'}
-                </p>
-
-                <p className="client-code">
-                  <strong>Medidor:</strong>{' '}
-                  {getFacturaMedidor(selectedFactura) || 'N/A'}
-                </p>
-              </div>
-
-              <div>
-                <p className="client-code">
-                  <strong>Periodo de consumo:</strong>{' '}
-                  <span className="text-blue-600 font-semibold">
-                    {selectedFactura.periodo 
-                      ? (() => {
-                          const [anio, mes] = selectedFactura.periodo.split('-');
-                          return formatearPeriodo(parseInt(mes), anio);
-                        })()
-                      : 'N/A'
-                    }
-                  </span>
-                </p>
-
-                <p className="client-code">
-                  <strong>Consumo:</strong>{' '}
-                  {selectedFactura.consumo_m3 || 0} m³
-                </p>
-
-                <p className="client-code">
-                  <strong>Fecha emisión:</strong>{' '}
-                  {formatDateShort(selectedFactura.fecha_emision)}
-                </p>
-              </div>
+          <div className="modal-info-grid">
+            <div className="modal-info-item">
+              <span className="modal-info-label">Afiliado</span>
+              <span className="modal-info-val">{getFacturaNombre(selectedFactura) || 'No registrado'}</span>
             </div>
-          </div>
-        </div>
 
-        {/* RESUMEN */}
-        <div className="payment-summary">
-          <div className="client-code">
-            <span><strong>Total Factura:</strong> {' '} </span>
-            <span className="amount text-red-600 font-bold text-lg">
-              {formatCurrency(selectedFactura.total_factura || selectedFactura.total)}
-            </span>
+            <div className="modal-info-item">
+              <span className="modal-info-label">Código</span>
+              <span className="modal-info-val font-mono">{getFacturaCodigo(selectedFactura) || 'N/A'}</span>
+            </div>
+
+            <div className="modal-info-item">
+              <span className="modal-info-label">Medidor</span>
+              <span className="modal-info-val font-mono">{getFacturaMedidor(selectedFactura) || 'N/A'}</span>
+            </div>
+
+            <div className="modal-info-item">
+              <span className="modal-info-label">Factura</span>
+              <span className="modal-info-val font-mono">{selectedFactura.num_factura}</span>
+            </div>
+
+            <div className="modal-info-item">
+              <span className="modal-info-label">Periodo de consumo</span>
+              <span className="modal-info-val text-blue-600 font-semibold">
+                {selectedFactura.periodo 
+                  ? (() => {
+                      const [anio, mes] = selectedFactura.periodo.split('-');
+                      return formatearPeriodo(parseInt(mes), anio);
+                    })()
+                  : 'N/A'
+                }
+              </span>
+            </div>
+
+            <div className="modal-info-item">
+              <span className="modal-info-label">Consumo</span>
+              <span className="modal-info-val">{selectedFactura.consumo_m3 || 0} m³</span>
+            </div>
+
+            <div className="modal-info-item">
+              <span className="modal-info-label">Fecha emisión</span>
+              <span className="modal-info-val">{formatDateShort(selectedFactura.fecha_emision)}</span>
+            </div>
+
+            <div className="modal-info-divider"></div>
+
+            <div className="modal-info-item col-span-2">
+              <span className="modal-info-label">Total Factura</span>
+              <span className="modal-info-val text-red-600 font-bold text-lg">
+                {formatCurrency(selectedFactura.total_factura || selectedFactura.total)}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -2827,9 +2959,8 @@ const agruparDetallesPorTipo = (detalles) => {
 
         {/* FORMULARIO */}
         <div className="discount-section">
-          <br />
-          <h4 className="discount-title">
-            <Ban className="w-4 h-4 text-red-600" />
+          <h4 className="modal-section-title">
+            <Ban className="w-4 h-4" />
             Motivo de anulación
           </h4>
 
@@ -2841,12 +2972,12 @@ const agruparDetallesPorTipo = (detalles) => {
                 setAnulacionData({ ...anulacionData, motivo: e.target.value })
               }
               required
-              className="discount-input"
+              className="discount-input w-full"
               style={{ 
                 width: '100%', 
-                minHeight: '45px',   
+                minHeight: '42px',   
                 fontSize: '14px',      
-                padding: '10px 14px'   
+                padding: '8px 12px'   
               }}
             >
               <option value="">-- Seleccione un motivo de anulación --</option>
@@ -2862,7 +2993,7 @@ const agruparDetallesPorTipo = (detalles) => {
             <div className="discount-input-container mt-3">
               <label>Especifique el motivo de anulación *</label>
               <textarea
-                rows={5} 
+                rows={4} 
                 value={anulacionData.motivoPersonalizado}
                 onChange={(e) =>
                   setAnulacionData({
@@ -2872,13 +3003,13 @@ const agruparDetallesPorTipo = (detalles) => {
                 }
                 minLength={10}
                 required
-                className="discount-input"
+                className="discount-input w-full"
                 placeholder="Describa el motivo de la anulación de esta factura..."
                 style={{ 
-                  width: '95%',
-                  fontSize: '14px',       /* 👈 Texto más grande */
-                  padding: '12px 12px',   /* 👈 Más padding */
-                  lineHeight: '1.5'       /* 👈 Mejor espaciado */
+                  width: '100%',
+                  fontSize: '14px',
+                  padding: '10px 12px',
+                  lineHeight: '1.5'
                 }}
               />
 
@@ -2901,7 +3032,7 @@ const agruparDetallesPorTipo = (detalles) => {
 
         <button
           type="button"
-          className="btn btn-danger btn-confirm-anulacion"
+          className="btn btn-danger"
           disabled={
             !anulacionData.motivo ||
             (anulacionData.motivo === 'Otro (especificar)' &&
